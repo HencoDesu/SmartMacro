@@ -1,0 +1,32 @@
+## .NET build artifacts
+bin/
+obj/
+out/
+*.user
+*.userosscache
+*.suo
+
+## VS / Rider
+.vs/
+.idea/
+
+## NuGet
+*.nupkg
+packages/
+
+## Local config / secrets
+config.local.json
+appsettings.local.json
+.env
+
+## Logs
+logs/
+*.log
+
+## OS
+Thumbs.db
+.DS_Store
+
+## Vision-runner scratch outputs (thumbnails, binarised debug dumps)
+samples/.thumbs/
+samples/.debug/

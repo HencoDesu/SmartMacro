@@ -1,0 +1,102 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PerfectWorldAgent.App.ViewModels"
+        xmlns:controls="using:PerfectWorldAgent.App.Controls"
+        x:Class="PerfectWorldAgent.App.LabelAgentDialog"
+        x:DataType="vm:LabelAgentDialogViewModel"
+        Width="460" Height="580"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Title="Label agent">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="16">
+
+        <StackPanel Grid.Row="0" Spacing="6">
+            <TextBlock FontSize="14" Text="Label this agent" />
+            <TextBlock FontSize="11"
+                       Foreground="#888"
+                       Text="{Binding CurrentName, StringFormat='current: {0}'}" />
+            <Border BorderThickness="1"
+                    BorderBrush="#444"
+                    Background="#222"
+                    CornerRadius="2"
+                    Padding="4"
+                    Margin="0,6,0,0">
+                <Image Source="{Binding NameplatePreview}"
+                       Stretch="None"
+                       HorizontalAlignment="Center" />
+            </Border>
+            <TextBlock FontSize="10"
+                       Foreground="#666"
+                       Text="Snap taken at dialog open. Cropped to the HUD name region that NameMatcher will compare future screenshots against." />
+            <Border IsVisible="{Binding NameplateWarning, Converter={x:Static vm:NotNullToBoolConverter.Instance}}"
+                    BorderThickness="1"
+                    BorderBrush="#E0AF68"
+                    Background="#2A2418"
+                    CornerRadius="2"
+                    Padding="6"
+                    Margin="0,4,0,0">
+                <TextBlock Foreground="#E0AF68"
+                           FontSize="10"
+                           TextWrapping="Wrap"
+                           Text="{Binding NameplateWarning}" />
+            </Border>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Margin="0,16" Spacing="10">
+            <StackPanel Spacing="4">
+                <TextBlock FontSize="11" Foreground="#aaa" Text="Character name" />
+                <TextBox Text="{Binding Name, Mode=TwoWay}" />
+            </StackPanel>
+
+            <CheckBox Content="Is master (the lead character)"
+                      IsChecked="{Binding IsMaster, Mode=TwoWay}" />
+
+            <StackPanel Spacing="4">
+                <TextBlock FontSize="11" Foreground="#aaa" Text="Class" />
+                <ComboBox ItemsSource="{Binding ClassOptions}"
+                          SelectedItem="{Binding Class, Mode=TwoWay}"
+                          HorizontalAlignment="Stretch" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,*,*">
+                <StackPanel Grid.Column="0" Margin="0,0,6,0" Spacing="4">
+                    <TextBlock FontSize="11" Foreground="#aaa" Text="Burst buff" />
+                    <controls:KeyBindingPicker Key="{Binding BurstBuffKey, Mode=TwoWay}"
+                                               HorizontalAlignment="Stretch"
+                                               HorizontalContentAlignment="Center" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Margin="3,0" Spacing="4">
+                    <TextBlock FontSize="11" Foreground="#aaa" Text="Damage" />
+                    <controls:KeyBindingPicker Key="{Binding DamageKey, Mode=TwoWay}"
+                                               HorizontalAlignment="Stretch"
+                                               HorizontalContentAlignment="Center" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Margin="6,0,0,0" Spacing="4">
+                    <TextBlock FontSize="11" Foreground="#aaa" Text="Immunity" />
+                    <controls:KeyBindingPicker Key="{Binding ImmunityKey, Mode=TwoWay}"
+                                               HorizontalAlignment="Stretch"
+                                               HorizontalContentAlignment="Center" />
+                </StackPanel>
+            </Grid>
+
+            <TextBlock Foreground="#E06060"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       IsVisible="{Binding ErrorMessage, Converter={x:Static vm:NotNullToBoolConverter.Instance}}"
+                       Text="{Binding ErrorMessage}" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8">
+            <Button x:Name="CancelButton"
+                    Content="Cancel"
+                    Click="OnCancel" />
+            <Button x:Name="SaveButton"
+                    Content="Save"
+                    Classes="accent"
+                    Click="OnSave" />
+        </StackPanel>
+    </Grid>
+</Window>
