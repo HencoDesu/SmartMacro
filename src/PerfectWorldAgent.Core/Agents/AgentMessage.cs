@@ -15,6 +15,12 @@ public sealed record ShutdownMessage : AgentMessage;
 // key fields and skip the action.
 public sealed record UseImmunityMessage : AgentMessage;
 
+// "Take assist from the master". Agent sends Shift+1 (PW shortcut: select first party
+// member = master) then presses its own Character.AssistKey (in-game macro bound to
+// /assist current target → ends up targeting whatever master targets). Master itself
+// skips this message (no one to assist).
+public sealed record TakeAssistMessage : AgentMessage;
+
 // Click at the given client-area coordinates of the agent's window. Coords are produced
 // once by the orchestrator (cursor pos → foreground window client coords) and reused
 // across every agent — relies on all PW clients being the same window size.

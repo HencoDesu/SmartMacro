@@ -29,6 +29,7 @@ public interface ICharacterProvider
         string burstBuffKey,
         string damageKey,
         string immunityKey,
+        string assistKey,
         byte[] screenshot,
         CancellationToken cancellationToken = default);
 

@@ -62,6 +62,7 @@ public sealed partial class CharacterProvider : ICharacterProvider
         string burstBuffKey,
         string damageKey,
         string immunityKey,
+        string assistKey,
         byte[] screenshot,
         CancellationToken cancellationToken = default)
     {
@@ -74,6 +75,7 @@ public sealed partial class CharacterProvider : ICharacterProvider
             BurstBuffKey = burstBuffKey,
             DamageKey = damageKey,
             ImmunityKey = immunityKey,
+            AssistKey = assistKey,
         };
 
         await _roster.AddAsync(character, template, cancellationToken).ConfigureAwait(false);

@@ -7,10 +7,12 @@ using PerfectWorldAgent.Orchestration;
 
 namespace PerfectWorldAgent.Core;
 
-// Default factory — hard-codes the PostMessage + WM_ACTIVATEAPP-wake-up combo that we
-// believe is most likely to work against a frozen PW background client. When we have a
-// live game to test against we'll swap this for a config-driven composition; for now
-// keeping the wiring in one place beats spreading new() calls across DI registration.
+// Default factory — wires PostMessage-based input directly into GameWindow. Activation
+// (WM_ACTIVATEAPP wake-up of frozen background PW clients) is now the caller's
+// responsibility via IGameWindow.ActivateAsync/DeactivateAsync. The previous decorator-
+// wrapper architecture (ActivatingKeyboardInput / ActivatingMouseInput) added activation
+// per-call which silently fragmented input sequences and motivated overengineered API
+// like PressChordThenKeyAsync.
 [SupportedOSPlatform("windows")]
 public sealed class GameWindowFactory : IGameWindowFactory
 {
@@ -21,10 +23,6 @@ public sealed class GameWindowFactory : IGameWindowFactory
         _activatingOptions = activatingOptions;
     }
 
-    public IGameWindow Create(ProcessInfo info)
-    {
-        var keyboard = new ActivatingKeyboardInput(new PostMessageKeyboardInput(), _activatingOptions);
-        var mouse = new ActivatingMouseInput(new PostMessageMouseInput(), _activatingOptions);
-        return new GameWindow(info, keyboard, mouse, _activatingOptions);
-    }
+    public IGameWindow Create(ProcessInfo info) =>
+        new GameWindow(info, new PostMessageKeyboardInput(), new PostMessageMouseInput(), _activatingOptions);
 }

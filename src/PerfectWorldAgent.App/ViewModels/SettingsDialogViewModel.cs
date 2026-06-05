@@ -146,6 +146,7 @@ internal static class TriggerLabels
         [OrchestratorTrigger.CombatFinished] = "Combat finished",
         [OrchestratorTrigger.Stop] = "Stop / reset to Hold",
         [OrchestratorTrigger.BroadcastImmunity] = "Panic — broadcast immunity",
+        [OrchestratorTrigger.BroadcastAssist] = "Take assist from master",
         [OrchestratorTrigger.BroadcastClick] = "Broadcast click at cursor",
         [OrchestratorTrigger.BroadcastDoubleClick] = "Broadcast double-click at cursor",
     };

@@ -5,6 +5,12 @@ public enum VirtualKey : ushort
 {
     Tab = 0x09,
     Enter = 0x0D,
+    // Generic modifier codes (left/right not distinguished — fine for chord sends since
+    // PostMessage WM_KEYDOWN with VK_SHIFT/VK_CONTROL/VK_MENU is treated by most apps
+    // as "a shift/ctrl/alt is held").
+    Shift = 0x10,
+    Control = 0x11,
+    Alt = 0x12,
     Escape = 0x1B,
     Space = 0x20,
 

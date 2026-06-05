@@ -48,6 +48,30 @@ public sealed class SendInputKeyboardInput : IKeyboardInput
         }
     }
 
+    public async Task SendChordAsync(IntPtr hwnd, VirtualKey modifier, VirtualKey key, CancellationToken cancellationToken = default)
+    {
+        var original = Win32NativeWindowSystem.GetForeground();
+        var target = Win32NativeWindowSystem.Open(hwnd);
+        target.BringToFront();
+        await Task.Delay(_focusSettleDelay, cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            SendKey(modifier, isKeyUp: false);
+            SendKey(key, isKeyUp: false);
+            await Task.Delay(_keyHoldDuration, cancellationToken).ConfigureAwait(false);
+            SendKey(key, isKeyUp: true);
+            SendKey(modifier, isKeyUp: true);
+        }
+        finally
+        {
+            if (_restoreOriginalFocus && original.Handle != IntPtr.Zero && original.Handle != hwnd)
+            {
+                original.BringToFront();
+            }
+        }
+    }
+
     private static void SendKey(VirtualKey key, bool isKeyUp)
     {
         var scanCode = (ushort)User32Native.MapVirtualKey((uint)key, User32Native.MAPVK_VK_TO_VSC);

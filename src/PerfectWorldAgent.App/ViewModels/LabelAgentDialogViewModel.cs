@@ -27,6 +27,7 @@ public sealed class LabelAgentDialogViewModel : ObservableObject
     private string _burstBuffKey = string.Empty;
     private string _damageKey = string.Empty;
     private string _immunityKey = string.Empty;
+    private string _assistKey = string.Empty;
     private string? _errorMessage;
 
     // Snapshot of the enum for ComboBox.ItemsSource — taken once, shared across all
@@ -74,6 +75,7 @@ public sealed class LabelAgentDialogViewModel : ObservableObject
             _burstBuffKey = c.BurstBuffKey;
             _damageKey = c.DamageKey;
             _immunityKey = c.ImmunityKey;
+            _assistKey = c.AssistKey;
         }
     }
 
@@ -93,6 +95,7 @@ public sealed class LabelAgentDialogViewModel : ObservableObject
     public string BurstBuffKey { get => _burstBuffKey; set => SetField(ref _burstBuffKey, value); }
     public string DamageKey { get => _damageKey; set => SetField(ref _damageKey, value); }
     public string ImmunityKey { get => _immunityKey; set => SetField(ref _immunityKey, value); }
+    public string AssistKey { get => _assistKey; set => SetField(ref _assistKey, value); }
     public string? ErrorMessage { get => _errorMessage; set => SetField(ref _errorMessage, value); }
 
     // Returns true if save succeeded (caller closes dialog). Returns false on validation
@@ -115,6 +118,7 @@ public sealed class LabelAgentDialogViewModel : ObservableObject
                 _burstBuffKey.Trim(),
                 _damageKey.Trim(),
                 _immunityKey.Trim(),
+                _assistKey.Trim(),
                 _capturedScreenshot,
                 cancellationToken).ConfigureAwait(false);
         }

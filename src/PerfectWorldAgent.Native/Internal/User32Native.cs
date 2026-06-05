@@ -52,6 +52,24 @@ internal static partial class User32Native
     public const uint PW_CLIENTONLY = 0x00000001;
     public const uint PW_RENDERFULLCONTENT = 0x00000002;
 
+    // WM_SETICON — replaces the icon shown in the window's title bar and taskbar entry.
+    // ICON_SMALL = 16x16 (title bar, taskbar list). ICON_BIG = 32x32 (Alt-Tab switcher,
+    // task switcher thumbnails). ICON_SMALL2 is what Windows 7+ uses for the taskbar
+    // button itself; setting all three covers every UI surface.
+    public const uint WM_SETICON = 0x0080;
+    public const int ICON_SMALL = 0;
+    public const int ICON_BIG = 1;
+    public const int ICON_SMALL2 = 2;
+
+    // LoadImage with IMAGE_ICON + LR_LOADFROMFILE reads a .ico file from disk and
+    // returns an HICON. cx/cy = 0 means "use the file's default size" (multi-resolution
+    // .ico picks the largest by convention). LR_DEFAULTSIZE picks the system-default
+    // small/large size instead. Without LR_SHARED the HICON belongs to us and we'd need
+    // DestroyIcon — but for process-lifetime cache that's not worth the bookkeeping.
+    public const uint IMAGE_ICON = 1;
+    public const uint LR_LOADFROMFILE = 0x0010;
+    public const uint LR_DEFAULTSIZE = 0x0040;
+
     // ─── Functions with A/W variants need explicit W EntryPoint under LibraryImport ───
 
     [LibraryImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
@@ -147,4 +165,14 @@ internal static partial class User32Native
 
     [LibraryImport("user32.dll")]
     public static partial short GetAsyncKeyState(int vKey);
+
+    // LoadImage — reads .ico from disk into an HICON. EntryPoint W variant because the
+    // path is wide-char in Unicode builds. Returns IntPtr.Zero on failure (path missing,
+    // not an icon file, etc.); GetLastError gives detail.
+    [LibraryImport("user32.dll", EntryPoint = "LoadImageW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    public static partial IntPtr LoadImage(IntPtr hInst, string name, uint type, int cx, int cy, uint fuLoad);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DestroyIcon(IntPtr hIcon);
 }

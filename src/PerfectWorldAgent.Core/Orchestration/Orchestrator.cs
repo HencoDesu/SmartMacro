@@ -182,6 +182,11 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
                 _ = BroadcastAsync(new UseImmunityMessage());
                 return;
 
+            case OrchestratorTrigger.BroadcastAssist:
+                LogBroadcastAssist();
+                _ = BroadcastAsync(new TakeAssistMessage());
+                return;
+
             case OrchestratorTrigger.BroadcastClick:
                 BroadcastCursorClick(doubleClick: false);
                 return;
@@ -412,20 +417,28 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
         }
         if (snapshot.Length == 0)
         {
+            LogBroadcastEmpty(message.GetType().Name);
             return;
         }
 
+        var recipients = string.Join(", ", snapshot.Select(a => a.Name));
+        LogBroadcastStarting(message.GetType().Name, snapshot.Length, recipients);
+
+        var delivered = 0;
         foreach (var agent in snapshot)
         {
             try
             {
                 await agent.Inbox.WriteAsync(message, CancellationToken.None).ConfigureAwait(false);
+                delivered++;
             }
             catch (ChannelClosedException)
             {
                 // Agent stopped between snapshot and write — ignore.
+                LogBroadcastChannelClosed(message.GetType().Name, agent.Name);
             }
         }
+        LogBroadcastDelivered(message.GetType().Name, delivered, snapshot.Length);
     }
 
     #region Logging
@@ -468,6 +481,21 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
 
     [LoggerMessage(LogLevel.Information, "BroadcastImmunity hotkey pressed — broadcasting UseImmunityMessage to all agents")]
     partial void LogBroadcastImmunity();
+
+    [LoggerMessage(LogLevel.Information, "BroadcastAssist hotkey pressed — broadcasting TakeAssistMessage to non-master agents")]
+    partial void LogBroadcastAssist();
+
+    [LoggerMessage(LogLevel.Information, "Broadcast {MessageType} starting → {Count} agent(s): [{Recipients}]")]
+    partial void LogBroadcastStarting(string messageType, int count, string recipients);
+
+    [LoggerMessage(LogLevel.Information, "Broadcast {MessageType} delivered to {Delivered}/{Total} agent(s)")]
+    partial void LogBroadcastDelivered(string messageType, int delivered, int total);
+
+    [LoggerMessage(LogLevel.Warning, "Broadcast {MessageType} skipped — no live agents")]
+    partial void LogBroadcastEmpty(string messageType);
+
+    [LoggerMessage(LogLevel.Warning, "Broadcast {MessageType} dropped for '{Agent}' — channel closed (agent stopped mid-broadcast)")]
+    partial void LogBroadcastChannelClosed(string messageType, string agent);
 
     [LoggerMessage(LogLevel.Information, "Broadcast{Kind} hotkey pressed — client=({X},{Y}) on all agents")]
     partial void LogBroadcastClick(string kind, int x, int y);

@@ -47,4 +47,14 @@
     <AvaloniaResource Include="Assets\icon.png" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Per-class taskbar icons. Loaded from disk (not embedded) so the user can swap
+         them out without rebuilding. CharacterAgent maps CharacterClass → filename via
+         ClassIconNames; missing files just skip with a Debug log. -->
+    <None Include="Assets\ClassIcons\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Assets\ClassIcons\%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
 </Project>

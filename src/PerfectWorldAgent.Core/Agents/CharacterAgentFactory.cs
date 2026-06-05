@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PerfectWorldAgent.Config;
 using PerfectWorldAgent.Core;
+using PerfectWorldAgent.Native;
 using PerfectWorldAgent.Orchestration;
 
 namespace PerfectWorldAgent.Agents;
@@ -19,6 +20,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
     private readonly IGameWindowFactory _windowFactory;
     private readonly ICharacterProvider _provider;
     private readonly IOptions<AgentOptions> _options;
+    private readonly IOptions<ActivatingInputOptions> _inputOptions;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CharacterAgentFactory> _logger;
 
@@ -26,11 +28,13 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
         IGameWindowFactory windowFactory,
         ICharacterProvider provider,
         IOptions<AgentOptions> options,
+        IOptions<ActivatingInputOptions> inputOptions,
         ILoggerFactory loggerFactory)
     {
         _windowFactory = windowFactory;
         _provider = provider;
         _options = options;
+        _inputOptions = inputOptions;
         _loggerFactory = loggerFactory;
         _logger = _loggerFactory.CreateLogger<CharacterAgentFactory>();
     }
@@ -60,6 +64,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
             outbox,
             _provider,
             _options,
+            _inputOptions,
             _loggerFactory.CreateLogger<CharacterAgent>());
         return Task.FromResult(agent);
     }

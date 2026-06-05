@@ -75,22 +75,32 @@ public sealed class Win32NativeWindow : INativeWindow
 
     public void SendActivationSignal(uint lParam)
     {
-        // wParam=1 (TRUE) — "this window is being activated". Sending wParam=0 (FALSE)
-        // tells the window it's being DEactivated (use SendDeactivationSignal for that).
-        // lParam is documented as "thread id of the thread that owns the window being
-        // activated/deactivated"; the magic 0x91D8 default is carried over from a
-        // known-working third-party helper — PW's engine appears to ignore the value
-        // but accepts the message itself as a wake-up trigger.
-        User32Native.SendMessage(Handle, User32Native.WM_ACTIVATEAPP, (IntPtr)1, (IntPtr)lParam);
+        // wParam=1 (TRUE) — "this window is being activated". lParam is documented as
+        // "thread id of the thread that owns the window being activated/deactivated";
+        // the magic 0x91D8 default is carried over from a known-working third-party
+        // helper — PW's engine appears to ignore the value but accepts the message
+        // itself as a wake-up trigger.
+        //
+        // Uses PostMessage (NOT SendMessage) so it queues in the same lane as the input
+        // WM_KEYDOWN/UP that follow. PW's pump dequeues messages FIFO: it processes
+        // ACTIVATEAPP(TRUE) first (wakes up), then KEYDOWN/UP (input executes while
+        // active), then the queued ACTIVATEAPP(FALSE) (deactivates). Mixing SendMessage
+        // for activation with PostMessage for input created a race where PW could
+        // pre-process activation state before the queued input arrived — under load
+        // this caused random agents to miss broadcasts.
+        User32Native.PostMessage(Handle, User32Native.WM_ACTIVATEAPP, (IntPtr)1, (IntPtr)lParam);
     }
 
     public void SendDeactivationSignal()
     {
         // wParam=0 (FALSE) — "this window is being deactivated". lParam is per the docs
         // the thread id of the window taking over focus; passing 0 since PW ignores it.
-        // Paired with SendActivationSignal on background windows after input/capture so
-        // they don't all stay rendering at full speed.
-        User32Native.SendMessage(Handle, User32Native.WM_ACTIVATEAPP, IntPtr.Zero, IntPtr.Zero);
+        //
+        // PostMessage so the deactivation queues AFTER any KEYDOWN/UP we posted for
+        // input — see SendActivationSignal for why we run the whole sequence through
+        // the queue. The drain delay in GameWindow.DeactivateAsync still exists to give
+        // PW's pump enough wall-clock to chew through the queue before we leave.
+        User32Native.PostMessage(Handle, User32Native.WM_ACTIVATEAPP, IntPtr.Zero, IntPtr.Zero);
     }
 
     // Captures via PrintWindow with PW_CLIENTONLY | PW_RENDERFULLCONTENT — the second flag
@@ -129,5 +139,22 @@ public sealed class Win32NativeWindow : INativeWindow
         using var ms = new MemoryStream();
         bitmap.Save(ms, ImageFormat.Png);
         return ms.ToArray();
+    }
+
+    public bool SetIconFromFile(string icoPath)
+    {
+        var hicon = WindowIconCache.GetOrLoad(icoPath);
+        if (hicon == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        // Set all three surfaces so the icon shows up in title bar, taskbar list, and
+        // taskbar button. PostMessage rather than SendMessage — non-critical visual
+        // update, fire-and-forget keeps us off the target's message-loop critical path.
+        User32Native.PostMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_SMALL, hicon);
+        User32Native.PostMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_BIG, hicon);
+        User32Native.PostMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_SMALL2, hicon);
+        return true;
     }
 }

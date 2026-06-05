@@ -26,6 +26,24 @@ public sealed class PostMessageKeyboardInput : IKeyboardInput
         Post(hwnd, User32Native.WM_KEYUP, wParam, upLParam);
     }
 
+    public async Task SendChordAsync(IntPtr hwnd, VirtualKey modifier, VirtualKey key, CancellationToken cancellationToken = default)
+    {
+        var modWParam = (IntPtr)(ushort)modifier;
+        var keyWParam = (IntPtr)(ushort)key;
+        var modDown = LParamHelpers.BuildKeyLParam(modifier, isKeyUp: false);
+        var modUp = LParamHelpers.BuildKeyLParam(modifier, isKeyUp: true);
+        var keyDown = LParamHelpers.BuildKeyLParam(key, isKeyUp: false);
+        var keyUp = LParamHelpers.BuildKeyLParam(key, isKeyUp: true);
+
+        // Order: modifier-down → key-down → hold → key-up → modifier-up. Mirrors what
+        // a physical Shift+1 keystroke generates in WM_KEYDOWN/UP terms.
+        Post(hwnd, User32Native.WM_KEYDOWN, modWParam, modDown);
+        Post(hwnd, User32Native.WM_KEYDOWN, keyWParam, keyDown);
+        await Task.Delay(_keyHoldDuration, cancellationToken).ConfigureAwait(false);
+        Post(hwnd, User32Native.WM_KEYUP, keyWParam, keyUp);
+        Post(hwnd, User32Native.WM_KEYUP, modWParam, modUp);
+    }
+
     private static void Post(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
         if (!User32Native.PostMessage(hwnd, msg, wParam, lParam))

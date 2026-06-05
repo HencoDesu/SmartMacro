@@ -46,6 +46,7 @@ public sealed partial class CharacterAgent
     private readonly Channel<AgentMessage> _inbox;
     private readonly ICharacterProvider _provider;
     private readonly TimeSpan _pollInterval;
+    private readonly int _interStepDelayMs;
     private readonly ILogger<CharacterAgent> _logger;
     private readonly StateMachine<AgentState, AgentTrigger> _machine;
     private readonly Lock _stateLock = new();
@@ -57,12 +58,14 @@ public sealed partial class CharacterAgent
         ChannelWriter<AgentMessage> outbox,
         ICharacterProvider provider,
         IOptions<AgentOptions> options,
+        IOptions<Native.ActivatingInputOptions> inputOptions,
         ILogger<CharacterAgent> logger)
     {
         _window = window;
         _outbox = outbox;
         _provider = provider;
         _pollInterval = TimeSpan.FromSeconds(options.Value.AgentPollIntervalSeconds);
+        _interStepDelayMs = inputOptions.Value.InterStepDelayMs;
         _logger = logger;
         _inbox = Channel.CreateUnbounded<AgentMessage>(new UnboundedChannelOptions
         {
@@ -179,6 +182,7 @@ public sealed partial class CharacterAgent
         }
 
         LogPromoted(oldName, character.Name);
+        TryApplyClassIcon();
         _outbox.TryWrite(new AgentIdentifiedMessage(this, oldName));
     }
 
@@ -201,7 +205,78 @@ public sealed partial class CharacterAgent
         }
 
         LogPromoted(oldName, character.Name);
+        TryApplyClassIcon();
         _outbox.TryWrite(new AgentIdentifiedMessage(this, oldName));
+    }
+
+    // CharacterClass enum uses Russian display names; user's icon files use English
+    // class names. Map between them here so the user can drop their existing icons in
+    // Assets/ClassIcons/ without renaming. Adjust if a mapping is wrong (e.g. Оборотень
+    // might be "tank" or might be something else depending on which PW build the user
+    // pulled the icons from).
+    private static readonly IReadOnlyDictionary<CharacterClass, string> ClassIconNames =
+        new Dictionary<CharacterClass, string>
+        {
+            [CharacterClass.Маг] = "mage",
+            [CharacterClass.Воин] = "warrior",
+            [CharacterClass.Стрелок] = "gunner",
+            [CharacterClass.Друид] = "druid",
+            [CharacterClass.Оборотень] = "tank",       // Barbarian / shape-shifter
+            [CharacterClass.Странник] = "rover",
+            [CharacterClass.Жрец] = "priest",
+            [CharacterClass.Лучник] = "archer",
+            [CharacterClass.Паладин] = "paladin",
+            [CharacterClass.Шаман] = "shaman",
+            [CharacterClass.Убийца] = "assassin",
+            [CharacterClass.Бард] = "bard",
+            [CharacterClass.Мистик] = "mystic",
+            [CharacterClass.Страж] = "guardian",
+            [CharacterClass.ДухКрови] = "bloodspirit",
+            [CharacterClass.Жнец] = "reaper",
+            [CharacterClass.Призрак] = "ghost",
+            // Канлонг — no icon in the user's current set; will silently skip.
+        };
+
+    // Best-effort: look for Assets/ClassIcons/<file>.png next to the .exe and apply it
+    // as the window's title-bar/taskbar icon. Lets the user distinguish 9 PW windows at
+    // a glance in the taskbar instead of seeing 9 identical PW launcher icons. Silent
+    // skip for Class=Unknown, unmapped class (Канлонг), or missing file — the icon set
+    // is user-managed (drop PNGs into Assets/ClassIcons/, csproj copies them on build).
+    private void TryApplyClassIcon()
+    {
+        if (Character.Class == CharacterClass.Unknown)
+        {
+            return;
+        }
+
+        if (!ClassIconNames.TryGetValue(Character.Class, out var fileStem))
+        {
+            LogClassIconUnmapped(Character.Class);
+            return;
+        }
+
+        var path = Path.Combine(AppContext.BaseDirectory, "Assets", "ClassIcons", $"{fileStem}.png");
+        if (!File.Exists(path))
+        {
+            LogClassIconMissing(Character.Class, path);
+            return;
+        }
+
+        try
+        {
+            if (_window.SetIconFromFile(path))
+            {
+                LogClassIconApplied(Character.Class);
+            }
+            else
+            {
+                LogClassIconLoadFailed(Character.Class, path);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogClassIconException(ex, Character.Class);
+        }
     }
 
     private async Task RunLoopAsync(CancellationToken cancellationToken)
@@ -293,7 +368,11 @@ public sealed partial class CharacterAgent
         byte[] screenshot;
         try
         {
-            screenshot = _window.CaptureScreenshot();
+            // Passive capture — no WM_ACTIVATEAPP traffic for the periodic poll. The
+            // user's manual focus on a game window stays uninterrupted; price is that a
+            // truly frozen background frame may not identify on this tick (retried next
+            // tick).
+            screenshot = _window.CaptureScreenshotPassive();
         }
         catch (Exception ex)
         {
@@ -324,6 +403,17 @@ public sealed partial class CharacterAgent
     {
         while (_inbox.Reader.TryRead(out var message))
         {
+            // Until the agent is labeled, swallow all broadcast actions silently. We
+            // genuinely don't know whose window this is yet — sending immunity / clicks /
+            // mode changes could land in the wrong place (e.g. character-select screen,
+            // chat input, the launcher). Identification work itself runs from Tick()
+            // and uses screenshots; it doesn't go through the inbox.
+            if (!IsIdentified)
+            {
+                continue;
+            }
+
+            LogInboxReceived(message.GetType().Name, Name);
             switch (message)
             {
                 case ModeChangedMessage mode:
@@ -332,9 +422,22 @@ public sealed partial class CharacterAgent
 
                 case UseImmunityMessage:
                     // Per-character intent — look up our own ImmunityKey and press it.
-                    // Skip silently if unidentified (empty key) or if the configured
-                    // string doesn't parse as a known VirtualKey.
+                    // Empty key string skips silently; unknown VirtualKey name warn-logs.
                     TryFireCharacterAction(Character.ImmunityKey, "ImmunityKey");
+                    break;
+
+                case TakeAssistMessage:
+                    // Master sets the target — they don't need to assist anyone. For
+                    // everyone else: Shift+1 selects party member 1 (master), then the
+                    // AssistKey-bound /assist macro retargets to master's current target.
+                    if (!Character.IsMaster)
+                    {
+                        _ = SendAssistSequenceAsync();
+                    }
+                    else
+                    {
+                        LogAssistSkippedMaster(Name);
+                    }
                     break;
 
                 case ClickAtMessage click:
@@ -357,6 +460,7 @@ public sealed partial class CharacterAgent
     {
         if (string.IsNullOrEmpty(keyString))
         {
+            LogActionKeyEmpty(actionName, Name);
             return;
         }
 
@@ -366,18 +470,70 @@ public sealed partial class CharacterAgent
             return;
         }
 
-        _ = SendKeySafelyAsync(key);
+        _ = SendKeySafelyAsync(key, actionName);
     }
 
-    private async Task SendKeySafelyAsync(Native.VirtualKey key)
+    private async Task SendKeySafelyAsync(Native.VirtualKey key, string actionName = "Key")
     {
         try
         {
-            await _window.PressKeyAsync(key).ConfigureAwait(false);
+            LogActionFiring(actionName, key, Name);
+            await _window.ActivateAsync().ConfigureAwait(false);
+            try
+            {
+                await _window.PressKeyAsync(key).ConfigureAwait(false);
+            }
+            finally
+            {
+                await _window.DeactivateAsync().ConfigureAwait(false);
+            }
+            LogActionFired(actionName, key, Name);
         }
         catch (Exception ex)
         {
-            LogSendKeyFailed(ex, key);
+            LogSendKeyFailed(ex, key, Name);
+        }
+    }
+
+    // Two-step assist: Shift+1 selects party-slot 1 (master), AssistKey fires the
+    // in-game /assist macro against the now-selected master. Both happen inside a SINGLE
+    // ActivateAsync/DeactivateAsync cycle — window stays active across both phases so PW
+    // doesn't drop the chord's effect on intermediate deactivation. The Task.Delay
+    // between chord and follow-up uses the configured InterStepDelayMs — gives PW time
+    // to actually apply the party-member selection (update target frame, sync internal
+    // target state) before /assist runs. Tune via appsettings.json
+    // Input:Activating:InterStepDelayMs if some agents still target master after assist.
+    private async Task SendAssistSequenceAsync()
+    {
+        if (string.IsNullOrEmpty(Character.AssistKey))
+        {
+            LogAssistKeyMissing();
+            return;
+        }
+
+        if (!Enum.TryParse<Native.VirtualKey>(Character.AssistKey, ignoreCase: true, out var assistKey))
+        {
+            LogUnknownActionKey("AssistKey", Character.AssistKey);
+            return;
+        }
+
+        try
+        {
+            await _window.ActivateAsync().ConfigureAwait(false);
+            try
+            {
+                await _window.PressChordAsync(Native.VirtualKey.Shift, Native.VirtualKey.D1).ConfigureAwait(false);
+                await Task.Delay(_interStepDelayMs).ConfigureAwait(false);
+                await _window.PressKeyAsync(assistKey).ConfigureAwait(false);
+            }
+            finally
+            {
+                await _window.DeactivateAsync().ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogAssistChordFailed(ex);
         }
     }
 
@@ -385,13 +541,21 @@ public sealed partial class CharacterAgent
     {
         try
         {
-            if (doubleClick)
+            await _window.ActivateAsync().ConfigureAwait(false);
+            try
             {
-                await _window.DoubleClickAsync(x, y).ConfigureAwait(false);
+                if (doubleClick)
+                {
+                    await _window.DoubleClickAsync(x, y).ConfigureAwait(false);
+                }
+                else
+                {
+                    await _window.ClickAsync(x, y).ConfigureAwait(false);
+                }
             }
-            else
+            finally
             {
-                await _window.ClickAsync(x, y).ConfigureAwait(false);
+                await _window.DeactivateAsync().ConfigureAwait(false);
             }
         }
         catch (Exception ex)
@@ -448,14 +612,50 @@ public sealed partial class CharacterAgent
     [LoggerMessage(LogLevel.Error, "Agent run loop failed unexpectedly")]
     partial void LogRunFailed(Exception ex);
 
-    [LoggerMessage(LogLevel.Error, "PressKeyAsync({Key}) failed")]
-    partial void LogSendKeyFailed(Exception ex, Native.VirtualKey key);
+    [LoggerMessage(LogLevel.Error, "PressKeyAsync({Key}) failed on '{Name}'")]
+    partial void LogSendKeyFailed(Exception ex, Native.VirtualKey key, string name);
+
+    [LoggerMessage(LogLevel.Debug, "Inbox: '{Name}' received {MessageType}")]
+    partial void LogInboxReceived(string messageType, string name);
+
+    [LoggerMessage(LogLevel.Information, "Firing {Action}={Key} on '{Name}'")]
+    partial void LogActionFiring(string action, Native.VirtualKey key, string name);
+
+    [LoggerMessage(LogLevel.Information, "Fired {Action}={Key} on '{Name}' OK")]
+    partial void LogActionFired(string action, Native.VirtualKey key, string name);
+
+    [LoggerMessage(LogLevel.Information, "{Action} not configured for '{Name}' — skipping silently")]
+    partial void LogActionKeyEmpty(string action, string name);
+
+    [LoggerMessage(LogLevel.Debug, "Assist skipped for '{Name}' — IsMaster=true")]
+    partial void LogAssistSkippedMaster(string name);
 
     [LoggerMessage(LogLevel.Warning, "Character {Action} = '{KeyString}' does not parse as a known VirtualKey; skipping")]
     partial void LogUnknownActionKey(string action, string keyString);
 
     [LoggerMessage(LogLevel.Error, "Click ({X},{Y}) doubleClick={DoubleClick} failed")]
     partial void LogSendClickFailed(Exception ex, int x, int y, bool doubleClick);
+
+    [LoggerMessage(LogLevel.Debug, "Class icon file not found for {Cls} at {Path}; taskbar icon stays default")]
+    partial void LogClassIconMissing(CharacterClass cls, string path);
+
+    [LoggerMessage(LogLevel.Information, "Class icon applied for {Cls}")]
+    partial void LogClassIconApplied(CharacterClass cls);
+
+    [LoggerMessage(LogLevel.Warning, "Class icon LoadImage failed for {Cls} at {Path} (file may be corrupt or not a valid .ico)")]
+    partial void LogClassIconLoadFailed(CharacterClass cls, string path);
+
+    [LoggerMessage(LogLevel.Error, "Class icon application threw for {Cls}")]
+    partial void LogClassIconException(Exception ex, CharacterClass cls);
+
+    [LoggerMessage(LogLevel.Debug, "No icon filename mapping for {Cls}; taskbar icon stays default")]
+    partial void LogClassIconUnmapped(CharacterClass cls);
+
+    [LoggerMessage(LogLevel.Error, "PressChord(Shift+D1) failed during assist sequence")]
+    partial void LogAssistChordFailed(Exception ex);
+
+    [LoggerMessage(LogLevel.Debug, "AssistKey not set on character; party-member-1 selected but no /assist macro fired")]
+    partial void LogAssistKeyMissing();
 
     #endregion
 }

@@ -26,4 +26,21 @@ public sealed class SendMessageKeyboardInput : IKeyboardInput
         await Task.Delay(_keyHoldDuration, cancellationToken).ConfigureAwait(false);
         User32Native.SendMessage(hwnd, User32Native.WM_KEYUP, wParam, upLParam);
     }
+
+    public async Task SendChordAsync(IntPtr hwnd, VirtualKey modifier, VirtualKey key, CancellationToken cancellationToken = default)
+    {
+        var modWParam = (IntPtr)(ushort)modifier;
+        var keyWParam = (IntPtr)(ushort)key;
+        var modDown = LParamHelpers.BuildKeyLParam(modifier, isKeyUp: false);
+        var modUp = LParamHelpers.BuildKeyLParam(modifier, isKeyUp: true);
+        var keyDown = LParamHelpers.BuildKeyLParam(key, isKeyUp: false);
+        var keyUp = LParamHelpers.BuildKeyLParam(key, isKeyUp: true);
+
+        User32Native.SendMessage(hwnd, User32Native.WM_KEYDOWN, modWParam, modDown);
+        User32Native.SendMessage(hwnd, User32Native.WM_KEYDOWN, keyWParam, keyDown);
+        await Task.Delay(_keyHoldDuration, cancellationToken).ConfigureAwait(false);
+        User32Native.SendMessage(hwnd, User32Native.WM_KEYUP, keyWParam, keyUp);
+        User32Native.SendMessage(hwnd, User32Native.WM_KEYUP, modWParam, modUp);
+    }
+
 }

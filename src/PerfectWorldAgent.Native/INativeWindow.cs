@@ -45,4 +45,11 @@ public interface INativeWindow
     // if the caller's integrity level is below the target's — PW launches elevated, so the
     // agent must too.
     byte[] CapturePng();
+
+    // Replaces the window's title-bar / taskbar icon. Loads the image file from disk —
+    // .ico via LoadImage, .png / .jpg / .bmp via GDI+ — cached process-wide so each
+    // class icon is decoded once and reused across all 9 agents. Sends WM_SETICON for
+    // SMALL + BIG + SMALL2 covering title bar, Alt-Tab, taskbar list, taskbar button.
+    // Returns false if the file couldn't be loaded (missing, corrupt, unsupported).
+    bool SetIconFromFile(string imagePath);
 }
