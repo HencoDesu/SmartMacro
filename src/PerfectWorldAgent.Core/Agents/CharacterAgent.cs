@@ -1,11 +1,11 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PerfectWorldAgent.Combat;
 using PerfectWorldAgent.Config;
 using PerfectWorldAgent.GameWindows;
 using PerfectWorldAgent.Identification;
 using PerfectWorldAgent.Input;
+using PerfectWorldAgent.Macro;
 using PerfectWorldAgent.Models;
 using PerfectWorldAgent.Presentation;
 using PerfectWorldAgent.Vision;
@@ -49,10 +49,7 @@ public sealed partial class CharacterAgent
     private readonly ClassIconService _classIcons;
     private readonly AgentInputDispatcher _input;
     private readonly MacroLibrary _macros;
-    private readonly GameUiElementLoader _uiTemplates;
-    private readonly string _serverSelectTemplate;
-    private readonly string _characterSelectTemplate;
-    private readonly string _inWorldTemplate;
+    private readonly GameUiElementExample _uiTemplates;
     private readonly TimeSpan _pollInterval;
     private readonly Native.VirtualKey _statsHotkey;
     private readonly TimeSpan _statsOpenDelay;
@@ -85,7 +82,7 @@ public sealed partial class CharacterAgent
         ClassIconService classIcons,
         AgentInputDispatcher input,
         MacroLibrary macros,
-        GameUiElementLoader uiTemplates,
+        GameUiElementExample uiTemplates,
         IOptions<AgentOptions> options,
         ILogger<CharacterAgent> logger)
     {
@@ -96,9 +93,6 @@ public sealed partial class CharacterAgent
         _input = input;
         _macros = macros;
         _uiTemplates = uiTemplates;
-        _serverSelectTemplate = options.Value.ServerSelectTemplate;
-        _characterSelectTemplate = options.Value.CharacterSelectTemplate;
-        _inWorldTemplate = options.Value.InWorldTemplate;
         _pollInterval = TimeSpan.FromSeconds(options.Value.AgentPollIntervalSeconds);
         _statsHotkey = options.Value.StatsHotkey;
         _statsOpenDelay = TimeSpan.FromMilliseconds(options.Value.StatsOpenDelayMs);
@@ -373,20 +367,13 @@ public sealed partial class CharacterAgent
     {
         LogBootWaitingForPhase(Name, phase);
 
-        var (templateName, region) = phase switch
+        var (template, region) = phase switch
         {
-            BootPhase.ServerSelect => (_serverSelectTemplate, _serverSelectRegion),
-            BootPhase.CharacterSelect => (_characterSelectTemplate, _characterSelectRegion),
-            BootPhase.InWorld => (_inWorldTemplate, _inWorldRegion),
-            _ => (string.Empty, default(Native.ScreenRect)),
+            BootPhase.ServerSelect => (_uiTemplates.ServerSelectButton, _serverSelectRegion),
+            BootPhase.CharacterSelect => (_uiTemplates.CharacterSelectButton, _characterSelectRegion),
+            BootPhase.InWorld => (_uiTemplates.ChatSettingsButton, _inWorldRegion),
+            _ => ([], default),
         };
-
-        var template = _uiTemplates.TryGet(templateName);
-        if (template is null)
-        {
-            LogBootTemplateMissing(Name, phase, templateName);
-            return false;
-        }
 
         var ready = await _window.WaitForElementAt(template, region, budget, cancellationToken).ConfigureAwait(false);
         if (ready)
@@ -552,7 +539,7 @@ public sealed partial class CharacterAgent
         }
     }
 
-    private async Task RunMacroAsync(Macro macro, CancellationToken cancellationToken)
+    private async Task RunMacroAsync(Macro.Macro macro, CancellationToken cancellationToken)
     {
         foreach (var step in macro.Steps)
         {

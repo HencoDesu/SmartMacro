@@ -1,6 +1,6 @@
 using PerfectWorldAgent.Native;
 
-namespace PerfectWorldAgent.Combat;
+namespace PerfectWorldAgent.Macro;
 
 /// <summary>
 /// A single macro step: press <see cref="Key"/>, then wait <see cref="DelayMs"/>

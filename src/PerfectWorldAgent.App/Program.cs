@@ -2,10 +2,7 @@ using Avalonia;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using PerfectWorldAgent.Agents;
-using PerfectWorldAgent.Combat;
 using PerfectWorldAgent.Config;
 using PerfectWorldAgent.GameWindows;
 using PerfectWorldAgent.Hotkeys;
@@ -17,6 +14,7 @@ using PerfectWorldAgent.Orchestration;
 using PerfectWorldAgent.Presentation;
 using PerfectWorldAgent.ProcessMonitoring;
 using PerfectWorldAgent.App.ViewModels;
+using PerfectWorldAgent.Macro;
 using PerfectWorldAgent.Vision;
 using Serilog;
 
@@ -84,6 +82,7 @@ internal static class Program
     private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<AgentOptions>(configuration.GetSection("Agent"));
+        services.Configure<GameUiElementExamplesName>(configuration.GetSection("GameUiElementExamples"));
         services.Configure<HotkeyOptions>(configuration.GetSection("Hotkeys"));
         services.Configure<ActivatingInputOptions>(configuration.GetSection("Input:Activating"));
         services.Configure<CoordinateReaderOptions>(configuration.GetSection("Vision:CoordinateReader"));
@@ -97,7 +96,7 @@ internal static class Program
         services.AddSingleton<IGameWindowFactory, GameWindowFactory>();
         services.AddSingleton<IClassMatcher, ClassMatcher>();
         services.AddSingleton<ClassTemplateLoader>();
-        services.AddSingleton<GameUiElementLoader>();
+        services.AddSingleton<GameUiElementExample>();
         services.AddSingleton<ICoordinateReader, TesseractCoordinateReader>();
         services.AddSingleton<ICharacterProvider, CharacterProvider>();
         services.AddSingleton<ClassIconService>();

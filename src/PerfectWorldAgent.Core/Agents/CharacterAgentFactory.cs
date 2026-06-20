@@ -2,11 +2,11 @@ using System.Runtime.Versioning;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PerfectWorldAgent.Combat;
 using PerfectWorldAgent.Config;
 using PerfectWorldAgent.GameWindows;
 using PerfectWorldAgent.Identification;
 using PerfectWorldAgent.Input;
+using PerfectWorldAgent.Macro;
 using PerfectWorldAgent.Presentation;
 using PerfectWorldAgent.ProcessMonitoring;
 using PerfectWorldAgent.Vision;
@@ -26,7 +26,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
     private readonly ClassIconService _classIcons;
     private readonly AgentInputDispatcher _input;
     private readonly MacroLibrary _macros;
-    private readonly GameUiElementLoader _uiTemplates;
+    private readonly GameUiElementExample _uiTemplates;
     private readonly IOptions<AgentOptions> _options;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CharacterAgentFactory> _logger;
@@ -37,7 +37,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
         ClassIconService classIcons,
         AgentInputDispatcher input,
         MacroLibrary macros,
-        GameUiElementLoader uiTemplates,
+        GameUiElementExample uiTemplates,
         IOptions<AgentOptions> options,
         ILoggerFactory loggerFactory)
     {

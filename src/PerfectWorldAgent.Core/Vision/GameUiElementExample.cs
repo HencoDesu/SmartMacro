@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using PerfectWorldAgent.Config;
 
 namespace PerfectWorldAgent.Vision;
 
@@ -10,35 +12,36 @@ namespace PerfectWorldAgent.Vision;
 // detection, future combat-state detection, dialog detection, etc.) look up by string
 // name. Add a new template = drop a PNG in the folder + reference its name from
 // caller's config. No code change in the loader.
-public sealed partial class GameUiElementLoader
+public sealed partial class GameUiElementExample
 {
-    private readonly ILogger<GameUiElementLoader> _logger;
+    private readonly GameUiElementExamplesName _uiElementNames;
+    private readonly ILogger<GameUiElementExample> _logger;
     private readonly IReadOnlyDictionary<string, byte[]> _templates;
 
-    public GameUiElementLoader(ILogger<GameUiElementLoader> logger)
-        : this(Path.Combine(AppContext.BaseDirectory, "Assets", "GameUiElements"), logger)
+    public GameUiElementExample(
+        IOptions<GameUiElementExamplesName> uiElementNames,
+        ILogger<GameUiElementExample> logger)
     {
-    }
+        var templatesDir = Path.Combine(AppContext.BaseDirectory, "Assets", "GameUiElements");
 
-    public GameUiElementLoader(string templatesDir, ILogger<GameUiElementLoader> logger)
-    {
+        _uiElementNames = uiElementNames.Value;
         _logger = logger;
         _templates = Load(templatesDir);
     }
 
-    /// <summary>
-    /// All successfully-loaded templates keyed by filename-stem. Pass entries to
-    /// <see cref="GameWindows.IGameWindow.WaitForElementAt"/>.
-    /// </summary>
-    public IReadOnlyDictionary<string, byte[]> Templates => _templates;
+    public byte[] ServerSelectButton
+        => _templates.GetValueOrDefault(_uiElementNames.ServerSelect)
+           ?? throw new InvalidOperationException();
 
-    /// <summary>
-    /// Looks up a template by name (filename-without-extension, case-sensitive).
-    /// </summary>
-    public byte[]? TryGet(string name) =>
-        _templates.TryGetValue(name, out var bytes) ? bytes : null;
+    public byte[] CharacterSelectButton
+        => _templates.GetValueOrDefault(_uiElementNames.CharacterSelect)
+           ?? throw new InvalidOperationException();
 
-    private IReadOnlyDictionary<string, byte[]> Load(string templatesDir)
+    public byte[] ChatSettingsButton
+        => _templates.GetValueOrDefault(_uiElementNames.CharacterSelect)
+           ?? throw new InvalidOperationException();
+
+    private Dictionary<string, byte[]> Load(string templatesDir)
     {
         var dict = new Dictionary<string, byte[]>(StringComparer.Ordinal);
 
@@ -65,6 +68,8 @@ public sealed partial class GameUiElementLoader
         return dict;
     }
 
+    #region Logging
+
     [LoggerMessage(LogLevel.Information, "UI-element templates loaded: {Count} from {Path}")]
     partial void LogLoaded(int count, string path);
 
@@ -73,4 +78,6 @@ public sealed partial class GameUiElementLoader
 
     [LoggerMessage(LogLevel.Error, "Failed to load UI-element template '{Name}' from {Path}")]
     partial void LogLoadFailed(Exception ex, string name, string path);
+
+    #endregion
 }

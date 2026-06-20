@@ -6,6 +6,7 @@ using PerfectWorldAgent.Agents;
 using PerfectWorldAgent.App.ViewModels;
 using PerfectWorldAgent.Hotkeys;
 using PerfectWorldAgent.Identification;
+using PerfectWorldAgent.Macro;
 using PerfectWorldAgent.Orchestration;
 using PerfectWorldAgent.Vision;
 
@@ -156,7 +157,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var library = services.GetRequiredService<PerfectWorldAgent.Combat.MacroLibrary>();
+            var library = services.GetRequiredService<MacroLibrary>();
             var dialogVm = new MacrosDialogViewModel(library);
             var dialog = new MacrosDialog(dialogVm);
             await dialog.ShowDialog(this);

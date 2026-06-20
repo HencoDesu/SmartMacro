@@ -40,13 +40,6 @@ public sealed class AgentOptions
     public ScreenPoint ServerSelectButton { get; init; } = new(1192, 1805);
     public ScreenPoint CharacterSelectButton { get; init; } = new(1958, 2053);
 
-    // Template-name references (filename-without-extension) into the GameUiElementLoader.
-    // Must match a PNG in Assets/GameUiElements/. Lets you rename / replace templates
-    // without touching code.
-    public string ServerSelectTemplate { get; init; } = "ServerSelectButton";
-    public string CharacterSelectTemplate { get; init; } = "CharacterSelectButton";
-    public string InWorldTemplate { get; init; } = "ChatPanelButtons";
-
     // Search regions for the boot-phase template match. Empty (Width=0 or Height=0)
     // means fullscreen — start there, narrow down later for faster matching once you
     // know roughly where each UI element renders.

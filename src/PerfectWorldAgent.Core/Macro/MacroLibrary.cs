@@ -2,9 +2,8 @@ using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
-using PerfectWorldAgent.Native;
 
-namespace PerfectWorldAgent.Combat;
+namespace PerfectWorldAgent.Macro;
 
 // JSON-backed library of named combat macros. Mirrors HotkeyConfigStore's shape: load on
 // construction, expose immutable snapshot + change event, atomic replace.

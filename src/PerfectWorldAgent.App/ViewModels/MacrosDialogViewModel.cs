@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using PerfectWorldAgent.App.Mvvm;
-using PerfectWorldAgent.Combat;
+using PerfectWorldAgent.Macro;
 using PerfectWorldAgent.Native;
 
 namespace PerfectWorldAgent.App.ViewModels;
@@ -38,7 +38,7 @@ public sealed class MacrosDialogViewModel : ObservableObject
 
     public async Task<bool> SaveAsync(CancellationToken cancellationToken = default)
     {
-        var parsed = new List<Macro>(Rows.Count);
+        var parsed = new List<Macro.Macro>(Rows.Count);
         var seenNames = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var row in Rows)
@@ -61,7 +61,7 @@ public sealed class MacrosDialogViewModel : ObservableObject
                 return false;
             }
 
-            parsed.Add(new Macro { Name = name, Steps = steps });
+            parsed.Add(new Macro.Macro { Name = name, Steps = steps });
         }
 
         try
