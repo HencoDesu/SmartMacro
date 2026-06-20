@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using PerfectWorldAgent.App.Mvvm;
+using PerfectWorldAgent.Hotkeys;
 using PerfectWorldAgent.Native;
 using PerfectWorldAgent.Orchestration;
 
@@ -140,15 +142,12 @@ internal static class TriggerLabels
 {
     private static readonly Dictionary<OrchestratorTrigger, string> Map = new()
     {
-        [OrchestratorTrigger.GoFollow] = "Follow master",
-        [OrchestratorTrigger.GoHold] = "Hold position",
-        [OrchestratorTrigger.GoCombat] = "Enter combat",
-        [OrchestratorTrigger.CombatFinished] = "Combat finished",
-        [OrchestratorTrigger.Stop] = "Stop / reset to Hold",
         [OrchestratorTrigger.BroadcastImmunity] = "Panic — broadcast immunity",
         [OrchestratorTrigger.BroadcastAssist] = "Take assist from master",
+        [OrchestratorTrigger.BroadcastCombat] = "Enter combat (run macro, 10s window)",
         [OrchestratorTrigger.BroadcastClick] = "Broadcast click at cursor",
         [OrchestratorTrigger.BroadcastDoubleClick] = "Broadcast double-click at cursor",
+        [OrchestratorTrigger.BroadcastIdentify] = "Identify all agents (opens stats, reads class)",
     };
 
     public static string Get(OrchestratorTrigger t) =>

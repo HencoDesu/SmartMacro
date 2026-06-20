@@ -8,22 +8,22 @@ public sealed class Character
     public required string Name { get; init; }
     public required bool IsMaster { get; init; }
 
-    // Game class — drives future class-specific automation (e.g. damage rotations,
-    // group buffs). For placeholder/unidentified characters this is CharacterClass.Unknown.
+    // Game class — drives class-specific UI (taskbar icon via ClassIconService) and
+    // future class-specific automation. CharacterClass.Unknown for placeholder/unidentified.
     public required CharacterClass Class { get; init; }
 
-    // In-game hotkey strings (e.g. "F1"). Parsed to VirtualKey at send time via
-    // Enum.TryParse. Empty string means "this character has no binding for this action"
-    // — the agent skips the corresponding command.
-    public required string BurstBuffKey { get; init; }
-    public required string DamageKey { get; init; }
+    // Per-character "panic" key — in-game binding to the 10s damage-immunity skill.
+    // Broadcast via BroadcastImmunity hotkey. Empty string = no binding, agent skips.
     public required string ImmunityKey { get; init; }
 
-    // Assist key — in-game macro that runs "/assist" against the currently-selected
-    // target. Used together with a hardcoded Shift+1 (select party member 1 = master)
-    // sent immediately before, so the agent ends up targeting whatever the master is
-    // targeting. Default value is reasonable to leave empty for unidentified entries;
-    // master skips assist entirely (IsMaster=true). Optional for backward-compat with
-    // existing roster.json entries that pre-date the AssistKey field.
+    // In-game macro that runs /assist against the currently-selected target. Pressed
+    // immediately after a hardcoded Shift+1 (select party member 1 = master), so the
+    // agent ends up targeting whatever the master is targeting. Master skips assist
+    // entirely (IsMaster=true). Defaults to empty for older roster.json entries.
     public string AssistKey { get; init; } = string.Empty;
+
+    // Name of the macro this character runs on BroadcastCombat. Resolved against the
+    // global MacroLibrary at combat time. Empty string = no macro assigned, agent's
+    // combat run is a no-op (still spends 10s in InCombat then returns to Idle).
+    public string CombatMacroName { get; init; } = string.Empty;
 }

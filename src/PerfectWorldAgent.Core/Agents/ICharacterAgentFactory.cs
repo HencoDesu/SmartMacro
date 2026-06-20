@@ -1,5 +1,5 @@
 using System.Threading.Channels;
-using PerfectWorldAgent.Orchestration;
+using PerfectWorldAgent.ProcessMonitoring;
 
 namespace PerfectWorldAgent.Agents;
 
@@ -10,6 +10,11 @@ namespace PerfectWorldAgent.Agents;
 // state machine from the orchestrator.
 public interface ICharacterAgentFactory
 {
+    /// <summary>
+    /// Creates a fresh agent bound to <paramref name="info"/>'s window handle and routes
+    /// its outbox messages to the orchestrator's inbox.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when the process's main window has zero client area (typically a launcher process with no usable game surface).</exception>
     Task<CharacterAgent> CreateAsync(
         ProcessInfo info,
         ChannelWriter<AgentMessage> outbox,

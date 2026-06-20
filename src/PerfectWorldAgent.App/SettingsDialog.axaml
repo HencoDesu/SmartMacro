@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:PerfectWorldAgent.App.ViewModels"
+        xmlns:conv="using:PerfectWorldAgent.App.Converters"
         xmlns:controls="using:PerfectWorldAgent.App.Controls"
         x:Class="PerfectWorldAgent.App.SettingsDialog"
         x:DataType="vm:SettingsDialogViewModel"
@@ -51,7 +52,7 @@
                    FontSize="11"
                    TextWrapping="Wrap"
                    Margin="0,0,0,8"
-                   IsVisible="{Binding ErrorMessage, Converter={x:Static vm:NotNullToBoolConverter.Instance}}"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
                    Text="{Binding ErrorMessage}" />
 
         <StackPanel Grid.Row="3"

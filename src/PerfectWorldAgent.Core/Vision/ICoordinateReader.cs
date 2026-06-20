@@ -12,10 +12,20 @@ namespace PerfectWorldAgent.Vision;
 // OpenCV/Tesseract types.
 public interface ICoordinateReader
 {
+    /// <summary>
+    /// Reads the coordinates HUD region from a screenshot.
+    /// </summary>
+    /// <returns>The parsed coordinates, or <c>null</c> when the region is missing / OCR fails / the parse doesn't yield three integers.</returns>
     Coordinates? Read(byte[] screenshot);
 
-    // Diagnostics — return the raw cropped region and the binarised view that Tesseract
-    // sees. Used by the sample runner to visualise/tune the preprocessing pipeline.
+    /// <summary>
+    /// Diagnostic — returns the raw cropped coord region. Used by the sample runner to
+    /// visualise/tune the preprocessing pipeline.
+    /// </summary>
     byte[] DebugCrop(byte[] screenshot);
+
+    /// <summary>
+    /// Diagnostic — returns the binarised view that Tesseract actually sees.
+    /// </summary>
     byte[] DebugBinarize(byte[] screenshot);
 }

@@ -25,6 +25,11 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
     private TaskCompletionSource? _ready;
     private IReadOnlyList<HotkeyDescriptor>? _pendingBindings;
 
+    /// <summary>
+    /// Raised on the message-loop thread when any registered hotkey fires. Subscribers
+    /// receive the binding's <c>Id</c> (the value they passed when registering) and are
+    /// responsible for resolving it back to their semantic meaning.
+    /// </summary>
     public event Action<int>? HotkeyPressed;
 
     public Win32HotkeyMonitor(ILogger<Win32HotkeyMonitor> logger)
@@ -32,6 +37,13 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
         _logger = logger;
     }
 
+    /// <summary>
+    /// Spawns a dedicated message-loop thread, registers each binding with
+    /// <c>RegisterHotKey</c>, and returns when the thread signals it's ready to receive
+    /// hotkey events. Cancellable via <paramref name="cancellationToken"/> while waiting
+    /// for the ready signal.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when the monitor is already started.</exception>
     public Task StartAsync(IReadOnlyList<HotkeyDescriptor> bindings, CancellationToken cancellationToken = default)
     {
         if (_messageLoopThread is not null)
@@ -51,6 +63,11 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
         return _ready.Task.WaitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Signals the message-loop thread to exit (posts <c>WM_QUIT</c>) and waits for it
+    /// to drain. Registered hotkeys are unregistered in the thread's <c>finally</c> block.
+    /// Safe to call when already stopped.
+    /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         if (_messageLoopThread is null)

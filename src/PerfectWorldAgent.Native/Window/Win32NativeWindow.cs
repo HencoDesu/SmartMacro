@@ -81,14 +81,16 @@ public sealed class Win32NativeWindow : INativeWindow
         // helper — PW's engine appears to ignore the value but accepts the message
         // itself as a wake-up trigger.
         //
-        // Uses PostMessage (NOT SendMessage) so it queues in the same lane as the input
-        // WM_KEYDOWN/UP that follow. PW's pump dequeues messages FIFO: it processes
-        // ACTIVATEAPP(TRUE) first (wakes up), then KEYDOWN/UP (input executes while
-        // active), then the queued ACTIVATEAPP(FALSE) (deactivates). Mixing SendMessage
-        // for activation with PostMessage for input created a race where PW could
-        // pre-process activation state before the queued input arrived — under load
-        // this caused random agents to miss broadcasts.
-        User32Native.PostMessage(Handle, User32Native.WM_ACTIVATEAPP, (IntPtr)1, (IntPtr)lParam);
+        // Uses SendMessage (synchronous): blocks until PW's WndProc returns. Guarantees
+        // PW has handled the activation BEFORE we proceed to post input — under load
+        // (11 windows broadcasting simultaneously), PostMessage variants would queue
+        // along with everything else and could be processed too late, with KEYDOWN
+        // arriving while PW was still in throttled background state. The matching
+        // deactivation uses PostMessage so it queues AFTER posted input, giving PW time
+        // to process the keypress in order: ACTIVATE(TRUE, sync) → KEYDOWN/UP (queued) →
+        // ACTIVATE(FALSE, queued). See SendDeactivationSignal for rationale on the
+        // asymmetry.
+        User32Native.SendMessage(Handle, User32Native.WM_ACTIVATEAPP, (IntPtr)1, (IntPtr)lParam);
     }
 
     public void SendDeactivationSignal()

@@ -4,16 +4,22 @@ namespace PerfectWorldAgent.Agents;
 
 public abstract record AgentMessage;
 
-// Orchestrator → CharacterAgent
-public sealed record ModeChangedMessage(AgentMode Mode) : AgentMessage;
-public sealed record ExecuteActionMessage(AgentAction Action) : AgentMessage;
-public sealed record ShutdownMessage : AgentMessage;
+// Orchestrator → CharacterAgent — broadcast action intents.
 
-// Per-character action intents. The orchestrator expresses *what* the squad should do
-// (use immunity / burst / damage / etc.); each agent looks up the corresponding key on
-// its own Character record and presses it on its window. Unidentified agents have empty
-// key fields and skip the action.
+// Per-character intent: agent looks up its own Character.ImmunityKey and presses it.
+// Unidentified agents skip silently. Bound in-game to a 10s damage-immunity skill.
 public sealed record UseImmunityMessage : AgentMessage;
+
+// "Enter combat" — each agent fires the SetCombat state-machine trigger and runs its
+// CombatMacro for up to 10 seconds. Master included (per design — master may have its
+// own macro too, e.g. group buffs).
+public sealed record EnterCombatMessage : AgentMessage;
+
+// "Identify yourself" — fired on the BroadcastIdentify hotkey. Each agent in
+// AwaitingIdentification opens the in-game stats window (press C), waits, captures a
+// screenshot, runs ClassMatcher, closes stats, and (on a hit) promotes itself via
+// Identify(matchedCharacter). Already-identified agents ignore it.
+public sealed record EnterIdentifyMessage : AgentMessage;
 
 // "Take assist from the master". Agent sends Shift+1 (PW shortcut: select first party
 // member = master) then presses its own Character.AssistKey (in-game macro bound to
@@ -26,12 +32,8 @@ public sealed record TakeAssistMessage : AgentMessage;
 // across every agent — relies on all PW clients being the same window size.
 public sealed record ClickAtMessage(int X, int Y, bool DoubleClick) : AgentMessage;
 
-// CharacterAgent → Orchestrator
-public sealed record StatusUpdateMessage(string CharacterName, Coordinates Position) : AgentMessage;
-public sealed record StuckDetectedMessage(string CharacterName, Coordinates LastPosition) : AgentMessage;
-
-// Lifecycle notifications — sent by the agent into the orchestrator's inbox so all
-// agent→orchestrator communication goes through one async path. The agent ref lets the
-// orchestrator look up its own tracking entry without a separate id field.
+// CharacterAgent → Orchestrator — lifecycle notifications. Sent into the orchestrator's
+// inbox so all agent→orchestrator communication goes through one async path. The agent
+// ref lets the orchestrator look up its own tracking entry without a separate id field.
 public sealed record AgentIdentifiedMessage(CharacterAgent Agent, string OldName) : AgentMessage;
 public sealed record AgentStoppingMessage(CharacterAgent Agent) : AgentMessage;

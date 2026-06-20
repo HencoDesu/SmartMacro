@@ -2,10 +2,13 @@ using System.Runtime.Versioning;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PerfectWorldAgent.Combat;
 using PerfectWorldAgent.Config;
-using PerfectWorldAgent.Core;
-using PerfectWorldAgent.Native;
-using PerfectWorldAgent.Orchestration;
+using PerfectWorldAgent.GameWindows;
+using PerfectWorldAgent.Identification;
+using PerfectWorldAgent.Input;
+using PerfectWorldAgent.Presentation;
+using PerfectWorldAgent.ProcessMonitoring;
 
 namespace PerfectWorldAgent.Agents;
 
@@ -19,22 +22,28 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
 {
     private readonly IGameWindowFactory _windowFactory;
     private readonly ICharacterProvider _provider;
+    private readonly ClassIconService _classIcons;
+    private readonly AgentInputDispatcher _input;
+    private readonly MacroLibrary _macros;
     private readonly IOptions<AgentOptions> _options;
-    private readonly IOptions<ActivatingInputOptions> _inputOptions;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CharacterAgentFactory> _logger;
 
     public CharacterAgentFactory(
         IGameWindowFactory windowFactory,
         ICharacterProvider provider,
+        ClassIconService classIcons,
+        AgentInputDispatcher input,
+        MacroLibrary macros,
         IOptions<AgentOptions> options,
-        IOptions<ActivatingInputOptions> inputOptions,
         ILoggerFactory loggerFactory)
     {
         _windowFactory = windowFactory;
         _provider = provider;
+        _classIcons = classIcons;
+        _input = input;
+        _macros = macros;
         _options = options;
-        _inputOptions = inputOptions;
         _loggerFactory = loggerFactory;
         _logger = _loggerFactory.CreateLogger<CharacterAgentFactory>();
     }
@@ -63,15 +72,17 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
             window,
             outbox,
             _provider,
+            _classIcons,
+            _input,
+            _macros,
             _options,
-            _inputOptions,
             _loggerFactory.CreateLogger<CharacterAgent>());
         return Task.FromResult(agent);
     }
 
-    [LoggerMessage(Microsoft.Extensions.Logging.LogLevel.Information, "Agent created for pid={Pid} (awaiting identification)")]
+    [LoggerMessage(LogLevel.Information, "Agent created for pid={Pid} (awaiting identification)")]
     partial void LogAgentCreated(int pid);
 
-    [LoggerMessage(Microsoft.Extensions.Logging.LogLevel.Information, "Skipping pid={Pid} — main window has zero client area (likely a launcher process)")]
+    [LoggerMessage(LogLevel.Information, "Skipping pid={Pid} — main window has zero client area (likely a launcher process)")]
     partial void LogSkippedZeroSize(int pid);
 }

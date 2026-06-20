@@ -5,11 +5,18 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PerfectWorldAgent.Agents;
+using PerfectWorldAgent.Combat;
 using PerfectWorldAgent.Config;
-using PerfectWorldAgent.Core;
+using PerfectWorldAgent.GameWindows;
+using PerfectWorldAgent.Hotkeys;
+using PerfectWorldAgent.Identification;
+using PerfectWorldAgent.Input;
 using PerfectWorldAgent.Native;
 using PerfectWorldAgent.Native.Hotkey;
 using PerfectWorldAgent.Orchestration;
+using PerfectWorldAgent.Persistence;
+using PerfectWorldAgent.Presentation;
+using PerfectWorldAgent.ProcessMonitoring;
 using PerfectWorldAgent.App.ViewModels;
 using PerfectWorldAgent.Vision;
 using Serilog;
@@ -80,8 +87,8 @@ internal static class Program
         services.Configure<AgentOptions>(configuration.GetSection("Agent"));
         services.Configure<HotkeyOptions>(configuration.GetSection("Hotkeys"));
         services.Configure<ActivatingInputOptions>(configuration.GetSection("Input:Activating"));
-        services.Configure<SendInputOptions>(configuration.GetSection("Input:SendInput"));
         services.Configure<CoordinateReaderOptions>(configuration.GetSection("Vision:CoordinateReader"));
+        services.Configure<ClassMatcherOptions>(configuration.GetSection("Vision:ClassMatcher"));
 
         // GameWindowFactory bakes in the input-strategy choice (PostMessage + WM_ACTIVATEAPP
         // wake-up) so neither DI nor the orchestrator has to know about Native types. Swap
@@ -89,9 +96,14 @@ internal static class Program
         // Win32NativeWindowSystem is a static class — no DI registration needed.
         services.AddSingleton<IGameWindowFactory, GameWindowFactory>();
         services.AddSingleton<ICharacterRoster, JsonCharacterRoster>();
-        services.AddSingleton<INameMatcher, NameMatcher>();
+        services.AddSingleton<IClassMatcher, ClassMatcher>();
+        services.AddSingleton<ClassTemplateLoader>();
         services.AddSingleton<ICoordinateReader, TesseractCoordinateReader>();
         services.AddSingleton<ICharacterProvider, CharacterProvider>();
+        services.AddSingleton<ClassIconService>();
+        services.AddSingleton<AgentInputDispatcher>();
+        services.AddSingleton<CursorClickResolver>();
+        services.AddSingleton<MacroLibrary>();
         services.AddSingleton<ICharacterAgentFactory, CharacterAgentFactory>();
         services.AddSingleton<Win32HotkeyMonitor>();
         services.AddSingleton<Win32MouseHookMonitor>();

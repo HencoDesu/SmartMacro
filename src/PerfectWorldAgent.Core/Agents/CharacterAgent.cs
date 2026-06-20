@@ -1,9 +1,13 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PerfectWorldAgent.Combat;
 using PerfectWorldAgent.Config;
-using PerfectWorldAgent.Core;
+using PerfectWorldAgent.GameWindows;
+using PerfectWorldAgent.Identification;
+using PerfectWorldAgent.Input;
 using PerfectWorldAgent.Models;
+using PerfectWorldAgent.Presentation;
 using Stateless;
 
 namespace PerfectWorldAgent.Agents;
@@ -14,58 +18,65 @@ namespace PerfectWorldAgent.Agents;
 // is born in AwaitingIdentification with a placeholder Character and waits to be promoted
 // via Identify().
 //
-// State graph (see AgentState / AgentTrigger):
+// State graph (minimal v1):
 //
-//   AwaitingIdentification ─ Identified ──► Idle ◄────────┐
-//                                            │  ▲          │
-//                                       Set* triggers      │
-//                                            ▼  │          │
-//                                        Following ──── SetCombat ──► InCombat
-//                                            │                              │
-//                                      StuckDetected                  Set{Hold,Follow}
-//                                            ▼                              │
-//                                          Stuck ─── Set{Hold,Follow,Combat} ┘
+//   AwaitingIdentification ── Identified ──► Idle
 //
-// The agent's state machine is independent from the Orchestrator's (which tracks the
-// global "what the user wants"). They can diverge: orchestrator broadcasts FOLLOW but a
-// particular agent may be Stuck. ModeChangedMessage from the orchestrator maps to
-// Set{Hold,Follow,Combat} triggers; Stuck transitions are agent-internal.
+// AwaitingIdentification is now passive — no polling loop. The agent waits in this
+// state until it receives an EnterIdentifyMessage (fired by the BroadcastIdentify
+// hotkey), at which point it runs IdentifyAsync (open stats → capture → match → close).
+// On a class match, promote to Idle; on miss, stay in AwaitingIdentification.
 //
 // Lifecycle:
-//   * Start() — kicks off the run loop on the thread pool. Owned CTS + Task lifecycle.
+//   * Start() — kicks off the main run loop on the thread pool. Owned CTS + Task.
 //   * Stop() — cancels the CTS; the loop exits, writes AgentStoppingMessage.
 //   * RunningTask — exposed so the orchestrator can await orderly shutdown.
 //
-// Agent → Orchestrator notifications (identification, stopping, status, stuck) are sent as
-// messages into the orchestrator's inbox channel — uniform with the rest of the upstream
-// traffic. No C# events on the agent.
+// Agent → Orchestrator notifications (identification, stopping) go through the orchestrator's
+// inbox channel — uniform with the rest of the upstream traffic.
 public sealed partial class CharacterAgent
 {
+    // Hard upper bound on how long an agent stays InCombat regardless of macro length.
+    // Per-design: a boss either dies or goes immune within ~10s; the agent returns to
+    // Idle automatically so the user doesn't need a separate Stop hotkey.
+    private static readonly TimeSpan CombatWindow = TimeSpan.FromSeconds(10);
+
     private readonly IGameWindow _window;
     private readonly ChannelWriter<AgentMessage> _outbox;
     private readonly Channel<AgentMessage> _inbox;
     private readonly ICharacterProvider _provider;
+    private readonly ClassIconService _classIcons;
+    private readonly AgentInputDispatcher _input;
+    private readonly MacroLibrary _macros;
     private readonly TimeSpan _pollInterval;
-    private readonly int _interStepDelayMs;
+    private readonly Native.VirtualKey _statsHotkey;
+    private readonly TimeSpan _statsOpenDelay;
     private readonly ILogger<CharacterAgent> _logger;
     private readonly StateMachine<AgentState, AgentTrigger> _machine;
     private readonly Lock _stateLock = new();
 
     private CancellationTokenSource? _runCts;
+    private CancellationTokenSource? _combatLoopCts;
 
     public CharacterAgent(
         IGameWindow window,
         ChannelWriter<AgentMessage> outbox,
         ICharacterProvider provider,
+        ClassIconService classIcons,
+        AgentInputDispatcher input,
+        MacroLibrary macros,
         IOptions<AgentOptions> options,
-        IOptions<Native.ActivatingInputOptions> inputOptions,
         ILogger<CharacterAgent> logger)
     {
         _window = window;
         _outbox = outbox;
         _provider = provider;
+        _classIcons = classIcons;
+        _input = input;
+        _macros = macros;
         _pollInterval = TimeSpan.FromSeconds(options.Value.AgentPollIntervalSeconds);
-        _interStepDelayMs = inputOptions.Value.InterStepDelayMs;
+        _statsHotkey = options.Value.StatsHotkey;
+        _statsOpenDelay = TimeSpan.FromMilliseconds(options.Value.StatsOpenDelayMs);
         _logger = logger;
         _inbox = Channel.CreateUnbounded<AgentMessage>(new UnboundedChannelOptions
         {
@@ -80,8 +91,6 @@ public sealed partial class CharacterAgent
             Name = $"Unknown (hwnd=0x{window.Handle.ToInt64():X})",
             IsMaster = false,
             Class = CharacterClass.Unknown,
-            BurstBuffKey = string.Empty,
-            DamageKey = string.Empty,
             ImmunityKey = string.Empty,
         };
 
@@ -90,41 +99,18 @@ public sealed partial class CharacterAgent
         _machine.OnUnhandledTrigger((state, trigger) => LogUnhandledTrigger(trigger, state));
 
         _machine.Configure(AgentState.AwaitingIdentification)
-            .Permit(AgentTrigger.Identified, AgentState.Idle)
-            .Ignore(AgentTrigger.SetHold)
-            .Ignore(AgentTrigger.SetFollow)
-            .Ignore(AgentTrigger.SetCombat)
-            .Ignore(AgentTrigger.StuckDetected);
+            .Permit(AgentTrigger.Identified, AgentState.Idle);
 
         _machine.Configure(AgentState.Idle)
-            .PermitReentry(AgentTrigger.SetHold)
-            .Permit(AgentTrigger.SetFollow, AgentState.Following)
-            .Permit(AgentTrigger.SetCombat, AgentState.InCombat)
             .Ignore(AgentTrigger.Identified)
-            .Ignore(AgentTrigger.StuckDetected);
-
-        _machine.Configure(AgentState.Following)
-            .Permit(AgentTrigger.SetHold, AgentState.Idle)
-            .Permit(AgentTrigger.SetCombat, AgentState.InCombat)
-            .Permit(AgentTrigger.StuckDetected, AgentState.Stuck)
-            .Ignore(AgentTrigger.SetFollow)
-            .Ignore(AgentTrigger.Identified);
+            .Ignore(AgentTrigger.SetIdle)
+            .Permit(AgentTrigger.SetCombat, AgentState.InCombat);
 
         _machine.Configure(AgentState.InCombat)
-            .Permit(AgentTrigger.SetHold, AgentState.Idle)
-            .Permit(AgentTrigger.SetFollow, AgentState.Following)
-            .Ignore(AgentTrigger.SetCombat)
-            .Ignore(AgentTrigger.StuckDetected)
-            .Ignore(AgentTrigger.Identified);
-
-        // Stuck honours all user mode changes — re-issuing follow effectively a "try
-        // again" override; switching to combat lets the player fight where they stand.
-        _machine.Configure(AgentState.Stuck)
-            .Permit(AgentTrigger.SetHold, AgentState.Idle)
-            .Permit(AgentTrigger.SetFollow, AgentState.Following)
-            .Permit(AgentTrigger.SetCombat, AgentState.InCombat)
-            .Ignore(AgentTrigger.StuckDetected)
-            .Ignore(AgentTrigger.Identified);
+            .OnEntry(StartCombatLoop)
+            .OnExit(StopCombatLoop)
+            .Ignore(AgentTrigger.SetCombat)   // per-design: re-press while running is a no-op
+            .Permit(AgentTrigger.SetIdle, AgentState.Idle);
     }
 
     public Character Character { get; private set; }
@@ -141,11 +127,18 @@ public sealed partial class CharacterAgent
     // game).
     public IntPtr Handle => _window.Handle;
 
-    // Captures the current game window. Exposed for the UI labeling flow: the user
-    // clicks "label" on an unidentified row, the dialog calls this to grab the live
-    // nameplate, hands it to ICharacterProvider.RegisterAsync, and then calls Identify.
+    /// <summary>
+    /// Active capture of the current game window. Exposed for diagnostics (dump-captures
+    /// debug flow). Identification no longer needs UI-driven capture — class-based
+    /// matching happens server-side via the BroadcastIdentify hotkey path.
+    /// </summary>
     public byte[] CaptureScreenshot() => _window.CaptureScreenshot();
 
+    /// <summary>
+    /// Kicks off the main run loop on the thread pool and starts the identification loop.
+    /// Idempotency: throws if the agent is already running.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when called on an already-running agent.</exception>
     public void Start()
     {
         if (RunningTask is not null)
@@ -157,15 +150,23 @@ public sealed partial class CharacterAgent
         RunningTask = Task.Run(() => RunLoopAsync(_runCts.Token));
     }
 
+    /// <summary>
+    /// Signals the run loop to stop. The loop exits, writes <see cref="AgentStoppingMessage"/>,
+    /// and the task completes via <see cref="RunningTask"/>.
+    /// </summary>
     public void Stop()
     {
         _runCts?.Cancel();
     }
 
-    // One-shot promotion. Called by RunLoopAsync after a successful auto-identification or
-    // by the UI after the user labels an unknown agent. Updates Character (so Name etc.
-    // reflect the new identity) and fires the Identified trigger to leave
-    // AwaitingIdentification. Sends AgentIdentifiedMessage to the orchestrator.
+    /// <summary>
+    /// One-shot promotion from unidentified to identified. Called by the identification
+    /// loop after a successful auto-match or by the UI after the user labels an unknown
+    /// agent. Updates <see cref="Character"/>, fires the <c>Identified</c> trigger to
+    /// leave <see cref="AgentState.AwaitingIdentification"/> (cancelling the identification
+    /// loop via OnExit), applies the class icon, and notifies the orchestrator.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when the agent is already identified.</exception>
     public void Identify(Character character)
     {
         string oldName;
@@ -182,14 +183,18 @@ public sealed partial class CharacterAgent
         }
 
         LogPromoted(oldName, character.Name);
-        TryApplyClassIcon();
+        _classIcons.TryApply(_window, character.Class);
         _outbox.TryWrite(new AgentIdentifiedMessage(this, oldName));
     }
 
-    // Re-label path — called by the UI when the user wants to update an already-identified
-    // agent (e.g. fixing a misidentification, changing keys, re-snapping the template in
-    // a different lighting context). No state-machine transition; the agent stays in
-    // whatever state it was. Reuses AgentIdentifiedMessage so subscribers refresh.
+    /// <summary>
+    /// Re-label path. Called by the UI when the user wants to update an already-identified
+    /// agent (e.g. fixing a misidentification, changing keys, re-snapping the template in
+    /// a different lighting context). No state-machine transition; the agent stays in
+    /// whatever state it was. Reuses <see cref="AgentIdentifiedMessage"/> so subscribers
+    /// refresh.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when the agent has never been identified — use <see cref="Identify"/> instead.</exception>
     public void UpdateCharacter(Character character)
     {
         string oldName;
@@ -205,80 +210,14 @@ public sealed partial class CharacterAgent
         }
 
         LogPromoted(oldName, character.Name);
-        TryApplyClassIcon();
+        _classIcons.TryApply(_window, character.Class);
         _outbox.TryWrite(new AgentIdentifiedMessage(this, oldName));
     }
 
-    // CharacterClass enum uses Russian display names; user's icon files use English
-    // class names. Map between them here so the user can drop their existing icons in
-    // Assets/ClassIcons/ without renaming. Adjust if a mapping is wrong (e.g. Оборотень
-    // might be "tank" or might be something else depending on which PW build the user
-    // pulled the icons from).
-    private static readonly IReadOnlyDictionary<CharacterClass, string> ClassIconNames =
-        new Dictionary<CharacterClass, string>
-        {
-            [CharacterClass.Маг] = "mage",
-            [CharacterClass.Воин] = "warrior",
-            [CharacterClass.Стрелок] = "gunner",
-            [CharacterClass.Друид] = "druid",
-            [CharacterClass.Оборотень] = "tank",       // Barbarian / shape-shifter
-            [CharacterClass.Странник] = "rover",
-            [CharacterClass.Жрец] = "priest",
-            [CharacterClass.Лучник] = "archer",
-            [CharacterClass.Паладин] = "paladin",
-            [CharacterClass.Шаман] = "shaman",
-            [CharacterClass.Убийца] = "assassin",
-            [CharacterClass.Бард] = "bard",
-            [CharacterClass.Мистик] = "mystic",
-            [CharacterClass.Страж] = "guardian",
-            [CharacterClass.ДухКрови] = "bloodspirit",
-            [CharacterClass.Жнец] = "reaper",
-            [CharacterClass.Призрак] = "ghost",
-            // Канлонг — no icon in the user's current set; will silently skip.
-        };
-
-    // Best-effort: look for Assets/ClassIcons/<file>.png next to the .exe and apply it
-    // as the window's title-bar/taskbar icon. Lets the user distinguish 9 PW windows at
-    // a glance in the taskbar instead of seeing 9 identical PW launcher icons. Silent
-    // skip for Class=Unknown, unmapped class (Канлонг), or missing file — the icon set
-    // is user-managed (drop PNGs into Assets/ClassIcons/, csproj copies them on build).
-    private void TryApplyClassIcon()
-    {
-        if (Character.Class == CharacterClass.Unknown)
-        {
-            return;
-        }
-
-        if (!ClassIconNames.TryGetValue(Character.Class, out var fileStem))
-        {
-            LogClassIconUnmapped(Character.Class);
-            return;
-        }
-
-        var path = Path.Combine(AppContext.BaseDirectory, "Assets", "ClassIcons", $"{fileStem}.png");
-        if (!File.Exists(path))
-        {
-            LogClassIconMissing(Character.Class, path);
-            return;
-        }
-
-        try
-        {
-            if (_window.SetIconFromFile(path))
-            {
-                LogClassIconApplied(Character.Class);
-            }
-            else
-            {
-                LogClassIconLoadFailed(Character.Class, path);
-            }
-        }
-        catch (Exception ex)
-        {
-            LogClassIconException(ex, Character.Class);
-        }
-    }
-
+    // Main run loop — responsible only for window-death detection and inbox draining.
+    // State-specific work happens in per-state loops triggered by the state machine's
+    // OnEntry/OnExit hooks. The main loop wakes on inbox messages or window-aliveness
+    // ticks; per-state loops run on their own cadence.
     private async Task RunLoopAsync(CancellationToken cancellationToken)
     {
         LogStarted(Name, _machine.State, _pollInterval);
@@ -293,7 +232,6 @@ public sealed partial class CharacterAgent
                 }
 
                 DrainInbox();
-                Tick();
 
                 await WaitForNextTickAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -304,6 +242,9 @@ public sealed partial class CharacterAgent
         }
         finally
         {
+            // Make sure any state-specific loops also stop. They observe their own CTS
+            // and exit; we don't need to await.
+            StopCombatLoop();
             LogStopped(Name);
             _outbox.TryWrite(new AgentStoppingMessage(this));
             _runCts?.Dispose();
@@ -311,103 +252,192 @@ public sealed partial class CharacterAgent
         }
     }
 
-    // Sleeps until *either* a new inbox message arrives *or* the poll interval expires.
-    // The wake-on-message branch is the synchronization fix: when the orchestrator
-    // broadcasts SendKeyMessage / ModeChangedMessage / etc., all agents become runnable
-    // within microseconds rather than up to PollInterval seconds apart (which was the
-    // observed inter-agent skew under fixed Task.Delay).
+    // Sleeps until *either* a new inbox message arrives *or* a periodic window-aliveness
+    // tick fires. The wake-on-message branch is the synchronization fix: when the
+    // orchestrator broadcasts UseImmunityMessage etc., all agents become runnable within
+    // microseconds rather than up to PollInterval seconds apart.
     private async Task WaitForNextTickAsync(CancellationToken runCancellation)
     {
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(runCancellation);
         timeoutCts.CancelAfter(_pollInterval);
         try
         {
-            // Returns true if items available, false if channel completed. We don't care
-            // about the bool — the next loop iteration will DrainInbox unconditionally.
             await _inbox.Reader.WaitToReadAsync(timeoutCts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // Either the poll timeout fired (normal tick) or runCancellation cancelled
-            // (we're shutting down). Either way the outer loop's cancellation check
-            // decides what to do next; we don't need to rethrow.
+            // Either the poll timeout fired or runCancellation cancelled — outer loop
+            // re-checks cancellation; nothing to rethrow.
         }
     }
 
-    // State-aware per-tick work. The state machine routes — each state's body is the
-    // per-state behaviour (still mostly TODO; auto-identification is the only real one).
-    private void Tick()
+    // On-demand identification, triggered by EnterIdentifyMessage. Opens the in-game
+    // stats window (default hotkey C), waits for it to render, captures a screenshot,
+    // runs the class matcher, then closes the stats window. On a successful match,
+    // promotes via Identify(). On miss or any exception, stays in AwaitingIdentification.
+    //
+    // Activation/deactivation lifecycle mirrors AgentInputDispatcher.FireKeyAsync but
+    // with a screenshot capture sandwiched between the open and close key-presses.
+    private async Task IdentifyAsync()
     {
-        switch (_machine.State)
+        if (IsIdentified)
         {
-            case AgentState.AwaitingIdentification:
-                TryIdentify();
-                break;
-
-            case AgentState.Idle:
-                // No work — agent is identified and waiting for orders.
-                break;
-
-            case AgentState.Following:
-                // TODO: re-issue /follow if master moved out of range, capture coords for
-                // StuckDetector, fire StuckDetected trigger if appropriate.
-                break;
-
-            case AgentState.InCombat:
-                // TODO: combat rotation — burst buff key, damage key, cooldown bookkeeping.
-                break;
-
-            case AgentState.Stuck:
-                // TODO: recovery attempt — re-activate follow, jump, or notify player.
-                break;
-        }
-    }
-
-    private void TryIdentify()
-    {
-        byte[] screenshot;
-        try
-        {
-            // Passive capture — no WM_ACTIVATEAPP traffic for the periodic poll. The
-            // user's manual focus on a game window stays uninterrupted; price is that a
-            // truly frozen background frame may not identify on this tick (retried next
-            // tick).
-            screenshot = _window.CaptureScreenshotPassive();
-        }
-        catch (Exception ex)
-        {
-            LogCaptureFailed(ex);
             return;
         }
 
-        Character? identified;
         try
         {
-            identified = _provider.Identify(screenshot);
+            LogIdentifyAttemptStarted(Name);
+            await _window.ActivateAsync().ConfigureAwait(false);
+            byte[]? screenshot = null;
+            try
+            {
+                // Open the stats window.
+                await _window.PressKeyAsync(_statsHotkey).ConfigureAwait(false);
+                // Give PW time to render the panel before capturing.
+                await Task.Delay(_statsOpenDelay).ConfigureAwait(false);
+                screenshot = _window.CaptureScreenshot();
+                // Toggle the stats window closed. We always close, even on match failure,
+                // so the user isn't left with stats panels open on every PW client.
+                await _window.PressKeyAsync(_statsHotkey).ConfigureAwait(false);
+            }
+            finally
+            {
+                await _window.DeactivateAsync().ConfigureAwait(false);
+            }
+
+            if (screenshot is null)
+            {
+                return;
+            }
+
+            Character? identified;
+            try
+            {
+                identified = _provider.Identify(screenshot);
+            }
+            catch (Exception ex)
+            {
+                LogIdentifyFailed(ex);
+                return;
+            }
+
+            if (identified is null)
+            {
+                LogIdentifyNoMatch(Name);
+                return;
+            }
+
+            Identify(identified);
         }
         catch (Exception ex)
         {
             LogIdentifyFailed(ex);
-            return;
         }
+    }
 
-        if (identified is null)
+    // State-specific loop for InCombat: runs the character's macro within a 10-second
+    // hard window. After the window elapses (regardless of where in the macro we are),
+    // fires SetIdle to transition back. Re-pressing the Combat hotkey while we're still
+    // in this state is ignored at the state-machine level.
+    private void StartCombatLoop()
+    {
+        if (_combatLoopCts is not null)
         {
             return;
         }
+        _combatLoopCts = new CancellationTokenSource();
+        _combatLoopCts.CancelAfter(CombatWindow);
+        _ = Task.Run(() => CombatLoopAsync(_combatLoopCts.Token));
+    }
 
-        Identify(identified);
+    private void StopCombatLoop()
+    {
+        _combatLoopCts?.Cancel();
+        _combatLoopCts?.Dispose();
+        _combatLoopCts = null;
+    }
+
+    private async Task CombatLoopAsync(CancellationToken cancellationToken)
+    {
+        LogCombatLoopStarted(Name, Character.CombatMacroName);
+        try
+        {
+            var macro = _macros.TryGet(Character.CombatMacroName);
+            if (macro is null)
+            {
+                LogCombatMacroMissing(Name, Character.CombatMacroName);
+            }
+            else
+            {
+                await RunMacroAsync(macro, cancellationToken).ConfigureAwait(false);
+            }
+
+            // Wait out the remainder of the 10s window. We arrive here either because
+            // the macro completed quickly or it didn't exist; either way we hold the
+            // agent in InCombat until the timeout cancels us.
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected — either 10s elapsed or external stop. Fall through to fire SetIdle.
+        }
+        catch (Exception ex)
+        {
+            LogCombatLoopFailed(ex);
+        }
+        finally
+        {
+            LogCombatLoopStopped(Name);
+            TryFireStateTrigger(AgentTrigger.SetIdle);
+        }
+    }
+
+    private async Task RunMacroAsync(Macro macro, CancellationToken cancellationToken)
+    {
+        foreach (var step in macro.Steps)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await _input.FireKeyAsync(_window, step.Key, $"Macro({macro.Name})", Name).ConfigureAwait(false);
+            if (step.DelayMs > 0)
+            {
+                await Task.Delay(step.DelayMs, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    // Fires a trigger under the state lock. Silent if the current state doesn't permit
+    // the trigger (the state machine's OnUnhandledTrigger handler will log it). Used by
+    // both inbox handlers (SetCombat) and the combat loop's finally block (SetIdle).
+    private void TryFireStateTrigger(AgentTrigger trigger)
+    {
+        lock (_stateLock)
+        {
+            if (_machine.CanFire(trigger))
+            {
+                _machine.Fire(trigger);
+            }
+        }
     }
 
     private void DrainInbox()
     {
         while (_inbox.Reader.TryRead(out var message))
         {
-            // Until the agent is labeled, swallow all broadcast actions silently. We
-            // genuinely don't know whose window this is yet — sending immunity / clicks /
-            // mode changes could land in the wrong place (e.g. character-select screen,
-            // chat input, the launcher). Identification work itself runs from Tick()
-            // and uses screenshots; it doesn't go through the inbox.
+            // EnterIdentifyMessage is the one inbox message handled BEFORE the
+            // unidentified-guard: it's specifically meant for unidentified agents to
+            // promote themselves. All other broadcasts are no-ops until identified.
+            if (message is EnterIdentifyMessage)
+            {
+                LogInboxReceived(message.GetType().Name, Name);
+                _ = IdentifyAsync();
+                continue;
+            }
+
+            // Until the agent is labeled, swallow all other broadcast actions silently.
+            // We genuinely don't know whose window this is yet — sending immunity / clicks
+            // could land in the wrong place (e.g. character-select screen, chat input,
+            // the launcher).
             if (!IsIdentified)
             {
                 continue;
@@ -416,27 +446,30 @@ public sealed partial class CharacterAgent
             LogInboxReceived(message.GetType().Name, Name);
             switch (message)
             {
-                case ModeChangedMessage mode:
-                    FireModeTrigger(mode.Mode);
-                    break;
-
                 case UseImmunityMessage:
                     // Per-character intent — look up our own ImmunityKey and press it.
                     // Empty key string skips silently; unknown VirtualKey name warn-logs.
                     TryFireCharacterAction(Character.ImmunityKey, "ImmunityKey");
                     break;
 
+                case EnterCombatMessage:
+                    // Fire SetCombat trigger — state machine OnEntry starts the macro
+                    // runner. Re-fired SetCombat while already in InCombat is Ignore'd
+                    // by the state machine (per-design "re-press does nothing").
+                    TryFireStateTrigger(AgentTrigger.SetCombat);
+                    break;
+
                 case TakeAssistMessage:
                     // Master sets the target — they don't need to assist anyone. For
                     // everyone else: Shift+1 selects party member 1 (master), then the
                     // AssistKey-bound /assist macro retargets to master's current target.
-                    if (!Character.IsMaster)
-                    {
-                        _ = SendAssistSequenceAsync();
-                    }
-                    else
+                    if (Character.IsMaster)
                     {
                         LogAssistSkippedMaster(Name);
+                    }
+                    else if (TryParseAssistKey(out var assistKey))
+                    {
+                        _ = _input.FireAssistAsync(_window, assistKey, Name);
                     }
                     break;
 
@@ -444,18 +477,16 @@ public sealed partial class CharacterAgent
                     // Coords are in the foreground window's client space; we reuse them
                     // verbatim on our own window. Works when all PW clients are the
                     // same size — typical multi-client setup.
-                    _ = SendClickSafelyAsync(click.X, click.Y, click.DoubleClick);
+                    _ = _input.FireClickAsync(_window, click.X, click.Y, click.DoubleClick, Name);
                     break;
-
-                // ExecuteActionMessage, ShutdownMessage — TODO: act on these once per-mode
-                // work is real. For now drop silently so the channel doesn't backlog.
             }
         }
     }
 
-    // Resolves a Character key-string ("F1", "F8", ...) to a VirtualKey and fires it
-    // asynchronously. Empty string → no binding for this character (typically placeholder
-    // / unidentified) → skip silently. Unrecognised string → warn-log and skip.
+    // Resolves a Character key-string ("F1", "F8", ...) to a VirtualKey and delegates
+    // the actual send to AgentInputDispatcher. Empty string → no binding for this
+    // character (typically placeholder / unidentified) → skip silently. Unrecognised
+    // string → warn-log and skip.
     private void TryFireCharacterAction(string keyString, string actionName)
     {
         if (string.IsNullOrEmpty(keyString))
@@ -470,192 +501,28 @@ public sealed partial class CharacterAgent
             return;
         }
 
-        _ = SendKeySafelyAsync(key, actionName);
+        _ = _input.FireKeyAsync(_window, key, actionName, Name);
     }
 
-    private async Task SendKeySafelyAsync(Native.VirtualKey key, string actionName = "Key")
-    {
-        try
-        {
-            LogActionFiring(actionName, key, Name);
-            await _window.ActivateAsync().ConfigureAwait(false);
-            try
-            {
-                await _window.PressKeyAsync(key).ConfigureAwait(false);
-            }
-            finally
-            {
-                await _window.DeactivateAsync().ConfigureAwait(false);
-            }
-            LogActionFired(actionName, key, Name);
-        }
-        catch (Exception ex)
-        {
-            LogSendKeyFailed(ex, key, Name);
-        }
-    }
-
-    // Two-step assist: Shift+1 selects party-slot 1 (master), AssistKey fires the
-    // in-game /assist macro against the now-selected master. Both happen inside a SINGLE
-    // ActivateAsync/DeactivateAsync cycle — window stays active across both phases so PW
-    // doesn't drop the chord's effect on intermediate deactivation. The Task.Delay
-    // between chord and follow-up uses the configured InterStepDelayMs — gives PW time
-    // to actually apply the party-member selection (update target frame, sync internal
-    // target state) before /assist runs. Tune via appsettings.json
-    // Input:Activating:InterStepDelayMs if some agents still target master after assist.
-    private async Task SendAssistSequenceAsync()
+    // Parse Character.AssistKey for the assist sequence. Same skip/warn pattern as
+    // TryFireCharacterAction but returns the parsed key for the caller to feed into
+    // the dispatcher's FireAssistAsync.
+    private bool TryParseAssistKey(out Native.VirtualKey key)
     {
         if (string.IsNullOrEmpty(Character.AssistKey))
         {
             LogAssistKeyMissing();
-            return;
+            key = default;
+            return false;
         }
 
-        if (!Enum.TryParse<Native.VirtualKey>(Character.AssistKey, ignoreCase: true, out var assistKey))
+        if (!Enum.TryParse(Character.AssistKey, ignoreCase: true, out key))
         {
             LogUnknownActionKey("AssistKey", Character.AssistKey);
-            return;
+            return false;
         }
 
-        try
-        {
-            await _window.ActivateAsync().ConfigureAwait(false);
-            try
-            {
-                await _window.PressChordAsync(Native.VirtualKey.Shift, Native.VirtualKey.D1).ConfigureAwait(false);
-                await Task.Delay(_interStepDelayMs).ConfigureAwait(false);
-                await _window.PressKeyAsync(assistKey).ConfigureAwait(false);
-            }
-            finally
-            {
-                await _window.DeactivateAsync().ConfigureAwait(false);
-            }
-        }
-        catch (Exception ex)
-        {
-            LogAssistChordFailed(ex);
-        }
+        return true;
     }
 
-    private async Task SendClickSafelyAsync(int x, int y, bool doubleClick)
-    {
-        try
-        {
-            await _window.ActivateAsync().ConfigureAwait(false);
-            try
-            {
-                if (doubleClick)
-                {
-                    await _window.DoubleClickAsync(x, y).ConfigureAwait(false);
-                }
-                else
-                {
-                    await _window.ClickAsync(x, y).ConfigureAwait(false);
-                }
-            }
-            finally
-            {
-                await _window.DeactivateAsync().ConfigureAwait(false);
-            }
-        }
-        catch (Exception ex)
-        {
-            LogSendClickFailed(ex, x, y, doubleClick);
-        }
-    }
-
-    private void FireModeTrigger(AgentMode mode)
-    {
-        var trigger = mode switch
-        {
-            AgentMode.Hold => AgentTrigger.SetHold,
-            AgentMode.Follow => AgentTrigger.SetFollow,
-            AgentMode.Combat => AgentTrigger.SetCombat,
-            _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unknown AgentMode"),
-        };
-
-        lock (_stateLock)
-        {
-            _machine.Fire(trigger);
-        }
-    }
-
-    #region Logging
-
-    [LoggerMessage(LogLevel.Information, "Agent '{Name}' run loop started (state={State}, poll={Poll})")]
-    partial void LogStarted(string name, AgentState state, TimeSpan poll);
-
-    [LoggerMessage(LogLevel.Information, "Agent '{Name}' run loop stopped")]
-    partial void LogStopped(string name);
-
-    [LoggerMessage(LogLevel.Information, "Agent promoted: '{OldName}' -> '{NewName}'")]
-    partial void LogPromoted(string oldName, string newName);
-
-    [LoggerMessage(LogLevel.Information, "Agent window no longer alive; exiting run loop")]
-    partial void LogWindowGone();
-
-    [LoggerMessage(LogLevel.Debug, "State transition: {Source} -> {Destination} (trigger {Trigger})")]
-    partial void LogStateTransition(AgentState source, AgentState destination, AgentTrigger trigger);
-
-    [LoggerMessage(LogLevel.Warning, "Unhandled trigger {Trigger} in state {State}")]
-    partial void LogUnhandledTrigger(AgentTrigger trigger, AgentState state);
-
-    // Debug-level — transient failures during identification polling (window minimised,
-    // alt-tabbed, launcher process without a real client area, GPU stalled). Genuine
-    // window destruction is detected separately via IsAlive at the top of the run loop.
-    [LoggerMessage(LogLevel.Debug, "Screenshot capture failed during identification poll")]
-    partial void LogCaptureFailed(Exception ex);
-
-    [LoggerMessage(LogLevel.Error, "Identification failed during poll")]
-    partial void LogIdentifyFailed(Exception ex);
-
-    [LoggerMessage(LogLevel.Error, "Agent run loop failed unexpectedly")]
-    partial void LogRunFailed(Exception ex);
-
-    [LoggerMessage(LogLevel.Error, "PressKeyAsync({Key}) failed on '{Name}'")]
-    partial void LogSendKeyFailed(Exception ex, Native.VirtualKey key, string name);
-
-    [LoggerMessage(LogLevel.Debug, "Inbox: '{Name}' received {MessageType}")]
-    partial void LogInboxReceived(string messageType, string name);
-
-    [LoggerMessage(LogLevel.Information, "Firing {Action}={Key} on '{Name}'")]
-    partial void LogActionFiring(string action, Native.VirtualKey key, string name);
-
-    [LoggerMessage(LogLevel.Information, "Fired {Action}={Key} on '{Name}' OK")]
-    partial void LogActionFired(string action, Native.VirtualKey key, string name);
-
-    [LoggerMessage(LogLevel.Information, "{Action} not configured for '{Name}' — skipping silently")]
-    partial void LogActionKeyEmpty(string action, string name);
-
-    [LoggerMessage(LogLevel.Debug, "Assist skipped for '{Name}' — IsMaster=true")]
-    partial void LogAssistSkippedMaster(string name);
-
-    [LoggerMessage(LogLevel.Warning, "Character {Action} = '{KeyString}' does not parse as a known VirtualKey; skipping")]
-    partial void LogUnknownActionKey(string action, string keyString);
-
-    [LoggerMessage(LogLevel.Error, "Click ({X},{Y}) doubleClick={DoubleClick} failed")]
-    partial void LogSendClickFailed(Exception ex, int x, int y, bool doubleClick);
-
-    [LoggerMessage(LogLevel.Debug, "Class icon file not found for {Cls} at {Path}; taskbar icon stays default")]
-    partial void LogClassIconMissing(CharacterClass cls, string path);
-
-    [LoggerMessage(LogLevel.Information, "Class icon applied for {Cls}")]
-    partial void LogClassIconApplied(CharacterClass cls);
-
-    [LoggerMessage(LogLevel.Warning, "Class icon LoadImage failed for {Cls} at {Path} (file may be corrupt or not a valid .ico)")]
-    partial void LogClassIconLoadFailed(CharacterClass cls, string path);
-
-    [LoggerMessage(LogLevel.Error, "Class icon application threw for {Cls}")]
-    partial void LogClassIconException(Exception ex, CharacterClass cls);
-
-    [LoggerMessage(LogLevel.Debug, "No icon filename mapping for {Cls}; taskbar icon stays default")]
-    partial void LogClassIconUnmapped(CharacterClass cls);
-
-    [LoggerMessage(LogLevel.Error, "PressChord(Shift+D1) failed during assist sequence")]
-    partial void LogAssistChordFailed(Exception ex);
-
-    [LoggerMessage(LogLevel.Debug, "AssistKey not set on character; party-member-1 selected but no /assist macro fired")]
-    partial void LogAssistKeyMissing();
-
-    #endregion
 }

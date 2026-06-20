@@ -1,10 +1,11 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:PerfectWorldAgent.App.ViewModels"
+        xmlns:conv="using:PerfectWorldAgent.App.Converters"
         xmlns:controls="using:PerfectWorldAgent.App.Controls"
         x:Class="PerfectWorldAgent.App.LabelAgentDialog"
         x:DataType="vm:LabelAgentDialogViewModel"
-        Width="460" Height="580"
+        Width="460" Height="440"
         WindowStartupLocation="CenterOwner"
         CanResize="False"
         Title="Label agent">
@@ -15,31 +16,10 @@
             <TextBlock FontSize="11"
                        Foreground="#888"
                        Text="{Binding CurrentName, StringFormat='current: {0}'}" />
-            <Border BorderThickness="1"
-                    BorderBrush="#444"
-                    Background="#222"
-                    CornerRadius="2"
-                    Padding="4"
-                    Margin="0,6,0,0">
-                <Image Source="{Binding NameplatePreview}"
-                       Stretch="None"
-                       HorizontalAlignment="Center" />
-            </Border>
             <TextBlock FontSize="10"
                        Foreground="#666"
-                       Text="Snap taken at dialog open. Cropped to the HUD name region that NameMatcher will compare future screenshots against." />
-            <Border IsVisible="{Binding NameplateWarning, Converter={x:Static vm:NotNullToBoolConverter.Instance}}"
-                    BorderThickness="1"
-                    BorderBrush="#E0AF68"
-                    Background="#2A2418"
-                    CornerRadius="2"
-                    Padding="6"
-                    Margin="0,4,0,0">
-                <TextBlock Foreground="#E0AF68"
-                           FontSize="10"
-                           TextWrapping="Wrap"
-                           Text="{Binding NameplateWarning}" />
-            </Border>
+                       TextWrapping="Wrap"
+                       Text="Pick the character's class — it's the roster identity key. Class identification uses the in-game stats window (default hotkey C); make sure you've supplied a template PNG per class under Assets/ClassTemplates/." />
         </StackPanel>
 
         <StackPanel Grid.Row="1" Margin="0,16" Spacing="10">
@@ -58,26 +38,14 @@
                           HorizontalAlignment="Stretch" />
             </StackPanel>
 
-            <Grid ColumnDefinitions="*,*,*,*">
+            <Grid ColumnDefinitions="*,*">
                 <StackPanel Grid.Column="0" Margin="0,0,4,0" Spacing="4">
-                    <TextBlock FontSize="11" Foreground="#aaa" Text="Burst buff" />
-                    <controls:KeyBindingPicker Key="{Binding BurstBuffKey, Mode=TwoWay}"
-                                               HorizontalAlignment="Stretch"
-                                               HorizontalContentAlignment="Center" />
-                </StackPanel>
-                <StackPanel Grid.Column="1" Margin="2,0" Spacing="4">
-                    <TextBlock FontSize="11" Foreground="#aaa" Text="Damage" />
-                    <controls:KeyBindingPicker Key="{Binding DamageKey, Mode=TwoWay}"
-                                               HorizontalAlignment="Stretch"
-                                               HorizontalContentAlignment="Center" />
-                </StackPanel>
-                <StackPanel Grid.Column="2" Margin="2,0" Spacing="4">
                     <TextBlock FontSize="11" Foreground="#aaa" Text="Immunity" />
                     <controls:KeyBindingPicker Key="{Binding ImmunityKey, Mode=TwoWay}"
                                                HorizontalAlignment="Stretch"
                                                HorizontalContentAlignment="Center" />
                 </StackPanel>
-                <StackPanel Grid.Column="3" Margin="4,0,0,0" Spacing="4">
+                <StackPanel Grid.Column="1" Margin="4,0,0,0" Spacing="4">
                     <TextBlock FontSize="11" Foreground="#aaa" Text="Assist" />
                     <controls:KeyBindingPicker Key="{Binding AssistKey, Mode=TwoWay}"
                                                HorizontalAlignment="Stretch"
@@ -85,10 +53,17 @@
                 </StackPanel>
             </Grid>
 
+            <StackPanel Spacing="4">
+                <TextBlock FontSize="11" Foreground="#aaa" Text="Combat macro" />
+                <ComboBox ItemsSource="{Binding MacroOptions}"
+                          SelectedItem="{Binding CombatMacroName, Mode=TwoWay}"
+                          HorizontalAlignment="Stretch" />
+            </StackPanel>
+
             <TextBlock Foreground="#E06060"
                        FontSize="11"
                        TextWrapping="Wrap"
-                       IsVisible="{Binding ErrorMessage, Converter={x:Static vm:NotNullToBoolConverter.Instance}}"
+                       IsVisible="{Binding ErrorMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
                        Text="{Binding ErrorMessage}" />
         </StackPanel>
 

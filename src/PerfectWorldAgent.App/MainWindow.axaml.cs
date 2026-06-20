@@ -4,6 +4,8 @@ using Avalonia.Interactivity;
 using Microsoft.Extensions.DependencyInjection;
 using PerfectWorldAgent.Agents;
 using PerfectWorldAgent.App.ViewModels;
+using PerfectWorldAgent.Hotkeys;
+using PerfectWorldAgent.Identification;
 using PerfectWorldAgent.Orchestration;
 using PerfectWorldAgent.Vision;
 
@@ -51,8 +53,8 @@ public partial class MainWindow : Window
         try
         {
             var provider = services.GetRequiredService<ICharacterProvider>();
-            var matcher = services.GetRequiredService<INameMatcher>();
-            var dialogVm = new LabelAgentDialogViewModel(row.Agent, provider, matcher);
+            var macros = services.GetRequiredService<PerfectWorldAgent.Combat.MacroLibrary>();
+            var dialogVm = new LabelAgentDialogViewModel(row.Agent, provider, macros);
             var dialog = new LabelAgentDialog(dialogVm);
             await dialog.ShowDialog(this);
         }
@@ -65,12 +67,13 @@ public partial class MainWindow : Window
         }
     }
 
-    // Diagnostic — dump the full identification pipeline state for each live agent:
+    // Diagnostic — dump the identification pipeline state for each live agent:
     //   *-full.png       — raw PrintWindow capture
-    //   *-crop.png       — NameMatcher.CropNameRegion (the area we save as template)
-    //   *-binarised.png  — NameMatcher.DebugBinarizeNameRegion (what MatchTemplate sees)
-    // Lets us see at which stage the auto-id breaks: capture itself, region positioning,
-    // or binarisation thresholding.
+    //   *-class-bin.png  — ClassMatcher.DebugBinarizeClassRegion (what MatchTemplate sees)
+    // Lets us see whether the configured ClassMatcher region lands on the stats window
+    // class-value text, and whether binarisation produces a readable mask. Open the
+    // in-game stats window (default C) before clicking this — without stats open, the
+    // class region will be empty.
     private async void OnDumpCapturesClicked(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not MainWindowViewModel vm)
@@ -83,7 +86,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var matcher = services.GetRequiredService<INameMatcher>();
+        var matcher = services.GetRequiredService<IClassMatcher>();
         var debugDir = Path.Combine(AppContext.BaseDirectory, "debug");
         Directory.CreateDirectory(debugDir);
 
@@ -108,22 +111,12 @@ public partial class MainWindow : Window
 
             try
             {
-                var crop = matcher.CropNameRegion(fullCapture);
-                await File.WriteAllBytesAsync(Path.Combine(debugDir, $"{stem}-crop.png"), crop);
+                var binarised = matcher.DebugBinarizeClassRegion(fullCapture);
+                await File.WriteAllBytesAsync(Path.Combine(debugDir, $"{stem}-class-bin.png"), binarised);
             }
             catch (Exception ex)
             {
-                await File.WriteAllTextAsync(Path.Combine(debugDir, $"{stem}-crop.error.txt"), ex.ToString());
-            }
-
-            try
-            {
-                var binarised = matcher.DebugBinarizeNameRegion(fullCapture);
-                await File.WriteAllBytesAsync(Path.Combine(debugDir, $"{stem}-binarised.png"), binarised);
-            }
-            catch (Exception ex)
-            {
-                await File.WriteAllTextAsync(Path.Combine(debugDir, $"{stem}-binarised.error.txt"), ex.ToString());
+                await File.WriteAllTextAsync(Path.Combine(debugDir, $"{stem}-class-bin.error.txt"), ex.ToString());
             }
         }
 
@@ -186,6 +179,23 @@ public partial class MainWindow : Window
                     Serilog.Log.Error(ex, "Failed to resume hotkey listener after Settings dialog");
                 }
             }
+        }
+    }
+
+    private async void OnMacrosClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Program.Services is not { } services) return;
+
+        try
+        {
+            var library = services.GetRequiredService<PerfectWorldAgent.Combat.MacroLibrary>();
+            var dialogVm = new MacrosDialogViewModel(library);
+            var dialog = new MacrosDialog(dialogVm);
+            await dialog.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Macros dialog failed to open");
         }
     }
 

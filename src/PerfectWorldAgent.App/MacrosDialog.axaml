@@ -1,0 +1,89 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PerfectWorldAgent.App.ViewModels"
+        xmlns:conv="using:PerfectWorldAgent.App.Converters"
+        x:Class="PerfectWorldAgent.App.MacrosDialog"
+        x:DataType="vm:MacrosDialogViewModel"
+        Width="640" Height="600"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        Title="Combat macros">
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="16">
+
+        <StackPanel Grid.Row="0" Spacing="4">
+            <TextBlock FontSize="14" Text="Combat macros" />
+            <TextBlock FontSize="11"
+                       Foreground="#888"
+                       TextWrapping="Wrap"
+                       Text="Each macro is a sequence of keypresses with delays. Format per line: KEY DELAY_MS. Example: F1 5000 = press F1, wait 5 seconds. Last step with delay 0 is fine — game-side damage macro keeps running until the 10s combat window expires." />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Margin="0,12"
+                BorderThickness="1"
+                BorderBrush="#333"
+                CornerRadius="3">
+            <ScrollViewer>
+                <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:MacroRowViewModel">
+                            <Border Padding="10"
+                                    Margin="6"
+                                    BorderThickness="1"
+                                    BorderBrush="#333"
+                                    Background="#1a1a1a"
+                                    CornerRadius="3">
+                                <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                                        <TextBlock FontSize="10" Foreground="#aaa" Text="Name" />
+                                        <TextBox Text="{Binding Name, Mode=TwoWay}"
+                                                 FontFamily="Consolas, monospace" />
+                                    </StackPanel>
+                                    <Button Grid.Row="0" Grid.Column="1"
+                                            Content="Remove"
+                                            FontSize="10"
+                                            Margin="8,16,0,0"
+                                            VerticalAlignment="Top"
+                                            Click="OnRemoveClicked" />
+                                    <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="0,8,0,0" Spacing="3">
+                                        <TextBlock FontSize="10" Foreground="#aaa" Text="Steps (one per line, format: KEY DELAY_MS)" />
+                                        <TextBox Text="{Binding StepsText, Mode=TwoWay}"
+                                                 AcceptsReturn="True"
+                                                 TextWrapping="NoWrap"
+                                                 FontFamily="Consolas, monospace"
+                                                 MinHeight="80" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <TextBlock Grid.Row="2"
+                   Foreground="#E06060"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,8"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
+                   Text="{Binding ErrorMessage}" />
+
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto,Auto">
+            <Button Grid.Column="0"
+                    Content="+ Add macro"
+                    Click="OnAddClicked" />
+            <StackPanel Grid.Column="2"
+                        Orientation="Horizontal"
+                        Spacing="8">
+                <Button x:Name="CancelButton"
+                        Content="Cancel"
+                        Click="OnCancel" />
+                <Button x:Name="SaveButton"
+                        Content="Save"
+                        Classes="accent"
+                        Click="OnSave" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

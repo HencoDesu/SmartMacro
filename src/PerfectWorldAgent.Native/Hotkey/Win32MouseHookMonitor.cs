@@ -38,6 +38,10 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
     // and the whole process crashes. Keep this as long as the hook is installed.
     private User32Native.HookProc? _hookDelegate;
 
+    /// <summary>
+    /// Raised on the hook's message-loop thread when a registered mouse binding fires.
+    /// Subscribers receive the binding's <c>Id</c> for resolution to their semantic meaning.
+    /// </summary>
     public event Action<int>? HotkeyPressed;
 
     public Win32MouseHookMonitor(ILogger<Win32MouseHookMonitor> logger)
@@ -45,6 +49,13 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
         _logger = logger;
     }
 
+    /// <summary>
+    /// Spawns a dedicated message-loop thread, installs a <c>WH_MOUSE_LL</c> low-level
+    /// mouse hook on it, and returns when the thread signals it's ready. The hook itself
+    /// is system-wide; the message loop is only needed because Windows fires the hook
+    /// callback during message dispatch on the installing thread.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when the monitor is already started.</exception>
     public Task StartAsync(IReadOnlyList<MouseHookBinding> bindings, CancellationToken cancellationToken = default)
     {
         if (_messageLoopThread is not null)
@@ -64,6 +75,10 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
         return _ready.Task.WaitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Signals the message-loop thread to exit (<c>WM_QUIT</c>) and waits for it to
+    /// uninstall the hook in its <c>finally</c> block. Safe to call when already stopped.
+    /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         if (_messageLoopThread is null)

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Avalonia.Threading;
 using PerfectWorldAgent.Agents;
+using PerfectWorldAgent.App.Mvvm;
 using PerfectWorldAgent.Orchestration;
 
 namespace PerfectWorldAgent.App.ViewModels;

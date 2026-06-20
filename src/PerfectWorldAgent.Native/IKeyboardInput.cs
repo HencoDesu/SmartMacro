@@ -5,13 +5,16 @@ namespace PerfectWorldAgent.Native;
 // against compatibility with games that ignore window messages.
 public interface IKeyboardInput
 {
+    /// <summary>
+    /// Sends a single key as a <c>WM_KEYDOWN</c> → hold → <c>WM_KEYUP</c> pair to the
+    /// given window handle.
+    /// </summary>
     Task SendKeyAsync(IntPtr hwnd, VirtualKey key, CancellationToken cancellationToken = default);
 
-    // Sends a chord — modifier held while a main key is tapped. Sequence:
-    //   1. modifier DOWN
-    //   2. key DOWN
-    //   3. key UP
-    //   4. modifier UP
-    // Used for Shift+N / Ctrl+N party-member selection and similar PW UI shortcuts.
+    /// <summary>
+    /// Sends a chord — modifier held while a main key is tapped. Sequence:
+    /// modifier DOWN → key DOWN → key UP → modifier UP. Used for Shift+N / Ctrl+N
+    /// party-member selection and similar PW UI shortcuts.
+    /// </summary>
     Task SendChordAsync(IntPtr hwnd, VirtualKey modifier, VirtualKey key, CancellationToken cancellationToken = default);
 }

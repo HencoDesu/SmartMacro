@@ -1,4 +1,5 @@
 using PerfectWorldAgent.Agents;
+using PerfectWorldAgent.App.Mvvm;
 
 namespace PerfectWorldAgent.App.ViewModels;
 

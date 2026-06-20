@@ -1,25 +1,21 @@
 namespace PerfectWorldAgent.Agents;
 
-// Per-agent runtime state. Each CharacterAgent owns its own state machine — distinct
-// from the Orchestrator's AgentMode (which is the global "what does the user want the
-// squad to do"). The two can diverge: orchestrator broadcasts FOLLOW, but a particular
-// agent may be Stuck and unable to follow until recovery.
+// Per-agent runtime state. Each state owns its own concurrent work loop (started on
+// OnEntry, cancelled on OnExit) — adding new states means adding new OnEntry/OnExit
+// hooks and a loop method, no central switch.
 public enum AgentState
 {
-    // Just created; placeholder Character; can't act. Exits via Identify().
+    // Just created; placeholder Character; can't act on broadcasts. The identification
+    // loop runs while in this state, polling screenshots and trying to match against
+    // the roster. Exits via Identify() when a match is found (or the user labels via UI).
     AwaitingIdentification,
 
-    // Identified and not currently doing per-mode work. Default after promotion and
-    // after any SetHold trigger.
+    // Identified and waiting. Broadcasts (immunity, assist, click) are handled by the
+    // main run loop independently of state.
     Idle,
 
-    // Executing follow behavior (chase the master, restart /follow on lapses).
-    Following,
-
-    // Executing the combat rotation (burst, damage rotation, target acquisition).
+    // Running the character's combat macro. Time-bounded to ~10 seconds — after the
+    // window elapses (regardless of where in the macro we are), the agent transitions
+    // back to Idle. Re-pressing the Combat hotkey while already in InCombat is ignored.
     InCombat,
-
-    // StuckDetector flagged us as not having moved while orchestrator wants us moving.
-    // Recovery attempts (re-issue /follow, jump, notify) live in the Stuck tick.
-    Stuck,
 }
