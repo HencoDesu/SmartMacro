@@ -69,16 +69,15 @@ public interface IGameWindow
     Task PressChordAsync(VirtualKey modifier, VirtualKey key, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Posts a left-button click at the given client-area coordinates. Does NOT manage
-    /// activation.
+    /// Posts a left-button click at the given client-area point. Does NOT manage activation.
     /// </summary>
-    Task ClickAsync(int x, int y, CancellationToken cancellationToken = default);
+    Task ClickAsync(ScreenPoint point, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Posts a double left-button click at the given client-area coordinates. Does NOT
-    /// manage activation.
+    /// Posts a double left-button click at the given client-area point. Does NOT manage
+    /// activation.
     /// </summary>
-    Task DoubleClickAsync(int x, int y, CancellationToken cancellationToken = default);
+    Task DoubleClickAsync(ScreenPoint point, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Active capture: wakes the (potentially frozen) PW client via WM_ACTIVATEAPP so
@@ -106,4 +105,16 @@ public interface IGameWindow
     /// </summary>
     /// <returns><c>false</c> if the file couldn't be loaded (missing, corrupt, unsupported format).</returns>
     bool SetIconFromFile(string imagePath);
+
+    /// <summary>
+    /// Polls the window's passive screenshot until <paramref name="elementTemplate"/>
+    /// matches inside <paramref name="position"/>, or until <paramref name="waitDuration"/>
+    /// elapses. Internal poll cadence and match threshold come from window options
+    /// (configurable via "Vision:Window" in appsettings.json).
+    /// </summary>
+    /// <param name="elementTemplate">PNG-encoded image of the UI element to find. Binarised under the same threshold as the source crop before template matching.</param>
+    /// <param name="position">Client-space crop region. Empty (Width=0 or Height=0) means search the whole screen.</param>
+    /// <param name="waitDuration">Overall budget — return <c>false</c> once exhausted.</param>
+    /// <returns><c>true</c> the first time the template matches above threshold; <c>false</c> on timeout or capture failure.</returns>
+    Task<bool> WaitForElementAt(byte[] elementTemplate, ScreenRect position, TimeSpan waitDuration, CancellationToken cancellationToken = default);
 }

@@ -1,3 +1,5 @@
+using PerfectWorldAgent.Native;
+
 namespace PerfectWorldAgent.Vision;
 
 // Tuning for ClassMatcher — the crop region of the stats window where "Класс: <name>"
@@ -16,10 +18,7 @@ public sealed class ClassMatcherOptions
     // after a first run — defaults are placeholders matching the screenshot the user shared
     // at 2K res. Use the BroadcastDoubleClick trick (cursor → hotkey → log shows client
     // coords) to find the exact top-left and bottom-right of the value text.
-    public int RegionX { get; init; } = 1985;
-    public int RegionY { get; init; } = 678;
-    public int RegionWidth { get; init; } = 130;
-    public int RegionHeight { get; init; } = 26;
+    public ScreenRect Region { get; init; } = new(3200, 1060, 160, 35);
 
     // Luminance cutoff for binarisation — class text in the stats window is rendered in
     // light colour on a dark panel; 200 keeps the text core and drops background gradient.

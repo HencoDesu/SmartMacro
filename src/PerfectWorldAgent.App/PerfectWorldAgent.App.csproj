@@ -55,6 +55,18 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Assets\ClassIcons\%(Filename)%(Extension)</Link>
     </None>
+    <!-- Class-name templates for the stats-window template-match identification path. -->
+    <None Include="Assets\GameClassNames\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Assets\GameClassNames\%(Filename)%(Extension)</Link>
+    </None>
+    <!-- UI-element templates for IGameWindow.WaitForElementAt (boot detection, future
+         combat / dialog detection). Loaded from disk so the user can add new templates
+         without rebuilding. -->
+    <None Include="Assets\GameUiElements\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Assets\GameUiElements\%(Filename)%(Extension)</Link>
+    </None>
   </ItemGroup>
 
 </Project>

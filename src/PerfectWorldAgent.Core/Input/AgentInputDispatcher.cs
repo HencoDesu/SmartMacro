@@ -22,14 +22,12 @@ public sealed partial class AgentInputDispatcher
 {
     private readonly ILogger<AgentInputDispatcher> _logger;
     private readonly int _interStepDelayMs;
-    private readonly int _partySlot1X;
-    private readonly int _partySlot1Y;
+    private readonly ScreenPoint _partySlot1;
 
     public AgentInputDispatcher(IOptions<ActivatingInputOptions> options, ILogger<AgentInputDispatcher> logger)
     {
         _interStepDelayMs = options.Value.InterStepDelayMs;
-        _partySlot1X = options.Value.PartySlot1X;
-        _partySlot1Y = options.Value.PartySlot1Y;
+        _partySlot1 = options.Value.PartySlot1;
         _logger = logger;
     }
 
@@ -82,8 +80,8 @@ public sealed partial class AgentInputDispatcher
             await window.ActivateAsync().ConfigureAwait(false);
             try
             {
-                LogAssistSlotClickStart(agentName, _partySlot1X, _partySlot1Y);
-                await window.ClickAsync(_partySlot1X, _partySlot1Y).ConfigureAwait(false);
+                LogAssistSlotClickStart(agentName, _partySlot1);
+                await window.ClickAsync(_partySlot1).ConfigureAwait(false);
                 LogAssistSlotClickDone(agentName);
                 await Task.Delay(_interStepDelayMs).ConfigureAwait(false);
                 await window.PressKeyAsync(assistKey).ConfigureAwait(false);
@@ -101,10 +99,10 @@ public sealed partial class AgentInputDispatcher
     }
 
     /// <summary>
-    /// Click broadcast — coords come pre-translated from the orchestrator (foreground
+    /// Click broadcast — point comes pre-translated from the orchestrator (foreground
     /// window's client space → reused verbatim per agent assuming identical client sizes).
     /// </summary>
-    public async Task FireClickAsync(IGameWindow window, int x, int y, bool doubleClick, string agentName)
+    public async Task FireClickAsync(IGameWindow window, ScreenPoint point, bool doubleClick, string agentName)
     {
         try
         {
@@ -113,11 +111,11 @@ public sealed partial class AgentInputDispatcher
             {
                 if (doubleClick)
                 {
-                    await window.DoubleClickAsync(x, y).ConfigureAwait(false);
+                    await window.DoubleClickAsync(point).ConfigureAwait(false);
                 }
                 else
                 {
-                    await window.ClickAsync(x, y).ConfigureAwait(false);
+                    await window.ClickAsync(point).ConfigureAwait(false);
                 }
             }
             finally
@@ -127,7 +125,7 @@ public sealed partial class AgentInputDispatcher
         }
         catch (Exception ex)
         {
-            LogSendClickFailed(ex, x, y, doubleClick, agentName);
+            LogSendClickFailed(ex, point, doubleClick, agentName);
         }
     }
 
@@ -148,8 +146,8 @@ public sealed partial class AgentInputDispatcher
     [LoggerMessage(LogLevel.Information, "Assist starting on '{Name}' (assistKey={Key})")]
     partial void LogAssistStarting(string name, VirtualKey key);
 
-    [LoggerMessage(LogLevel.Information, "Assist slot-click start on '{Name}' at ({X},{Y})")]
-    partial void LogAssistSlotClickStart(string name, int x, int y);
+    [LoggerMessage(LogLevel.Information, "Assist slot-click start on '{Name}' at {Point}")]
+    partial void LogAssistSlotClickStart(string name, ScreenPoint point);
 
     [LoggerMessage(LogLevel.Information, "Assist slot-click done on '{Name}'")]
     partial void LogAssistSlotClickDone(string name);
@@ -157,8 +155,8 @@ public sealed partial class AgentInputDispatcher
     [LoggerMessage(LogLevel.Information, "Assist key done on '{Name}' (key={Key})")]
     partial void LogAssistKeyDone(string name, VirtualKey key);
 
-    [LoggerMessage(LogLevel.Error, "Click ({X},{Y}) doubleClick={DoubleClick} failed on '{Name}'")]
-    partial void LogSendClickFailed(Exception ex, int x, int y, bool doubleClick, string name);
+    [LoggerMessage(LogLevel.Error, "Click {Point} doubleClick={DoubleClick} failed on '{Name}'")]
+    partial void LogSendClickFailed(Exception ex, ScreenPoint point, bool doubleClick, string name);
 
     #endregion
 }

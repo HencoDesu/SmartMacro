@@ -2,40 +2,18 @@ using PerfectWorldAgent.Models;
 
 namespace PerfectWorldAgent.Identification;
 
-// Facade over the identification stack (IClassMatcher + ClassTemplateLoader +
-// ICharacterRoster). Two callers, two intents:
-//   * CharacterAgent.IdentifyAsync uses Identify(screenshot) on demand (triggered by the
-//     BroadcastIdentify hotkey) after opening the in-game stats window. Returns the
-//     matched roster entry by class.
-//   * UI uses RegisterAsync(...) to add a new character when the user labels an
-//     unidentified agent. The label dialog now picks the class explicitly from a
-//     dropdown — no screenshot harvesting needed.
+// Facade over the identification stack (IClassMatcher + ClassTemplateLoader).
+// CharacterAgent.IdentifyAsync calls Identify(screenshot) after opening the in-game
+// stats window; on a class match the agent transitions out of AwaitingIdentification.
+// No persistent roster — the Character is built on the fly from the matched class
+// plus shared AgentOptions defaults.
 public interface ICharacterProvider
 {
-    IReadOnlyList<Character> All { get; }
-
     /// <summary>
-    /// Matches the screenshot's stats-window class-value region against known class
-    /// templates. Returns the roster entry whose <see cref="Character.Class"/> matches.
+    /// Matches the screenshot's stats-window class-value region against the loaded class
+    /// templates. On a hit, returns a Character whose Class is the matched value and
+    /// Name is the class enum string ("Лучник", "Жрец", ...).
     /// </summary>
-    /// <returns>The matched roster entry, or <c>null</c> on no match or no roster entry.</returns>
+    /// <returns>The matched character, or <c>null</c> if no template scored above threshold.</returns>
     Character? Identify(byte[] screenshot);
-
-    /// <summary>
-    /// Persists a new character. The Class field is the identity key; collisions upsert.
-    /// </summary>
-    /// <exception cref="ArgumentException">Thrown if <see cref="Character.Class"/> is <see cref="CharacterClass.Unknown"/>.</exception>
-    Task<Character> RegisterAsync(
-        string name,
-        bool isMaster,
-        CharacterClass characterClass,
-        string immunityKey,
-        string assistKey,
-        string combatMacroName,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Fires after <see cref="RegisterAsync"/> persists a new entry.
-    /// </summary>
-    event Action<Character>? CharacterRegistered;
 }

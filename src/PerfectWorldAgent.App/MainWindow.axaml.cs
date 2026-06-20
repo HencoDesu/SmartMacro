@@ -35,38 +35,6 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
-    // Click handler for the "Label" button on each agent row. Wraps the dialog
-    // construction in try/catch because CaptureScreenshot can throw (e.g. window in
-    // unusual state); we don't want an async-void exception to bring down the app.
-    private async void OnLabelClicked(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not Button { DataContext: AgentRowViewModel row })
-        {
-            return;
-        }
-
-        if (Program.Services is not { } services)
-        {
-            return;
-        }
-
-        try
-        {
-            var provider = services.GetRequiredService<ICharacterProvider>();
-            var macros = services.GetRequiredService<PerfectWorldAgent.Combat.MacroLibrary>();
-            var dialogVm = new LabelAgentDialogViewModel(row.Agent, provider, macros);
-            var dialog = new LabelAgentDialog(dialogVm);
-            await dialog.ShowDialog(this);
-        }
-        catch (Exception ex)
-        {
-            // Failed to even open the dialog (most likely CaptureScreenshot threw —
-            // e.g. window minimised to tray, GPU stalled). Log and swallow so the
-            // app stays up; user can retry once window state recovers.
-            Serilog.Log.Warning(ex, "Label dialog failed to open for agent {Agent}", row.Agent.Name);
-        }
-    }
-
     // Diagnostic — dump the identification pipeline state for each live agent:
     //   *-full.png       — raw PrintWindow capture
     //   *-class-bin.png  — ClassMatcher.DebugBinarizeClassRegion (what MatchTemplate sees)

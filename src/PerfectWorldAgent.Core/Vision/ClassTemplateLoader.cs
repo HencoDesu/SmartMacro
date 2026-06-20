@@ -4,8 +4,9 @@ using PerfectWorldAgent.Models;
 namespace PerfectWorldAgent.Vision;
 
 // Filesystem-backed loader for the per-class stats-window text templates. One PNG per
-// CharacterClass under Assets/ClassTemplates/{enum}.png. Same convention as
-// Assets/ClassIcons/, but the user provides these by harvesting tight crops of the
+// CharacterClass under Assets/GameClassNames/{enum}.png. Sibling to Assets/GameUiElements/
+// (boot UI templates) and Assets/ClassIcons/ (taskbar icons) — namespace separates kinds
+// of game-related templates. The user provides these by harvesting tight crops of the
 // "Класс: <name>" value from a sample stats-window screenshot per class.
 //
 // On startup, the loader scans the dir and caches whatever templates exist. Missing
@@ -18,7 +19,7 @@ public sealed partial class ClassTemplateLoader
     private readonly IReadOnlyDictionary<CharacterClass, byte[]> _templates;
 
     public ClassTemplateLoader(ILogger<ClassTemplateLoader> logger)
-        : this(Path.Combine(AppContext.BaseDirectory, "Assets", "ClassTemplates"), logger)
+        : this(Path.Combine(AppContext.BaseDirectory, "Assets", "GameClassNames"), logger)
     {
     }
 
@@ -79,7 +80,7 @@ public sealed partial class ClassTemplateLoader
     [LoggerMessage(LogLevel.Information, "Class templates loaded: {Count} from disk")]
     partial void LogLoaded(int count);
 
-    [LoggerMessage(LogLevel.Warning, "Class template directory not found at {Path} — identification will fail until templates are provided")]
+    [LoggerMessage(LogLevel.Warning, "Class template directory not found at {Path} — identification will fail until PNGs are provided in Assets/GameClassNames/{{ClassName}}.png")]
     partial void LogDirMissing(string path);
 
     [LoggerMessage(LogLevel.Warning, "Missing class template(s) for {Count} class(es): {List}")]

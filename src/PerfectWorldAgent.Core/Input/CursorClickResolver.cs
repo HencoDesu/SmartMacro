@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using PerfectWorldAgent.Native;
 using PerfectWorldAgent.Native.Window;
 
 namespace PerfectWorldAgent.Input;
@@ -25,51 +26,53 @@ public sealed partial class CursorClickResolver
     }
 
     /// <summary>
-    /// Resolves the broadcast-click target. Returns the client (x, y) to broadcast,
+    /// Resolves the broadcast-click target. Returns the client-space point to broadcast,
     /// or <c>null</c> with a logged reason if either guard fails (foreground not a
     /// tracked agent, or cursor outside client area).
     /// </summary>
     /// <param name="trackedAgentHandles">Snapshot of currently-tracked agent hwnds used for the foreground-is-agent check.</param>
     /// <param name="doubleClick">Pass-through to log labels; doesn't affect the resolution logic itself.</param>
-    public (int X, int Y)? TryResolve(IReadOnlyCollection<IntPtr> trackedAgentHandles, bool doubleClick)
+    public ScreenPoint? TryResolve(IReadOnlyCollection<IntPtr> trackedAgentHandles, bool doubleClick)
     {
         var kind = doubleClick ? "DoubleClick" : "Click";
         var (screenX, screenY) = Win32NativeWindowSystem.GetCursorPos();
+        var screen = new ScreenPoint(screenX, screenY);
         var foreground = Win32NativeWindowSystem.GetForeground();
 
         if (foreground.Handle == IntPtr.Zero)
         {
-            LogNoForeground(screenX, screenY, doubleClick);
+            LogNoForeground(screen, doubleClick);
             return null;
         }
 
         if (!trackedAgentHandles.Contains(foreground.Handle))
         {
-            LogForegroundNotAgent(kind, foreground.Handle.ToInt64(), screenX, screenY);
+            LogForegroundNotAgent(kind, foreground.Handle.ToInt64(), screen);
             return null;
         }
 
         var (clientX, clientY) = foreground.ScreenToClient(screenX, screenY);
+        var client = new ScreenPoint(clientX, clientY);
         var (width, height) = foreground.GetClientSize();
         if (clientX < 0 || clientY < 0 || clientX >= width || clientY >= height)
         {
-            LogCursorOutsideClient(kind, screenX, screenY, clientX, clientY, width, height);
+            LogCursorOutsideClient(kind, screen, client, width, height);
             return null;
         }
 
-        LogResolved(kind, clientX, clientY);
-        return (clientX, clientY);
+        LogResolved(kind, client);
+        return client;
     }
 
-    [LoggerMessage(LogLevel.Information, "Broadcast{Kind} hotkey pressed — client=({X},{Y}) on all agents")]
-    partial void LogResolved(string kind, int x, int y);
+    [LoggerMessage(LogLevel.Information, "Broadcast{Kind} hotkey pressed — client={Point} on all agents")]
+    partial void LogResolved(string kind, ScreenPoint point);
 
-    [LoggerMessage(LogLevel.Warning, "Broadcast click hotkey pressed but no foreground window — screen=({X},{Y}) doubleClick={DoubleClick}; skipping")]
-    partial void LogNoForeground(int x, int y, bool doubleClick);
+    [LoggerMessage(LogLevel.Warning, "Broadcast click hotkey pressed but no foreground window — screen={Screen} doubleClick={DoubleClick}; skipping")]
+    partial void LogNoForeground(ScreenPoint screen, bool doubleClick);
 
-    [LoggerMessage(LogLevel.Information, "Broadcast{Kind} suppressed — foreground hwnd=0x{Hwnd:X} is not a tracked agent (cursor screen=({X},{Y}))")]
-    partial void LogForegroundNotAgent(string kind, long hwnd, int x, int y);
+    [LoggerMessage(LogLevel.Information, "Broadcast{Kind} suppressed — foreground hwnd=0x{Hwnd:X} is not a tracked agent (cursor screen={Screen})")]
+    partial void LogForegroundNotAgent(string kind, long hwnd, ScreenPoint screen);
 
-    [LoggerMessage(LogLevel.Information, "Broadcast{Kind} suppressed — cursor screen=({Sx},{Sy}) maps to client=({Cx},{Cy}) which is outside [0,{W})x[0,{H})")]
-    partial void LogCursorOutsideClient(string kind, int sx, int sy, int cx, int cy, int w, int h);
+    [LoggerMessage(LogLevel.Information, "Broadcast{Kind} suppressed — cursor screen={Screen} maps to client={Client} which is outside [0,{W})x[0,{H})")]
+    partial void LogCursorOutsideClient(string kind, ScreenPoint screen, ScreenPoint client, int w, int h);
 }

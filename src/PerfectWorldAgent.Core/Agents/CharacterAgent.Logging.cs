@@ -1,4 +1,7 @@
 using Microsoft.Extensions.Logging;
+using PerfectWorldAgent.Models;
+using PerfectWorldAgent.Native;
+using PerfectWorldAgent.Vision;
 
 namespace PerfectWorldAgent.Agents;
 
@@ -35,6 +38,36 @@ public sealed partial class CharacterAgent
     [LoggerMessage(LogLevel.Error, "Identification failed for agent")]
     partial void LogIdentifyFailed(Exception ex);
 
+    [LoggerMessage(LogLevel.Debug, "Operation '{Operation}' already running on '{Name}' — concurrent trigger ignored")]
+    partial void LogOperationAlreadyRunning(string name, string operation);
+
+    [LoggerMessage(LogLevel.Information, "Boot flow starting on '{Name}' — vision-driven phase polling")]
+    partial void LogBootFlowStarting(string name);
+
+    [LoggerMessage(LogLevel.Information, "Boot flow finished on '{Name}' — in-world detected")]
+    partial void LogBootFlowFinished(string name);
+
+    [LoggerMessage(LogLevel.Information, "Boot click on '{Name}': {Label} at {Point}")]
+    partial void LogBootClick(string name, string label, ScreenPoint point);
+
+    [LoggerMessage(LogLevel.Information, "Boot skipped on '{Name}' — already in-world; going straight to identify")]
+    partial void LogBootSkippedAlreadyInWorld(string name);
+
+    [LoggerMessage(LogLevel.Information, "Boot waiting on '{Name}' for phase {Phase} to become ready…")]
+    partial void LogBootWaitingForPhase(string name, BootPhase phase);
+
+    [LoggerMessage(LogLevel.Information, "Boot phase {Phase} ready on '{Name}'")]
+    partial void LogBootPhaseReady(string name, BootPhase phase);
+
+    [LoggerMessage(LogLevel.Warning, "Boot phase {Phase} timed out after {Seconds}s on '{Name}' — screen never rendered; aborting boot")]
+    partial void LogBootPhaseTimeout(string name, BootPhase phase, int seconds);
+
+    [LoggerMessage(LogLevel.Warning, "Boot template '{Template}' for phase {Phase} not found in GameUiElementLoader on '{Name}' — check Assets/GameUiElements/{Template}.png; aborting boot")]
+    partial void LogBootTemplateMissing(string name, BootPhase phase, string template);
+
+    [LoggerMessage(LogLevel.Error, "Boot flow failed for agent")]
+    partial void LogBootFlowFailed(Exception ex);
+
     [LoggerMessage(LogLevel.Error, "Agent run loop failed unexpectedly")]
     partial void LogRunFailed(Exception ex);
 
@@ -44,14 +77,14 @@ public sealed partial class CharacterAgent
     [LoggerMessage(LogLevel.Information, "{Action} not configured for '{Name}' — skipping silently")]
     partial void LogActionKeyEmpty(string action, string name);
 
-    [LoggerMessage(LogLevel.Debug, "Assist skipped for '{Name}' — IsMaster=true")]
-    partial void LogAssistSkippedMaster(string name);
-
-    [LoggerMessage(LogLevel.Warning, "Character {Action} = '{KeyString}' does not parse as a known VirtualKey; skipping")]
+    [LoggerMessage(LogLevel.Warning, "{Action} key string '{KeyString}' does not parse as a known VirtualKey; skipping")]
     partial void LogUnknownActionKey(string action, string keyString);
 
-    [LoggerMessage(LogLevel.Debug, "AssistKey not set on character; party-member-1 selected but no /assist macro fired")]
-    partial void LogAssistKeyMissing();
+    [LoggerMessage(LogLevel.Debug, "Assist skipped for '{Name}' — IsMaster")]
+    partial void LogAssistSkippedMaster(string name);
+
+    [LoggerMessage(LogLevel.Debug, "Broadcast {MessageType} ignored by '{Name}' — class {Cls} is in IgnoredClasses")]
+    partial void LogBroadcastIgnored(string messageType, string name, CharacterClass cls);
 
     [LoggerMessage(LogLevel.Information, "Combat loop started for '{Name}' (macro='{MacroName}', window=10s)")]
     partial void LogCombatLoopStarted(string name, string macroName);

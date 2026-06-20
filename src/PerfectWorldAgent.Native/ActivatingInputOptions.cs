@@ -40,8 +40,8 @@ public sealed class ActivatingInputOptions
     public int InterStepDelayMs { get; init; } = 200;
 
     // Client-space coordinates of party-slot-1 (the master) in PW's UI. All 9 game
-    // windows have identical client size and identical UI layout, so a single (x, y)
-    // pair covers all of them — same model used by FireClickAsync broadcasts.
+    // windows have identical client size and identical UI layout, so a single point
+    // covers all of them — same model used by FireClickAsync broadcasts.
     //
     // We click here in FireAssistAsync to select the master before firing the assist
     // key. Replaces the old Shift+1 chord, which broke because PW reads modifier state
@@ -51,6 +51,5 @@ public sealed class ActivatingInputOptions
     // Defaults are placeholders — tune in appsettings.json after the first run by
     // checking what coordinates land on the first party-list portrait at your PW UI
     // scale / resolution.
-    public int PartySlot1X { get; init; } = 285;
-    public int PartySlot1Y { get; init; } = 456;
+    public ScreenPoint PartySlot1 { get; init; } = new(285, 456);
 }

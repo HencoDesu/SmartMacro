@@ -1,4 +1,5 @@
 using PerfectWorldAgent.Models;
+using PerfectWorldAgent.Native;
 
 namespace PerfectWorldAgent.Agents;
 
@@ -27,10 +28,10 @@ public sealed record EnterIdentifyMessage : AgentMessage;
 // skips this message (no one to assist).
 public sealed record TakeAssistMessage : AgentMessage;
 
-// Click at the given client-area coordinates of the agent's window. Coords are produced
-// once by the orchestrator (cursor pos → foreground window client coords) and reused
+// Click at the given client-area point of the agent's window. Coord is produced once
+// by the orchestrator (cursor pos → foreground window client coords) and reused
 // across every agent — relies on all PW clients being the same window size.
-public sealed record ClickAtMessage(int X, int Y, bool DoubleClick) : AgentMessage;
+public sealed record ClickAtMessage(ScreenPoint Point, bool DoubleClick) : AgentMessage;
 
 // CharacterAgent → Orchestrator — lifecycle notifications. Sent into the orchestrator's
 // inbox so all agent→orchestrator communication goes through one async path. The agent

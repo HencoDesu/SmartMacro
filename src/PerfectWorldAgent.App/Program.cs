@@ -14,7 +14,6 @@ using PerfectWorldAgent.Input;
 using PerfectWorldAgent.Native;
 using PerfectWorldAgent.Native.Hotkey;
 using PerfectWorldAgent.Orchestration;
-using PerfectWorldAgent.Persistence;
 using PerfectWorldAgent.Presentation;
 using PerfectWorldAgent.ProcessMonitoring;
 using PerfectWorldAgent.App.ViewModels;
@@ -89,15 +88,16 @@ internal static class Program
         services.Configure<ActivatingInputOptions>(configuration.GetSection("Input:Activating"));
         services.Configure<CoordinateReaderOptions>(configuration.GetSection("Vision:CoordinateReader"));
         services.Configure<ClassMatcherOptions>(configuration.GetSection("Vision:ClassMatcher"));
+        services.Configure<WindowVisionOptions>(configuration.GetSection("Vision:Window"));
 
         // GameWindowFactory bakes in the input-strategy choice (PostMessage + WM_ACTIVATEAPP
         // wake-up) so neither DI nor the orchestrator has to know about Native types. Swap
         // the factory implementation once we know what the live client likes.
         // Win32NativeWindowSystem is a static class — no DI registration needed.
         services.AddSingleton<IGameWindowFactory, GameWindowFactory>();
-        services.AddSingleton<ICharacterRoster, JsonCharacterRoster>();
         services.AddSingleton<IClassMatcher, ClassMatcher>();
         services.AddSingleton<ClassTemplateLoader>();
+        services.AddSingleton<GameUiElementLoader>();
         services.AddSingleton<ICoordinateReader, TesseractCoordinateReader>();
         services.AddSingleton<ICharacterProvider, CharacterProvider>();
         services.AddSingleton<ClassIconService>();

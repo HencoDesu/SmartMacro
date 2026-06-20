@@ -152,11 +152,14 @@ public sealed class Win32NativeWindow : INativeWindow
         }
 
         // Set all three surfaces so the icon shows up in title bar, taskbar list, and
-        // taskbar button. PostMessage rather than SendMessage — non-critical visual
-        // update, fire-and-forget keeps us off the target's message-loop critical path.
-        User32Native.PostMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_SMALL, hicon);
-        User32Native.PostMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_BIG, hicon);
-        User32Native.PostMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_SMALL2, hicon);
+        // taskbar button. SendMessage rather than PostMessage — PW freezes background
+        // clients and their message queue doesn't drain until something wakes the
+        // window (user click, WM_ACTIVATEAPP). PostMessage'd WM_SETICON would just sit
+        // queued for inactive windows, so after multi-agent identify only the
+        // foreground few would get their icon. SendMessage forces sync WndProc dispatch.
+        User32Native.SendMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_SMALL, hicon);
+        User32Native.SendMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_BIG, hicon);
+        User32Native.SendMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_SMALL2, hicon);
         return true;
     }
 }

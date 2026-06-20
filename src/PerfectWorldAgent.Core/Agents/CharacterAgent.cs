@@ -8,6 +8,7 @@ using PerfectWorldAgent.Identification;
 using PerfectWorldAgent.Input;
 using PerfectWorldAgent.Models;
 using PerfectWorldAgent.Presentation;
+using PerfectWorldAgent.Vision;
 using Stateless;
 
 namespace PerfectWorldAgent.Agents;
@@ -48,12 +49,31 @@ public sealed partial class CharacterAgent
     private readonly ClassIconService _classIcons;
     private readonly AgentInputDispatcher _input;
     private readonly MacroLibrary _macros;
+    private readonly GameUiElementLoader _uiTemplates;
+    private readonly string _serverSelectTemplate;
+    private readonly string _characterSelectTemplate;
+    private readonly string _inWorldTemplate;
     private readonly TimeSpan _pollInterval;
     private readonly Native.VirtualKey _statsHotkey;
     private readonly TimeSpan _statsOpenDelay;
+    private readonly Native.ScreenPoint _serverSelectButton;
+    private readonly Native.ScreenPoint _characterSelectButton;
+    private readonly Native.ScreenRect _serverSelectRegion;
+    private readonly Native.ScreenRect _characterSelectRegion;
+    private readonly Native.ScreenRect _inWorldRegion;
+    private readonly TimeSpan _bootPhaseTimeout;
+    private readonly string _defaultImmunityKey;
+    private readonly string _defaultAssistKey;
+    private readonly string _defaultCombatMacroName;
+    private readonly CharacterClass _masterClass;
+    private readonly HashSet<CharacterClass> _ignoredClasses;
     private readonly ILogger<CharacterAgent> _logger;
     private readonly StateMachine<AgentState, AgentTrigger> _machine;
     private readonly Lock _stateLock = new();
+    // Single-flight guard shared by EnterWorldAsync and IdentifyAsync. WaitAsync(0)
+    // returns false on contention so a stacked-up trigger no-ops instead of letting
+    // two concurrent activate/click/key cycles race the same window.
+    private readonly SemaphoreSlim _operationLock = new(1, 1);
 
     private CancellationTokenSource? _runCts;
     private CancellationTokenSource? _combatLoopCts;
@@ -65,6 +85,7 @@ public sealed partial class CharacterAgent
         ClassIconService classIcons,
         AgentInputDispatcher input,
         MacroLibrary macros,
+        GameUiElementLoader uiTemplates,
         IOptions<AgentOptions> options,
         ILogger<CharacterAgent> logger)
     {
@@ -74,9 +95,24 @@ public sealed partial class CharacterAgent
         _classIcons = classIcons;
         _input = input;
         _macros = macros;
+        _uiTemplates = uiTemplates;
+        _serverSelectTemplate = options.Value.ServerSelectTemplate;
+        _characterSelectTemplate = options.Value.CharacterSelectTemplate;
+        _inWorldTemplate = options.Value.InWorldTemplate;
         _pollInterval = TimeSpan.FromSeconds(options.Value.AgentPollIntervalSeconds);
         _statsHotkey = options.Value.StatsHotkey;
         _statsOpenDelay = TimeSpan.FromMilliseconds(options.Value.StatsOpenDelayMs);
+        _serverSelectButton = options.Value.ServerSelectButton;
+        _characterSelectButton = options.Value.CharacterSelectButton;
+        _serverSelectRegion = options.Value.ServerSelectRegion;
+        _characterSelectRegion = options.Value.CharacterSelectRegion;
+        _inWorldRegion = options.Value.InWorldRegion;
+        _bootPhaseTimeout = TimeSpan.FromMilliseconds(options.Value.BootPhaseTimeoutMs);
+        _defaultImmunityKey = options.Value.DefaultImmunityKey;
+        _defaultAssistKey = options.Value.DefaultAssistKey;
+        _defaultCombatMacroName = options.Value.DefaultCombatMacroName;
+        _masterClass = options.Value.MasterClass;
+        _ignoredClasses = new HashSet<CharacterClass>(options.Value.IgnoredClasses);
         _logger = logger;
         _inbox = Channel.CreateUnbounded<AgentMessage>(new UnboundedChannelOptions
         {
@@ -84,14 +120,11 @@ public sealed partial class CharacterAgent
         });
 
         // Born unidentified — placeholder name unique per-hwnd so it doesn't clash with
-        // real characters; empty hotkeys ensure an unidentified agent that tries to act
-        // sends nothing meaningful.
+        // real characters. Class=Unknown until promoted by Identify().
         Character = new Character
         {
             Name = $"Unknown (hwnd=0x{window.Handle.ToInt64():X})",
-            IsMaster = false,
             Class = CharacterClass.Unknown,
-            ImmunityKey = string.Empty,
         };
 
         _machine = new StateMachine<AgentState, AgentTrigger>(AgentState.AwaitingIdentification);
@@ -118,6 +151,15 @@ public sealed partial class CharacterAgent
     public string Name => Character.Name;
     public AgentState State => _machine.State;
     public bool IsIdentified => _machine.State != AgentState.AwaitingIdentification;
+
+    // Master = the class designated in AgentOptions.MasterClass (typically Лучник).
+    // The master is the one being /assist'd by everyone else, so it skips
+    // TakeAssistMessage itself.
+    public bool IsMaster => IsIdentified && Character.Class == _masterClass;
+
+    // Ignored = class is in AgentOptions.IgnoredClasses. Used for utility characters
+    // like a warehouse mule — they boot + identify normally but drop all broadcasts.
+    public bool IsIgnored => IsIdentified && _ignoredClasses.Contains(Character.Class);
     public ChannelWriter<AgentMessage> Inbox => _inbox.Writer;
     public Task? RunningTask { get; private set; }
 
@@ -148,6 +190,11 @@ public sealed partial class CharacterAgent
 
         _runCts = new CancellationTokenSource();
         RunningTask = Task.Run(() => RunLoopAsync(_runCts.Token));
+
+        // Auto-kick the boot pipeline (vision-driven phase polls → click → identify).
+        // Fire-and-forget; on success it calls Identify() which fires the state-machine
+        // transition. The captured _runCts.Token cancels mid-flow if Stop() runs.
+        _ = EnterWorldAsync(_runCts.Token);
     }
 
     /// <summary>
@@ -180,33 +227,6 @@ public sealed partial class CharacterAgent
             oldName = Name;
             Character = character;
             _machine.Fire(AgentTrigger.Identified);
-        }
-
-        LogPromoted(oldName, character.Name);
-        _classIcons.TryApply(_window, character.Class);
-        _outbox.TryWrite(new AgentIdentifiedMessage(this, oldName));
-    }
-
-    /// <summary>
-    /// Re-label path. Called by the UI when the user wants to update an already-identified
-    /// agent (e.g. fixing a misidentification, changing keys, re-snapping the template in
-    /// a different lighting context). No state-machine transition; the agent stays in
-    /// whatever state it was. Reuses <see cref="AgentIdentifiedMessage"/> so subscribers
-    /// refresh.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown when the agent has never been identified — use <see cref="Identify"/> instead.</exception>
-    public void UpdateCharacter(Character character)
-    {
-        string oldName;
-        lock (_stateLock)
-        {
-            if (_machine.State == AgentState.AwaitingIdentification)
-            {
-                throw new InvalidOperationException($"Agent '{Name}' has never been identified — use Identify() instead.");
-            }
-
-            oldName = Name;
-            Character = character;
         }
 
         LogPromoted(oldName, character.Name);
@@ -271,69 +291,208 @@ public sealed partial class CharacterAgent
         }
     }
 
-    // On-demand identification, triggered by EnterIdentifyMessage. Opens the in-game
-    // stats window (default hotkey C), waits for it to render, captures a screenshot,
-    // runs the class matcher, then closes the stats window. On a successful match,
-    // promotes via Identify(). On miss or any exception, stays in AwaitingIdentification.
+    // Boot flow — vision-driven poll-loops:
+    //   1. Capture once. If in-world template matches → skip everything and jump to identify.
+    //   2. Else poll until ServerSelect template matches → click confirm.
+    //   3. Poll until CharacterSelect template matches → click confirm.
+    //   4. Poll until InWorld template matches.
+    //   5. Identify the character.
     //
-    // Activation/deactivation lifecycle mirrors AgentInputDispatcher.FireKeyAsync but
-    // with a screenshot capture sandwiched between the open and close key-presses.
-    private async Task IdentifyAsync()
+    // Each phase has its own timeout (BootDetectorOptions.PerPhaseTimeoutMs). If a
+    // template is missing or the screen never transitions, the phase logs a timeout
+    // and the whole flow aborts — operator can re-trigger via BroadcastIdentify.
+    //
+    // Single-flight via _operationLock — shared with IdentifyAsync to prevent
+    // concurrent activate/click/key races on the same window.
+    private async Task EnterWorldAsync(CancellationToken cancellationToken)
+    {
+        if (!await _operationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            LogOperationAlreadyRunning(Name, "EnterWorld");
+            return;
+        }
+
+        try
+        {
+            LogBootFlowStarting(Name);
+
+            // Short-circuit: client may already be in-world (app restart, reconnect,
+            // master being actively played). A quick poll with a tiny budget resolves
+            // it without firing any boot clicks.
+            if (await WaitForPhaseAsync(BootPhase.InWorld, TimeSpan.FromMilliseconds(200), cancellationToken).ConfigureAwait(false))
+            {
+                LogBootSkippedAlreadyInWorld(Name);
+                await IdentifyAsync_NoLock(cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            // Phase 1: server-select. Poll until the confirm button is rendered, then click.
+            if (!await WaitForPhaseAsync(BootPhase.ServerSelect, _bootPhaseTimeout, cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+            await ClickBootButtonAsync(_serverSelectButton, "ServerSelect").ConfigureAwait(false);
+
+            // Phase 2: character-select.
+            if (!await WaitForPhaseAsync(BootPhase.CharacterSelect, _bootPhaseTimeout, cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+            await ClickBootButtonAsync(_characterSelectButton, "CharacterSelect").ConfigureAwait(false);
+
+            // Phase 3: in-world.
+            if (!await WaitForPhaseAsync(BootPhase.InWorld, _bootPhaseTimeout, cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            LogBootFlowFinished(Name);
+
+            // Identify the freshly-arrived character.
+            await IdentifyAsync_NoLock(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on Stop() mid-flow; nothing to log.
+        }
+        catch (Exception ex)
+        {
+            LogBootFlowFailed(ex);
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    // Delegates to IGameWindow.WaitForElementAt — vision polling + template match lives
+    // there now. We just supply the template (loaded once at startup by
+    // GameUiElementLoader) and the per-phase region from options. Empty region =
+    // fullscreen search.
+    private async Task<bool> WaitForPhaseAsync(BootPhase phase, TimeSpan budget, CancellationToken cancellationToken)
+    {
+        LogBootWaitingForPhase(Name, phase);
+
+        var (templateName, region) = phase switch
+        {
+            BootPhase.ServerSelect => (_serverSelectTemplate, _serverSelectRegion),
+            BootPhase.CharacterSelect => (_characterSelectTemplate, _characterSelectRegion),
+            BootPhase.InWorld => (_inWorldTemplate, _inWorldRegion),
+            _ => (string.Empty, default(Native.ScreenRect)),
+        };
+
+        var template = _uiTemplates.TryGet(templateName);
+        if (template is null)
+        {
+            LogBootTemplateMissing(Name, phase, templateName);
+            return false;
+        }
+
+        var ready = await _window.WaitForElementAt(template, region, budget, cancellationToken).ConfigureAwait(false);
+        if (ready)
+        {
+            LogBootPhaseReady(Name, phase);
+        }
+        else
+        {
+            LogBootPhaseTimeout(Name, phase, (int)budget.TotalSeconds);
+        }
+        return ready;
+    }
+
+    // Single identify pass — opens stats, captures, matches class, closes stats. Does
+    // NOT advance through boot screens; assumes the agent is already in-world. On a
+    // match, promotes via Identify() (state-machine transition); on miss, stays
+    // AwaitingIdentification. Triggered by EnterIdentifyMessage (BroadcastIdentify hotkey).
+    //
+    // Public entry path that acquires the shared single-flight lock. EnterWorldAsync
+    // calls IdentifyAsync_NoLock directly because it already holds the lock.
+    private async Task IdentifyAsync(CancellationToken cancellationToken)
+    {
+        if (!await _operationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            LogOperationAlreadyRunning(Name, "Identify");
+            return;
+        }
+        try
+        {
+            await IdentifyAsync_NoLock(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    // Inner identify logic — caller MUST hold _operationLock. Used both by IdentifyAsync
+    // (which acquires the lock around it) and by EnterWorldAsync (which already holds
+    // the lock for the entire boot+identify pipeline).
+    private async Task IdentifyAsync_NoLock(CancellationToken cancellationToken)
     {
         if (IsIdentified)
         {
             return;
         }
 
+        LogIdentifyAttemptStarted(Name);
+        byte[]? screenshot = null;
         try
         {
-            LogIdentifyAttemptStarted(Name);
-            await _window.ActivateAsync().ConfigureAwait(false);
-            byte[]? screenshot = null;
+            await _window.ActivateAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                // Open the stats window.
-                await _window.PressKeyAsync(_statsHotkey).ConfigureAwait(false);
-                // Give PW time to render the panel before capturing.
-                await Task.Delay(_statsOpenDelay).ConfigureAwait(false);
-                screenshot = _window.CaptureScreenshot();
-                // Toggle the stats window closed. We always close, even on match failure,
-                // so the user isn't left with stats panels open on every PW client.
-                await _window.PressKeyAsync(_statsHotkey).ConfigureAwait(false);
+                await _window.PressKeyAsync(_statsHotkey, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(_statsOpenDelay, cancellationToken).ConfigureAwait(false);
+                // Passive capture — the outer ActivateAsync already woke the window.
+                // Active CaptureScreenshot would re-send WM_ACTIVATEAPP and then
+                // DEACTIVATE if the window isn't foreground, which leaves the second
+                // stats-toggle press flying into a deactivated window that ignores it —
+                // result: stats stays open after identification.
+                screenshot = _window.CaptureScreenshotPassive();
+                await _window.PressKeyAsync(_statsHotkey, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
-                await _window.DeactivateAsync().ConfigureAwait(false);
+                await _window.DeactivateAsync(CancellationToken.None).ConfigureAwait(false);
             }
-
-            if (screenshot is null)
-            {
-                return;
-            }
-
-            Character? identified;
-            try
-            {
-                identified = _provider.Identify(screenshot);
-            }
-            catch (Exception ex)
-            {
-                LogIdentifyFailed(ex);
-                return;
-            }
-
-            if (identified is null)
-            {
-                LogIdentifyNoMatch(Name);
-                return;
-            }
-
-            Identify(identified);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
             LogIdentifyFailed(ex);
+            return;
         }
+
+        Character? identified;
+        try
+        {
+            identified = _provider.Identify(screenshot);
+        }
+        catch (Exception ex)
+        {
+            LogIdentifyFailed(ex);
+            return;
+        }
+
+        if (identified is null)
+        {
+            LogIdentifyNoMatch(Name);
+            return;
+        }
+
+        Identify(identified);
+    }
+
+    // Wraps activation around a single click at the given client point. Failures are
+    // logged (via AgentInputDispatcher) and swallowed — a click that errors out doesn't
+    // abort the boot flow, since the boot sequence has best-effort semantics anyway.
+    private Task ClickBootButtonAsync(Native.ScreenPoint point, string label)
+    {
+        LogBootClick(Name, label, point);
+        return _input.FireClickAsync(_window, point, doubleClick: false, Name);
     }
 
     // State-specific loop for InCombat: runs the character's macro within a 10-second
@@ -360,13 +519,13 @@ public sealed partial class CharacterAgent
 
     private async Task CombatLoopAsync(CancellationToken cancellationToken)
     {
-        LogCombatLoopStarted(Name, Character.CombatMacroName);
+        LogCombatLoopStarted(Name, _defaultCombatMacroName);
         try
         {
-            var macro = _macros.TryGet(Character.CombatMacroName);
+            var macro = _macros.TryGet(_defaultCombatMacroName);
             if (macro is null)
             {
-                LogCombatMacroMissing(Name, Character.CombatMacroName);
+                LogCombatMacroMissing(Name, _defaultCombatMacroName);
             }
             else
             {
@@ -430,7 +589,12 @@ public sealed partial class CharacterAgent
             if (message is EnterIdentifyMessage)
             {
                 LogInboxReceived(message.GetType().Name, Name);
-                _ = IdentifyAsync();
+                // Routes through identification-only (no boot clicks). Assumes the agent
+                // is already in-world (boot ran on Start). The single-flight semaphore
+                // means a hotkey press during an in-progress boot is a no-op — operator
+                // can re-press once boot finishes.
+                var ct = _runCts?.Token ?? CancellationToken.None;
+                _ = IdentifyAsync(ct);
                 continue;
             }
 
@@ -443,13 +607,22 @@ public sealed partial class CharacterAgent
                 continue;
             }
 
+            // Ignored class (warehouse / utility character) — drop the broadcast.
+            // Boot + identify still happen so the agent makes it in-world, but it
+            // doesn't act on party-wide commands.
+            if (IsIgnored)
+            {
+                LogBroadcastIgnored(message.GetType().Name, Name, Character.Class);
+                continue;
+            }
+
             LogInboxReceived(message.GetType().Name, Name);
             switch (message)
             {
                 case UseImmunityMessage:
-                    // Per-character intent — look up our own ImmunityKey and press it.
-                    // Empty key string skips silently; unknown VirtualKey name warn-logs.
-                    TryFireCharacterAction(Character.ImmunityKey, "ImmunityKey");
+                    // Same default ImmunityKey on every agent — all clients are
+                    // configured identically in-game.
+                    TryFireKey(_defaultImmunityKey, "ImmunityKey");
                     break;
 
                 case EnterCombatMessage:
@@ -460,68 +633,55 @@ public sealed partial class CharacterAgent
                     break;
 
                 case TakeAssistMessage:
-                    // Master sets the target — they don't need to assist anyone. For
-                    // everyone else: Shift+1 selects party member 1 (master), then the
-                    // AssistKey-bound /assist macro retargets to master's current target.
-                    if (Character.IsMaster)
+                    // Master is the one being assisted on — they don't /assist anyone.
+                    // For everyone else: click party-slot-1 (master portrait) + fire
+                    // AssistKey → /assist macro retargets to master's current target.
+                    if (IsMaster)
                     {
                         LogAssistSkippedMaster(Name);
                     }
-                    else if (TryParseAssistKey(out var assistKey))
+                    else if (TryParseKey(_defaultAssistKey, "AssistKey", out var assistKey))
                     {
                         _ = _input.FireAssistAsync(_window, assistKey, Name);
                     }
                     break;
 
                 case ClickAtMessage click:
-                    // Coords are in the foreground window's client space; we reuse them
+                    // Point is in the foreground window's client space; we reuse it
                     // verbatim on our own window. Works when all PW clients are the
                     // same size — typical multi-client setup.
-                    _ = _input.FireClickAsync(_window, click.X, click.Y, click.DoubleClick, Name);
+                    _ = _input.FireClickAsync(_window, click.Point, click.DoubleClick, Name);
                     break;
             }
         }
     }
 
-    // Resolves a Character key-string ("F1", "F8", ...) to a VirtualKey and delegates
-    // the actual send to AgentInputDispatcher. Empty string → no binding for this
-    // character (typically placeholder / unidentified) → skip silently. Unrecognised
-    // string → warn-log and skip.
-    private void TryFireCharacterAction(string keyString, string actionName)
+    // Resolves a key-string ("F1", "F8", ...) to a VirtualKey and delegates the actual
+    // send to AgentInputDispatcher. Empty string → no binding configured → skip silently.
+    // Unrecognised string → warn-log and skip.
+    private void TryFireKey(string keyString, string actionName)
+    {
+        if (!TryParseKey(keyString, actionName, out var key))
+        {
+            return;
+        }
+        _ = _input.FireKeyAsync(_window, key, actionName, Name);
+    }
+
+    private bool TryParseKey(string keyString, string actionName, out Native.VirtualKey key)
     {
         if (string.IsNullOrEmpty(keyString))
         {
             LogActionKeyEmpty(actionName, Name);
-            return;
-        }
-
-        if (!Enum.TryParse<Native.VirtualKey>(keyString, ignoreCase: true, out var key))
-        {
-            LogUnknownActionKey(actionName, keyString);
-            return;
-        }
-
-        _ = _input.FireKeyAsync(_window, key, actionName, Name);
-    }
-
-    // Parse Character.AssistKey for the assist sequence. Same skip/warn pattern as
-    // TryFireCharacterAction but returns the parsed key for the caller to feed into
-    // the dispatcher's FireAssistAsync.
-    private bool TryParseAssistKey(out Native.VirtualKey key)
-    {
-        if (string.IsNullOrEmpty(Character.AssistKey))
-        {
-            LogAssistKeyMissing();
             key = default;
             return false;
         }
 
-        if (!Enum.TryParse(Character.AssistKey, ignoreCase: true, out key))
+        if (!Enum.TryParse(keyString, ignoreCase: true, out key))
         {
-            LogUnknownActionKey("AssistKey", Character.AssistKey);
+            LogUnknownActionKey(actionName, keyString);
             return false;
         }
-
         return true;
     }
 

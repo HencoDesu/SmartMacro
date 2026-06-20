@@ -9,6 +9,7 @@ using PerfectWorldAgent.Identification;
 using PerfectWorldAgent.Input;
 using PerfectWorldAgent.Presentation;
 using PerfectWorldAgent.ProcessMonitoring;
+using PerfectWorldAgent.Vision;
 
 namespace PerfectWorldAgent.Agents;
 
@@ -25,6 +26,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
     private readonly ClassIconService _classIcons;
     private readonly AgentInputDispatcher _input;
     private readonly MacroLibrary _macros;
+    private readonly GameUiElementLoader _uiTemplates;
     private readonly IOptions<AgentOptions> _options;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CharacterAgentFactory> _logger;
@@ -35,6 +37,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
         ClassIconService classIcons,
         AgentInputDispatcher input,
         MacroLibrary macros,
+        GameUiElementLoader uiTemplates,
         IOptions<AgentOptions> options,
         ILoggerFactory loggerFactory)
     {
@@ -43,6 +46,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
         _classIcons = classIcons;
         _input = input;
         _macros = macros;
+        _uiTemplates = uiTemplates;
         _options = options;
         _loggerFactory = loggerFactory;
         _logger = _loggerFactory.CreateLogger<CharacterAgentFactory>();
@@ -75,6 +79,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
             _classIcons,
             _input,
             _macros,
+            _uiTemplates,
             _options,
             _loggerFactory.CreateLogger<CharacterAgent>());
         return Task.FromResult(agent);

@@ -158,7 +158,7 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
         {
             return;
         }
-        _ = BroadcastAsync(new ClickAtMessage(resolved.Value.X, resolved.Value.Y, doubleClick));
+        _ = BroadcastAsync(new ClickAtMessage(resolved.Value, doubleClick));
     }
 
     public Task StartAsync(CancellationToken cancellationToken)

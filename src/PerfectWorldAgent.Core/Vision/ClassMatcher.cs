@@ -26,10 +26,11 @@ public sealed partial class ClassMatcher : IClassMatcher
     public ClassMatcher(IOptions<ClassMatcherOptions> options, ILogger<ClassMatcher> logger)
     {
         var v = options.Value;
-        _region = new Rect(v.RegionX, v.RegionY, v.RegionWidth, v.RegionHeight);
+        _region = new Rect(v.Region.X, v.Region.Y, v.Region.Width, v.Region.Height);
         _luminanceThreshold = v.LuminanceThreshold;
         _matchThreshold = v.MatchThreshold;
         _logger = logger;
+        LogConfigured(_region.X, _region.Y, _region.Width, _region.Height, _luminanceThreshold, _matchThreshold);
     }
 
     public ClassMatch? Match(byte[] screenshot, IReadOnlyDictionary<CharacterClass, byte[]> templates)
@@ -130,6 +131,9 @@ public sealed partial class ClassMatcher : IClassMatcher
         var h = Math.Min(rect.Height, imageSize.Height - y);
         return new Rect(x, y, w, h);
     }
+
+    [LoggerMessage(LogLevel.Information, "ClassMatcher configured: region=({X},{Y} {W}x{H}) luminance={Lum:F0} matchThreshold={Match:F2}")]
+    partial void LogConfigured(int x, int y, int w, int h, double lum, double match);
 
     [LoggerMessage(LogLevel.Debug, "Class template '{Cls}' score: {Score:F3}")]
     partial void LogScore(CharacterClass cls, double score);

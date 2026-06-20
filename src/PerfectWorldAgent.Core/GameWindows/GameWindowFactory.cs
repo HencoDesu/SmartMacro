@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PerfectWorldAgent.Native;
 using PerfectWorldAgent.Native.Keyboard;
@@ -26,12 +27,25 @@ namespace PerfectWorldAgent.GameWindows;
 public sealed class GameWindowFactory : IGameWindowFactory
 {
     private readonly IOptions<ActivatingInputOptions> _activatingOptions;
+    private readonly IOptions<WindowVisionOptions> _visionOptions;
+    private readonly ILoggerFactory _loggerFactory;
 
-    public GameWindowFactory(IOptions<ActivatingInputOptions> activatingOptions)
+    public GameWindowFactory(
+        IOptions<ActivatingInputOptions> activatingOptions,
+        IOptions<WindowVisionOptions> visionOptions,
+        ILoggerFactory loggerFactory)
     {
         _activatingOptions = activatingOptions;
+        _visionOptions = visionOptions;
+        _loggerFactory = loggerFactory;
     }
 
     public IGameWindow Create(ProcessInfo info) =>
-        new GameWindow(info, new SendMessageKeyboardInput(), new PostMessageMouseInput(), _activatingOptions);
+        new GameWindow(
+            info,
+            new SendMessageKeyboardInput(),
+            new PostMessageMouseInput(),
+            _activatingOptions,
+            _visionOptions,
+            _loggerFactory.CreateLogger<GameWindow>());
 }

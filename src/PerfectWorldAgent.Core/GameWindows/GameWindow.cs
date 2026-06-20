@@ -1,13 +1,16 @@
 using System.Runtime.Versioning;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenCvSharp;
 using PerfectWorldAgent.Native;
 using PerfectWorldAgent.Native.Window;
 using PerfectWorldAgent.ProcessMonitoring;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace PerfectWorldAgent.GameWindows;
 
 [SupportedOSPlatform("windows")]
-public sealed class GameWindow : IGameWindow
+public sealed partial class GameWindow : IGameWindow
 {
     private readonly IKeyboardInput _keyboard;
     private readonly IMouseInput _mouse;
@@ -15,12 +18,18 @@ public sealed class GameWindow : IGameWindow
     private readonly uint _activationLParam;
     private readonly int _settleDelayMs;
     private readonly int _deactivationDelayMs;
+    private readonly double _matchThreshold;
+    private readonly double _luminanceThreshold;
+    private readonly TimeSpan _pollInterval;
+    private readonly ILogger<GameWindow> _logger;
 
     public GameWindow(
         ProcessInfo info,
         IKeyboardInput keyboard,
         IMouseInput mouse,
-        IOptions<ActivatingInputOptions> activatingOptions)
+        IOptions<ActivatingInputOptions> activatingOptions,
+        IOptions<WindowVisionOptions> visionOptions,
+        ILogger<GameWindow> logger)
     {
         if (info.MainWindowHandle == IntPtr.Zero)
         {
@@ -33,6 +42,10 @@ public sealed class GameWindow : IGameWindow
         _activationLParam = activatingOptions.Value.ActivationLParam;
         _settleDelayMs = activatingOptions.Value.SettleDelayMs;
         _deactivationDelayMs = activatingOptions.Value.DeactivationDelayMs;
+        _matchThreshold = visionOptions.Value.MatchThreshold;
+        _luminanceThreshold = visionOptions.Value.LuminanceThreshold;
+        _pollInterval = TimeSpan.FromMilliseconds(visionOptions.Value.PollIntervalMs);
+        _logger = logger;
     }
 
     public IntPtr Handle => _nativeWindow.Handle;
@@ -85,11 +98,11 @@ public sealed class GameWindow : IGameWindow
     public Task PressChordAsync(VirtualKey modifier, VirtualKey key, CancellationToken cancellationToken = default) =>
         _keyboard.SendChordAsync(Handle, modifier, key, cancellationToken);
 
-    public Task ClickAsync(int x, int y, CancellationToken cancellationToken = default) =>
-        _mouse.ClickAsync(Handle, x, y, cancellationToken);
+    public Task ClickAsync(ScreenPoint point, CancellationToken cancellationToken = default) =>
+        _mouse.ClickAsync(Handle, point.X, point.Y, cancellationToken);
 
-    public Task DoubleClickAsync(int x, int y, CancellationToken cancellationToken = default) =>
-        _mouse.DoubleClickAsync(Handle, x, y, cancellationToken);
+    public Task DoubleClickAsync(ScreenPoint point, CancellationToken cancellationToken = default) =>
+        _mouse.DoubleClickAsync(Handle, point.X, point.Y, cancellationToken);
 
     // Self-contained — manages its own activation/deactivation because it's a sync API
     // called from one-shot UI paths (Label dialog, Dump captures) that don't need to
@@ -118,4 +131,121 @@ public sealed class GameWindow : IGameWindow
     public byte[] CaptureScreenshotPassive() => _nativeWindow.CapturePng();
 
     public bool SetIconFromFile(string imagePath) => _nativeWindow.SetIconFromFile(imagePath);
+
+    // Poll-based template matcher. Loop captures passively, crops to position (or
+    // fullscreen if position is empty), binarises both source and template at
+    // LuminanceThreshold, runs MatchTemplate (CCoeffNormed), returns true on the first
+    // tick whose max score crosses MatchThreshold. Returns false on timeout.
+    public async Task<bool> WaitForElementAt(byte[] elementTemplate, ScreenRect position, TimeSpan waitDuration, CancellationToken cancellationToken = default)
+    {
+        var deadline = Environment.TickCount64 + (long)waitDuration.TotalMilliseconds;
+        while (Environment.TickCount64 < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            byte[] capture;
+            try
+            {
+                // ACTIVE capture per tick — passive PrintWindow on a frozen background
+                // PW client returns stale / black frames, breaking boot polling when
+                // the user launches multiple clients back-to-back and each one loses
+                // foreground to the next. WM_ACTIVATEAPP unfreezes PW briefly so we
+                // get a fresh frame; we re-freeze afterwards (unless foreground) so
+                // the user's actual focus isn't disturbed. ~25-50ms overhead per tick.
+                capture = await CaptureFreshAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                LogCaptureFailed(ex);
+                await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            if (TryMatchOnce(capture, elementTemplate, position, out var score))
+            {
+                LogMatchHit(position, score, _matchThreshold);
+                return true;
+            }
+            LogMatchMiss(position, score, _matchThreshold);
+
+            await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+        }
+        return false;
+    }
+
+    // Async sibling of CaptureScreenshot — wakes the window via WM_ACTIVATEAPP, waits
+    // the settle delay, captures, then re-freezes (unless this window IS foreground,
+    // in which case it stays active naturally). Used by WaitForElementAt's poll-loop.
+    private async Task<byte[]> CaptureFreshAsync(CancellationToken cancellationToken)
+    {
+        _nativeWindow.SendActivationSignal(_activationLParam);
+        if (_settleDelayMs > 0)
+        {
+            await Task.Delay(_settleDelayMs, cancellationToken).ConfigureAwait(false);
+        }
+        var png = _nativeWindow.CapturePng();
+        if (Win32NativeWindowSystem.GetForeground().Handle != Handle)
+        {
+            _nativeWindow.SendDeactivationSignal();
+        }
+        return png;
+    }
+
+    private bool TryMatchOnce(byte[] sourcePng, byte[] templatePng, ScreenRect position, out double score)
+    {
+        score = 0.0;
+        using var sourceFull = Cv2.ImDecode(sourcePng, ImreadModes.Color);
+        if (sourceFull.Empty()) return false;
+
+        // Empty region = search the full frame.
+        var rect = position.Width <= 0 || position.Height <= 0
+            ? new Rect(0, 0, sourceFull.Width, sourceFull.Height)
+            : ClampToImage(new Rect(position.X, position.Y, position.Width, position.Height), sourceFull.Size());
+
+        using var crop = new Mat(sourceFull, rect);
+        using var sourceBin = Binarize(crop);
+
+        using var templateBgr = Cv2.ImDecode(templatePng, ImreadModes.Color);
+        if (templateBgr.Empty()) return false;
+        using var templateBin = Binarize(templateBgr);
+
+        if (templateBin.Width > sourceBin.Width || templateBin.Height > sourceBin.Height)
+        {
+            return false;
+        }
+
+        using var result = new Mat();
+        Cv2.MatchTemplate(sourceBin, templateBin, result, TemplateMatchModes.CCoeffNormed);
+        Cv2.MinMaxLoc(result, out _, out var maxVal, out _, out _);
+        score = maxVal;
+        return score >= _matchThreshold;
+    }
+
+    private Mat Binarize(Mat bgr)
+    {
+        var gray = new Mat();
+        Cv2.CvtColor(bgr, gray, ColorConversionCodes.BGR2GRAY);
+        var binary = new Mat();
+        Cv2.Threshold(gray, binary, _luminanceThreshold, 255, ThresholdTypes.Binary);
+        gray.Dispose();
+        return binary;
+    }
+
+    private static Rect ClampToImage(Rect rect, Size imageSize)
+    {
+        var x = Math.Max(0, Math.Min(rect.X, imageSize.Width - 1));
+        var y = Math.Max(0, Math.Min(rect.Y, imageSize.Height - 1));
+        var w = Math.Min(rect.Width, imageSize.Width - x);
+        var h = Math.Min(rect.Height, imageSize.Height - y);
+        return new Rect(x, y, w, h);
+    }
+
+    [LoggerMessage(LogLevel.Debug, "WaitForElementAt: hit at {Region} score={Score:F3} >= {Threshold:F3}")]
+    partial void LogMatchHit(ScreenRect region, double score, double threshold);
+
+    [LoggerMessage(LogLevel.Debug, "WaitForElementAt: miss at {Region} score={Score:F3} < {Threshold:F3}")]
+    partial void LogMatchMiss(ScreenRect region, double score, double threshold);
+
+    [LoggerMessage(LogLevel.Debug, "WaitForElementAt: capture failed (transient — minimised window, GPU stall)")]
+    partial void LogCaptureFailed(Exception ex);
 }
