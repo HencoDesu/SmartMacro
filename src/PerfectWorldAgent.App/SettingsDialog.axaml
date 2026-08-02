@@ -5,9 +5,9 @@
         xmlns:controls="using:PerfectWorldAgent.App.Controls"
         x:Class="PerfectWorldAgent.App.SettingsDialog"
         x:DataType="vm:SettingsDialogViewModel"
-        Width="520" Height="540"
+        Width="640" Height="720"
         WindowStartupLocation="CenterOwner"
-        CanResize="False"
+        CanResize="True"
         Title="Settings">
     <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="16">
 
@@ -19,33 +19,81 @@
                        Text="Click a binding, then press the desired key combo (with modifiers). Escape cancels, Delete/Backspace clears. Saves to hotkeys.json next to the executable and re-registers immediately." />
         </StackPanel>
 
-        <Border Grid.Row="1"
-                Margin="0,12"
-                BorderThickness="1"
-                BorderBrush="#333"
-                CornerRadius="3">
-            <ScrollViewer>
-                <ItemsControl ItemsSource="{Binding Rows}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:HotkeyBindingRow">
-                            <Grid ColumnDefinitions="*,200" Margin="8,6">
-                                <TextBlock Grid.Column="0"
-                                           VerticalAlignment="Center"
-                                           FontSize="12"
-                                           Text="{Binding TriggerLabel}" />
-                                <controls:KeyBindingPicker Grid.Column="1"
-                                                           CaptureModifiers="True"
-                                                           Modifiers="{Binding Modifiers, Mode=TwoWay}"
-                                                           Key="{Binding Key, Mode=TwoWay}"
-                                                           MouseButton="{Binding MouseButton, Mode=TwoWay}"
-                                                           HorizontalAlignment="Stretch"
-                                                           HorizontalContentAlignment="Center" />
+        <ScrollViewer Grid.Row="1" Margin="0,12">
+            <StackPanel Spacing="16">
+
+                <!-- Fixed triggers section -->
+                <Border BorderThickness="1" BorderBrush="#333" CornerRadius="3" Padding="0">
+                    <StackPanel>
+                        <Border Background="#202020" Padding="10,6">
+                            <TextBlock FontSize="12" FontWeight="Bold" Text="Built-in actions" />
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:HotkeyBindingRow">
+                                    <Grid ColumnDefinitions="*,220" Margin="10,6">
+                                        <TextBlock Grid.Column="0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="12"
+                                                   Text="{Binding TriggerLabel}" />
+                                        <controls:KeyBindingPicker Grid.Column="1"
+                                                                   CaptureModifiers="True"
+                                                                   Modifiers="{Binding Modifiers, Mode=TwoWay}"
+                                                                   Key="{Binding Key, Mode=TwoWay}"
+                                                                   MouseButton="{Binding MouseButton, Mode=TwoWay}"
+                                                                   HorizontalAlignment="Stretch"
+                                                                   HorizontalContentAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- Macro hotkeys section -->
+                <Border BorderThickness="1" BorderBrush="#333" CornerRadius="3" Padding="0">
+                    <StackPanel>
+                        <Border Background="#202020" Padding="10,6">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" FontSize="12" FontWeight="Bold" Text="Macro hotkeys" VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Content="+ Add macro hotkey"
+                                        FontSize="11"
+                                        Click="OnAddMacroRowClicked" />
                             </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
-        </Border>
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding MacroRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MacroHotkeyRow">
+                                    <Grid ColumnDefinitions="*,220,Auto" Margin="10,6">
+                                        <AutoCompleteBox Grid.Column="0"
+                                                         ItemsSource="{Binding AvailableMacroNames}"
+                                                         Text="{Binding MacroName, Mode=TwoWay}"
+                                                         FilterMode="Contains"
+                                                         MinimumPrefixLength="0"
+                                                         HorizontalAlignment="Stretch" />
+                                        <controls:KeyBindingPicker Grid.Column="1"
+                                                                   CaptureModifiers="True"
+                                                                   Modifiers="{Binding Modifiers, Mode=TwoWay}"
+                                                                   Key="{Binding Key, Mode=TwoWay}"
+                                                                   MouseButton="{Binding MouseButton, Mode=TwoWay}"
+                                                                   Margin="8,0,0,0"
+                                                                   HorizontalAlignment="Stretch"
+                                                                   HorizontalContentAlignment="Center" />
+                                        <Button Grid.Column="2"
+                                                Content="×"
+                                                FontSize="11"
+                                                Padding="10,4"
+                                                Margin="8,0,0,0"
+                                                Click="OnRemoveMacroRowClicked" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
 
         <TextBlock Grid.Row="2"
                    Foreground="#E06060"

@@ -58,10 +58,6 @@ public sealed class AgentOptions
     public string DefaultImmunityKey { get; init; } = "F1";
     public string DefaultAssistKey { get; init; } = "F2";
 
-    // Default combat-macro name (lookup against MacroLibrary). Empty = no macro
-    // assigned; BroadcastCombat puts every agent in InCombat for 10s with no keys.
-    public string DefaultCombatMacroName { get; init; } = string.Empty;
-
     // The class designated as the master — the one being /assist'd by everyone else.
     // Master skips TakeAssistMessage (no point assisting yourself); all other agents
     // click party-slot-1 + fire AssistKey to target whatever master targets.

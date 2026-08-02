@@ -1,21 +1,14 @@
 namespace PerfectWorldAgent.Agents;
 
-// Per-agent runtime state. Each state owns its own concurrent work loop (started on
-// OnEntry, cancelled on OnExit) — adding new states means adding new OnEntry/OnExit
-// hooks and a loop method, no central switch.
+// Per-agent runtime state. Minimal lifecycle now — macros run as fire-and-forget
+// inside Idle, not as their own state.
 public enum AgentState
 {
-    // Just created; placeholder Character; can't act on broadcasts. The identification
-    // loop runs while in this state, polling screenshots and trying to match against
-    // the roster. Exits via Identify() when a match is found (or the user labels via UI).
+    // Just created; placeholder Character; can't act on broadcasts. Exits via
+    // Identify() when ClassMatcher matches the stats-window class text.
     AwaitingIdentification,
 
-    // Identified and waiting. Broadcasts (immunity, assist, click) are handled by the
-    // main run loop independently of state.
+    // Identified and waiting. All broadcasts (immunity, assist, click, run-macro)
+    // are handled here without state transitions.
     Idle,
-
-    // Running the character's combat macro. Time-bounded to ~10 seconds — after the
-    // window elapses (regardless of where in the macro we are), the agent transitions
-    // back to Idle. Re-pressing the Combat hotkey while already in InCombat is ignored.
-    InCombat,
 }

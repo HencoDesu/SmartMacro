@@ -8,24 +8,22 @@ using PerfectWorldAgent.Orchestration;
 
 namespace PerfectWorldAgent.Hotkeys;
 
-// JSON-backed store for hotkey bindings, mirroring the JsonCharacterRoster pattern.
-//
-// Two reasons we need this on top of (or instead of) IOptions<HotkeyOptions>:
-//   1. We want the bindings editable from the Settings dialog at runtime, without
-//      restarting the app.
-//   2. IOptions snapshots the values at composition time and the orchestrator/listener
-//      have no signal to re-read them. Even IOptionsMonitor only reflects appsettings.json
-//      file changes — it has no mechanism for the UI to push new values.
+// JSON-backed store for hotkey bindings. Two collections:
+//   * Bindings — fixed OrchestratorTrigger → key/mouse (BroadcastImmunity, etc.)
+//   * MacroBindings — user-defined macro name → key/mouse (RunMacro by name)
 //
 // File layout:
 //   <BaseDirectory>/hotkeys.json
+//   {
+//     "Bindings":      [ { "Trigger": "...", "Modifiers": "...", "Key": "...", "MouseButton": "..." } ],
+//     "MacroBindings": [ { "MacroName": "...", "Modifiers": "...", "Key": "...", "MouseButton": "..." } ]
+//   }
 //
-// If the file is missing, we fall back to the HotkeyOptions defaults (so a fresh install
-// still works). On every successful ReplaceAsync we persist and raise BindingsChanged so
+// On missing file → fall back to HotkeyOptions defaults for triggers; macros start
+// empty. On every ReplaceAsync we persist BOTH lists and raise BindingsChanged so
 // HotkeyListener can re-register against Win32.
 //
-// Concurrency: ReplaceAsync serialised by SemaphoreSlim — only one write in flight.
-// Reads grab the immutable snapshot lock-free.
+// Concurrency: ReplaceAsync serialised by SemaphoreSlim. Reads grab immutable snapshots.
 public sealed partial class HotkeyConfigStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -42,12 +40,13 @@ public sealed partial class HotkeyConfigStore
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     private ImmutableList<HotkeyBinding> _bindings;
+    private ImmutableList<MacroHotkeyBinding> _macroBindings;
 
     /// <summary>
     /// Raised after a successful <see cref="ReplaceAsync"/>. Subscribers (HotkeyListener)
-    /// re-register their Win32 hotkeys against the new list.
+    /// re-register their Win32 hotkeys against the new lists.
     /// </summary>
-    public event Action<IReadOnlyList<HotkeyBinding>>? BindingsChanged;
+    public event Action<IReadOnlyList<HotkeyBinding>, IReadOnlyList<MacroHotkeyBinding>>? BindingsChanged;
 
     public HotkeyConfigStore(IOptions<HotkeyOptions> defaults, ILogger<HotkeyConfigStore> logger)
         : this(AppContext.BaseDirectory, defaults.Value.Bindings, logger)
@@ -61,32 +60,33 @@ public sealed partial class HotkeyConfigStore
     {
         _logger = logger;
         _path = Path.Combine(baseDirectory, "hotkeys.json");
-        _bindings = LoadFromDisk(defaults);
+        (_bindings, _macroBindings) = LoadFromDisk(defaults);
     }
 
-    /// <summary>
-    /// Current immutable snapshot of bindings. Replaced atomically by <see cref="ReplaceAsync"/>;
-    /// reads are lock-free.
-    /// </summary>
     public IReadOnlyList<HotkeyBinding> Bindings => _bindings;
+    public IReadOnlyList<MacroHotkeyBinding> MacroBindings => _macroBindings;
 
     /// <summary>
-    /// Persists a new full set of bindings to disk and atomically swaps the in-memory
-    /// snapshot, then raises <see cref="BindingsChanged"/>. Writes are serialised by an
-    /// internal semaphore so concurrent saves don't race the file.
+    /// Persists both binding lists, atomically swaps in-memory snapshots, raises event.
     /// </summary>
-    public async Task ReplaceAsync(IReadOnlyList<HotkeyBinding> bindings, CancellationToken cancellationToken = default)
+    public async Task ReplaceAsync(
+        IReadOnlyList<HotkeyBinding> bindings,
+        IReadOnlyList<MacroHotkeyBinding> macroBindings,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(bindings);
+        ArgumentNullException.ThrowIfNull(macroBindings);
 
-        var snapshot = bindings.ToImmutableList();
+        var triggerSnapshot = bindings.ToImmutableList();
+        var macroSnapshot = macroBindings.ToImmutableList();
 
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await PersistAsync(snapshot, cancellationToken).ConfigureAwait(false);
-            _bindings = snapshot;
-            LogBindingsReplaced(snapshot.Count, _path);
+            await PersistAsync(triggerSnapshot, macroSnapshot, cancellationToken).ConfigureAwait(false);
+            _bindings = triggerSnapshot;
+            _macroBindings = macroSnapshot;
+            LogBindingsReplaced(triggerSnapshot.Count, macroSnapshot.Count, _path);
         }
         finally
         {
@@ -95,35 +95,43 @@ public sealed partial class HotkeyConfigStore
 
         // Raised outside the lock so subscribers (which call back into the Win32 monitor
         // and may take a while) don't keep the file lock blocked.
-        BindingsChanged?.Invoke(snapshot);
+        BindingsChanged?.Invoke(triggerSnapshot, macroSnapshot);
     }
 
-    private async Task PersistAsync(ImmutableList<HotkeyBinding> bindings, CancellationToken cancellationToken)
+    private async Task PersistAsync(
+        ImmutableList<HotkeyBinding> bindings,
+        ImmutableList<MacroHotkeyBinding> macroBindings,
+        CancellationToken cancellationToken)
     {
-        var dto = new HotkeyFile { Bindings = bindings.ToList() };
+        var dto = new HotkeyFile
+        {
+            Bindings = bindings.ToList(),
+            MacroBindings = macroBindings.ToList(),
+        };
         await using var stream = File.Create(_path);
         await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, cancellationToken).ConfigureAwait(false);
     }
 
-    private ImmutableList<HotkeyBinding> LoadFromDisk(IReadOnlyList<HotkeyBinding> defaults)
+    private (ImmutableList<HotkeyBinding> Triggers, ImmutableList<MacroHotkeyBinding> Macros) LoadFromDisk(
+        IReadOnlyList<HotkeyBinding> defaults)
     {
         if (!File.Exists(_path))
         {
             LogFileMissing(_path, defaults.Count);
-            return defaults.ToImmutableList();
+            return (defaults.ToImmutableList(), ImmutableList<MacroHotkeyBinding>.Empty);
         }
 
         try
         {
             // Two-stage parse: read with string-typed Trigger so we can survive entries
-            // that reference orchestrator triggers that no longer exist (e.g. GoFollow
-            // after v1 stripped the mode state machine). Skip-and-log instead of
-            // failing the whole file.
+            // that reference orchestrator triggers that no longer exist. Skip-and-log
+            // instead of failing the whole file.
             using var stream = File.OpenRead(_path);
             var raw = JsonSerializer.Deserialize<RawHotkeyFile>(stream, JsonOptions);
             var rawBindings = raw?.Bindings ?? new List<RawHotkeyBinding>();
+            var rawMacros = raw?.MacroBindings ?? new List<RawMacroHotkeyBinding>();
 
-            var bindings = new List<HotkeyBinding>(rawBindings.Count);
+            var triggers = new List<HotkeyBinding>(rawBindings.Count);
             var skipped = 0;
             foreach (var rb in rawBindings)
             {
@@ -133,35 +141,49 @@ public sealed partial class HotkeyConfigStore
                     skipped++;
                     continue;
                 }
-                bindings.Add(new HotkeyBinding(trigger, rb.Modifiers, rb.Key, rb.MouseButton));
+                triggers.Add(new HotkeyBinding(trigger, rb.Modifiers, rb.Key, rb.MouseButton));
             }
 
-            LogLoaded(bindings.Count, _path);
+            var macros = new List<MacroHotkeyBinding>(rawMacros.Count);
+            foreach (var rm in rawMacros)
+            {
+                if (string.IsNullOrEmpty(rm.MacroName))
+                {
+                    LogSkippedEmptyMacroName();
+                    skipped++;
+                    continue;
+                }
+                macros.Add(new MacroHotkeyBinding(rm.MacroName, rm.Modifiers, rm.Key, rm.MouseButton));
+            }
+
+            LogLoaded(triggers.Count, macros.Count, _path);
             if (skipped > 0)
             {
                 LogSkippedSummary(skipped, _path);
             }
-            return bindings.ToImmutableList();
+            return (triggers.ToImmutableList(), macros.ToImmutableList());
         }
         catch (Exception ex)
         {
             LogLoadFailed(ex, _path, defaults.Count);
-            return defaults.ToImmutableList();
+            return (defaults.ToImmutableList(), ImmutableList<MacroHotkeyBinding>.Empty);
         }
     }
 
-    // Persisted shape — writes use the strongly-typed HotkeyBinding so enums serialise
+    // Persisted shape — writes use the strongly-typed records so enums serialise
     // by name via JsonStringEnumConverter.
     private sealed class HotkeyFile
     {
         public List<HotkeyBinding> Bindings { get; set; } = new();
+        public List<MacroHotkeyBinding> MacroBindings { get; set; } = new();
     }
 
     // Read shape — string-typed Trigger so unknown enum values don't fail the whole
-    // deserialization. Mirrors HotkeyBinding for on-disk compatibility.
+    // deserialization.
     private sealed class RawHotkeyFile
     {
         public List<RawHotkeyBinding> Bindings { get; set; } = new();
+        public List<RawMacroHotkeyBinding> MacroBindings { get; set; } = new();
     }
 
     private sealed class RawHotkeyBinding
@@ -172,21 +194,32 @@ public sealed partial class HotkeyConfigStore
         public MouseButton MouseButton { get; set; } = MouseButton.None;
     }
 
-    [LoggerMessage(LogLevel.Information, "Hotkey bindings loaded: {Count} from {Path}")]
-    partial void LogLoaded(int count, string path);
+    private sealed class RawMacroHotkeyBinding
+    {
+        public string? MacroName { get; set; }
+        public HotkeyModifiers Modifiers { get; set; }
+        public VirtualKey Key { get; set; }
+        public MouseButton MouseButton { get; set; } = MouseButton.None;
+    }
 
-    [LoggerMessage(LogLevel.Information, "Hotkey config file not found at {Path}; using {Count} default binding(s)")]
+    [LoggerMessage(LogLevel.Information, "Hotkey bindings loaded: {TriggerCount} trigger(s) + {MacroCount} macro(s) from {Path}")]
+    partial void LogLoaded(int triggerCount, int macroCount, string path);
+
+    [LoggerMessage(LogLevel.Information, "Hotkey config file not found at {Path}; using {Count} default trigger binding(s), 0 macro binding(s)")]
     partial void LogFileMissing(string path, int count);
 
-    [LoggerMessage(LogLevel.Error, "Failed to load hotkey config from {Path}; falling back to {Count} default binding(s)")]
+    [LoggerMessage(LogLevel.Error, "Failed to load hotkey config from {Path}; falling back to {Count} default trigger binding(s), 0 macro binding(s)")]
     partial void LogLoadFailed(Exception ex, string path, int count);
 
-    [LoggerMessage(LogLevel.Information, "Hotkey bindings replaced: {Count} entries persisted to {Path}")]
-    partial void LogBindingsReplaced(int count, string path);
+    [LoggerMessage(LogLevel.Information, "Hotkey bindings replaced: {TriggerCount} trigger(s) + {MacroCount} macro(s) persisted to {Path}")]
+    partial void LogBindingsReplaced(int triggerCount, int macroCount, string path);
 
     [LoggerMessage(LogLevel.Warning, "Skipping hotkey binding for unknown trigger '{Trigger}' — left over from older version, will not be re-saved on next write")]
     partial void LogSkippedUnknownTrigger(string trigger);
 
-    [LoggerMessage(LogLevel.Warning, "Dropped {Skipped} hotkey binding(s) with unknown trigger(s) from {Path}")]
+    [LoggerMessage(LogLevel.Warning, "Skipping macro hotkey binding with empty MacroName")]
+    partial void LogSkippedEmptyMacroName();
+
+    [LoggerMessage(LogLevel.Warning, "Dropped {Skipped} hotkey binding(s) from {Path}")]
     partial void LogSkippedSummary(int skipped, string path);
 }

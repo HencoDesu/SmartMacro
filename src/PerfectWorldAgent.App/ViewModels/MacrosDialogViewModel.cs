@@ -1,39 +1,101 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.Globalization;
+using Avalonia.Threading;
 using PerfectWorldAgent.App.Mvvm;
 using PerfectWorldAgent.Macro;
+using PerfectWorldAgent.Models;
 using PerfectWorldAgent.Native;
+using PerfectWorldAgent.Orchestration;
 
 namespace PerfectWorldAgent.App.ViewModels;
 
-// VM for MacrosDialog — the global combat macro editor. Each macro is shown as a row
-// with name + multi-line text input where every line is "KEY DELAY_MS" (e.g. "F1 5000").
+// VM for MacrosDialog. Hierarchy:
+//   MacrosDialogViewModel
+//     Rows: ObservableCollection<MacroRowViewModel>
+//       ClassPanels: ObservableCollection<MacroClassPanelViewModel>
+//         Actions: ObservableCollection<MacroActionRowViewModel>  // polymorphic
 //
-// On Save: parse each row's text into MacroStep[], hand to MacroLibrary.ReplaceAsync.
-// Parse failures (unknown VirtualKey, bad number) populate ErrorMessage and block save.
-public sealed class MacrosDialogViewModel : ObservableObject
+// Polymorphic action rows render via Window-level DataTemplates: KeyPressRowViewModel
+// → KeyBindingPicker; DelayRowViewModel → TextBox in SECONDS (decimal) for ergonomic
+// match with PW's in-game cast-time units (e.g. 1.5 sec instead of 1500 ms).
+//
+// Save: walks the VM tree and rebuilds Dictionary<CharacterClass, List<MacroAction>>
+// for each Macro, validates, persists via MacroLibrary.
+public sealed class MacrosDialogViewModel : ObservableObject, IDisposable
 {
     private readonly MacroLibrary _library;
+    private readonly Orchestrator _orchestrator;
     private string? _errorMessage;
 
-    public MacrosDialogViewModel(MacroLibrary library)
+    public MacrosDialogViewModel(MacroLibrary library, Orchestrator orchestrator)
     {
         _library = library;
-        Rows = new ObservableCollection<MacroRowViewModel>(
-            library.Macros.Select(m => new MacroRowViewModel(m.Name, SerializeSteps(m.Steps))));
+        _orchestrator = orchestrator;
+        Rows = new ObservableCollection<MacroRowViewModel>();
+        RebuildRows(library.Macros);
+
+        // Hot-reload — if macros.json is edited externally while the dialog is open,
+        // library fires MacrosChanged on threadpool; marshal to UI thread and rebuild.
+        // Warning to future us: this DISCARDS any in-progress edits in the dialog.
+        _library.MacrosChanged += OnLibraryReloaded;
+    }
+
+    public void Dispose()
+    {
+        _library.MacrosChanged -= OnLibraryReloaded;
+    }
+
+    private void OnLibraryReloaded(IReadOnlyList<Macro.Macro> macros)
+    {
+        Dispatcher.UIThread.Post(() => RebuildRows(macros));
+    }
+
+    private void RebuildRows(IReadOnlyList<Macro.Macro> macros)
+    {
+        Rows.Clear();
+        foreach (var m in macros)
+        {
+            var row = new MacroRowViewModel(m.Name);
+            foreach (var (cls, actions) in m.ActionsByClass)
+            {
+                var panel = new MacroClassPanelViewModel(cls);
+                foreach (var a in actions)
+                {
+                    MacroActionRowViewModel rowVm = a switch
+                    {
+                        KeyPressAction k => new KeyPressRowViewModel(k.Key),
+                        DelayAction d => new DelayRowViewModel(d.Ms),
+                        ClickAction c => new ClickRowViewModel(c.Point, c.DoubleClick),
+                        _ => throw new InvalidOperationException($"Unknown action type {a.GetType()}"),
+                    };
+                    panel.Actions.Add(rowVm);
+                }
+                row.ClassPanels.Add(panel);
+            }
+            Rows.Add(row);
+        }
     }
 
     public ObservableCollection<MacroRowViewModel> Rows { get; }
 
     public string? ErrorMessage { get => _errorMessage; set => SetField(ref _errorMessage, value); }
 
-    public void AddMacro()
-    {
-        Rows.Add(new MacroRowViewModel($"macro{Rows.Count + 1}", string.Empty));
-    }
+    public void AddMacro() =>
+        Rows.Add(new MacroRowViewModel($"macro{Rows.Count + 1}"));
 
-    public void RemoveMacro(MacroRowViewModel row)
+    public void RemoveMacro(MacroRowViewModel row) => Rows.Remove(row);
+
+    public void RunMacro(MacroRowViewModel row)
     {
-        Rows.Remove(row);
+        var name = row.Name?.Trim();
+        if (string.IsNullOrEmpty(name))
+        {
+            ErrorMessage = "Cannot run a macro with no name.";
+            return;
+        }
+        ErrorMessage = null;
+        _orchestrator.BroadcastMacro(name);
     }
 
     public async Task<bool> SaveAsync(CancellationToken cancellationToken = default)
@@ -54,14 +116,68 @@ public sealed class MacrosDialogViewModel : ObservableObject
                 ErrorMessage = $"Duplicate macro name '{name}'.";
                 return false;
             }
-
-            if (!TryParseSteps(row.StepsText ?? string.Empty, out var steps, out var parseError))
+            if (row.ClassPanels.Count == 0)
             {
-                ErrorMessage = $"Macro '{name}': {parseError}";
+                ErrorMessage = $"Macro '{name}': add at least one class block.";
                 return false;
             }
 
-            parsed.Add(new Macro.Macro { Name = name, Steps = steps });
+            var actionsByClass = new Dictionary<CharacterClass, List<MacroAction>>();
+            foreach (var panel in row.ClassPanels)
+            {
+                if (panel.Class == CharacterClass.Unknown)
+                {
+                    ErrorMessage = $"Macro '{name}': class block left as Unknown — pick a real class.";
+                    return false;
+                }
+                if (actionsByClass.ContainsKey(panel.Class))
+                {
+                    ErrorMessage = $"Macro '{name}': class {panel.Class} appears twice — merge the blocks.";
+                    return false;
+                }
+
+                var actions = new List<MacroAction>();
+                foreach (var ar in panel.Actions)
+                {
+                    switch (ar)
+                    {
+                        case KeyPressRowViewModel k:
+                            if (!Enum.TryParse<VirtualKey>(k.Key, ignoreCase: true, out var vk))
+                            {
+                                ErrorMessage = $"Macro '{name}', class {panel.Class}: '{k.Key}' is not a known VirtualKey.";
+                                return false;
+                            }
+                            actions.Add(new KeyPressAction(vk));
+                            break;
+
+                        case DelayRowViewModel d:
+                            if (!double.TryParse(d.SecondsText, NumberStyles.Any, CultureInfo.InvariantCulture, out var seconds) || seconds < 0)
+                            {
+                                ErrorMessage = $"Macro '{name}', class {panel.Class}: delay '{d.SecondsText}' is not a non-negative number of seconds.";
+                                return false;
+                            }
+                            actions.Add(new DelayAction((int)Math.Round(seconds * 1000.0)));
+                            break;
+
+                        case ClickRowViewModel c:
+                            if (!int.TryParse(c.XText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var x) || x < 0)
+                            {
+                                ErrorMessage = $"Macro '{name}', class {panel.Class}: click X '{c.XText}' is not a non-negative integer.";
+                                return false;
+                            }
+                            if (!int.TryParse(c.YText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var y) || y < 0)
+                            {
+                                ErrorMessage = $"Macro '{name}', class {panel.Class}: click Y '{c.YText}' is not a non-negative integer.";
+                                return false;
+                            }
+                            actions.Add(new ClickAction(new ScreenPoint(x, y), c.DoubleClick));
+                            break;
+                    }
+                }
+                actionsByClass[panel.Class] = actions;
+            }
+
+            parsed.Add(new Macro.Macro { Name = name, ActionsByClass = actionsByClass });
         }
 
         try
@@ -76,67 +192,144 @@ public sealed class MacrosDialogViewModel : ObservableObject
 
         return true;
     }
-
-    private static string SerializeSteps(IReadOnlyList<MacroStep> steps) =>
-        string.Join(Environment.NewLine, steps.Select(s => $"{s.Key} {s.DelayMs}"));
-
-    // Parses "KEY DELAY_MS" lines. Blank lines are skipped. Returns false with a
-    // human-readable error message on first malformed line.
-    private static bool TryParseSteps(string text, out IReadOnlyList<MacroStep> steps, out string error)
-    {
-        var result = new List<MacroStep>();
-        var lineNumber = 0;
-        foreach (var raw in text.Split('\n'))
-        {
-            lineNumber++;
-            var line = raw.Trim();
-            if (string.IsNullOrEmpty(line))
-            {
-                continue;
-            }
-
-            var parts = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length != 2)
-            {
-                error = $"line {lineNumber}: expected 'KEY DELAY_MS', got '{line}'";
-                steps = result;
-                return false;
-            }
-
-            if (!Enum.TryParse<VirtualKey>(parts[0], ignoreCase: true, out var key))
-            {
-                error = $"line {lineNumber}: '{parts[0]}' is not a known VirtualKey";
-                steps = result;
-                return false;
-            }
-
-            if (!int.TryParse(parts[1], out var delay) || delay < 0)
-            {
-                error = $"line {lineNumber}: '{parts[1]}' is not a non-negative integer";
-                steps = result;
-                return false;
-            }
-
-            result.Add(new MacroStep(key, delay));
-        }
-
-        steps = result;
-        error = string.Empty;
-        return true;
-    }
 }
 
 public sealed class MacroRowViewModel : ObservableObject
 {
     private string _name;
-    private string _stepsText;
 
-    public MacroRowViewModel(string name, string stepsText)
+    public MacroRowViewModel(string name)
     {
         _name = name;
-        _stepsText = stepsText;
+        ClassPanels = new ObservableCollection<MacroClassPanelViewModel>();
+        ClassPanels.CollectionChanged += OnClassPanelsChanged;
     }
 
     public string Name { get => _name; set => SetField(ref _name, value); }
-    public string StepsText { get => _stepsText; set => SetField(ref _stepsText, value); }
+
+    public ObservableCollection<MacroClassPanelViewModel> ClassPanels { get; }
+
+    public void AddClassPanel()
+    {
+        var used = new HashSet<CharacterClass>(ClassPanels.Select(p => p.Class));
+        var firstUnused = MacroClassPanelViewModel.AllClasses.FirstOrDefault(c => !used.Contains(c));
+        // If every class is used, fall back to first real class (rare — 18 classes available).
+        if (firstUnused == default && MacroClassPanelViewModel.AllClasses.Count > 0)
+        {
+            firstUnused = MacroClassPanelViewModel.AllClasses[0];
+        }
+        ClassPanels.Add(new MacroClassPanelViewModel(firstUnused));
+    }
+
+    public void RemoveClassPanel(MacroClassPanelViewModel panel) => ClassPanels.Remove(panel);
+
+    public void MoveClassPanelUp(MacroClassPanelViewModel panel)
+    {
+        var idx = ClassPanels.IndexOf(panel);
+        if (idx > 0) ClassPanels.Move(idx, idx - 1);
+    }
+
+    public void MoveClassPanelDown(MacroClassPanelViewModel panel)
+    {
+        var idx = ClassPanels.IndexOf(panel);
+        if (idx >= 0 && idx < ClassPanels.Count - 1) ClassPanels.Move(idx, idx + 1);
+    }
+
+    private void OnClassPanelsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is null) return;
+        foreach (MacroClassPanelViewModel panel in e.NewItems)
+        {
+            panel.Parent = this;
+        }
+    }
+}
+
+public sealed class MacroClassPanelViewModel : ObservableObject
+{
+    public static IReadOnlyList<CharacterClass> AllClasses { get; } =
+        Enum.GetValues<CharacterClass>().Where(c => c != CharacterClass.Unknown).ToArray();
+
+    private CharacterClass _class;
+
+    public MacroClassPanelViewModel(CharacterClass cls)
+    {
+        _class = cls;
+        Actions = new ObservableCollection<MacroActionRowViewModel>();
+        Actions.CollectionChanged += OnActionsChanged;
+    }
+
+    public MacroRowViewModel? Parent { get; internal set; }
+
+    public CharacterClass Class { get => _class; set => SetField(ref _class, value); }
+
+    public ObservableCollection<MacroActionRowViewModel> Actions { get; }
+
+    public void AddKeyPress() => Actions.Add(new KeyPressRowViewModel());
+    public void AddDelay() => Actions.Add(new DelayRowViewModel());
+    public void AddClick() => Actions.Add(new ClickRowViewModel());
+    public void RemoveAction(MacroActionRowViewModel row) => Actions.Remove(row);
+
+    public void MoveActionUp(MacroActionRowViewModel row)
+    {
+        var idx = Actions.IndexOf(row);
+        if (idx > 0) Actions.Move(idx, idx - 1);
+    }
+
+    public void MoveActionDown(MacroActionRowViewModel row)
+    {
+        var idx = Actions.IndexOf(row);
+        if (idx >= 0 && idx < Actions.Count - 1) Actions.Move(idx, idx + 1);
+    }
+
+    private void OnActionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is null) return;
+        foreach (MacroActionRowViewModel action in e.NewItems)
+        {
+            action.Parent = this;
+        }
+    }
+}
+
+// Polymorphic base — concrete subclasses render via Window-level DataTemplates.
+public abstract class MacroActionRowViewModel : ObservableObject
+{
+    public MacroClassPanelViewModel? Parent { get; internal set; }
+}
+
+public sealed class KeyPressRowViewModel : MacroActionRowViewModel
+{
+    private string _key;
+    public KeyPressRowViewModel() : this(VirtualKey.F1) { }
+    public KeyPressRowViewModel(VirtualKey key) { _key = key.ToString(); }
+    public string Key { get => _key; set => SetField(ref _key, value); }
+}
+
+public sealed class DelayRowViewModel : MacroActionRowViewModel
+{
+    private string _secondsText;
+    public DelayRowViewModel() : this(1000) { }
+    public DelayRowViewModel(int ms)
+    {
+        _secondsText = (ms / 1000.0).ToString("0.##", CultureInfo.InvariantCulture);
+    }
+    public string SecondsText { get => _secondsText; set => SetField(ref _secondsText, value); }
+}
+
+public sealed class ClickRowViewModel : MacroActionRowViewModel
+{
+    private string _xText;
+    private string _yText;
+    private bool _doubleClick;
+    public ClickRowViewModel() : this(new ScreenPoint(0, 0), false) { }
+    public ClickRowViewModel(ScreenPoint point, bool doubleClick)
+    {
+        _xText = point.X.ToString(CultureInfo.InvariantCulture);
+        _yText = point.Y.ToString(CultureInfo.InvariantCulture);
+        _doubleClick = doubleClick;
+    }
+    public string XText { get => _xText; set => SetField(ref _xText, value); }
+    public string YText { get => _yText; set => SetField(ref _yText, value); }
+    public bool DoubleClick { get => _doubleClick; set => SetField(ref _doubleClick, value); }
 }

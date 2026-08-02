@@ -36,6 +36,17 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
+    // Manual class-assignment path: operator picks a class from the row's ComboBox and
+    // clicks Assign. Bypasses ClassMatcher entirely — useful when auto-id fails or
+    // during initial template setup. Silent no-op if agent is already identified.
+    private void OnAssignClassClicked(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: AgentRowViewModel row })
+        {
+            row.TryAssignClass();
+        }
+    }
+
     // Diagnostic — dump the identification pipeline state for each live agent:
     //   *-full.png       — raw PrintWindow capture
     //   *-class-bin.png  — ClassMatcher.DebugBinarizeClassRegion (what MatchTemplate sees)
@@ -124,10 +135,11 @@ public partial class MainWindow : Window
         try
         {
             var store = services.GetRequiredService<HotkeyConfigStore>();
+            var library = services.GetRequiredService<MacroLibrary>();
             listener = services.GetRequiredService<HotkeyListener>();
             await listener.SuspendAsync();
 
-            var dialogVm = new SettingsDialogViewModel(store);
+            var dialogVm = new SettingsDialogViewModel(store, library);
             var dialog = new SettingsDialog(dialogVm);
             await dialog.ShowDialog(this);
         }
@@ -158,7 +170,8 @@ public partial class MainWindow : Window
         try
         {
             var library = services.GetRequiredService<MacroLibrary>();
-            var dialogVm = new MacrosDialogViewModel(library);
+            var orchestrator = services.GetRequiredService<Orchestrator>();
+            var dialogVm = new MacrosDialogViewModel(library, orchestrator);
             var dialog = new MacrosDialog(dialogVm);
             await dialog.ShowDialog(this);
         }

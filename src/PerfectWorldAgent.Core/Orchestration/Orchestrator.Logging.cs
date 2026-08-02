@@ -31,8 +31,8 @@ public sealed partial class Orchestrator
     [LoggerMessage(LogLevel.Information, "BroadcastAssist hotkey pressed — broadcasting TakeAssistMessage to non-master agents")]
     partial void LogBroadcastAssist();
 
-    [LoggerMessage(LogLevel.Information, "BroadcastCombat hotkey pressed — broadcasting EnterCombatMessage to all agents")]
-    partial void LogBroadcastCombat();
+    [LoggerMessage(LogLevel.Information, "BroadcastMacro requested — broadcasting RunMacroMessage('{MacroName}') to all agents")]
+    partial void LogBroadcastMacro(string macroName);
 
     [LoggerMessage(LogLevel.Information, "BroadcastIdentify hotkey pressed — broadcasting EnterIdentifyMessage to all agents")]
     partial void LogBroadcastIdentify();

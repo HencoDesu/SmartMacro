@@ -26,6 +26,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
     private readonly ClassIconService _classIcons;
     private readonly AgentInputDispatcher _input;
     private readonly MacroLibrary _macros;
+    private readonly MacroRunner _macroRunner;
     private readonly GameUiElementExample _uiTemplates;
     private readonly IOptions<AgentOptions> _options;
     private readonly ILoggerFactory _loggerFactory;
@@ -37,6 +38,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
         ClassIconService classIcons,
         AgentInputDispatcher input,
         MacroLibrary macros,
+        MacroRunner macroRunner,
         GameUiElementExample uiTemplates,
         IOptions<AgentOptions> options,
         ILoggerFactory loggerFactory)
@@ -46,6 +48,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
         _classIcons = classIcons;
         _input = input;
         _macros = macros;
+        _macroRunner = macroRunner;
         _uiTemplates = uiTemplates;
         _options = options;
         _loggerFactory = loggerFactory;
@@ -79,6 +82,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
             _classIcons,
             _input,
             _macros,
+            _macroRunner,
             _uiTemplates,
             _options,
             _loggerFactory.CreateLogger<CharacterAgent>());

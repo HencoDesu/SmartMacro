@@ -11,12 +11,6 @@ public enum OrchestratorTrigger
     // button on all agents simultaneously.
     BroadcastImmunity,
 
-    // Broadcasts EnterCombatMessage. Every agent (master included) fires SetCombat,
-    // transitioning into a 10-second InCombat window during which it runs its assigned
-    // macro (Character.CombatMacroName → MacroLibrary lookup). Re-pressing while any
-    // agent is still in InCombat does nothing for that agent.
-    BroadcastCombat,
-
     // Broadcasts TakeAssistMessage. Every non-master agent sends Shift+1 (selects party
     // member 1 = master) then presses its own Character.AssistKey (in-game macro =
     // /assist current target). Net effect: all 8 followers target whatever master

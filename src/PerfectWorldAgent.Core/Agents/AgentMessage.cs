@@ -11,10 +11,12 @@ public abstract record AgentMessage;
 // Unidentified agents skip silently. Bound in-game to a 10s damage-immunity skill.
 public sealed record UseImmunityMessage : AgentMessage;
 
-// "Enter combat" — each agent fires the SetCombat state-machine trigger and runs its
-// CombatMacro for up to 10 seconds. Master included (per design — master may have its
-// own macro too, e.g. group buffs).
-public sealed record EnterCombatMessage : AgentMessage;
+// "Run this named macro" — broadcast by the Macros dialog's per-row Run button.
+// Each agent (including master, excluding IgnoredClasses) looks up the macro by name
+// in MacroLibrary and runs its steps fire-and-forget. Concurrent runs are guarded by
+// the agent's _operationLock so a second broadcast of the same macro on a still-running
+// agent silently no-ops.
+public sealed record RunMacroMessage(string MacroName) : AgentMessage;
 
 // "Identify yourself" — fired on the BroadcastIdentify hotkey. Each agent in
 // AwaitingIdentification opens the in-game stats window (press C), waits, captures a

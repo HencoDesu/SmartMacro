@@ -86,15 +86,18 @@ public sealed partial class CharacterAgent
     [LoggerMessage(LogLevel.Debug, "Broadcast {MessageType} ignored by '{Name}' — class {Cls} is in IgnoredClasses")]
     partial void LogBroadcastIgnored(string messageType, string name, CharacterClass cls);
 
-    [LoggerMessage(LogLevel.Information, "Combat loop started for '{Name}' (macro='{MacroName}', window=10s)")]
-    partial void LogCombatLoopStarted(string name, string macroName);
+    [LoggerMessage(LogLevel.Information, "Macro '{MacroName}' started on '{Name}'")]
+    partial void LogMacroStarted(string name, string macroName);
 
-    [LoggerMessage(LogLevel.Information, "Combat loop stopped for '{Name}'")]
-    partial void LogCombatLoopStopped(string name);
+    [LoggerMessage(LogLevel.Information, "Macro '{MacroName}' finished on '{Name}'")]
+    partial void LogMacroFinished(string name, string macroName);
 
-    [LoggerMessage(LogLevel.Warning, "Combat macro '{MacroName}' not found in library for '{Name}'; agent will hold InCombat without firing keys")]
-    partial void LogCombatMacroMissing(string name, string macroName);
+    [LoggerMessage(LogLevel.Warning, "Macro '{MacroName}' not found in library on '{Name}' — broadcast dropped")]
+    partial void LogMacroNotFound(string name, string macroName);
 
-    [LoggerMessage(LogLevel.Error, "Combat loop failed unexpectedly")]
-    partial void LogCombatLoopFailed(Exception ex);
+    [LoggerMessage(LogLevel.Information, "Macro '{MacroName}' has no steps defined for class {Cls} on '{Name}' — no-op")]
+    partial void LogMacroNoStepsForClass(string name, string macroName, CharacterClass cls);
+
+    [LoggerMessage(LogLevel.Error, "Macro '{MacroName}' run failed")]
+    partial void LogMacroFailed(Exception ex, string macroName);
 }

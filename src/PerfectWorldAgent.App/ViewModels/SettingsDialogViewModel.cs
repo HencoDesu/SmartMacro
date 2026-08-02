@@ -1,29 +1,28 @@
 using System.Collections.ObjectModel;
 using PerfectWorldAgent.App.Mvvm;
 using PerfectWorldAgent.Hotkeys;
+using PerfectWorldAgent.Macro;
 using PerfectWorldAgent.Native;
 using PerfectWorldAgent.Orchestration;
 
 namespace PerfectWorldAgent.App.ViewModels;
 
-// VM for SettingsDialog. One row per OrchestratorTrigger, even ones currently unbound —
-// so the user can assign a hotkey to any trigger we expose (including CombatFinished,
-// which has no default but is a valid manual-completion signal).
+// VM for SettingsDialog. Two sections:
+//   * Triggers: one row per OrchestratorTrigger enum value (fixed, but unbound rows allowed)
+//   * Macros:   dynamic list of (MacroName → hotkey) bindings — user adds/removes
 //
-// Save flow: collect rows with a non-empty binding (Key OR MouseButton) into HotkeyBinding
-// records, hand the list to HotkeyConfigStore.ReplaceAsync. The store persists hotkeys.json
-// and raises BindingsChanged, which HotkeyListener picks up to re-register both monitors.
+// Save: build both lists, hand to HotkeyConfigStore.ReplaceAsync.
 public sealed class SettingsDialogViewModel : ObservableObject
 {
     private readonly HotkeyConfigStore _store;
     private string? _errorMessage;
 
-    public SettingsDialogViewModel(HotkeyConfigStore store)
+    public SettingsDialogViewModel(HotkeyConfigStore store, MacroLibrary macroLibrary)
     {
         _store = store;
+        AvailableMacroNames = macroLibrary.Macros.Select(m => m.Name).ToArray();
 
         var existing = _store.Bindings.ToDictionary(b => b.Trigger);
-
         Rows = new ObservableCollection<HotkeyBindingRow>(
             Enum.GetValues<OrchestratorTrigger>().Select(t =>
             {
@@ -37,80 +36,148 @@ public sealed class SettingsDialogViewModel : ObservableObject
                 }
                 return new HotkeyBindingRow(t, HotkeyModifiers.None, string.Empty, MouseButton.None);
             }));
+
+        MacroRows = new ObservableCollection<MacroHotkeyRow>(
+            _store.MacroBindings.Select(b => new MacroHotkeyRow(
+                b.MacroName,
+                b.Modifiers,
+                b.IsKeyboard ? b.Key.ToString() : string.Empty,
+                b.MouseButton,
+                AvailableMacroNames)));
     }
 
     public ObservableCollection<HotkeyBindingRow> Rows { get; }
+    public ObservableCollection<MacroHotkeyRow> MacroRows { get; }
+
+    /// <summary>
+    /// Macro names available for the dropdown — snapshot of MacroLibrary at dialog open.
+    /// User can also type a name that doesn't exist yet (e.g. planned macro); validated
+    /// at fire-time by the agent's MacroLibrary lookup.
+    /// </summary>
+    public IReadOnlyList<string> AvailableMacroNames { get; }
 
     public string? ErrorMessage { get => _errorMessage; set => SetField(ref _errorMessage, value); }
+
+    public void AddMacroRow()
+    {
+        var defaultName = AvailableMacroNames.Count > 0 ? AvailableMacroNames[0] : string.Empty;
+        MacroRows.Add(new MacroHotkeyRow(defaultName, HotkeyModifiers.None, string.Empty, MouseButton.None, AvailableMacroNames));
+    }
+
+    public void RemoveMacroRow(MacroHotkeyRow row) => MacroRows.Remove(row);
 
     public async Task<bool> SaveAsync(CancellationToken cancellationToken = default)
     {
         var bindings = new List<HotkeyBinding>();
+        var macroBindings = new List<MacroHotkeyBinding>();
         var seen = new HashSet<string>();
 
+        // 1. Fixed-trigger rows
         foreach (var row in Rows)
         {
-            var hasKey = !string.IsNullOrEmpty(row.Key);
-            var hasMouse = row.MouseButton != MouseButton.None;
-
-            if (!hasKey && !hasMouse)
+            if (!TryBuildKeyMouse(row.Key, row.Modifiers, row.MouseButton, out var key, out var mb, out var err, $"Trigger '{row.TriggerLabel}'"))
             {
-                continue;
-            }
-
-            // Defensive — picker enforces this (mouse capture clears Key, key capture
-            // clears MouseButton). Catch hand-edited state just in case.
-            if (hasKey && hasMouse)
-            {
-                ErrorMessage = $"Trigger '{row.TriggerLabel}': both a key and a mouse button are set; pick one.";
+                if (err is null) continue; // empty row — skip
+                ErrorMessage = err;
                 return false;
             }
 
-            HotkeyBinding binding;
-            string fingerprint;
-            if (hasMouse)
+            var binding = new HotkeyBinding(row.Trigger, row.Modifiers, key, mb);
+            var fp = Fingerprint(row.Modifiers, key, mb);
+            if (!seen.Add(fp))
             {
-                binding = new HotkeyBinding(row.Trigger, row.Modifiers, Key: 0, MouseButton: row.MouseButton);
-                fingerprint = $"M:{row.Modifiers}:{row.MouseButton}";
+                ErrorMessage = $"Trigger '{row.TriggerLabel}': combo is already bound to another entry.";
+                return false;
             }
-            else
+            bindings.Add(binding);
+        }
+
+        // 2. Macro rows
+        foreach (var row in MacroRows)
+        {
+            var name = row.MacroName?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(name))
             {
-                if (!Enum.TryParse<VirtualKey>(row.Key, ignoreCase: false, out var key))
+                ErrorMessage = "Macro hotkey row has no macro name selected.";
+                return false;
+            }
+
+            if (!TryBuildKeyMouse(row.Key, row.Modifiers, row.MouseButton, out var key, out var mb, out var err, $"Macro '{name}'"))
+            {
+                if (err is null)
                 {
-                    ErrorMessage = $"Trigger '{row.TriggerLabel}': '{row.Key}' is not a recognised VirtualKey.";
+                    ErrorMessage = $"Macro '{name}': no key/mouse binding set — remove the row or assign a hotkey.";
                     return false;
                 }
-                binding = new HotkeyBinding(row.Trigger, row.Modifiers, key);
-                fingerprint = $"K:{row.Modifiers}:{key}";
-            }
-
-            if (!seen.Add(fingerprint))
-            {
-                ErrorMessage = $"Trigger '{row.TriggerLabel}': combo is already bound to another trigger.";
+                ErrorMessage = err;
                 return false;
             }
 
-            bindings.Add(binding);
+            var binding = new MacroHotkeyBinding(name, row.Modifiers, key, mb);
+            var fp = Fingerprint(row.Modifiers, key, mb);
+            if (!seen.Add(fp))
+            {
+                ErrorMessage = $"Macro '{name}': combo is already bound to another entry.";
+                return false;
+            }
+            macroBindings.Add(binding);
         }
 
         try
         {
-            await _store.ReplaceAsync(bindings, cancellationToken).ConfigureAwait(false);
+            await _store.ReplaceAsync(bindings, macroBindings, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             ErrorMessage = $"Failed to save: {ex.Message}";
             return false;
         }
-
         return true;
     }
+
+    // Returns true on a valid (Key XOR MouseButton) combo. On empty row returns false
+    // with error=null (caller skips silently). On invalid input returns false with
+    // error set (caller surfaces in UI).
+    private static bool TryBuildKeyMouse(
+        string keyString, HotkeyModifiers modifiers, MouseButton mouseButton,
+        out VirtualKey key, out MouseButton resolvedMouse, out string? error, string label)
+    {
+        key = 0;
+        resolvedMouse = MouseButton.None;
+        error = null;
+
+        var hasKey = !string.IsNullOrEmpty(keyString);
+        var hasMouse = mouseButton != MouseButton.None;
+
+        if (!hasKey && !hasMouse)
+        {
+            return false; // empty — caller decides
+        }
+
+        if (hasKey && hasMouse)
+        {
+            error = $"{label}: both a key and a mouse button are set; pick one.";
+            return false;
+        }
+
+        if (hasMouse)
+        {
+            resolvedMouse = mouseButton;
+            return true;
+        }
+
+        if (!Enum.TryParse<VirtualKey>(keyString, ignoreCase: false, out key))
+        {
+            error = $"{label}: '{keyString}' is not a recognised VirtualKey.";
+            return false;
+        }
+        return true;
+    }
+
+    private static string Fingerprint(HotkeyModifiers modifiers, VirtualKey key, MouseButton mouseButton) =>
+        mouseButton != MouseButton.None ? $"M:{modifiers}:{mouseButton}" : $"K:{modifiers}:{key}";
 }
 
-// One row in the settings dialog — represents the current edit state of a hotkey binding
-// for a single OrchestratorTrigger. Modifiers + Key + MouseButton are TwoWay-bound to a
-// KeyBindingPicker in CaptureModifiers mode. Exactly one of Key / MouseButton is non-empty
-// at any time (picker invariant).
 public sealed class HotkeyBindingRow : ObservableObject
 {
     private HotkeyModifiers _modifiers;
@@ -126,25 +193,45 @@ public sealed class HotkeyBindingRow : ObservableObject
     }
 
     public OrchestratorTrigger Trigger { get; }
-
     public string TriggerLabel => TriggerLabels.Get(Trigger);
 
     public HotkeyModifiers Modifiers { get => _modifiers; set => SetField(ref _modifiers, value); }
-
     public string Key { get => _key; set => SetField(ref _key, value); }
-
     public MouseButton MouseButton { get => _mouseButton; set => SetField(ref _mouseButton, value); }
 }
 
-// Human-friendly labels for each trigger. Centralised so the Settings dialog (and any
-// future status bar / log decoration) shows the same wording.
+public sealed class MacroHotkeyRow : ObservableObject
+{
+    private string _macroName;
+    private HotkeyModifiers _modifiers;
+    private string _key;
+    private MouseButton _mouseButton;
+
+    public MacroHotkeyRow(string macroName, HotkeyModifiers modifiers, string key, MouseButton mouseButton, IReadOnlyList<string> availableMacroNames)
+    {
+        _macroName = macroName;
+        _modifiers = modifiers;
+        _key = key;
+        _mouseButton = mouseButton;
+        AvailableMacroNames = availableMacroNames;
+    }
+
+    public string MacroName { get => _macroName; set => SetField(ref _macroName, value); }
+    public HotkeyModifiers Modifiers { get => _modifiers; set => SetField(ref _modifiers, value); }
+    public string Key { get => _key; set => SetField(ref _key, value); }
+    public MouseButton MouseButton { get => _mouseButton; set => SetField(ref _mouseButton, value); }
+
+    // Snapshot of macro names at dialog open — bound directly by the AutoCompleteBox
+    // in each row so we don't need parent-traversal in XAML.
+    public IReadOnlyList<string> AvailableMacroNames { get; }
+}
+
 internal static class TriggerLabels
 {
     private static readonly Dictionary<OrchestratorTrigger, string> Map = new()
     {
         [OrchestratorTrigger.BroadcastImmunity] = "Panic — broadcast immunity",
         [OrchestratorTrigger.BroadcastAssist] = "Take assist from master",
-        [OrchestratorTrigger.BroadcastCombat] = "Enter combat (run macro, 10s window)",
         [OrchestratorTrigger.BroadcastClick] = "Broadcast click at cursor",
         [OrchestratorTrigger.BroadcastDoubleClick] = "Broadcast double-click at cursor",
         [OrchestratorTrigger.BroadcastIdentify] = "Identify all agents (opens stats, reads class)",

@@ -74,6 +74,7 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
 
         _hotkeyListener = hotkeyListener;
         _hotkeyListener.HotkeyPressed += OnHotkeyPressed;
+        _hotkeyListener.MacroHotkeyPressed += OnMacroHotkeyPressed;
 
         _inbox = Channel.CreateUnbounded<AgentMessage>(new UnboundedChannelOptions
         {
@@ -114,11 +115,6 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
                 _ = BroadcastAsync(new UseImmunityMessage());
                 return;
 
-            case OrchestratorTrigger.BroadcastCombat:
-                LogBroadcastCombat();
-                _ = BroadcastAsync(new EnterCombatMessage());
-                return;
-
             case OrchestratorTrigger.BroadcastAssist:
                 LogBroadcastAssist();
                 _ = BroadcastAsync(new TakeAssistMessage());
@@ -137,6 +133,17 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
                 _ = BroadcastAsync(new EnterIdentifyMessage());
                 return;
         }
+    }
+
+    /// <summary>
+    /// Programmatic broadcast — UI (Macros dialog) calls this from its Run button to
+    /// fire a named macro on every live agent. Same broadcast pipeline as hotkey-fired
+    /// messages; agents do their own MacroLibrary lookup and single-flight guarding.
+    /// </summary>
+    public void BroadcastMacro(string macroName)
+    {
+        LogBroadcastMacro(macroName);
+        _ = BroadcastAsync(new RunMacroMessage(macroName));
     }
 
     // Delegates cursor / foreground / guard logic to CursorClickResolver. Just snapshots
@@ -237,9 +244,17 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
     {
         _processMonitor.ProcessAppeared -= OnProcessAppeared;
         _hotkeyListener.HotkeyPressed -= OnHotkeyPressed;
+        _hotkeyListener.MacroHotkeyPressed -= OnMacroHotkeyPressed;
         _dispatchCts?.Cancel();
         _dispatchCts?.Dispose();
         _dispatchCts = null;
+    }
+
+    // Macro hotkey fired from the global listener — broadcast the macro by name to
+    // every live agent. Identical broadcast path as the Macros-dialog Run button.
+    private void OnMacroHotkeyPressed(string macroName)
+    {
+        BroadcastMacro(macroName);
     }
 
     private async Task ProcessIncomingAsync()

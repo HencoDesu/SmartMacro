@@ -12,9 +12,14 @@ namespace PerfectWorldAgent.Macro;
 // Schema uses string enum names for VirtualKey (round-trips through hand-edit / version
 // changes without breaking on unknown values).
 //
+// Hot-reload: FileSystemWatcher notices external edits (git checkout, text editor save)
+// and re-reads. Our own writes are suppressed via LastWriteTime tracking so we don't
+// loop back on our persist. Debounced 300ms — editors often fire multiple events per
+// save.
+//
 // Concurrency: ReplaceAsync serialised by SemaphoreSlim. Reads via the Macros snapshot
 // are lock-free.
-public sealed partial class MacroLibrary
+public sealed partial class MacroLibrary : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -28,6 +33,9 @@ public sealed partial class MacroLibrary
     private readonly string _path;
     private readonly ILogger<MacroLibrary> _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly FileSystemWatcher? _watcher;
+    private CancellationTokenSource? _pendingReload;
+    private DateTime _lastKnownWriteTime = DateTime.MinValue;
 
     private ImmutableList<Macro> _macros;
 
@@ -48,6 +56,38 @@ public sealed partial class MacroLibrary
         _logger = logger;
         _path = Path.Combine(baseDirectory, "macros.json");
         _macros = LoadFromDisk();
+        _lastKnownWriteTime = File.Exists(_path) ? File.GetLastWriteTimeUtc(_path) : DateTime.MinValue;
+
+        // Best-effort watcher — swallow init failures (permissions, missing dir on
+        // some hosted-service scenarios) since hot-reload is a nice-to-have.
+        try
+        {
+            _watcher = new FileSystemWatcher(baseDirectory, "macros.json")
+            {
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
+                EnableRaisingEvents = true,
+            };
+            _watcher.Changed += OnFileChanged;
+            _watcher.Created += OnFileChanged;
+            _watcher.Renamed += (s, e) => OnFileChanged(s, e);
+        }
+        catch (Exception ex)
+        {
+            LogWatcherStartFailed(ex, baseDirectory);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_watcher is not null)
+        {
+            _watcher.EnableRaisingEvents = false;
+            _watcher.Changed -= OnFileChanged;
+            _watcher.Created -= OnFileChanged;
+            _watcher.Dispose();
+        }
+        _pendingReload?.Cancel();
+        _pendingReload?.Dispose();
     }
 
     /// <summary>
@@ -103,8 +143,69 @@ public sealed partial class MacroLibrary
     private async Task PersistAsync(ImmutableList<Macro> macros, CancellationToken cancellationToken)
     {
         var dto = new MacroFile { Macros = macros.ToList() };
-        await using var stream = File.Create(_path);
-        await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, cancellationToken).ConfigureAwait(false);
+        await using (var stream = File.Create(_path))
+        {
+            await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, cancellationToken).ConfigureAwait(false);
+        }
+        // Track own write time so the FileSystemWatcher's Changed event doesn't trigger
+        // a spurious reload immediately after our persist.
+        _lastKnownWriteTime = File.GetLastWriteTimeUtc(_path);
+    }
+
+    // FileSystemWatcher fires on threadpool. Debounce: any burst of events within 300ms
+    // collapses into a single reload check. Reload compares LastWriteTimeUtc — if it
+    // matches what we last wrote, no-op (suppresses our own writes).
+    private void OnFileChanged(object? sender, FileSystemEventArgs e)
+    {
+        var cts = new CancellationTokenSource();
+        var prev = Interlocked.Exchange(ref _pendingReload, cts);
+        prev?.Cancel();
+        prev?.Dispose();
+        _ = ReloadAfterDelayAsync(cts.Token);
+    }
+
+    private async Task ReloadAfterDelayAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(300, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // superseded by a newer event
+        }
+
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        ImmutableList<Macro> reloaded;
+        try
+        {
+            if (!File.Exists(_path))
+            {
+                return;
+            }
+            var writeTime = File.GetLastWriteTimeUtc(_path);
+            if (writeTime == _lastKnownWriteTime)
+            {
+                // Either our own write or a duplicate event with no real change.
+                return;
+            }
+            reloaded = LoadFromDisk();
+            _macros = reloaded;
+            _lastKnownWriteTime = writeTime;
+            LogReloadedExternally(reloaded.Count);
+        }
+        catch (Exception ex)
+        {
+            LogReloadFailed(ex);
+            return;
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+
+        // Raised outside the lock so subscribers can call back in without deadlock.
+        MacrosChanged?.Invoke(reloaded);
     }
 
     private ImmutableList<Macro> LoadFromDisk()
@@ -146,4 +247,13 @@ public sealed partial class MacroLibrary
 
     [LoggerMessage(LogLevel.Information, "Macros replaced: {Count} entries persisted to {Path}")]
     partial void LogReplaced(int count, string path);
+
+    [LoggerMessage(LogLevel.Information, "Macros reloaded externally: {Count} entries from disk")]
+    partial void LogReloadedExternally(int count);
+
+    [LoggerMessage(LogLevel.Warning, "Failed to hot-reload macros from disk after external change")]
+    partial void LogReloadFailed(Exception ex);
+
+    [LoggerMessage(LogLevel.Warning, "FileSystemWatcher failed to start on {Path}; hot-reload disabled")]
+    partial void LogWatcherStartFailed(Exception ex, string path);
 }

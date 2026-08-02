@@ -36,3 +36,15 @@ public sealed record HotkeyBinding(
     public bool IsMouse => MouseButton != MouseButton.None;
     public bool IsKeyboard => Key != 0 && MouseButton == MouseButton.None;
 }
+
+// User-defined macro hotkey. Same key/modifier/mouse shape as HotkeyBinding but the
+// trigger is a free-form macro name (looked up in MacroLibrary at fire time).
+public sealed record MacroHotkeyBinding(
+    string MacroName,
+    HotkeyModifiers Modifiers,
+    VirtualKey Key,
+    MouseButton MouseButton = MouseButton.None)
+{
+    public bool IsMouse => MouseButton != MouseButton.None;
+    public bool IsKeyboard => Key != 0 && MouseButton == MouseButton.None;
+}

@@ -19,7 +19,6 @@ public sealed partial class GameWindow : IGameWindow
     private readonly int _settleDelayMs;
     private readonly int _deactivationDelayMs;
     private readonly double _matchThreshold;
-    private readonly double _luminanceThreshold;
     private readonly TimeSpan _pollInterval;
     private readonly ILogger<GameWindow> _logger;
 
@@ -43,7 +42,6 @@ public sealed partial class GameWindow : IGameWindow
         _settleDelayMs = activatingOptions.Value.SettleDelayMs;
         _deactivationDelayMs = activatingOptions.Value.DeactivationDelayMs;
         _matchThreshold = visionOptions.Value.MatchThreshold;
-        _luminanceThreshold = visionOptions.Value.LuminanceThreshold;
         _pollInterval = TimeSpan.FromMilliseconds(visionOptions.Value.PollIntervalMs);
         _logger = logger;
     }
@@ -203,32 +201,37 @@ public sealed partial class GameWindow : IGameWindow
             : ClampToImage(new Rect(position.X, position.Y, position.Width, position.Height), sourceFull.Size());
 
         using var crop = new Mat(sourceFull, rect);
-        using var sourceBin = Binarize(crop);
+        using var sourceGray = ToGrayscale(crop);
 
         using var templateBgr = Cv2.ImDecode(templatePng, ImreadModes.Color);
         if (templateBgr.Empty()) return false;
-        using var templateBin = Binarize(templateBgr);
+        using var templateGray = ToGrayscale(templateBgr);
 
-        if (templateBin.Width > sourceBin.Width || templateBin.Height > sourceBin.Height)
+        if (templateGray.Width > sourceGray.Width || templateGray.Height > sourceGray.Height)
         {
+            LogTemplateLargerThanRegion(templateGray.Width, templateGray.Height, sourceGray.Width, sourceGray.Height);
             return false;
         }
 
+        // Grayscale + CCoeffNormed instead of binarize + CCoeffNormed: many game-UI
+        // elements (chat panel icons etc.) sit on semi-transparent darkened backgrounds
+        // where bleed-through from the world below makes binarization unstable. CCoeff
+        // subtracts the mean and normalises by stddev so brightness shifts cancel out.
+        // Keeps LuminanceThreshold unused here — Binarize() is dead code now but stays
+        // for symmetry with ClassMatcher which still benefits from binarisation (solid
+        // text on solid panel = clean separation).
         using var result = new Mat();
-        Cv2.MatchTemplate(sourceBin, templateBin, result, TemplateMatchModes.CCoeffNormed);
+        Cv2.MatchTemplate(sourceGray, templateGray, result, TemplateMatchModes.CCoeffNormed);
         Cv2.MinMaxLoc(result, out _, out var maxVal, out _, out _);
         score = maxVal;
         return score >= _matchThreshold;
     }
 
-    private Mat Binarize(Mat bgr)
+    private static Mat ToGrayscale(Mat bgr)
     {
         var gray = new Mat();
         Cv2.CvtColor(bgr, gray, ColorConversionCodes.BGR2GRAY);
-        var binary = new Mat();
-        Cv2.Threshold(gray, binary, _luminanceThreshold, 255, ThresholdTypes.Binary);
-        gray.Dispose();
-        return binary;
+        return gray;
     }
 
     private static Rect ClampToImage(Rect rect, Size imageSize)
@@ -239,6 +242,9 @@ public sealed partial class GameWindow : IGameWindow
         var h = Math.Min(rect.Height, imageSize.Height - y);
         return new Rect(x, y, w, h);
     }
+
+    [LoggerMessage(LogLevel.Warning, "WaitForElementAt: template ({TplW}x{TplH}) is larger than search region ({SrcW}x{SrcH}) — shrink template or grow region")]
+    partial void LogTemplateLargerThanRegion(int tplW, int tplH, int srcW, int srcH);
 
     [LoggerMessage(LogLevel.Debug, "WaitForElementAt: hit at {Region} score={Score:F3} >= {Threshold:F3}")]
     partial void LogMatchHit(ScreenRect region, double score, double threshold);

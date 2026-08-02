@@ -21,4 +21,20 @@ public enum VirtualKey : ushort
 
     F1 = 0x70, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
     F13 = 0x7C, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24,
+
+    // OEM keys — punctuation, brackets, and the `~ / Ё key. Names match Avalonia's
+    // Key enum names so KeyBindingPicker.OnKeyDown's `Enum.IsDefined` check accepts
+    // them. Values match Windows VK_OEM_* constants so PostMessage/SendMessage deliver
+    // the actual physical key press.
+    OemSemicolon = 0xBA,     // ; :
+    OemPlus = 0xBB,          // = +
+    OemComma = 0xBC,         // , <
+    OemMinus = 0xBD,         // - _
+    OemPeriod = 0xBE,        // . >
+    OemQuestion = 0xBF,      // / ?
+    OemTilde = 0xC0,         // ` ~   — same physical key = Ё on Russian layout
+    OemOpenBrackets = 0xDB,  // [ {
+    OemPipe = 0xDC,          // \ |
+    OemCloseBrackets = 0xDD, // ] }
+    OemQuotes = 0xDE,        // ' "
 }

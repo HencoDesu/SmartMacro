@@ -47,13 +47,20 @@ public sealed partial class ClassIconService
         _logger = logger;
     }
 
+    // Retry cadence for post-boot re-application. Racing PW's own post-load init
+    // that occasionally resets our WM_SETICON. Cheap re-sends: SendMessage(WM_SETICON)
+    // is a few Win32 calls each, cached HICON reused. Idempotent — if PW never resets
+    // ours, these are no-ops.
+    private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5)];
+
     /// <summary>
     /// Best-effort apply of the class icon to a game window. Silent skip for
-    /// <see cref="CharacterClass.Unknown"/> — there's nothing to apply for an unidentified
-    /// or class-unknown agent. All failures (missing file, unmapped class, GDI+ throw)
-    /// are logged at the appropriate level and reported as <c>false</c>.
+    /// <see cref="CharacterClass.Unknown"/>. All failures logged; reported as <c>false</c>.
+    /// After the initial apply, schedules two background retries at +2s and +5s to
+    /// survive PW's post-boot init step that sometimes overwrites the taskbar icon
+    /// when the agent auto-drove the client through server-select → in-world.
     /// </summary>
-    /// <returns><c>true</c> when the icon was applied; <c>false</c> on any skip or failure.</returns>
+    /// <returns><c>true</c> when the initial apply succeeded; <c>false</c> on any skip or failure.</returns>
     public bool TryApply(IGameWindow window, CharacterClass cls)
     {
         if (cls == CharacterClass.Unknown)
@@ -74,6 +81,34 @@ public sealed partial class ClassIconService
             return false;
         }
 
+        var applied = ApplyOnce(window, cls, path);
+
+        // Fire-and-forget retries. Even if initial apply failed, retry — PW might have
+        // still been mid-init and rejected/dropped the SendMessage; a later re-send
+        // could stick.
+        _ = Task.Run(async () =>
+        {
+            foreach (var delay in RetryDelays)
+            {
+                await Task.Delay(delay).ConfigureAwait(false);
+                try
+                {
+                    if (!window.IsAlive) return;
+                    ApplyOnce(window, cls, path);
+                }
+                catch (Exception ex)
+                {
+                    LogClassIconException(ex, cls);
+                    return;
+                }
+            }
+        });
+
+        return applied;
+    }
+
+    private bool ApplyOnce(IGameWindow window, CharacterClass cls, string path)
+    {
         try
         {
             if (window.SetIconFromFile(path))

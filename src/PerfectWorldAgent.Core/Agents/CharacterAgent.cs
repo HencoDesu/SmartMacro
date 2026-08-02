@@ -37,11 +37,6 @@ namespace PerfectWorldAgent.Agents;
 // inbox channel — uniform with the rest of the upstream traffic.
 public sealed partial class CharacterAgent
 {
-    // Hard upper bound on how long an agent stays InCombat regardless of macro length.
-    // Per-design: a boss either dies or goes immune within ~10s; the agent returns to
-    // Idle automatically so the user doesn't need a separate Stop hotkey.
-    private static readonly TimeSpan CombatWindow = TimeSpan.FromSeconds(10);
-
     private readonly IGameWindow _window;
     private readonly ChannelWriter<AgentMessage> _outbox;
     private readonly Channel<AgentMessage> _inbox;
@@ -49,6 +44,7 @@ public sealed partial class CharacterAgent
     private readonly ClassIconService _classIcons;
     private readonly AgentInputDispatcher _input;
     private readonly MacroLibrary _macros;
+    private readonly MacroRunner _macroRunner;
     private readonly GameUiElementExample _uiTemplates;
     private readonly TimeSpan _pollInterval;
     private readonly Native.VirtualKey _statsHotkey;
@@ -61,7 +57,6 @@ public sealed partial class CharacterAgent
     private readonly TimeSpan _bootPhaseTimeout;
     private readonly string _defaultImmunityKey;
     private readonly string _defaultAssistKey;
-    private readonly string _defaultCombatMacroName;
     private readonly CharacterClass _masterClass;
     private readonly HashSet<CharacterClass> _ignoredClasses;
     private readonly ILogger<CharacterAgent> _logger;
@@ -73,7 +68,6 @@ public sealed partial class CharacterAgent
     private readonly SemaphoreSlim _operationLock = new(1, 1);
 
     private CancellationTokenSource? _runCts;
-    private CancellationTokenSource? _combatLoopCts;
 
     public CharacterAgent(
         IGameWindow window,
@@ -82,6 +76,7 @@ public sealed partial class CharacterAgent
         ClassIconService classIcons,
         AgentInputDispatcher input,
         MacroLibrary macros,
+        MacroRunner macroRunner,
         GameUiElementExample uiTemplates,
         IOptions<AgentOptions> options,
         ILogger<CharacterAgent> logger)
@@ -92,6 +87,7 @@ public sealed partial class CharacterAgent
         _classIcons = classIcons;
         _input = input;
         _macros = macros;
+        _macroRunner = macroRunner;
         _uiTemplates = uiTemplates;
         _pollInterval = TimeSpan.FromSeconds(options.Value.AgentPollIntervalSeconds);
         _statsHotkey = options.Value.StatsHotkey;
@@ -104,7 +100,6 @@ public sealed partial class CharacterAgent
         _bootPhaseTimeout = TimeSpan.FromMilliseconds(options.Value.BootPhaseTimeoutMs);
         _defaultImmunityKey = options.Value.DefaultImmunityKey;
         _defaultAssistKey = options.Value.DefaultAssistKey;
-        _defaultCombatMacroName = options.Value.DefaultCombatMacroName;
         _masterClass = options.Value.MasterClass;
         _ignoredClasses = new HashSet<CharacterClass>(options.Value.IgnoredClasses);
         _logger = logger;
@@ -129,15 +124,7 @@ public sealed partial class CharacterAgent
             .Permit(AgentTrigger.Identified, AgentState.Idle);
 
         _machine.Configure(AgentState.Idle)
-            .Ignore(AgentTrigger.Identified)
-            .Ignore(AgentTrigger.SetIdle)
-            .Permit(AgentTrigger.SetCombat, AgentState.InCombat);
-
-        _machine.Configure(AgentState.InCombat)
-            .OnEntry(StartCombatLoop)
-            .OnExit(StopCombatLoop)
-            .Ignore(AgentTrigger.SetCombat)   // per-design: re-press while running is a no-op
-            .Permit(AgentTrigger.SetIdle, AgentState.Idle);
+            .Ignore(AgentTrigger.Identified);
     }
 
     public Character Character { get; private set; }
@@ -256,9 +243,6 @@ public sealed partial class CharacterAgent
         }
         finally
         {
-            // Make sure any state-specific loops also stop. They observe their own CTS
-            // and exit; we don't need to await.
-            StopCombatLoop();
             LogStopped(Name);
             _outbox.TryWrite(new AgentStoppingMessage(this));
             _runCts?.Dispose();
@@ -482,87 +466,49 @@ public sealed partial class CharacterAgent
         return _input.FireClickAsync(_window, point, doubleClick: false, Name);
     }
 
-    // State-specific loop for InCombat: runs the character's macro within a 10-second
-    // hard window. After the window elapses (regardless of where in the macro we are),
-    // fires SetIdle to transition back. Re-pressing the Combat hotkey while we're still
-    // in this state is ignored at the state-machine level.
-    private void StartCombatLoop()
+    // Fire-and-forget macro run on RunMacroMessage. Lookup by name in MacroLibrary,
+    // iterate steps via _input.FireKeyAsync. Single-flight via _operationLock — if
+    // an identify or a previous macro is still running, this one no-ops.
+    private async Task RunMacroAsync(string macroName, CancellationToken cancellationToken)
     {
-        if (_combatLoopCts is not null)
+        if (!await _operationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
+            LogOperationAlreadyRunning(Name, $"RunMacro({macroName})");
             return;
         }
-        _combatLoopCts = new CancellationTokenSource();
-        _combatLoopCts.CancelAfter(CombatWindow);
-        _ = Task.Run(() => CombatLoopAsync(_combatLoopCts.Token));
-    }
 
-    private void StopCombatLoop()
-    {
-        _combatLoopCts?.Cancel();
-        _combatLoopCts?.Dispose();
-        _combatLoopCts = null;
-    }
-
-    private async Task CombatLoopAsync(CancellationToken cancellationToken)
-    {
-        LogCombatLoopStarted(Name, _defaultCombatMacroName);
         try
         {
-            var macro = _macros.TryGet(_defaultCombatMacroName);
+            var macro = _macros.TryGet(macroName);
             if (macro is null)
             {
-                LogCombatMacroMissing(Name, _defaultCombatMacroName);
-            }
-            else
-            {
-                await RunMacroAsync(macro, cancellationToken).ConfigureAwait(false);
+                LogMacroNotFound(Name, macroName);
+                return;
             }
 
-            // Wait out the remainder of the 10s window. We arrive here either because
-            // the macro completed quickly or it didn't exist; either way we hold the
-            // agent in InCombat until the timeout cancels us.
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            // Per-class lookup: each class can have its own action sequence (different
+            // cast times / rotations). Class absent from the macro → silent no-op.
+            if (!macro.ActionsByClass.TryGetValue(Character.Class, out var actions) || actions.Count == 0)
+            {
+                LogMacroNoStepsForClass(Name, macroName, Character.Class);
+                return;
+            }
+
+            LogMacroStarted(Name, macroName);
+            await _macroRunner.RunAsync(macroName, actions, _window, Name, cancellationToken).ConfigureAwait(false);
+            LogMacroFinished(Name, macroName);
         }
         catch (OperationCanceledException)
         {
-            // Expected — either 10s elapsed or external stop. Fall through to fire SetIdle.
+            // Expected on Stop() mid-run; nothing to log.
         }
         catch (Exception ex)
         {
-            LogCombatLoopFailed(ex);
+            LogMacroFailed(ex, macroName);
         }
         finally
         {
-            LogCombatLoopStopped(Name);
-            TryFireStateTrigger(AgentTrigger.SetIdle);
-        }
-    }
-
-    private async Task RunMacroAsync(Macro.Macro macro, CancellationToken cancellationToken)
-    {
-        foreach (var step in macro.Steps)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            await _input.FireKeyAsync(_window, step.Key, $"Macro({macro.Name})", Name).ConfigureAwait(false);
-            if (step.DelayMs > 0)
-            {
-                await Task.Delay(step.DelayMs, cancellationToken).ConfigureAwait(false);
-            }
-        }
-    }
-
-    // Fires a trigger under the state lock. Silent if the current state doesn't permit
-    // the trigger (the state machine's OnUnhandledTrigger handler will log it). Used by
-    // both inbox handlers (SetCombat) and the combat loop's finally block (SetIdle).
-    private void TryFireStateTrigger(AgentTrigger trigger)
-    {
-        lock (_stateLock)
-        {
-            if (_machine.CanFire(trigger))
-            {
-                _machine.Fire(trigger);
-            }
+            _operationLock.Release();
         }
     }
 
@@ -572,9 +518,15 @@ public sealed partial class CharacterAgent
         {
             // EnterIdentifyMessage is the one inbox message handled BEFORE the
             // unidentified-guard: it's specifically meant for unidentified agents to
-            // promote themselves. All other broadcasts are no-ops until identified.
+            // promote themselves. Already-identified agents drop it silently — no stat-
+            // window flash, no log noise. Broadcast semantics stay simple (fan-out to
+            // all agents); the filter lives here.
             if (message is EnterIdentifyMessage)
             {
+                if (IsIdentified)
+                {
+                    continue;
+                }
                 LogInboxReceived(message.GetType().Name, Name);
                 // Routes through identification-only (no boot clicks). Assumes the agent
                 // is already in-world (boot ran on Start). The single-flight semaphore
@@ -612,11 +564,11 @@ public sealed partial class CharacterAgent
                     TryFireKey(_defaultImmunityKey, "ImmunityKey");
                     break;
 
-                case EnterCombatMessage:
-                    // Fire SetCombat trigger — state machine OnEntry starts the macro
-                    // runner. Re-fired SetCombat while already in InCombat is Ignore'd
-                    // by the state machine (per-design "re-press does nothing").
-                    TryFireStateTrigger(AgentTrigger.SetCombat);
+                case RunMacroMessage runMacro:
+                    // Fire-and-forget — RunMacroAsync handles single-flight via
+                    // _operationLock so spamming the broadcast just no-ops.
+                    var macroCt = _runCts?.Token ?? CancellationToken.None;
+                    _ = RunMacroAsync(runMacro.MacroName, macroCt);
                     break;
 
                 case TakeAssistMessage:

@@ -103,6 +103,7 @@ internal static class Program
         services.AddSingleton<AgentInputDispatcher>();
         services.AddSingleton<CursorClickResolver>();
         services.AddSingleton<MacroLibrary>();
+        services.AddSingleton<MacroRunner>();
         services.AddSingleton<ICharacterAgentFactory, CharacterAgentFactory>();
         services.AddSingleton<Win32HotkeyMonitor>();
         services.AddSingleton<Win32MouseHookMonitor>();

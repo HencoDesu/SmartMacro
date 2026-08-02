@@ -38,7 +38,7 @@ public sealed partial class GameUiElementExample
            ?? throw new InvalidOperationException();
 
     public byte[] ChatSettingsButton
-        => _templates.GetValueOrDefault(_uiElementNames.CharacterSelect)
+        => _templates.GetValueOrDefault(_uiElementNames.ChatSettings)
            ?? throw new InvalidOperationException();
 
     private Dictionary<string, byte[]> Load(string templatesDir)

@@ -42,4 +42,19 @@ public partial class SettingsDialog : Window
     }
 
     private void OnCancel(object? sender, RoutedEventArgs e) => Close(false);
+
+    private void OnAddMacroRowClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is SettingsDialogViewModel vm)
+        {
+            vm.AddMacroRow();
+        }
+    }
+
+    private void OnRemoveMacroRowClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not SettingsDialogViewModel vm) return;
+        if (sender is not Button { DataContext: MacroHotkeyRow row }) return;
+        vm.RemoveMacroRow(row);
+    }
 }

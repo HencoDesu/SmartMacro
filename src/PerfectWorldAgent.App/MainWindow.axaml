@@ -4,7 +4,8 @@
         xmlns:conv="using:PerfectWorldAgent.App.Converters"
         x:Class="PerfectWorldAgent.App.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Width="720" Height="480"
+        Width="820" Height="820"
+        MinWidth="600" MinHeight="500"
         Title="Perfect World Agent">
     <Grid RowDefinitions="Auto,*,Auto" Margin="12">
         <TextBlock Grid.Row="0"
@@ -26,7 +27,7 @@
                                     BorderBrush="#333"
                                     CornerRadius="3"
                                     Background="#1a1a1a">
-                                <Grid ColumnDefinitions="*,Auto,Auto">
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
                                     <TextBlock Grid.Column="0"
                                                FontSize="14"
                                                VerticalAlignment="Center"
@@ -42,6 +43,20 @@
                                                Foreground="{Binding IsIdentified, Converter={x:Static conv:IdentifiedToBrushConverter.Instance}}"
                                                VerticalAlignment="Center"
                                                Text="{Binding IsIdentified, Converter={x:Static conv:IdentifiedToLabelConverter.Instance}}" />
+                                    <ComboBox Grid.Column="3"
+                                              Margin="12,0,0,0"
+                                              FontSize="11"
+                                              MinWidth="130"
+                                              ItemsSource="{x:Static vm:AgentRowViewModel.AvailableClasses}"
+                                              SelectedItem="{Binding SelectedClass, Mode=TwoWay}"
+                                              IsVisible="{Binding !IsIdentified}" />
+                                    <Button Grid.Column="4"
+                                            Content="Assign"
+                                            FontSize="11"
+                                            Padding="10,4"
+                                            Margin="6,0,0,0"
+                                            Click="OnAssignClassClicked"
+                                            IsVisible="{Binding !IsIdentified}" />
                                 </Grid>
                             </Border>
                         </DataTemplate>
