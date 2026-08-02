@@ -1,4 +1,6 @@
 using System.Globalization;
+using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
 
@@ -6,6 +8,41 @@ namespace SmartMacro.App.Converters;
 
 // Binding-side value mappings. Immutable singletons, referenced from XAML via x:Static so
 // no resource dictionary lookup is involved.
+
+/// <summary>
+/// Pulls a brush out of the Nocturne token dictionary by key.
+///
+/// Converters are the one place a colour cannot be written as XAML, and hard-coding one
+/// here is how a design system starts to drift — so the value is looked up in
+/// Themes/Tokens.axaml at first use instead. The <paramref name="fallback"/> only matters
+/// before <c>Application.Current</c> exists (the designer, and unit tests), which is also
+/// why a miss is not cached.
+/// </summary>
+internal static class NocturneBrushes
+{
+    private static readonly Dictionary<string, IBrush> Cache = new(StringComparer.Ordinal);
+
+    public static IBrush Get(string key, uint fallback)
+    {
+        lock (Cache)
+        {
+            if (Cache.TryGetValue(key, out var cached))
+            {
+                return cached;
+            }
+
+            if (Application.Current is { } app
+                && app.TryFindResource(key, out var value)
+                && value is IBrush brush)
+            {
+                Cache[key] = brush;
+                return brush;
+            }
+        }
+
+        return new SolidColorBrush(Color.FromUInt32(fallback));
+    }
+}
 
 /// <summary>
 /// True iff the source value is non-null / non-empty — hides the error and status labels
@@ -43,31 +80,34 @@ public sealed class NodeIdDisplayConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-/// <summary>Red for validation errors (which block the save), amber for warnings (which don't).</summary>
+/// <summary>Danger for validation errors (which block the save), warning amber for the rest.</summary>
 public sealed class IssueSeverityToBrushConverter : IValueConverter
 {
     public static readonly IssueSeverityToBrushConverter Instance = new();
 
-    private static readonly IBrush ErrorBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0x60, 0x60));
-    private static readonly IBrush WarningBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xAF, 0x68));
-
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => value is true ? ErrorBrush : WarningBrush;
+        => value is true
+            ? NocturneBrushes.Get("NocturneDangerBrush", 0xFFDD8189)
+            : NocturneBrushes.Get("NocturneWarningBrush", 0xFFDBB277);
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
 
-/// <summary>Greenish once a window carries at least one tag, muted amber while it is untagged.</summary>
+/// <summary>
+/// Full text once a window carries at least one tag, warning amber while it is untagged.
+///
+/// The pre-D1 version used green-for-good; Nocturne is monochrome plus one accent, so
+/// "fine" is simply normal text and only the state that wants attention is coloured.
+/// </summary>
 public sealed class TaggedToBrushConverter : IValueConverter
 {
     public static readonly TaggedToBrushConverter Instance = new();
 
-    private static readonly IBrush TaggedBrush = new SolidColorBrush(Color.FromRgb(0x88, 0xC0, 0x70));
-    private static readonly IBrush UntaggedBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xAF, 0x68));
-
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => value is true ? TaggedBrush : UntaggedBrush;
+        => value is true
+            ? NocturneBrushes.Get("NocturneTextBrush", 0xFFE9E9ED)
+            : NocturneBrushes.Get("NocturneWarningBrush", 0xFFDBB277);
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();

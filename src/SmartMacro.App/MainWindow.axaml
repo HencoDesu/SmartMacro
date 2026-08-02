@@ -2,6 +2,12 @@
   Main window (W0.3): the tracked WINDOWS with their tag chips, plus the live list of
   running macros. It replaced the agent-row list — after W0.1 there are no per-character
   agents to show, only windows and the tags that route macros at them.
+
+  D1 repainted this in Nocturne without moving anything: same grid, same rows, same
+  bindings. Every colour and every padding now comes from Themes/Tokens.axaml — if you
+  find yourself typing a hex here, add a token instead. D2 is the wave that reshapes the
+  shell into the 1b layout (left rail, always-on runs strip), so resist tidying the
+  structure now.
 -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -16,24 +22,23 @@
     <Window.DataTemplates>
         <!-- Tag chip: the tag text plus its own remove button. -->
         <DataTemplate DataType="vm:TagChipViewModel" x:DataType="vm:TagChipViewModel">
-            <Border Background="#2b3a2b"
-                    BorderBrush="#3f5a3f"
+            <Border Background="{DynamicResource NocturneChipFillBrush}"
+                    BorderBrush="{DynamicResource NocturneChipBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="10"
-                    Padding="8,2"
-                    Margin="0,0,6,4">
-                <StackPanel Orientation="Horizontal" Spacing="6">
+                    CornerRadius="{DynamicResource NocturneRadiusPill}"
+                    Padding="{DynamicResource NocturneInsetChip}"
+                    Margin="0,0,5.6,2.8">
+                <StackPanel Orientation="Horizontal" Spacing="5.6">
                     <TextBlock Text="{Binding Text}"
-                               FontSize="11"
-                               Foreground="#CFE6CF"
+                               FontSize="{DynamicResource NocturneFontSizeSmall}"
+                               Foreground="{DynamicResource NocturneChipTextBrush}"
                                VerticalAlignment="Center" />
                     <Button Content="×"
-                            FontSize="11"
-                            Padding="4,0"
+                            Classes="ghost"
+                            FontSize="{DynamicResource NocturneFontSizeSmall}"
+                            Padding="2.8,0"
                             Margin="0"
                             MinWidth="0"
-                            Background="Transparent"
-                            BorderThickness="0"
                             ToolTip.Tip="Снять тег"
                             Click="OnRemoveTagClicked" />
                 </StackPanel>
@@ -41,47 +46,55 @@
         </DataTemplate>
     </Window.DataTemplates>
 
-    <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="12">
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="{DynamicResource NocturneInsetWindow}">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-            <TextBlock Grid.Column="0" FontSize="18" Text="SmartMacro" VerticalAlignment="Center" />
+            <!-- Headings are never heavier than 500 — hierarchy is size and space. -->
+            <TextBlock Grid.Column="0"
+                       FontSize="{DynamicResource NocturneFontSizeHeading}"
+                       FontWeight="Medium"
+                       Text="SmartMacro"
+                       VerticalAlignment="Center" />
             <TextBlock Grid.Column="1"
-                       FontSize="11"
-                       Foreground="#666"
+                       FontSize="{DynamicResource NocturneFontSizeSmall}"
+                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                       Foreground="{DynamicResource NocturneTextFaintBrush}"
                        VerticalAlignment="Center"
                        Text="{Binding WindowCountText}" />
         </Grid>
 
         <!-- Windows -->
         <Border Grid.Row="1"
-                Margin="0,12,0,0"
+                Margin="0,11.2,0,0"
                 BorderThickness="1"
-                BorderBrush="#444"
-                CornerRadius="4">
+                BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                Background="{DynamicResource NocturneBgBrush}"
+                CornerRadius="{DynamicResource NocturneRadiusSm}">
             <ScrollViewer>
                 <ItemsControl ItemsSource="{Binding Windows}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:WindowRowViewModel">
-                            <Border Padding="10"
-                                    Margin="4"
+                            <Border Padding="{DynamicResource NocturneInsetPanel}"
+                                    Margin="{DynamicResource NocturneSpace1Thickness}"
                                     BorderThickness="1"
-                                    BorderBrush="#333"
-                                    CornerRadius="3"
-                                    Background="#1a1a1a">
+                                    BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                    CornerRadius="{DynamicResource NocturneRadiusSm}"
+                                    Background="{DynamicResource NocturneSurfaceRaisedBrush}">
                                 <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto,Auto">
                                     <StackPanel Grid.Row="0" Grid.Column="0"
                                                 Orientation="Horizontal"
-                                                Spacing="10"
+                                                Spacing="8.4"
                                                 VerticalAlignment="Center">
-                                        <TextBlock FontSize="14"
+                                        <TextBlock FontSize="{DynamicResource NocturneFontSizeTitle}"
                                                    Foreground="{Binding HasTags, Converter={x:Static conv:TaggedToBrushConverter.Instance}}"
+                                                   VerticalAlignment="Center"
                                                    Text="{Binding ProcessName}" />
-                                        <TextBlock FontSize="11"
-                                                   Foreground="#888"
-                                                   FontFamily="Consolas, monospace"
+                                        <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                   Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                                    VerticalAlignment="Center"
                                                    Text="{Binding HwndHex}" />
-                                        <TextBlock FontSize="11"
-                                                   Foreground="#777"
+                                        <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                   Foreground="{DynamicResource NocturneTextGhostBrush}"
                                                    VerticalAlignment="Center"
                                                    IsVisible="{Binding !HasTags}"
                                                    Text="без тегов" />
@@ -89,20 +102,20 @@
 
                                     <TextBox Grid.Row="0" Grid.Column="1"
                                              MinWidth="140"
-                                             FontSize="11"
                                              Watermark="новый тег"
                                              Text="{Binding NewTagText, Mode=TwoWay}"
                                              KeyDown="OnTagInputKeyDown" />
                                     <Button Grid.Row="0" Grid.Column="2"
                                             Content="+"
-                                            FontSize="12"
-                                            Padding="10,4"
-                                            Margin="6,0,0,0"
+                                            Classes="accent"
+                                            Padding="{DynamicResource NocturneInsetTight}"
+                                            Margin="5.6,0,0,0"
+                                            MinWidth="24"
                                             ToolTip.Tip="Добавить тег"
                                             Click="OnAddTagClicked" />
 
                                     <ItemsControl Grid.Row="1" Grid.ColumnSpan="3"
-                                                  Margin="0,8,0,0"
+                                                  Margin="0,8.4,0,0"
                                                   IsVisible="{Binding HasTags}"
                                                   ItemsSource="{Binding Tags}">
                                         <ItemsControl.ItemsPanel>
@@ -121,53 +134,53 @@
 
         <!-- Running macros -->
         <Border Grid.Row="2"
-                Margin="0,10,0,10"
-                Padding="8"
+                Margin="0,8.4,0,8.4"
+                Padding="{DynamicResource NocturneInsetPanel}"
                 BorderThickness="1"
-                BorderBrush="#444"
-                CornerRadius="4">
+                BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                CornerRadius="{DynamicResource NocturneRadiusSm}">
             <Grid RowDefinitions="Auto,Auto">
                 <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
                     <TextBlock Grid.Column="0"
-                               FontSize="12"
-                               Foreground="#aaa"
+                               FontSize="{DynamicResource NocturneFontSizeBody}"
+                               Foreground="{DynamicResource NocturneTextSecondaryBrush}"
                                VerticalAlignment="Center"
                                Text="{Binding RunsHeaderText}" />
                     <Button Grid.Column="1"
                             Content="Стоп всё"
-                            FontSize="11"
-                            Padding="10,3"
+                            Classes="danger"
                             IsEnabled="{Binding HasRuns}"
                             Click="OnStopAllRunsClicked" />
                 </Grid>
 
-                <ScrollViewer Grid.Row="1" MaxHeight="150" Margin="0,6,0,0">
+                <ScrollViewer Grid.Row="1" MaxHeight="150" Margin="0,5.6,0,0">
                     <ItemsControl ItemsSource="{Binding Runs}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:RunningMacroRowViewModel">
-                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,2">
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,2.8">
                                     <TextBlock Grid.Column="0"
-                                               FontSize="12"
+                                               FontSize="{DynamicResource NocturneFontSizeBody}"
                                                VerticalAlignment="Center"
                                                Text="{Binding MacroName}" />
                                     <TextBlock Grid.Column="1"
-                                               FontSize="11"
-                                               Foreground="#888"
-                                               FontFamily="Consolas, monospace"
+                                               FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                               Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                               FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                                VerticalAlignment="Center"
-                                               Margin="10,0"
+                                               Margin="8.4,0"
                                                Text="{Binding Elapsed}" />
                                     <TextBlock Grid.Column="2"
-                                               FontSize="11"
-                                               Foreground="#6a9fd0"
+                                               FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                               FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                               Foreground="{DynamicResource NocturneAccent400Brush}"
                                                VerticalAlignment="Center"
                                                MinWidth="120"
                                                ToolTip.Tip="Текущая нода"
                                                Text="{Binding CurrentNodeText}" />
                                     <Button Grid.Column="3"
                                             Content="Стоп"
-                                            FontSize="11"
-                                            Padding="10,2"
+                                            Padding="{DynamicResource NocturneInsetTight}"
                                             Click="OnStopRunClicked" />
                                 </Grid>
                             </DataTemplate>
@@ -180,15 +193,12 @@
         <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto">
             <Button Grid.Column="1"
                     Content="Dump captures"
-                    FontSize="11"
-                    Padding="10,4"
-                    Margin="0,0,8,0"
+                    Margin="0,0,5.6,0"
                     ToolTip.Tip="Сохранить снимки окон в debug/ для настройки регионов"
                     Click="OnDumpCapturesClicked" />
             <Button Grid.Column="2"
                     Content="Макросы"
-                    FontSize="11"
-                    Padding="10,4"
+                    Classes="accent"
                     Click="OnMacrosClicked" />
         </Grid>
     </Grid>

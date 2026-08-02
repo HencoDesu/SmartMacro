@@ -1,0 +1,282 @@
+<!--
+  Nocturne — the token layer (wave D1).
+
+  Source of truth: docs/design/nocturne-tokens.md, with the off-ramp values taken verbatim
+  from docs/design/opt-1b.html. Nothing here knows about controls; Controls.axaml and the
+  views consume these and only these. If a view needs a colour that is not in this file,
+  the fix is a new named token here — never a literal in the markup.
+
+  NAMING (hold this — D2 and D3 will reference these constantly):
+
+    Nocturne <Role|Ramp+Step|Semantic> <Kind?>
+
+    …Color        a Color        e.g. NocturneAccent500Color
+    …Brush        a SolidColorBrush over the same value,  e.g. NocturneAccent500Brush
+    NocturneSpaceN     double, N = the step number on the 0.7× scale (1 2 3 4 6 8)
+    NocturneRadius*    CornerRadius (Sm / Md / Lg / Pill)
+    NocturneInset*     Thickness for padding
+    NocturneShadow*    BoxShadows (Sm / Md / Lg)
+    NocturneFontSize*  double
+    NocturneFontFamily / …Mono   FontFamily
+
+  Two ramps exist in full (neutral 100–900, accent 100–900) even where nothing consumes a
+  step yet: the ramps are a single lightness scale, and picking "the next step" is how the
+  system stays coherent. Do not add intermediate steps.
+
+  RULES that live in the values (see the token doc §"Правила"):
+    · Accent is a line and a glow, never a flood — hence the AccentTint* brushes and the
+      absence of any "accent fill" token.
+    · No pure black and no pure white anywhere except the shadows, where black is ambient
+      darkness rather than a colour.
+    · The spacing scale is small on purpose (density 0.7×). Do not round it up.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ================================================================
+         ROLES
+         ================================================================ -->
+
+    <Color x:Key="NocturneBgColor">#161826</Color>
+    <Color x:Key="NocturneSurfaceColor">#232532</Color>
+    <Color x:Key="NocturneTextColor">#e9e9ed</Color>
+    <Color x:Key="NocturneAccentColor">#9184d9</Color>
+
+    <SolidColorBrush x:Key="NocturneBgBrush" Color="{StaticResource NocturneBgColor}" />
+    <SolidColorBrush x:Key="NocturneSurfaceBrush" Color="{StaticResource NocturneSurfaceColor}" />
+    <SolidColorBrush x:Key="NocturneTextBrush" Color="{StaticResource NocturneTextColor}" />
+    <SolidColorBrush x:Key="NocturneAccentBrush" Color="{StaticResource NocturneAccentColor}" />
+
+    <!-- The role token "color-divider": text @ 16%. The system's hairline; the mockup's
+         own dividers (below) are opaque and slightly cooler. -->
+    <SolidColorBrush x:Key="NocturneHairlineBrush" Color="#29e9e9ed" />
+
+    <!-- ================================================================
+         NEUTRAL RAMP  (OKLCH, one lightness scale — equal step = equal weight)
+         ================================================================ -->
+
+    <Color x:Key="NocturneNeutral100Color">#f3f5fe</Color>
+    <Color x:Key="NocturneNeutral200Color">#e4e7f5</Color>
+    <Color x:Key="NocturneNeutral300Color">#cfd3e5</Color>
+    <Color x:Key="NocturneNeutral400Color">#b2b6ca</Color>
+    <Color x:Key="NocturneNeutral500Color">#9397ab</Color>
+    <Color x:Key="NocturneNeutral600Color">#75798c</Color>
+    <Color x:Key="NocturneNeutral700Color">#595d6c</Color>
+    <Color x:Key="NocturneNeutral800Color">#3f424d</Color>
+    <Color x:Key="NocturneNeutral900Color">#292b31</Color>
+
+    <SolidColorBrush x:Key="NocturneNeutral100Brush" Color="{StaticResource NocturneNeutral100Color}" />
+    <SolidColorBrush x:Key="NocturneNeutral200Brush" Color="{StaticResource NocturneNeutral200Color}" />
+    <SolidColorBrush x:Key="NocturneNeutral300Brush" Color="{StaticResource NocturneNeutral300Color}" />
+    <SolidColorBrush x:Key="NocturneNeutral400Brush" Color="{StaticResource NocturneNeutral400Color}" />
+    <SolidColorBrush x:Key="NocturneNeutral500Brush" Color="{StaticResource NocturneNeutral500Color}" />
+    <SolidColorBrush x:Key="NocturneNeutral600Brush" Color="{StaticResource NocturneNeutral600Color}" />
+    <SolidColorBrush x:Key="NocturneNeutral700Brush" Color="{StaticResource NocturneNeutral700Color}" />
+    <SolidColorBrush x:Key="NocturneNeutral800Brush" Color="{StaticResource NocturneNeutral800Color}" />
+    <SolidColorBrush x:Key="NocturneNeutral900Brush" Color="{StaticResource NocturneNeutral900Color}" />
+
+    <!-- ================================================================
+         ACCENT RAMP
+         accent-2 reads as accent in a mono scheme — there is no second accent role.
+         ================================================================ -->
+
+    <Color x:Key="NocturneAccent100Color">#f5f4ff</Color>
+    <Color x:Key="NocturneAccent200Color">#e7e5fe</Color>
+    <Color x:Key="NocturneAccent300Color">#d2cefd</Color>
+    <Color x:Key="NocturneAccent400Color">#b5abfc</Color>
+    <Color x:Key="NocturneAccent500Color">#968ae0</Color>
+    <Color x:Key="NocturneAccent600Color">#796cbf</Color>
+    <Color x:Key="NocturneAccent700Color">#5d5294</Color>
+    <Color x:Key="NocturneAccent800Color">#423a6a</Color>
+    <Color x:Key="NocturneAccent900Color">#2b2741</Color>
+
+    <SolidColorBrush x:Key="NocturneAccent100Brush" Color="{StaticResource NocturneAccent100Color}" />
+    <SolidColorBrush x:Key="NocturneAccent200Brush" Color="{StaticResource NocturneAccent200Color}" />
+    <SolidColorBrush x:Key="NocturneAccent300Brush" Color="{StaticResource NocturneAccent300Color}" />
+    <SolidColorBrush x:Key="NocturneAccent400Brush" Color="{StaticResource NocturneAccent400Color}" />
+    <SolidColorBrush x:Key="NocturneAccent500Brush" Color="{StaticResource NocturneAccent500Color}" />
+    <SolidColorBrush x:Key="NocturneAccent600Brush" Color="{StaticResource NocturneAccent600Color}" />
+    <SolidColorBrush x:Key="NocturneAccent700Brush" Color="{StaticResource NocturneAccent700Color}" />
+    <SolidColorBrush x:Key="NocturneAccent800Brush" Color="{StaticResource NocturneAccent800Color}" />
+    <SolidColorBrush x:Key="NocturneAccent900Brush" Color="{StaticResource NocturneAccent900Color}" />
+
+    <!-- ================================================================
+         ACCENT TINTS — the "glow" half of the accent rule.
+         Percentages of the accent over whatever sits behind it. These are the ONLY way
+         accent is allowed to occupy an area; a solid accent rectangle is a bug.
+         ================================================================ -->
+
+    <Color x:Key="NocturneAccentTint08Color">#149184d9</Color>
+    <Color x:Key="NocturneAccentTint12Color">#1f9184d9</Color>
+    <Color x:Key="NocturneAccentTint15Color">#269184d9</Color>
+    <Color x:Key="NocturneAccentTint18Color">#2e9184d9</Color>
+    <Color x:Key="NocturneAccentTint22Color">#389184d9</Color>
+
+    <SolidColorBrush x:Key="NocturneAccentTint08Brush" Color="{StaticResource NocturneAccentTint08Color}" />
+    <SolidColorBrush x:Key="NocturneAccentTint12Brush" Color="{StaticResource NocturneAccentTint12Color}" />
+    <SolidColorBrush x:Key="NocturneAccentTint15Brush" Color="{StaticResource NocturneAccentTint15Color}" />
+    <SolidColorBrush x:Key="NocturneAccentTint18Brush" Color="{StaticResource NocturneAccentTint18Color}" />
+    <SolidColorBrush x:Key="NocturneAccentTint22Brush" Color="{StaticResource NocturneAccentTint22Color}" />
+
+    <!-- Semantic aliases for the two interaction states the token doc names explicitly. -->
+    <SolidColorBrush x:Key="NocturneHoverBrush" Color="{StaticResource NocturneAccentTint12Color}" />
+    <SolidColorBrush x:Key="NocturnePressedBrush" Color="{StaticResource NocturneAccentTint22Color}" />
+
+    <!-- ================================================================
+         SEMANTIC SURFACES
+         Values the mockup takes past the ramps (token doc §"Значения, взятые макетом
+         сверх системы"). Deliberate local shades for a dense tool — named, never inlined.
+         ================================================================ -->
+
+    <!-- The ground the whole window sits on (body background of the design doc). -->
+    <Color x:Key="NocturneGroundColor">#0d0e16</Color>
+    <SolidColorBrush x:Key="NocturneGroundBrush" Color="{StaticResource NocturneGroundColor}" />
+
+    <!-- Sunken: sidebars, gutters — reads as behind the content plane. -->
+    <SolidColorBrush x:Key="NocturneSurfaceSunkenBrush" Color="#131420" />
+    <!-- Raised: header and footer bars framing a work area. -->
+    <SolidColorBrush x:Key="NocturneSurfaceRaisedBrush" Color="#191b28" />
+    <!-- Overlay: title bar, popups, anything floating above the plane. -->
+    <Color x:Key="NocturneSurfaceOverlayColor">#1c1e2a</Color>
+    <SolidColorBrush x:Key="NocturneSurfaceOverlayBrush" Color="{StaticResource NocturneSurfaceOverlayColor}" />
+    <!-- Inset: the hairline gap between list rows, small code chips. -->
+    <SolidColorBrush x:Key="NocturneSurfaceInsetBrush" Color="#20222f" />
+    <!-- Alternating list row against NocturneBg. -->
+    <SolidColorBrush x:Key="NocturneSurfaceRowAltBrush" Color="#181a27" />
+    <!-- A row that is present but not yet identified — dimmer than either row colour. -->
+    <SolidColorBrush x:Key="NocturneSurfaceRowMutedBrush" Color="#14151f" />
+
+    <SolidColorBrush x:Key="NocturneDividerBrush" Color="#262939" />
+    <Color x:Key="NocturneDividerStrongColor">#2b2e3d</Color>
+    <SolidColorBrush x:Key="NocturneDividerStrongBrush" Color="{StaticResource NocturneDividerStrongColor}" />
+
+    <!-- Form fields. Border stays neutral at rest; focus is the accent line. -->
+    <SolidColorBrush x:Key="NocturneFieldBackgroundBrush" Color="#1b1d29" />
+    <SolidColorBrush x:Key="NocturneFieldBorderBrush" Color="#33364a" />
+
+    <!-- ================================================================
+         SEMANTIC TEXT
+         Accent-to-ground is ~3:1 — fine for icons, chrome and large text, NOT for body
+         copy. Paragraph text in accent uses NocturneAccent300Brush.
+         ================================================================ -->
+
+    <SolidColorBrush x:Key="NocturneTextSecondaryBrush" Color="{StaticResource NocturneNeutral300Color}" />
+    <!-- Muted: a row that is de-emphasised but still meant to be read. -->
+    <SolidColorBrush x:Key="NocturneTextMutedBrush" Color="#8b8fa2" />
+    <!-- Faint: counters, hwnd hex, elapsed times. -->
+    <SolidColorBrush x:Key="NocturneTextFaintBrush" Color="#5f6376" />
+    <!-- Ghost: uppercase eyebrow labels over a section. -->
+    <SolidColorBrush x:Key="NocturneTextGhostBrush" Color="#4e5265" />
+
+    <!-- ================================================================
+         STATUS
+         ================================================================ -->
+
+    <Color x:Key="NocturneWarningColor">#dbb277</Color>
+    <SolidColorBrush x:Key="NocturneWarningBrush" Color="{StaticResource NocturneWarningColor}" />
+    <SolidColorBrush x:Key="NocturneWarningSurfaceBrush" Color="#1fdbb277" />
+    <SolidColorBrush x:Key="NocturneWarningBorderBrush" Color="#5c4f33" />
+
+    <Color x:Key="NocturneDangerColor">#dd8189</Color>
+    <SolidColorBrush x:Key="NocturneDangerBrush" Color="{StaticResource NocturneDangerColor}" />
+    <SolidColorBrush x:Key="NocturneDangerSurfaceBrush" Color="#14dd8189" />
+    <SolidColorBrush x:Key="NocturneDangerBorderBrush" Color="#5c3a40" />
+    <!-- Interaction steps for the destructive button: same wash, deeper. -->
+    <SolidColorBrush x:Key="NocturneDangerSurfaceHoverBrush" Color="#26dd8189" />
+    <SolidColorBrush x:Key="NocturneDangerSurfacePressedBrush" Color="#38dd8189" />
+    <SolidColorBrush x:Key="NocturneDangerBorderHoverBrush" Color="#7a3f47" />
+
+    <!-- ================================================================
+         CHIPS (tags)
+         The pill is the mockup's one repeated composite; keeping it tokenised means D2's
+         sidebar summary and D3's canvas badges cannot drift apart.
+         ================================================================ -->
+
+    <SolidColorBrush x:Key="NocturneChipFillBrush" Color="#269184d9" />
+    <SolidColorBrush x:Key="NocturneChipBorderBrush" Color="#443f6b" />
+    <SolidColorBrush x:Key="NocturneChipTextBrush" Color="#cfc8f0" />
+    <!-- Soft variant: same pill on a sunken surface, where it must recede. -->
+    <SolidColorBrush x:Key="NocturneChipFillSoftBrush" Color="#219184d9" />
+    <SolidColorBrush x:Key="NocturneChipBorderSoftBrush" Color="#3a3560" />
+    <SolidColorBrush x:Key="NocturneChipTextSoftBrush" Color="#c3bbe8" />
+    <!-- The accent-tinted input border the mockup uses for "add a tag" affordances. -->
+    <SolidColorBrush x:Key="NocturneChipInputBorderBrush" Color="#4a4470" />
+
+    <!-- ================================================================
+         SPACING — density 0.7×, steps 1 2 3 4 6 8
+         ================================================================ -->
+
+    <x:Double x:Key="NocturneSpace1">2.8</x:Double>
+    <x:Double x:Key="NocturneSpace2">5.6</x:Double>
+    <x:Double x:Key="NocturneSpace3">8.4</x:Double>
+    <x:Double x:Key="NocturneSpace4">11.2</x:Double>
+    <x:Double x:Key="NocturneSpace6">16.8</x:Double>
+    <x:Double x:Key="NocturneSpace8">22.4</x:Double>
+
+    <!-- Inset* = padding presets. -->
+    <Thickness x:Key="NocturneInsetTight">5.6,2.8</Thickness>
+    <Thickness x:Key="NocturneInsetControl">11.2,5.6</Thickness>
+    <Thickness x:Key="NocturneInsetField">8.4,5.6</Thickness>
+    <Thickness x:Key="NocturneInsetChip">8.4,1.4</Thickness>
+    <Thickness x:Key="NocturneInsetPanel">8.4</Thickness>
+    <Thickness x:Key="NocturneInsetCard">11.2</Thickness>
+    <Thickness x:Key="NocturneInsetWindow">11.2</Thickness>
+
+    <!-- Space*Thickness = uniform margins, same scale. Directional margins stay literal
+         but must be picked off the scale above. -->
+    <Thickness x:Key="NocturneSpace1Thickness">2.8</Thickness>
+    <Thickness x:Key="NocturneSpace2Thickness">5.6</Thickness>
+    <Thickness x:Key="NocturneSpace3Thickness">8.4</Thickness>
+    <Thickness x:Key="NocturneSpace4Thickness">11.2</Thickness>
+
+    <!-- ================================================================
+         RADII
+         ================================================================ -->
+
+    <CornerRadius x:Key="NocturneRadiusSm">4</CornerRadius>
+    <CornerRadius x:Key="NocturneRadiusMd">8</CornerRadius>
+    <CornerRadius x:Key="NocturneRadiusLg">14</CornerRadius>
+    <!-- Not in the system proper: the tag pill, whose radius is just half its height. -->
+    <CornerRadius x:Key="NocturneRadiusPill">10</CornerRadius>
+
+    <!-- ================================================================
+         ELEVATION
+         On a dark ground, height is an edge plus a soft shadow. Never stack two recipes.
+         ================================================================ -->
+
+    <BoxShadows x:Key="NocturneShadowSm">0 0 0 1 #3f424d</BoxShadows>
+    <BoxShadows x:Key="NocturneShadowMd">0 0 0 1 #595d6c, 0 6 18 0 #8c000000</BoxShadows>
+    <BoxShadows x:Key="NocturneShadowLg">0 0 0 1 #9397ab, 0 16 40 0 #a6000000</BoxShadows>
+
+    <!-- ================================================================
+         TYPE
+         Inter ships embedded in the Avalonia.Fonts.Inter package and is registered by
+         Program.BuildAvaloniaApp().WithInterFont() — the "fonts:Inter" alias below is that
+         package's own collection key, so nothing depends on a system install.
+         The package carries Regular/Medium/SemiBold (400/500/600) among others.
+
+         Headings are never heavier than 500. Hierarchy is size and space.
+         ================================================================ -->
+
+    <!-- The trailing "$Default" is the fallback family for glyphs Inter does not carry
+         (arrows, geometric shapes). It is the same chain Fluent's own
+         ContentControlThemeFontFamily uses — do not drop it. -->
+    <FontFamily x:Key="NocturneFontFamily">fonts:Inter#Inter, $Default</FontFamily>
+    <FontFamily x:Key="NocturneFontFamilyMono">Cascadia Mono,Consolas,$Default</FontFamily>
+
+    <!-- GLYPH BUTTONS, a trap worth writing down, because no font chain saves you from it.
+         Where a button's label IS a character (▸ ■ ↑ ↓ ×), the codepoint must not be one
+         with an emoji presentation: Windows serves those from Segoe UI Emoji, whose glyphs
+         are full colour and ignore Foreground entirely. U+25B6 ▶ rendered as a WHITE
+         triangle inside an accent-outlined button no matter what family was asked for.
+         U+25B8 ▸ (used for "run") has no emoji presentation and inherits Foreground like
+         ordinary text; ■ ↑ ↓ × are likewise safe. Check any new glyph against emoji-data
+         before shipping it as a label. -->
+
+    <x:Double x:Key="NocturneFontSizeMicro">10</x:Double>
+    <x:Double x:Key="NocturneFontSizeSmall">11</x:Double>
+    <x:Double x:Key="NocturneFontSizeBody">12</x:Double>
+    <x:Double x:Key="NocturneFontSizeTitle">13</x:Double>
+    <x:Double x:Key="NocturneFontSizeHeading">15</x:Double>
+
+</ResourceDictionary>

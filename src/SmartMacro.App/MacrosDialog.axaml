@@ -10,6 +10,10 @@
   IMPORTANT: opening this window suspends the global hotkey listener (see the code-behind).
   Win32 RegisterHotKey swallows presses of already-registered chords, so without that the
   hotkey picker could never capture the combos most in need of re-binding.
+
+  D1 repainted this in Nocturne — colours and paddings now come from Themes/Tokens.axaml,
+  the markup is otherwise untouched. D3 replaces this rows editor with the canvas, so it is
+  deliberately NOT being restructured here.
 -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -26,19 +30,33 @@
         CanResize="True"
         Title="Макросы">
 
+    <Window.Styles>
+        <!-- The parameter blocks below are a wall of tiny "label: field" pairs. Naming the
+             two recurring roles once keeps the token references out of every single row. -->
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeMicro}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral600Brush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeMicro}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextFaintBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBox.numeric">
+            <Setter Property="FontFamily" Value="{DynamicResource NocturneFontFamilyMono}" />
+        </Style>
+    </Window.Styles>
+
     <Window.DataTemplates>
 
         <!-- ==== shared building blocks ==== -->
 
         <!-- One outgoing edge: outcome label + a drop-down of node ids ("" = end of run). -->
         <DataTemplate DataType="{x:Type nodes:NodeEdgeViewModel}" x:DataType="nodes:NodeEdgeViewModel">
-            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,12,0">
-                <TextBlock Text="{Binding Label}"
-                           FontSize="10"
-                           Foreground="#888"
-                           VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="5.6" Margin="0,2.8,11.2,0">
+                <TextBlock Classes="label" Text="{Binding Label}" />
                 <ComboBox MinWidth="170"
-                          FontSize="11"
                           ItemsSource="{Binding Choices}"
                           SelectedItem="{Binding TargetId, Mode=TwoWay}">
                     <ComboBox.ItemTemplate>
@@ -52,30 +70,23 @@
 
         <!-- Target selector: off = context window, on = fan out by tags. -->
         <DataTemplate DataType="{x:Type nodes:TargetSelectorViewModel}" x:DataType="nodes:TargetSelectorViewModel">
-            <StackPanel Spacing="3" Margin="0,4,0,0">
+            <StackPanel Spacing="2.8" Margin="0,2.8,0,0">
                 <CheckBox Content="Цели по тегам (выкл. — контекст-окно)"
-                          FontSize="11"
                           IsChecked="{Binding UseSelector, Mode=TwoWay}" />
                 <Grid ColumnDefinitions="Auto,*,Auto,*"
                       IsVisible="{Binding UseSelector}">
                     <TextBlock Grid.Column="0"
+                               Classes="label"
                                Text="нужны:"
-                               FontSize="10"
-                               Foreground="#888"
-                               VerticalAlignment="Center"
-                               Margin="0,0,6,0" />
+                               Margin="0,0,5.6,0" />
                     <TextBox Grid.Column="1"
-                             FontSize="11"
                              Watermark="через запятую"
                              Text="{Binding RequireText, Mode=TwoWay}" />
                     <TextBlock Grid.Column="2"
+                               Classes="label"
                                Text="исключить:"
-                               FontSize="10"
-                               Foreground="#888"
-                               VerticalAlignment="Center"
-                               Margin="12,0,6,0" />
+                               Margin="11.2,0,5.6,0" />
                     <TextBox Grid.Column="3"
-                             FontSize="11"
                              Watermark="через запятую"
                              Text="{Binding ExcludeText, Mode=TwoWay}" />
                 </Grid>
@@ -84,20 +95,20 @@
 
         <!-- Client-space rectangle. -->
         <DataTemplate DataType="{x:Type nodes:RegionEditorViewModel}" x:DataType="nodes:RegionEditorViewModel">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-                <TextBlock Text="регион" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
-                <TextBox Width="62" FontSize="11" Watermark="X" FontFamily="Consolas, monospace" Text="{Binding XText, Mode=TwoWay}" />
-                <TextBox Width="62" FontSize="11" Watermark="Y" FontFamily="Consolas, monospace" Text="{Binding YText, Mode=TwoWay}" />
-                <TextBox Width="62" FontSize="11" Watermark="W" FontFamily="Consolas, monospace" Text="{Binding WidthText, Mode=TwoWay}" />
-                <TextBox Width="62" FontSize="11" Watermark="H" FontFamily="Consolas, monospace" Text="{Binding HeightText, Mode=TwoWay}" />
+            <StackPanel Orientation="Horizontal" Spacing="2.8">
+                <TextBlock Classes="label" Text="регион" />
+                <TextBox Classes="numeric" Width="62" Watermark="X" Text="{Binding XText, Mode=TwoWay}" />
+                <TextBox Classes="numeric" Width="62" Watermark="Y" Text="{Binding YText, Mode=TwoWay}" />
+                <TextBox Classes="numeric" Width="62" Watermark="W" Text="{Binding WidthText, Mode=TwoWay}" />
+                <TextBox Classes="numeric" Width="62" Watermark="H" Text="{Binding HeightText, Mode=TwoWay}" />
             </StackPanel>
         </DataTemplate>
 
         <!-- ==== node parameter blocks (one per node type) ==== -->
 
         <DataTemplate DataType="{x:Type nodes:KeyPressNodeRowViewModel}" x:DataType="nodes:KeyPressNodeRowViewModel">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="клавиша" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="5.6">
+                <TextBlock Classes="label" Text="клавиша" />
                 <controls:KeyBindingPicker MinWidth="150"
                                            CaptureModifiers="False"
                                            Key="{Binding KeyName, Mode=TwoWay}" />
@@ -105,99 +116,93 @@
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:ClickNodeRowViewModel}" x:DataType="nodes:ClickNodeRowViewModel">
-            <StackPanel Spacing="4">
-                <StackPanel Orientation="Horizontal" Spacing="14">
-                    <CheckBox Content="из переменной" FontSize="11" IsChecked="{Binding UseVariable, Mode=TwoWay}" />
-                    <CheckBox Content="двойной клик" FontSize="11" IsChecked="{Binding DoubleClick, Mode=TwoWay}" />
+            <StackPanel Spacing="2.8">
+                <StackPanel Orientation="Horizontal" Spacing="11.2">
+                    <CheckBox Content="из переменной" IsChecked="{Binding UseVariable, Mode=TwoWay}" />
+                    <CheckBox Content="двойной клик" IsChecked="{Binding DoubleClick, Mode=TwoWay}" />
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding UseLiteralPoint}">
-                    <TextBlock Text="X" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
-                    <TextBox Width="80" FontSize="11" FontFamily="Consolas, monospace" Text="{Binding XText, Mode=TwoWay}" />
-                    <TextBlock Text="Y" FontSize="10" Foreground="#888" VerticalAlignment="Center" Margin="6,0,0,0" />
-                    <TextBox Width="80" FontSize="11" FontFamily="Consolas, monospace" Text="{Binding YText, Mode=TwoWay}" />
+                <StackPanel Orientation="Horizontal" Spacing="2.8" IsVisible="{Binding UseLiteralPoint}">
+                    <TextBlock Classes="label" Text="X" />
+                    <TextBox Classes="numeric" Width="80" Text="{Binding XText, Mode=TwoWay}" />
+                    <TextBlock Classes="label" Text="Y" Margin="5.6,0,0,0" />
+                    <TextBox Classes="numeric" Width="80" Text="{Binding YText, Mode=TwoWay}" />
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding UseVariable}">
-                    <TextBlock Text="переменная" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
-                    <TextBox Width="160" FontSize="11" Watermark="cursor" Text="{Binding PointVar, Mode=TwoWay}" />
+                <StackPanel Orientation="Horizontal" Spacing="2.8" IsVisible="{Binding UseVariable}">
+                    <TextBlock Classes="label" Text="переменная" />
+                    <TextBox Width="160" Watermark="cursor" Text="{Binding PointVar, Mode=TwoWay}" />
                 </StackPanel>
             </StackPanel>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:DelayNodeRowViewModel}" x:DataType="nodes:DelayNodeRowViewModel">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="пауза" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
-                <TextBox Width="90" FontSize="11" FontFamily="Consolas, monospace" Text="{Binding SecondsText, Mode=TwoWay}" />
-                <TextBlock Text="сек (дробное — можно: 1.5 = 1500 мс)"
-                           FontSize="10"
-                           Foreground="#777"
-                           VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="5.6">
+                <TextBlock Classes="label" Text="пауза" />
+                <TextBox Classes="numeric" Width="90" Text="{Binding SecondsText, Mode=TwoWay}" />
+                <TextBlock Classes="hint" Text="сек (дробное — можно: 1.5 = 1500 мс)" />
             </StackPanel>
         </DataTemplate>
 
         <!-- Add/Remove tag share one block: they differ only in direction, which the row header already says. -->
         <DataTemplate DataType="{x:Type nodes:TagNodeRowViewModel}" x:DataType="nodes:TagNodeRowViewModel">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="тег" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
-                <TextBox Width="220" FontSize="11" Watermark="имя тега или {переменная}" Text="{Binding Tag, Mode=TwoWay}" />
+            <StackPanel Orientation="Horizontal" Spacing="5.6">
+                <TextBlock Classes="label" Text="тег" />
+                <TextBox Width="220" Watermark="имя тега или {переменная}" Text="{Binding Tag, Mode=TwoWay}" />
             </StackPanel>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:SetIconNodeRowViewModel}" x:DataType="nodes:SetIconNodeRowViewModel">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Text="иконка" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
-                <TextBox Width="330" FontSize="11" Watermark="Assets/ClassIcons/{tag}.png" Text="{Binding IconPath, Mode=TwoWay}" />
+            <StackPanel Orientation="Horizontal" Spacing="5.6">
+                <TextBlock Classes="label" Text="иконка" />
+                <TextBox Width="330" Watermark="Assets/ClassIcons/{tag}.png" Text="{Binding IconPath, Mode=TwoWay}" />
             </StackPanel>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:RunMacroNodeRowViewModel}" x:DataType="nodes:RunMacroNodeRowViewModel">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="макрос" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="8.4">
+                <TextBlock Classes="label" Text="макрос" />
                 <ComboBox MinWidth="220"
-                          FontSize="11"
                           ItemsSource="{Binding MacroChoices}"
                           SelectedItem="{Binding MacroName, Mode=TwoWay}" />
-                <CheckBox Content="ждать завершения" FontSize="11" IsChecked="{Binding Await, Mode=TwoWay}" />
+                <CheckBox Content="ждать завершения" IsChecked="{Binding Await, Mode=TwoWay}" />
             </StackPanel>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:FindElementNodeRowViewModel}" x:DataType="nodes:FindElementNodeRowViewModel">
-            <StackPanel Spacing="4">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock Text="шаблон" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
-                    <TextBox Width="200" FontSize="11" Watermark="имя файла без .png" Text="{Binding Template, Mode=TwoWay}" />
-                    <TextBlock Text="точка →" FontSize="10" Foreground="#888" VerticalAlignment="Center" Margin="10,0,0,0" />
-                    <TextBox Width="130" FontSize="11" Watermark="переменная (необяз.)" Text="{Binding FoundPointVar, Mode=TwoWay}" />
+            <StackPanel Spacing="2.8">
+                <StackPanel Orientation="Horizontal" Spacing="5.6">
+                    <TextBlock Classes="label" Text="шаблон" />
+                    <TextBox Width="200" Watermark="имя файла без .png" Text="{Binding Template, Mode=TwoWay}" />
+                    <TextBlock Classes="label" Text="точка →" Margin="8.4,0,0,0" />
+                    <TextBox Width="130" Watermark="переменная (необяз.)" Text="{Binding FoundPointVar, Mode=TwoWay}" />
                 </StackPanel>
                 <ContentControl Content="{Binding Region}" />
-                <TextBlock Text="W или H = 0 — искать по всему окну"
-                           FontSize="10"
-                           Foreground="#777" />
+                <TextBlock Classes="hint" Text="W или H = 0 — искать по всему окну" />
             </StackPanel>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:WaitForElementNodeRowViewModel}" x:DataType="nodes:WaitForElementNodeRowViewModel">
-            <StackPanel Spacing="4">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock Text="шаблон" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
-                    <TextBox Width="200" FontSize="11" Watermark="имя файла без .png" Text="{Binding Template, Mode=TwoWay}" />
-                    <TextBlock Text="таймаут" FontSize="10" Foreground="#888" VerticalAlignment="Center" Margin="10,0,0,0" />
-                    <TextBox Width="90" FontSize="11" FontFamily="Consolas, monospace" Text="{Binding TimeoutMsText, Mode=TwoWay}" />
-                    <TextBlock Text="мс" FontSize="10" Foreground="#777" VerticalAlignment="Center" />
-                    <TextBlock Text="точка →" FontSize="10" Foreground="#888" VerticalAlignment="Center" Margin="10,0,0,0" />
-                    <TextBox Width="130" FontSize="11" Watermark="переменная (необяз.)" Text="{Binding FoundPointVar, Mode=TwoWay}" />
+            <StackPanel Spacing="2.8">
+                <StackPanel Orientation="Horizontal" Spacing="5.6">
+                    <TextBlock Classes="label" Text="шаблон" />
+                    <TextBox Width="200" Watermark="имя файла без .png" Text="{Binding Template, Mode=TwoWay}" />
+                    <TextBlock Classes="label" Text="таймаут" Margin="8.4,0,0,0" />
+                    <TextBox Classes="numeric" Width="90" Text="{Binding TimeoutMsText, Mode=TwoWay}" />
+                    <TextBlock Classes="hint" Text="мс" />
+                    <TextBlock Classes="label" Text="точка →" Margin="8.4,0,0,0" />
+                    <TextBox Width="130" Watermark="переменная (необяз.)" Text="{Binding FoundPointVar, Mode=TwoWay}" />
                 </StackPanel>
                 <ContentControl Content="{Binding Region}" />
             </StackPanel>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:RecognizeTagNodeRowViewModel}" x:DataType="nodes:RecognizeTagNodeRowViewModel">
-            <StackPanel Spacing="4">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock Text="набор" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
-                    <TextBox Width="160" FontSize="11" Watermark="classes" Text="{Binding TemplateSet, Mode=TwoWay}" />
-                    <CheckBox Content="вешать тег" FontSize="11" IsChecked="{Binding ApplyTag, Mode=TwoWay}" Margin="10,0,0,0" />
-                    <TextBlock Text="результат →" FontSize="10" Foreground="#888" VerticalAlignment="Center" Margin="10,0,0,0" />
-                    <TextBox Width="120" FontSize="11" Watermark="tag" Text="{Binding ResultVar, Mode=TwoWay}" />
+            <StackPanel Spacing="2.8">
+                <StackPanel Orientation="Horizontal" Spacing="5.6">
+                    <TextBlock Classes="label" Text="набор" />
+                    <TextBox Width="160" Watermark="classes" Text="{Binding TemplateSet, Mode=TwoWay}" />
+                    <CheckBox Content="вешать тег" IsChecked="{Binding ApplyTag, Mode=TwoWay}" Margin="8.4,0,0,0" />
+                    <TextBlock Classes="label" Text="результат →" Margin="8.4,0,0,0" />
+                    <TextBox Width="120" Watermark="tag" Text="{Binding ResultVar, Mode=TwoWay}" />
                 </StackPanel>
                 <ContentControl Content="{Binding Region}" />
             </StackPanel>
@@ -206,13 +211,12 @@
         <!-- ==== trigger rows ==== -->
 
         <DataTemplate DataType="{x:Type nodes:HotkeyTriggerRowViewModel}" x:DataType="nodes:HotkeyTriggerRowViewModel">
-            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2.8">
                 <TextBlock Grid.Column="0"
+                           Classes="label"
                            Text="Хоткей"
-                           FontSize="11"
-                           Foreground="#888"
-                           Width="130"
-                           VerticalAlignment="Center" />
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           Width="130" />
                 <controls:KeyBindingPicker Grid.Column="1"
                                            HorizontalAlignment="Stretch"
                                            CaptureModifiers="True"
@@ -221,30 +225,26 @@
                                            MouseButton="{Binding MouseButton, Mode=TwoWay}" />
                 <Button Grid.Column="2"
                         Content="×"
-                        FontSize="11"
-                        Padding="8,2"
-                        Margin="6,0,0,0"
+                        Classes="ghost"
+                        Margin="5.6,0,0,0"
                         Click="OnRemoveTriggerClicked" />
             </Grid>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:ProcessTriggerRowViewModel}" x:DataType="nodes:ProcessTriggerRowViewModel">
-            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2.8">
                 <TextBlock Grid.Column="0"
+                           Classes="label"
                            Text="Появление процесса"
-                           FontSize="11"
-                           Foreground="#888"
-                           Width="130"
-                           VerticalAlignment="Center" />
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           Width="130" />
                 <TextBox Grid.Column="1"
-                         FontSize="11"
                          Watermark="elementclient_64"
                          Text="{Binding ProcessName, Mode=TwoWay}" />
                 <Button Grid.Column="2"
                         Content="×"
-                        FontSize="11"
-                        Padding="8,2"
-                        Margin="6,0,0,0"
+                        Classes="ghost"
+                        Margin="5.6,0,0,0"
                         Click="OnRemoveTriggerClicked" />
             </Grid>
         </DataTemplate>
@@ -252,13 +252,12 @@
         <!-- ==== validation issue ==== -->
 
         <DataTemplate DataType="{x:Type vm:ValidationIssueViewModel}" x:DataType="vm:ValidationIssueViewModel">
-            <Button Background="Transparent"
-                    BorderThickness="0"
-                    Padding="2,1"
+            <Button Classes="ghost"
+                    Padding="2.8,1.4"
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Left"
                     Click="OnIssueClicked">
-                <TextBlock FontSize="11"
+                <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
                            TextWrapping="Wrap"
                            Foreground="{Binding IsError, Converter={x:Static conv:IssueSeverityToBrushConverter.Instance}}"
                            Text="{Binding Display}" />
@@ -266,48 +265,53 @@
         </DataTemplate>
     </Window.DataTemplates>
 
-    <Grid ColumnDefinitions="280,*" Margin="12">
+    <Grid ColumnDefinitions="280,*" Margin="{DynamicResource NocturneInsetWindow}">
 
         <!-- ==== library ==== -->
         <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
-            <TextBlock Grid.Row="0" FontSize="14" Text="Библиотека" Margin="0,0,0,6" />
+            <TextBlock Grid.Row="0"
+                       FontSize="{DynamicResource NocturneFontSizeTitle}"
+                       FontWeight="Medium"
+                       Text="Библиотека"
+                       Margin="0,0,0,5.6" />
 
-            <Border Grid.Row="1" BorderThickness="1" BorderBrush="#444" CornerRadius="4">
+            <Border Grid.Row="1"
+                    BorderThickness="1"
+                    BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                    Background="{DynamicResource NocturneBgBrush}"
+                    CornerRadius="{DynamicResource NocturneRadiusSm}">
                 <ListBox ItemsSource="{Binding Macros}"
-                         SelectedItem="{Binding SelectedMacro, Mode=TwoWay}"
-                         Background="Transparent">
+                         SelectedItem="{Binding SelectedMacro, Mode=TwoWay}">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:MacroListItemViewModel">
                             <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto,Auto,Auto">
                                 <TextBlock Grid.Row="0" Grid.Column="0"
-                                           FontSize="13"
+                                           FontSize="{DynamicResource NocturneFontSizeBody}"
                                            VerticalAlignment="Center"
                                            Text="{Binding Name}" />
                                 <Button Grid.Row="0" Grid.Column="1"
-                                        Content="▶"
-                                        FontSize="10"
-                                        Padding="7,2"
+                                        Content="▸"
+                                        Classes="accent"
+                                        Padding="{DynamicResource NocturneInsetTight}"
                                         ToolTip.Tip="Запустить"
                                         IsEnabled="{Binding IsNotRunning}"
                                         Click="OnRunMacroClicked" />
                                 <Button Grid.Row="0" Grid.Column="2"
                                         Content="■"
-                                        FontSize="10"
-                                        Padding="7,2"
-                                        Margin="3,0,0,0"
+                                        Padding="{DynamicResource NocturneInsetTight}"
+                                        Margin="2.8,0,0,0"
                                         ToolTip.Tip="Остановить"
                                         IsEnabled="{Binding IsRunning}"
                                         Click="OnStopMacroClicked" />
                                 <Button Grid.Row="0" Grid.Column="3"
                                         Content="×"
-                                        FontSize="10"
-                                        Padding="7,2"
-                                        Margin="3,0,0,0"
+                                        Classes="ghost"
+                                        Margin="2.8,0,0,0"
                                         ToolTip.Tip="Удалить"
                                         Click="OnDeleteMacroClicked" />
                                 <TextBlock Grid.Row="1" Grid.ColumnSpan="4"
-                                           FontSize="10"
-                                           Foreground="#888"
+                                           FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                           Foreground="{DynamicResource NocturneTextFaintBrush}"
                                            TextTrimming="CharacterEllipsis"
                                            Text="{Binding Summary}" />
                             </Grid>
@@ -318,89 +322,92 @@
 
             <Button Grid.Row="2"
                     Content="+ Новый макрос"
-                    FontSize="11"
-                    Padding="10,4"
-                    Margin="0,8,0,0"
+                    Margin="0,8.4,0,0"
                     HorizontalAlignment="Stretch"
                     HorizontalContentAlignment="Center"
                     Click="OnNewMacroClicked" />
         </Grid>
 
         <!-- ==== editor ==== -->
-        <Grid Grid.Column="1" Margin="12,0,0,0" RowDefinitions="Auto,Auto,*,Auto,Auto"
+        <Grid Grid.Column="1" Margin="11.2,0,0,0" RowDefinitions="Auto,Auto,*,Auto,Auto"
               IsVisible="{Binding HasOpenMacro}">
 
             <!-- name + start node -->
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,8">
-                <TextBlock Grid.Column="0" Text="Имя" FontSize="11" Foreground="#888" VerticalAlignment="Center" Margin="0,0,6,0" />
-                <TextBox Grid.Column="1" FontSize="12" Text="{Binding MacroName, Mode=TwoWay}" />
-                <TextBlock Grid.Column="2" Text="старт" FontSize="11" Foreground="#888" VerticalAlignment="Center" Margin="12,0,6,0" />
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,8.4">
+                <TextBlock Grid.Column="0" Classes="label" Text="Имя" FontSize="{DynamicResource NocturneFontSizeSmall}" Margin="0,0,5.6,0" />
+                <TextBox Grid.Column="1" FontSize="{DynamicResource NocturneFontSizeBody}" Text="{Binding MacroName, Mode=TwoWay}" />
+                <TextBlock Grid.Column="2" Classes="label" Text="старт" FontSize="{DynamicResource NocturneFontSizeSmall}" Margin="11.2,0,5.6,0" />
                 <ComboBox Grid.Column="3"
                           MinWidth="170"
-                          FontSize="11"
                           ItemsSource="{Binding StartNodeChoices}"
                           SelectedItem="{Binding StartNodeId, Mode=TwoWay}" />
             </Grid>
 
             <!-- triggers -->
             <Border Grid.Row="1"
-                    Padding="8"
-                    Margin="0,0,0,8"
+                    Padding="{DynamicResource NocturneInsetPanel}"
+                    Margin="0,0,0,8.4"
                     BorderThickness="1"
-                    BorderBrush="#444"
-                    CornerRadius="4">
-                <StackPanel Spacing="4">
+                    BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                    Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                    CornerRadius="{DynamicResource NocturneRadiusSm}">
+                <StackPanel Spacing="2.8">
                     <Grid ColumnDefinitions="*,Auto,Auto">
-                        <TextBlock Grid.Column="0" Text="Триггеры" FontSize="12" Foreground="#aaa" VerticalAlignment="Center" />
-                        <Button Grid.Column="1" Content="+ хоткей" FontSize="11" Padding="8,2" Click="OnAddHotkeyTriggerClicked" />
-                        <Button Grid.Column="2" Content="+ процесс" FontSize="11" Padding="8,2" Margin="6,0,0,0" Click="OnAddProcessTriggerClicked" />
+                        <TextBlock Grid.Column="0"
+                                   FontSize="{DynamicResource NocturneFontSizeBody}"
+                                   Foreground="{DynamicResource NocturneTextSecondaryBrush}"
+                                   VerticalAlignment="Center"
+                                   Text="Триггеры" />
+                        <Button Grid.Column="1" Content="+ хоткей" Padding="{DynamicResource NocturneInsetTight}" Click="OnAddHotkeyTriggerClicked" />
+                        <Button Grid.Column="2" Content="+ процесс" Padding="{DynamicResource NocturneInsetTight}" Margin="5.6,0,0,0" Click="OnAddProcessTriggerClicked" />
                     </Grid>
                     <ItemsControl ItemsSource="{Binding Triggers}" />
                 </StackPanel>
             </Border>
 
             <!-- nodes -->
-            <Border Grid.Row="2" BorderThickness="1" BorderBrush="#444" CornerRadius="4">
+            <Border Grid.Row="2"
+                    BorderThickness="1"
+                    BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                    Background="{DynamicResource NocturneBgBrush}"
+                    CornerRadius="{DynamicResource NocturneRadiusSm}">
                 <ScrollViewer>
                     <ItemsControl ItemsSource="{Binding Nodes}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="nodes:NodeRowViewModel">
-                                <Border Padding="8"
-                                        Margin="4"
+                                <Border Padding="{DynamicResource NocturneInsetPanel}"
+                                        Margin="{DynamicResource NocturneSpace1Thickness}"
                                         BorderThickness="1"
-                                        BorderBrush="#333"
-                                        CornerRadius="3"
-                                        Background="#1a1a1a">
+                                        BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                        CornerRadius="{DynamicResource NocturneRadiusSm}"
+                                        Background="{DynamicResource NocturneSurfaceRaisedBrush}">
                                     <Grid ColumnDefinitions="Auto,*">
                                         <!-- selection accent, lit by clicking a validation issue -->
                                         <Border Grid.Column="0"
-                                                Width="3"
-                                                CornerRadius="2"
-                                                Margin="0,0,8,0"
-                                                Background="#6a9fd0"
+                                                Width="2"
+                                                CornerRadius="1"
+                                                Margin="0,0,8.4,0"
+                                                Background="{DynamicResource NocturneAccentBrush}"
                                                 IsVisible="{Binding IsSelected}" />
-                                        <StackPanel Grid.Column="1" Spacing="4">
+                                        <StackPanel Grid.Column="1" Spacing="2.8">
                                             <Grid ColumnDefinitions="Auto,Auto,180,*,Auto,Auto,Auto">
                                                 <TextBlock Grid.Column="0"
-                                                           FontSize="12"
-                                                           Foreground="#9ec7e8"
+                                                           FontSize="{DynamicResource NocturneFontSizeBody}"
+                                                           Foreground="{DynamicResource NocturneAccent300Brush}"
                                                            MinWidth="140"
                                                            VerticalAlignment="Center"
                                                            Text="{Binding TypeLabel}" />
                                                 <TextBlock Grid.Column="1"
+                                                           Classes="label"
                                                            Text="id"
-                                                           FontSize="10"
-                                                           Foreground="#888"
-                                                           VerticalAlignment="Center"
-                                                           Margin="0,0,6,0" />
+                                                           Margin="0,0,5.6,0" />
                                                 <TextBox Grid.Column="2"
-                                                         FontSize="11"
-                                                         FontFamily="Consolas, monospace"
+                                                         Classes="numeric"
                                                          ToolTip.Tip="Переименование автоматически перешивает входящие рёбра"
                                                          Text="{Binding NodeId, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                                <Button Grid.Column="4" Content="↑" FontSize="11" Padding="8,2" Click="OnMoveNodeUpClicked" />
-                                                <Button Grid.Column="5" Content="↓" FontSize="11" Padding="8,2" Margin="3,0,0,0" Click="OnMoveNodeDownClicked" />
-                                                <Button Grid.Column="6" Content="×" FontSize="11" Padding="8,2" Margin="6,0,0,0" ToolTip.Tip="Удалить ноду" Click="OnDeleteNodeClicked" />
+                                                <Button Grid.Column="4" Content="↑" Padding="{DynamicResource NocturneInsetTight}" Click="OnMoveNodeUpClicked" />
+                                                <Button Grid.Column="5" Content="↓" Padding="{DynamicResource NocturneInsetTight}" Margin="2.8,0,0,0" Click="OnMoveNodeDownClicked" />
+                                                <Button Grid.Column="6" Content="×" Classes="ghost" Margin="5.6,0,0,0" ToolTip.Tip="Удалить ноду" Click="OnDeleteNodeClicked" />
                                             </Grid>
 
                                             <!-- type-specific parameters, matched on the row's concrete type -->
@@ -409,7 +416,7 @@
                                             <!-- selector: absent for conditionals and Delay -->
                                             <ContentControl Content="{Binding Target}" IsVisible="{Binding HasTarget}" />
 
-                                            <ItemsControl ItemsSource="{Binding Edges}" Margin="0,4,0,0">
+                                            <ItemsControl ItemsSource="{Binding Edges}" Margin="0,2.8,0,0">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
                                                         <WrapPanel />
@@ -426,26 +433,27 @@
             </Border>
 
             <!-- messages + validation -->
-            <StackPanel Grid.Row="3" Spacing="4" Margin="0,8,0,8">
-                <TextBlock FontSize="11"
-                           Foreground="#E0AF68"
+            <StackPanel Grid.Row="3" Spacing="2.8" Margin="0,8.4,0,8.4">
+                <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           Foreground="{DynamicResource NocturneWarningBrush}"
                            TextWrapping="Wrap"
                            IsVisible="{Binding ChangedOnDisk}"
                            Text="Макрос изменён на диске, а здесь есть несохранённые правки. «Перечитать» — взять версию с диска, «Сохранить» — затереть её." />
-                <TextBlock FontSize="11"
-                           Foreground="#E06060"
+                <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           Foreground="{DynamicResource NocturneDangerBrush}"
                            TextWrapping="Wrap"
                            IsVisible="{Binding ErrorMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
                            Text="{Binding ErrorMessage}" />
-                <TextBlock FontSize="11"
-                           Foreground="#888"
+                <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           Foreground="{DynamicResource NocturneTextFaintBrush}"
                            TextWrapping="Wrap"
                            IsVisible="{Binding StatusMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
                            Text="{Binding StatusMessage}" />
                 <Border BorderThickness="1"
-                        BorderBrush="#553333"
-                        CornerRadius="3"
-                        Padding="6"
+                        BorderBrush="{DynamicResource NocturneDangerBorderBrush}"
+                        Background="{DynamicResource NocturneDangerSurfaceBrush}"
+                        CornerRadius="{DynamicResource NocturneRadiusSm}"
+                        Padding="{DynamicResource NocturneInsetTight}"
                         IsVisible="{Binding HasIssues}">
                     <ScrollViewer MaxHeight="120">
                         <ItemsControl ItemsSource="{Binding Issues}" />
@@ -455,18 +463,16 @@
 
             <!-- actions -->
             <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*,Auto,Auto">
-                <Button Grid.Column="0" x:Name="AddNodeButton" Content="+ Нода" FontSize="11" Padding="12,4">
+                <Button Grid.Column="0" x:Name="AddNodeButton" Content="+ Нода">
                     <Button.Flyout>
                         <Flyout Placement="Top">
                             <ItemsControl ItemsSource="{Binding NodeKinds}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="nodes:MacroNodeKindOption">
                                         <Button Content="{Binding Label}"
-                                                FontSize="11"
-                                                Padding="10,4"
+                                                Classes="ghost"
+                                                Padding="{DynamicResource NocturneInsetField}"
                                                 MinWidth="180"
-                                                Background="Transparent"
-                                                BorderThickness="0"
                                                 HorizontalAlignment="Stretch"
                                                 HorizontalContentAlignment="Left"
                                                 Click="OnAddNodeClicked" />
@@ -478,47 +484,45 @@
                 </Button>
                 <Button Grid.Column="1"
                         Content="Перечитать"
-                        FontSize="11"
-                        Padding="12,4"
-                        Margin="8,0,0,0"
+                        Margin="5.6,0,0,0"
                         ToolTip.Tip="Отбросить правки и взять версию с диска"
                         Click="OnReloadClicked" />
                 <Button Grid.Column="2"
                         Content="Папка макросов"
-                        FontSize="11"
-                        Padding="12,4"
-                        Margin="8,0,0,0"
+                        Margin="5.6,0,0,0"
                         HorizontalAlignment="Left"
                         ToolTip.Tip="{Binding FolderPath}"
                         Click="OnOpenFolderClicked" />
                 <Button Grid.Column="3"
                         Content="Сохранить"
-                        FontSize="11"
-                        Padding="16,4"
+                        Classes="accent"
                         Click="OnSaveClicked" />
                 <Button Grid.Column="4"
                         Content="Закрыть"
-                        FontSize="11"
-                        Padding="12,4"
-                        Margin="8,0,0,0"
+                        Margin="5.6,0,0,0"
                         Click="OnCloseClicked" />
             </Grid>
         </Grid>
 
         <!-- empty state -->
         <StackPanel Grid.Column="1"
-                    Margin="12,0,0,0"
+                    Margin="11.2,0,0,0"
                     VerticalAlignment="Center"
                     HorizontalAlignment="Center"
-                    Spacing="8"
+                    Spacing="8.4"
                     IsVisible="{Binding !HasOpenMacro}">
-            <TextBlock FontSize="13" Foreground="#888" Text="Выберите макрос слева или создайте новый." />
-            <TextBlock FontSize="11" Foreground="#666" HorizontalAlignment="Center" Text="{Binding FolderPath}" />
-            <Button Content="Открыть папку макросов"
-                    FontSize="11"
-                    Padding="10,4"
-                    HorizontalAlignment="Center"
-                    Click="OnOpenFolderClicked" />
+            <TextBlock FontSize="{DynamicResource NocturneFontSizeTitle}"
+                       Foreground="{DynamicResource NocturneTextMutedBrush}"
+                       Text="Выберите макрос слева или создайте новый." />
+            <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                       Foreground="{DynamicResource NocturneTextFaintBrush}"
+                       HorizontalAlignment="Center"
+                       Text="{Binding FolderPath}" />
+                <Button Content="Открыть папку макросов"
+                        Classes="accent"
+                        HorizontalAlignment="Center"
+                        Click="OnOpenFolderClicked" />
         </StackPanel>
     </Grid>
 </Window>

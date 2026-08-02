@@ -1,0 +1,82 @@
+<!--
+  Nocturne — bridge onto FluentTheme (wave D1).
+
+  Controls.axaml replaces the Fluent control themes we care about. What is left over —
+  Window, Popup, FlyoutPresenter, MenuFlyout, ToolTip, TitleBar — still renders through
+  Fluent's own templates, which read their colours from Fluent's resource KEYS. This file
+  re-points those keys at Nocturne tokens, so the un-themed leftovers stop being grey
+  Windows chrome without anyone having to write a template for them.
+
+  Why this works: a DynamicResource lookup walks the logical tree to Application, and
+  Application.Resources (where this dictionary is merged) is consulted BEFORE
+  Application.Styles (where FluentTheme keeps its dictionaries). Same key, ours wins.
+
+  Keep this file SMALL and boring. Anything that deserves real design attention should get
+  a ControlTheme in Controls.axaml instead of another key here. D2 is expected to delete
+  entries from this file, not add to it.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ================================================================
+         THE STOCK BLUE
+         Fluent derives every "accent" brush from these six colours, and the Windows
+         default is a blue that has nothing to do with this system. Overriding the palette
+         at the root retires it everywhere at once — selection, highlights, focus visuals
+         in controls we never touched.
+         ================================================================ -->
+
+    <StaticResource x:Key="SystemAccentColor" ResourceKey="NocturneAccentColor" />
+    <StaticResource x:Key="SystemAccentColorLight1" ResourceKey="NocturneAccent400Color" />
+    <StaticResource x:Key="SystemAccentColorLight2" ResourceKey="NocturneAccent300Color" />
+    <StaticResource x:Key="SystemAccentColorLight3" ResourceKey="NocturneAccent200Color" />
+    <StaticResource x:Key="SystemAccentColorDark1" ResourceKey="NocturneAccent600Color" />
+    <StaticResource x:Key="SystemAccentColorDark2" ResourceKey="NocturneAccent700Color" />
+    <StaticResource x:Key="SystemAccentColorDark3" ResourceKey="NocturneAccent800Color" />
+
+    <!-- ================================================================
+         NO PURE BLACK, NO PURE WHITE
+         Dark Fluent grounds windows on #000000 and writes text in #FFFFFF. Both are out
+         of the system; these two keys are where they enter.
+         ================================================================ -->
+
+    <SolidColorBrush x:Key="SystemRegionBrush" Color="{DynamicResource NocturneGroundColor}" />
+    <SolidColorBrush x:Key="SystemControlBackgroundAltHighBrush" Color="{DynamicResource NocturneGroundColor}" />
+    <SolidColorBrush x:Key="SystemControlForegroundBaseHighBrush" Color="{DynamicResource NocturneTextColor}" />
+
+    <!-- ================================================================
+         FLOATING SURFACES — flyouts, menus, tooltips.
+         Fluent funnels all three through these transient/chrome keys.
+         ================================================================ -->
+
+    <SolidColorBrush x:Key="SystemControlTransientBackgroundBrush" Color="{DynamicResource NocturneSurfaceOverlayColor}" />
+    <SolidColorBrush x:Key="SystemControlTransientBorderBrush" Color="{DynamicResource NocturneDividerStrongColor}" />
+    <SolidColorBrush x:Key="SystemControlBackgroundChromeMediumLowBrush" Color="{DynamicResource NocturneSurfaceOverlayColor}" />
+
+    <!-- Hover/press wash inside menus, straight off the accent tint scale. -->
+    <SolidColorBrush x:Key="SystemControlHighlightListLowBrush" Color="{DynamicResource NocturneAccentTint12Color}" />
+    <SolidColorBrush x:Key="SystemControlHighlightListMediumBrush" Color="{DynamicResource NocturneAccentTint22Color}" />
+    <SolidColorBrush x:Key="SystemControlHighlightAltBaseHighBrush" Color="{DynamicResource NocturneTextColor}" />
+
+    <CornerRadius x:Key="OverlayCornerRadius">4</CornerRadius>
+    <Thickness x:Key="FlyoutContentThemePadding">5.6</Thickness>
+    <Thickness x:Key="MenuFlyoutItemThemePadding">8.4,5.6</Thickness>
+    <Thickness x:Key="MenuFlyoutPresenterThemePadding">2.8</Thickness>
+    <Thickness x:Key="ToolTipBorderThemePadding">8.4,5.6</Thickness>
+    <x:Double x:Key="ToolTipContentThemeFontSize">11</x:Double>
+
+    <!-- The 1px block Fluent parks where the two scrollbars meet. Ours are overlays. -->
+    <SolidColorBrush x:Key="ScrollViewerScrollBarsSeparatorBackground" Color="Transparent" />
+
+    <!-- ================================================================
+         TYPE
+         Fluent already asks for "fonts:Inter#Inter, $Default" here — the Avalonia.Fonts.Inter
+         collection that Program.BuildAvaloniaApp().WithInterFont() registers, with Segoe UI
+         behind it for the glyphs Inter lacks. Same chain as NocturneFontFamily; only the
+         body size changes, down to the 0.7× scale.
+         ================================================================ -->
+
+    <FontFamily x:Key="ContentControlThemeFontFamily">fonts:Inter#Inter, $Default</FontFamily>
+    <x:Double x:Key="ControlContentThemeFontSize">12</x:Double>
+
+</ResourceDictionary>

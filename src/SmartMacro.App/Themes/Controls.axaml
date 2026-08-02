@@ -1,0 +1,818 @@
+<!--
+  Nocturne — control themes (wave D1).
+
+  These are full `ControlTheme`s keyed by type, so they REPLACE the FluentTheme default for
+  every control listed here. FluentTheme is still in Application.Styles: it supplies the
+  controls nobody has restyled yet (Window, Popup, MenuFlyout, ToolTip, PathIcon…), and
+  FluentBridge.axaml re-points that leftover's colour keys at these tokens.
+
+  Everything references Tokens.axaml through {DynamicResource} rather than {StaticResource}.
+  Merged dictionaries resolve statics against a parse-time parent chain that is easy to get
+  wrong across files; DynamicResource resolves at runtime through the whole chain and always
+  finds the token. Inside THIS file, statics are fine and used for the local sub-themes
+  (thumb, page button) because they are declared above their use.
+
+  The system's rules, and where each is enforced:
+
+    accent is a line and a glow      Button.Background is Transparent in every state; the
+                                     only accent areas are the AccentTint* washes.
+    no filled-accent button          there is no `accent`-filled variant. `Button.accent`
+                                     is an accent OUTLINE; `Button.danger` likewise.
+    focus = 2px accent, 2px offset   AdornerLayer.DefaultFocusAdorner below, which replaces
+                                     Fluent's near-white two-tone ring globally — including
+                                     on controls this file does not theme.
+    density 0.7×                     every padding comes from NocturneInset*, every gap
+                                     from NocturneSpace*.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ================================================================
+         FOCUS
+         Avalonia draws AdornerLayer.DefaultFocusAdorner for any control that does not set
+         FocusAdorner itself, and only for keyboard/directional focus. Fluent's default is
+         a 2px SystemBaseHigh ring with a 1px inner line — the stock look this wave exists
+         to remove. Margin -4 puts the 2px stroke 2px clear of the control.
+         ================================================================ -->
+
+    <ControlTheme x:Key="{x:Type AdornerLayer}" TargetType="AdornerLayer">
+        <Setter Property="DefaultFocusAdorner">
+            <FocusAdornerTemplate>
+                <!-- AdornerLayer.IsClipEnabled defaults to TRUE, which clips an adorner to
+                     the bounds of the thing it adorns — so the negative margin that buys
+                     the 2px offset would silently clip the ring away to nothing. -->
+                <Border AdornerLayer.IsClipEnabled="False"
+                        BorderThickness="2"
+                        BorderBrush="{DynamicResource NocturneAccentBrush}"
+                        CornerRadius="6"
+                        Margin="-4" />
+            </FocusAdornerTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <!-- ================================================================
+         BUTTON
+         Default = neutral outline on transparent. `.accent` promotes the outline to the
+         accent; `.danger` to the danger edge over its 8% wash. Nothing here ever fills.
+         ================================================================ -->
+
+    <ControlTheme x:Key="{x:Type Button}" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral300Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral800Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource NocturneRadiusSm}" />
+        <Setter Property="Padding" Value="{DynamicResource NocturneInsetControl}" />
+        <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeSmall}" />
+        <Setter Property="FontWeight" Value="Normal" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <ContentPresenter x:Name="PART_ContentPresenter"
+                                  Background="{TemplateBinding Background}"
+                                  BorderBrush="{TemplateBinding BorderBrush}"
+                                  BorderThickness="{TemplateBinding BorderThickness}"
+                                  CornerRadius="{TemplateBinding CornerRadius}"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  Padding="{TemplateBinding Padding}"
+                                  RecognizesAccessKey="True"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+            </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent700Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral200Brush}" />
+        </Style>
+
+        <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturnePressedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent600Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneAccent200Brush}" />
+        </Style>
+
+        <!-- Primary. An outline, not a fill — the whole point of the system. -->
+        <Style Selector="^.accent">
+            <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource NocturneAccent300Brush}" />
+            </Style>
+            <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource NocturneHoverBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent400Brush}" />
+                <Setter Property="Foreground" Value="{DynamicResource NocturneAccent200Brush}" />
+            </Style>
+            <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource NocturnePressedBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent300Brush}" />
+            </Style>
+        </Style>
+
+        <!-- Destructive: "Стоп всё", "Удалить". -->
+        <Style Selector="^.danger">
+            <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource NocturneDangerSurfaceBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneDangerBorderBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource NocturneDangerBrush}" />
+            </Style>
+            <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource NocturneDangerSurfaceHoverBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneDangerBorderHoverBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource NocturneDangerBrush}" />
+            </Style>
+            <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource NocturneDangerSurfacePressedBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource NocturneDangerBrush}" />
+            </Style>
+        </Style>
+
+        <!-- Chrome-less: an icon or a line of text that happens to be clickable
+             (tag ✕, validation issue rows, flyout menu entries). -->
+        <Style Selector="^.ghost">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="{DynamicResource NocturneInsetTight}" />
+            <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{DynamicResource NocturneTextMutedBrush}" />
+            </Style>
+            <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource NocturneAccentTint08Brush}" />
+                <Setter Property="Foreground" Value="{DynamicResource NocturneAccent300Brush}" />
+            </Style>
+            <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Background" Value="{DynamicResource NocturneHoverBrush}" />
+            </Style>
+        </Style>
+
+        <!-- LAST on purpose. Nested styles of equal specificity resolve in declaration
+             order, so this has to come after .accent/.danger/.ghost or a disabled
+             "Стоп всё" keeps its live danger edge and reads as clickable. -->
+        <Style Selector="^:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral900Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral700Brush}" />
+        </Style>
+    </ControlTheme>
+
+    <!-- ================================================================
+         REPEATBUTTON — same skin as Button, for anything that auto-repeats.
+         ================================================================ -->
+
+    <ControlTheme x:Key="{x:Type RepeatButton}" TargetType="RepeatButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral300Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral800Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource NocturneRadiusSm}" />
+        <Setter Property="Padding" Value="{DynamicResource NocturneInsetControl}" />
+        <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeSmall}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <ContentPresenter x:Name="PART_ContentPresenter"
+                                  Background="{TemplateBinding Background}"
+                                  BorderBrush="{TemplateBinding BorderBrush}"
+                                  BorderThickness="{TemplateBinding BorderThickness}"
+                                  CornerRadius="{TemplateBinding CornerRadius}"
+                                  Content="{TemplateBinding Content}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  Padding="{TemplateBinding Padding}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+            </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent700Brush}" />
+        </Style>
+        <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturnePressedBrush}" />
+        </Style>
+        <Style Selector="^:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral900Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral700Brush}" />
+        </Style>
+    </ControlTheme>
+
+    <!-- ================================================================
+         TEXTBOX
+         Sunken field, neutral edge at rest, accent LINE on focus. Fluent's version is
+         reproduced structurally (same PART_ names, same watermark/inner-content slots) so
+         nothing that binds to a TextBox has to change; only the skin and the density differ.
+         ================================================================ -->
+
+    <MenuFlyout x:Key="NocturneTextBoxContextFlyout">
+        <MenuItem Header="Вырезать"
+                  Command="{Binding $parent[TextBox].Cut}"
+                  IsEnabled="{Binding $parent[TextBox].CanCut}"
+                  InputGesture="{x:Static TextBox.CutGesture}" />
+        <MenuItem Header="Копировать"
+                  Command="{Binding $parent[TextBox].Copy}"
+                  IsEnabled="{Binding $parent[TextBox].CanCopy}"
+                  InputGesture="{x:Static TextBox.CopyGesture}" />
+        <MenuItem Header="Вставить"
+                  Command="{Binding $parent[TextBox].Paste}"
+                  IsEnabled="{Binding $parent[TextBox].CanPaste}"
+                  InputGesture="{x:Static TextBox.PasteGesture}" />
+    </MenuFlyout>
+
+    <ControlTheme x:Key="{x:Type TextBox}" TargetType="TextBox">
+        <Setter Property="Foreground" Value="{DynamicResource NocturneTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource NocturneFieldBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource NocturneFieldBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CaretBrush" Value="{DynamicResource NocturneAccent300Brush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource NocturneAccentTint22Brush}" />
+        <Setter Property="SelectionForegroundBrush" Value="{DynamicResource NocturneTextBrush}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource NocturneRadiusSm}" />
+        <Setter Property="Padding" Value="{DynamicResource NocturneInsetField}" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeSmall}" />
+        <Setter Property="FocusAdorner" Value="{x:Null}" />
+        <Setter Property="ContextFlyout" Value="{StaticResource NocturneTextBoxContextFlyout}" />
+        <Setter Property="ScrollViewer.IsScrollChainingEnabled" Value="True" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Panel>
+                    <Border Name="PART_BorderElement"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            MinWidth="{TemplateBinding MinWidth}"
+                            MinHeight="{TemplateBinding MinHeight}" />
+
+                    <Border Margin="{TemplateBinding BorderThickness}">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <ContentPresenter Grid.Column="0" Content="{TemplateBinding InnerLeftContent}" />
+                            <DockPanel x:Name="PART_InnerDockPanel"
+                                       Grid.Column="1"
+                                       Margin="{TemplateBinding Padding}">
+                                <TextBlock Name="PART_FloatingWatermark"
+                                           Foreground="{DynamicResource NocturneAccent300Brush}"
+                                           FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                           IsVisible="False"
+                                           Text="{TemplateBinding Watermark}"
+                                           DockPanel.Dock="Top" />
+                                <ScrollViewer Name="PART_ScrollViewer"
+                                              HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
+                                              VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}"
+                                              IsScrollChainingEnabled="{TemplateBinding (ScrollViewer.IsScrollChainingEnabled)}"
+                                              AllowAutoHide="{TemplateBinding (ScrollViewer.AllowAutoHide)}"
+                                              BringIntoViewOnFocusChange="{TemplateBinding (ScrollViewer.BringIntoViewOnFocusChange)}">
+                                    <Panel>
+                                        <TextBlock Name="PART_Watermark"
+                                                   Foreground="{DynamicResource NocturneTextGhostBrush}"
+                                                   Text="{TemplateBinding Watermark}"
+                                                   TextAlignment="{TemplateBinding TextAlignment}"
+                                                   TextWrapping="{TemplateBinding TextWrapping}"
+                                                   HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                   VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                                            <TextBlock.IsVisible>
+                                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                    <Binding ElementName="PART_TextPresenter" Path="PreeditText" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                                                    <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Text" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                                                </MultiBinding>
+                                            </TextBlock.IsVisible>
+                                        </TextBlock>
+                                        <TextPresenter Name="PART_TextPresenter"
+                                                       Text="{TemplateBinding Text, Mode=TwoWay}"
+                                                       CaretBlinkInterval="{TemplateBinding CaretBlinkInterval}"
+                                                       CaretIndex="{TemplateBinding CaretIndex}"
+                                                       SelectionStart="{TemplateBinding SelectionStart}"
+                                                       SelectionEnd="{TemplateBinding SelectionEnd}"
+                                                       TextAlignment="{TemplateBinding TextAlignment}"
+                                                       TextWrapping="{TemplateBinding TextWrapping}"
+                                                       LineHeight="{TemplateBinding LineHeight}"
+                                                       LetterSpacing="{TemplateBinding LetterSpacing}"
+                                                       PasswordChar="{TemplateBinding PasswordChar}"
+                                                       RevealPassword="{TemplateBinding RevealPassword}"
+                                                       SelectionBrush="{TemplateBinding SelectionBrush}"
+                                                       SelectionForegroundBrush="{TemplateBinding SelectionForegroundBrush}"
+                                                       CaretBrush="{TemplateBinding CaretBrush}"
+                                                       HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                       VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                    </Panel>
+                                    <ScrollViewer.Styles>
+                                        <Style Selector="ScrollContentPresenter#PART_ContentPresenter">
+                                            <Setter Property="Cursor" Value="IBeam" />
+                                        </Style>
+                                    </ScrollViewer.Styles>
+                                </ScrollViewer>
+                            </DockPanel>
+                            <ContentPresenter Grid.Column="2" Content="{TemplateBinding InnerRightContent}" />
+                        </Grid>
+                    </Border>
+                </Panel>
+            </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral700Brush}" />
+        </Style>
+
+        <!-- Focus is the accent LINE; the field itself never floods. -->
+        <Style Selector="^:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
+            <Setter Property="Background" Value="{DynamicResource NocturneSurfaceOverlayBrush}" />
+        </Style>
+
+        <Style Selector="^:error /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneDangerBrush}" />
+        </Style>
+
+        <Style Selector="^:disabled">
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral700Brush}" />
+            <Style Selector="^ /template/ Border#PART_BorderElement">
+                <Setter Property="Background" Value="{DynamicResource NocturneSurfaceSunkenBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral900Brush}" />
+            </Style>
+        </Style>
+
+        <Style Selector="^[UseFloatingWatermark=true]:not(:empty) /template/ TextBlock#PART_FloatingWatermark">
+            <Setter Property="IsVisible" Value="True" />
+        </Style>
+    </ControlTheme>
+
+    <!-- ================================================================
+         COMBOBOX
+         ================================================================ -->
+
+    <ControlTheme x:Key="{x:Type ComboBoxItem}" TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource NocturneTextSecondaryBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="{DynamicResource NocturneInsetField}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource NocturneRadiusSm}" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <ContentPresenter Name="PART_ContentPresenter"
+                                  Foreground="{TemplateBinding Foreground}"
+                                  Background="{TemplateBinding Background}"
+                                  BorderBrush="{TemplateBinding BorderBrush}"
+                                  BorderThickness="{TemplateBinding BorderThickness}"
+                                  CornerRadius="{TemplateBinding CornerRadius}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  Content="{TemplateBinding Content}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  Padding="{TemplateBinding Padding}" />
+            </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneHoverBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextBrush}" />
+        </Style>
+        <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturnePressedBrush}" />
+        </Style>
+        <Style Selector="^:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneAccentTint15Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneAccent200Brush}" />
+        </Style>
+        <Style Selector="^:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturnePressedBrush}" />
+        </Style>
+        <Style Selector="^:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral700Brush}" />
+        </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type ComboBox}" TargetType="ComboBox">
+        <Setter Property="Foreground" Value="{DynamicResource NocturneTextBrush}" />
+        <Setter Property="Background" Value="{DynamicResource NocturneFieldBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource NocturneFieldBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource NocturneRadiusSm}" />
+        <Setter Property="Padding" Value="8.4,2.8,0,2.8" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeSmall}" />
+        <Setter Property="PlaceholderForeground" Value="{DynamicResource NocturneTextGhostBrush}" />
+        <Setter Property="MaxDropDownHeight" Value="360" />
+        <Setter Property="FocusAdorner" Value="{x:Null}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid ColumnDefinitions="*,22">
+                    <Border x:Name="Background"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="2"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            MinHeight="{TemplateBinding MinHeight}" />
+
+                    <TextBlock x:Name="PlaceholderTextBlock"
+                               Grid.Column="0"
+                               HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                               Margin="{TemplateBinding Padding}"
+                               Text="{TemplateBinding PlaceholderText}"
+                               Foreground="{TemplateBinding PlaceholderForeground}"
+                               IsVisible="{TemplateBinding SelectionBoxItem, Converter={x:Static ObjectConverters.IsNull}}" />
+
+                    <ContentControl x:Name="ContentPresenter"
+                                    Grid.Column="0"
+                                    Content="{TemplateBinding SelectionBoxItem}"
+                                    ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                    Margin="{TemplateBinding Padding}"
+                                    HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+
+                    <PathIcon x:Name="DropDownGlyph"
+                              Grid.Column="1"
+                              UseLayoutRounding="False"
+                              IsHitTestVisible="False"
+                              Height="8"
+                              Width="8"
+                              Margin="0,0,7,0"
+                              HorizontalAlignment="Right"
+                              VerticalAlignment="Center"
+                              Foreground="{DynamicResource NocturneNeutral600Brush}"
+                              Data="M1939 486L2029 576L1024 1581L19 576L109 486L1024 1401L1939 486Z" />
+
+                    <Popup Name="PART_Popup"
+                           WindowManagerAddShadowHint="False"
+                           IsOpen="{TemplateBinding IsDropDownOpen, Mode=TwoWay}"
+                           MinWidth="{Binding Bounds.Width, RelativeSource={RelativeSource TemplatedParent}}"
+                           MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                           PlacementTarget="Background"
+                           IsLightDismissEnabled="True"
+                           InheritsTransform="True">
+                        <Border x:Name="PopupBorder"
+                                Background="{DynamicResource NocturneSurfaceOverlayBrush}"
+                                BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                                BorderThickness="1"
+                                Padding="2.8"
+                                HorizontalAlignment="Stretch"
+                                BoxShadow="{DynamicResource NocturneShadowMd}"
+                                CornerRadius="{DynamicResource NocturneRadiusSm}">
+                            <ScrollViewer HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
+                                          VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}">
+                                <ItemsPresenter Name="PART_ItemsPresenter"
+                                                ItemsPanel="{TemplateBinding ItemsPanel}" />
+                            </ScrollViewer>
+                        </Border>
+                    </Popup>
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^:pointerover /template/ Border#Background">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral700Brush}" />
+            <Setter Property="Background" Value="{DynamicResource NocturneAccentTint08Brush}" />
+        </Style>
+        <Style Selector="^:pressed /template/ Border#Background">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent700Brush}" />
+            <Setter Property="Background" Value="{DynamicResource NocturneHoverBrush}" />
+        </Style>
+        <Style Selector="^:focus-visible /template/ Border#Background">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
+        </Style>
+        <Style Selector="^:pointerover /template/ PathIcon#DropDownGlyph">
+            <Setter Property="Foreground" Value="{DynamicResource NocturneAccent400Brush}" />
+        </Style>
+        <Style Selector="^:disabled">
+            <Style Selector="^ /template/ Border#Background">
+                <Setter Property="Background" Value="{DynamicResource NocturneSurfaceSunkenBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral900Brush}" />
+            </Style>
+            <Style Selector="^ /template/ ContentControl#ContentPresenter">
+                <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral700Brush}" />
+            </Style>
+            <Style Selector="^ /template/ PathIcon#DropDownGlyph">
+                <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral800Brush}" />
+            </Style>
+        </Style>
+    </ControlTheme>
+
+    <!-- ================================================================
+         CHECKBOX
+         The box is 14px at density 0.7×. Checked is an accent outline over the 22% wash
+         with an accent-300 glyph — a line and a glow, not a filled accent square.
+         ================================================================ -->
+
+    <StreamGeometry x:Key="NocturneCheckMark">M5.5 10.586 1.707 6.793A1 1 0 0 0 .293 8.207l4.5 4.5a1 1 0 0 0 1.414 0l11-11A1 1 0 0 0 15.793.293L5.5 10.586Z</StreamGeometry>
+
+    <ControlTheme x:Key="{x:Type CheckBox}" TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource NocturneTextSecondaryBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="5.6,0,0,0" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="MinHeight" Value="20" />
+        <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeSmall}" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid x:Name="RootGrid" ColumnDefinitions="14,*">
+                    <Border x:Name="PART_Border"
+                            Grid.ColumnSpan="2"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}" />
+
+                    <Panel VerticalAlignment="Center" Height="20">
+                        <Border x:Name="NormalRectangle"
+                                BorderBrush="{DynamicResource NocturneNeutral700Brush}"
+                                Background="{DynamicResource NocturneFieldBackgroundBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                UseLayoutRounding="False"
+                                Height="14"
+                                Width="14" />
+                        <Viewbox UseLayoutRounding="False" Height="9" Width="9">
+                            <Panel>
+                                <Panel Height="18" Width="18" />
+                                <Path x:Name="CheckGlyph"
+                                      Opacity="0"
+                                      Fill="{DynamicResource NocturneAccent300Brush}"
+                                      Stretch="Uniform"
+                                      VerticalAlignment="Center"
+                                      FlowDirection="LeftToRight" />
+                            </Panel>
+                        </Viewbox>
+                    </Panel>
+
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Grid.Column="1"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Content="{TemplateBinding Content}"
+                                      Margin="{TemplateBinding Padding}"
+                                      RecognizesAccessKey="True"
+                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      TextWrapping="Wrap" />
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^:pointerover">
+            <Style Selector="^ /template/ Border#NormalRectangle">
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent600Brush}" />
+                <Setter Property="Background" Value="{DynamicResource NocturneAccentTint08Brush}" />
+            </Style>
+            <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Foreground" Value="{DynamicResource NocturneTextBrush}" />
+            </Style>
+        </Style>
+
+        <Style Selector="^:pressed /template/ Border#NormalRectangle">
+            <Setter Property="Background" Value="{DynamicResource NocturneHoverBrush}" />
+        </Style>
+
+        <Style Selector="^:checked">
+            <Style Selector="^ /template/ Border#NormalRectangle">
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
+                <Setter Property="Background" Value="{DynamicResource NocturneAccentTint22Brush}" />
+            </Style>
+            <Style Selector="^ /template/ Path#CheckGlyph">
+                <Setter Property="Data" Value="{StaticResource NocturneCheckMark}" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+            <Style Selector="^:pointerover /template/ Border#NormalRectangle">
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent400Brush}" />
+            </Style>
+        </Style>
+
+        <Style Selector="^:indeterminate">
+            <Style Selector="^ /template/ Border#NormalRectangle">
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent700Brush}" />
+                <Setter Property="Background" Value="{DynamicResource NocturneAccentTint15Brush}" />
+            </Style>
+        </Style>
+
+        <Style Selector="^:disabled">
+            <Style Selector="^ /template/ Border#NormalRectangle">
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral800Brush}" />
+                <Setter Property="Background" Value="{DynamicResource NocturneSurfaceSunkenBrush}" />
+            </Style>
+            <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral700Brush}" />
+            </Style>
+            <Style Selector="^ /template/ Path#CheckGlyph">
+                <Setter Property="Fill" Value="{DynamicResource NocturneNeutral700Brush}" />
+            </Style>
+        </Style>
+    </ControlTheme>
+
+    <!-- ================================================================
+         LISTBOX
+         Selection is the mockup's nav pattern: a 2px accent rule on the leading edge over
+         a 12% wash. The rule is present-but-transparent when unselected so nothing shifts.
+         ================================================================ -->
+
+    <ControlTheme x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource NocturneTextSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="2,0,0,0" />
+        <Setter Property="Padding" Value="8.4,5.6" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <ContentPresenter Name="PART_ContentPresenter"
+                                  Background="{TemplateBinding Background}"
+                                  BorderBrush="{TemplateBinding BorderBrush}"
+                                  BorderThickness="{TemplateBinding BorderThickness}"
+                                  CornerRadius="{TemplateBinding CornerRadius}"
+                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                  Content="{TemplateBinding Content}"
+                                  Padding="{TemplateBinding Padding}"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" />
+            </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneAccentTint08Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextBrush}" />
+        </Style>
+        <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneHoverBrush}" />
+        </Style>
+        <Style Selector="^:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextBrush}" />
+        </Style>
+        <Style Selector="^:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneAccentTint18Brush}" />
+        </Style>
+        <Style Selector="^:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral700Brush}" />
+        </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type ListBox}" TargetType="ListBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource NocturneTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource NocturneDividerBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="ScrollViewer.IsScrollChainingEnabled" Value="True" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="border"
+                        ClipToBounds="{TemplateBinding ClipToBounds}"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}">
+                    <ScrollViewer Name="PART_ScrollViewer"
+                                  HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
+                                  VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}"
+                                  IsScrollChainingEnabled="{TemplateBinding (ScrollViewer.IsScrollChainingEnabled)}"
+                                  AllowAutoHide="{TemplateBinding (ScrollViewer.AllowAutoHide)}"
+                                  BringIntoViewOnFocusChange="{TemplateBinding (ScrollViewer.BringIntoViewOnFocusChange)}">
+                        <ItemsPresenter Name="PART_ItemsPresenter"
+                                        ItemsPanel="{TemplateBinding ItemsPanel}"
+                                        Margin="{TemplateBinding Padding}" />
+                    </ScrollViewer>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <!-- ================================================================
+         SCROLLBAR
+         A 4px rule that widens to 8px on hover. No arrow buttons, no chrome strip — the
+         Fluent scrollbar is the loudest un-Nocturne thing in a stock Avalonia window.
+         ScrollBar's line buttons are optional template parts (the control null-checks
+         them), so they are simply absent here.
+         ================================================================ -->
+
+    <x:Double x:Key="NocturneScrollBarSize">10</x:Double>
+
+    <ControlTheme x:Key="NocturneScrollBarThumb" TargetType="Thumb">
+        <Setter Property="Background" Value="{DynamicResource NocturneNeutral800Brush}" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Margin" Value="3" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        CornerRadius="{TemplateBinding CornerRadius}" />
+            </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border">
+            <Setter Property="Background" Value="{DynamicResource NocturneNeutral600Brush}" />
+        </Style>
+        <Style Selector="^:pressed /template/ Border">
+            <Setter Property="Background" Value="{DynamicResource NocturneAccent600Brush}" />
+        </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="NocturneScrollBarPageButton" TargetType="RepeatButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Cursor" Value="Arrow" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}" />
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type ScrollBar}" TargetType="ScrollBar">
+        <Setter Property="MinWidth" Value="{DynamicResource NocturneScrollBarSize}" />
+        <Setter Property="MinHeight" Value="{DynamicResource NocturneScrollBarSize}" />
+        <Setter Property="Background" Value="Transparent" />
+
+        <Style Selector="^:vertical">
+            <Setter Property="Width" Value="{DynamicResource NocturneScrollBarSize}" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border x:Name="Root" Background="{TemplateBinding Background}">
+                        <Track Minimum="{TemplateBinding Minimum}"
+                               Maximum="{TemplateBinding Maximum}"
+                               Value="{TemplateBinding Value, Mode=TwoWay}"
+                               DeferThumbDrag="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}"
+                               ViewportSize="{TemplateBinding ViewportSize}"
+                               Orientation="{TemplateBinding Orientation}"
+                               IsDirectionReversed="True">
+                            <Track.DecreaseButton>
+                                <RepeatButton Name="PART_PageUpButton"
+                                              Theme="{StaticResource NocturneScrollBarPageButton}"
+                                              Focusable="False" />
+                            </Track.DecreaseButton>
+                            <Track.IncreaseButton>
+                                <RepeatButton Name="PART_PageDownButton"
+                                              Theme="{StaticResource NocturneScrollBarPageButton}"
+                                              Focusable="False" />
+                            </Track.IncreaseButton>
+                            <Thumb Theme="{StaticResource NocturneScrollBarThumb}" MinHeight="24" />
+                        </Track>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <Style Selector="^:horizontal">
+            <Setter Property="Height" Value="{DynamicResource NocturneScrollBarSize}" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border x:Name="Root" Background="{TemplateBinding Background}">
+                        <Track Minimum="{TemplateBinding Minimum}"
+                               Maximum="{TemplateBinding Maximum}"
+                               Value="{TemplateBinding Value, Mode=TwoWay}"
+                               DeferThumbDrag="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}"
+                               ViewportSize="{TemplateBinding ViewportSize}"
+                               Orientation="{TemplateBinding Orientation}">
+                            <Track.DecreaseButton>
+                                <RepeatButton Name="PART_PageUpButton"
+                                              Theme="{StaticResource NocturneScrollBarPageButton}"
+                                              Focusable="False" />
+                            </Track.DecreaseButton>
+                            <Track.IncreaseButton>
+                                <RepeatButton Name="PART_PageDownButton"
+                                              Theme="{StaticResource NocturneScrollBarPageButton}"
+                                              Focusable="False" />
+                            </Track.IncreaseButton>
+                            <Thumb Theme="{StaticResource NocturneScrollBarThumb}" MinWidth="24" />
+                        </Track>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- Expanded = the pointer is over the bar (or auto-hide is off): the rule widens
+             and the track appears behind it. -->
+        <Style Selector="^[IsExpanded=true]">
+            <Style Selector="^ /template/ Border#Root">
+                <Setter Property="Background" Value="{DynamicResource NocturneSurfaceInsetBrush}" />
+            </Style>
+            <Style Selector="^ /template/ Thumb">
+                <Setter Property="Margin" Value="1" />
+            </Style>
+        </Style>
+    </ControlTheme>
+
+</ResourceDictionary>
