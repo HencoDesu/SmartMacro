@@ -33,6 +33,11 @@ public sealed class KeyPressNodeRowViewModel : ActionNodeRowViewModel
 
     public override string TypeLabel => "Нажать клавишу";
 
+    public override string Summary => _keyName;
+
+    /// <summary>The box renders the key as a keycap rather than as a mono line.</summary>
+    public override string? Keycap => _keyName.Length > 0 ? _keyName : null;
+
     /// <summary>
     /// <see cref="VirtualKey"/> member name — the string form
     /// <c>Controls.KeyBindingPicker</c> binds to (it captures Avalonia key names, which
@@ -90,6 +95,9 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
     }
 
     public override string TypeLabel => "Клик";
+
+    public override string Summary =>
+        (_useVariable ? $"{{{_pointVar}}}" : $"{_xText}, {_yText}") + (_doubleClick ? " ×2" : string.Empty);
 
     /// <summary><c>true</c> = take the point from a run variable instead of the literal X/Y.</summary>
     public bool UseVariable
@@ -171,6 +179,8 @@ public sealed class DelayNodeRowViewModel : ActionNodeRowViewModel
 
     public override string TypeLabel => "Пауза";
 
+    public override string Summary => $"{_secondsText} с";
+
     /// <summary>Delay in seconds as typed; converted to milliseconds on save.</summary>
     public string SecondsText
     {
@@ -212,6 +222,8 @@ public abstract class TagNodeRowViewModel : ActionNodeRowViewModel
         get => _tag;
         set => SetField(ref _tag, value ?? string.Empty);
     }
+
+    public override string Summary => _tag;
 
     public override IEnumerable<string> GetInputErrors()
     {
@@ -275,6 +287,8 @@ public sealed class SetIconNodeRowViewModel : ActionNodeRowViewModel
 
     public override string TypeLabel => "Сменить иконку";
 
+    public override string Summary => _iconPath;
+
     /// <summary>Path to the image; supports <c>{var}</c> interpolation.</summary>
     public string IconPath
     {
@@ -315,6 +329,8 @@ public sealed class RunMacroNodeRowViewModel : ActionNodeRowViewModel
     }
 
     public override string TypeLabel => "Запустить макрос";
+
+    public override string Summary => Join(_macroName, _await ? "ждать" : null);
 
     /// <summary>
     /// Name of the sub-macro. The setter ignores null/blank because a <c>ComboBox</c>

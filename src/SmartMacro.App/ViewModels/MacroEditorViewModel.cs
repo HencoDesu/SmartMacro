@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using Serilog;
 using SmartMacro.App.Ipc;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.Services;
+using SmartMacro.App.ViewModels.Canvas;
 using SmartMacro.App.ViewModels.Nodes;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
@@ -16,19 +18,32 @@ namespace SmartMacro.App.ViewModels;
 public sealed class MacroListItemViewModel : ObservableObject
 {
     private bool _isRunning;
+    private bool _isCurrent;
 
     public MacroListItemViewModel(MacroGraph macro)
     {
         ArgumentNullException.ThrowIfNull(macro);
         Name = macro.Name;
         Summary = Describe(macro);
+        TriggerBadge = Badge(macro);
     }
 
     /// <summary>Macro name = file stem = identity.</summary>
     public string Name { get; }
 
-    /// <summary>Triggers and node count — enough to tell graphs apart at a glance.</summary>
+    /// <summary>Triggers and node count — the tooltip text.</summary>
     public string Summary { get; }
+
+    /// <summary>
+    /// The one-token chip beside the name: a chord (<c>F23</c>), <c>процесс</c>, or
+    /// <c>null</c> when the macro has no trigger at all. Only the FIRST trigger is shown —
+    /// the row is 28px and a macro with three triggers is rare enough to leave to the
+    /// inspector.
+    /// </summary>
+    public string? TriggerBadge { get; }
+
+    /// <summary><c>true</c> when there is a badge to render.</summary>
+    public bool HasTriggerBadge => TriggerBadge is not null;
 
     /// <summary>Drives the Run/Stop button states.</summary>
     public bool IsRunning
@@ -45,21 +60,45 @@ public sealed class MacroListItemViewModel : ObservableObject
 
     public bool IsNotRunning => !_isRunning;
 
+    /// <summary>
+    /// This is the macro open in the editor. The library is a tree of groups rather than
+    /// one flat <c>ListBox</c>, so selection cannot ride on <c>ListBoxItem</c>'s
+    /// <c>:selected</c> and is carried here instead.
+    /// </summary>
+    public bool IsCurrent
+    {
+        get => _isCurrent;
+        internal set => SetField(ref _isCurrent, value);
+    }
+
     private static string Describe(MacroGraph macro)
     {
-        var triggers = macro.Triggers.Select(trigger => trigger switch
-        {
-            HotkeyTrigger { IsMouse: true } hotkey => Chord(hotkey.Modifiers.ToString(), hotkey.MouseButton.ToString()),
-            HotkeyTrigger hotkey => Chord(hotkey.Modifiers.ToString(), hotkey.Key.ToString()),
-            ProcessAppearedTrigger process => $"процесс {process.ProcessName}",
-            _ => trigger.GetType().Name,
-        }).ToList();
-
+        var triggers = macro.Triggers.Select(DescribeTrigger).ToList();
         var triggerText = triggers.Count > 0
             ? string.Join(", ", triggers)
             : "без триггеров";
         return string.Create(CultureInfo.CurrentCulture, $"{triggerText} · нод: {macro.Nodes.Count}");
     }
+
+    private static string? Badge(MacroGraph macro) => macro.Triggers.Count switch
+    {
+        0 => null,
+        _ => macro.Triggers[0] switch
+        {
+            HotkeyTrigger { IsMouse: true } hotkey => Chord(hotkey.Modifiers.ToString(), hotkey.MouseButton.ToString()),
+            HotkeyTrigger hotkey => Chord(hotkey.Modifiers.ToString(), hotkey.Key.ToString()),
+            ProcessAppearedTrigger => "процесс",
+            var other => other.GetType().Name,
+        },
+    };
+
+    private static string DescribeTrigger(MacroTrigger trigger) => trigger switch
+    {
+        HotkeyTrigger { IsMouse: true } hotkey => Chord(hotkey.Modifiers.ToString(), hotkey.MouseButton.ToString()),
+        HotkeyTrigger hotkey => Chord(hotkey.Modifiers.ToString(), hotkey.Key.ToString()),
+        ProcessAppearedTrigger process => $"процесс {process.ProcessName}",
+        _ => trigger.GetType().Name,
+    };
 
     private static string Chord(string modifiers, string key) =>
         string.Equals(modifiers, "None", StringComparison.Ordinal) ? key : $"{modifiers}+{key}";
@@ -159,6 +198,16 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private string? _errorMessage;
     private string? _statusMessage;
 
+    private string _librarySearch = string.Empty;
+    private double _zoom = 1;
+    private double _panX = MinPan;
+    private double _panY = MinPan;
+    private string? _executingNodeId;
+    // Edge geometry is rebuilt from the nodes; while a batch of structural edits is in
+    // flight (a load, a delete that repoints edges) the rebuild is deferred to the end so
+    // the canvas is not routed against a half-updated graph.
+    private int _edgeRebuildSuspended;
+
     /// <param name="client">Connection to the daemon — the library, the runs and the writes.</param>
     /// <param name="launcher">Manual "Run" seam; <c>null</c> disables the button.</param>
     /// <param name="hotkeys">Suspend/resume around the chord picker; <c>null</c> is a no-op.</param>
@@ -220,6 +269,26 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 ErrorMessage = discarded is null
                     ? null
                     : $"Несохранённые изменения в «{discarded}» отброшены.";
+            }
+        }
+    }
+
+    /// <summary>
+    /// The library as the panel draws it: sections headed <c>pw · 6</c> / <c>прочее · 11</c>.
+    /// Derived from <see cref="Macros"/> and <see cref="LibrarySearch"/>; the rule lives in
+    /// <see cref="MacroLibraryGrouping"/>.
+    /// </summary>
+    public ObservableCollection<MacroLibraryGroupViewModel> MacroGroups { get; } = [];
+
+    /// <summary>Library filter box. Case-insensitive substring over the macro name.</summary>
+    public string LibrarySearch
+    {
+        get => _librarySearch;
+        set
+        {
+            if (SetField(ref _librarySearch, value ?? string.Empty))
+            {
+                RebuildGroups();
             }
         }
     }
@@ -303,8 +372,169 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 value.IsSelected = true;
             }
+            OnPropertyChanged(nameof(HasSelectedNode));
+            OnPropertyChanged(nameof(InspectorTitle));
         }
     }
+
+    /// <summary>Drives the inspector's two states: a node, or the macro itself.</summary>
+    public bool HasSelectedNode => _selectedNode is not null;
+
+    /// <summary>Inspector heading — the selected node's type, or «Макрос».</summary>
+    public string InspectorTitle => _selectedNode?.TypeLabel ?? "Макрос";
+
+    // ---- canvas ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Every drawn edge of the open graph, rebuilt whenever the graph's shape or a node's
+    /// position changes. An outcome with no target contributes nothing — see
+    /// <see cref="CanvasEdgeRouter"/>.
+    /// </summary>
+    public ObservableCollection<CanvasEdgeViewModel> CanvasEdges { get; } = [];
+
+    /// <summary>Smallest zoom the canvas allows.</summary>
+    public const double MinZoom = 0.35;
+
+    /// <summary>Largest zoom the canvas allows.</summary>
+    public const double MaxZoom = 2.0;
+
+    // The surface is pinned this far inside the viewport at rest, so the top-left box is
+    // not flush against the panel edge. Small on purpose: three columns of the wrapping
+    // layout are 780px and the canvas pane is ~810 at the default window size, so a
+    // generous margin is the difference between "the graph fits at 100%" and "the third
+    // column is clipped until you pan".
+    private const double MinPan = 12;
+
+    /// <summary>Canvas scale. Clamped — a graph zoomed to nothing is a lost graph.</summary>
+    public double Zoom
+    {
+        get => _zoom;
+        set
+        {
+            if (SetField(ref _zoom, Math.Clamp(value, MinZoom, MaxZoom)))
+            {
+                OnPropertyChanged(nameof(ZoomText));
+            }
+        }
+    }
+
+    /// <summary>Zoom as the chip renders it: "100%".</summary>
+    public string ZoomText => string.Create(CultureInfo.InvariantCulture, $"{Math.Round(_zoom * 100)}%");
+
+    /// <summary>Horizontal pan of the surface, in screen pixels.</summary>
+    public double PanX
+    {
+        get => _panX;
+        set => SetField(ref _panX, value);
+    }
+
+    /// <summary>Vertical pan of the surface, in screen pixels.</summary>
+    public double PanY
+    {
+        get => _panY;
+        set => SetField(ref _panY, value);
+    }
+
+    /// <summary>Back to 100% at the origin.</summary>
+    public void ResetView()
+    {
+        Zoom = 1;
+        PanX = MinPan;
+        PanY = MinPan;
+    }
+
+    /// <summary>
+    /// Node the executor is standing on, or <c>null</c>. <b>Nothing sets this yet</b> —
+    /// wave D3b feeds it from the run-event stream, and it is declared here so the canvas
+    /// highlight and the log strip have one source between them.
+    /// </summary>
+    public string? ExecutingNodeId
+    {
+        get => _executingNodeId;
+        set
+        {
+            if (!SetField(ref _executingNodeId, value))
+            {
+                return;
+            }
+            foreach (var node in Nodes)
+            {
+                node.IsExecuting = value is not null
+                    && string.Equals(node.NodeId, value, StringComparison.Ordinal);
+            }
+            // Edges read their liveness off their source node, and the layer repaints on a
+            // collection change rather than on a property change of one edge — so the
+            // highlight would otherwise lag a frame behind the box.
+            RebuildEdges();
+        }
+    }
+
+    /// <summary>
+    /// The run-log strip under the canvas. <b>Empty by design in D3a</b>: the engine has no
+    /// structured run-event stream and the protocol has no message to carry one, so the
+    /// strip shows <see cref="RunLogEmptyText"/> rather than invented rows. D3b fills it.
+    /// </summary>
+    public ObservableCollection<RunLogRowViewModel> RunLog { get; } = [];
+
+    /// <summary><c>true</c> once there is anything to show in the strip.</summary>
+    public bool HasRunLog => RunLog.Count > 0;
+
+    /// <summary>What the strip says while it has never seen a run.</summary>
+    public string RunLogEmptyText => "прогонов ещё не было";
+
+    /// <summary>Re-places every node on the grid (the «Авто-раскладка» button).</summary>
+    public void AutoLayout()
+    {
+        if (!HasOpenMacro)
+        {
+            return;
+        }
+        MacroGraphLayout.Apply(Nodes, _startNodeId);
+        RebuildEdges();
+    }
+
+    /// <summary>Moves one box. Called continuously while a node is dragged.</summary>
+    public void MoveNode(NodeRowViewModel row, double x, double y)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        row.SetPosition(x, y);
+        RebuildEdges();
+    }
+
+    /// <summary>
+    /// Re-points an outcome, which is what dropping a dragged link does.
+    /// <paramref name="targetId"/> of <c>null</c> or <c>""</c> means "end of run" — the
+    /// legitimate unwired state, not a deletion of the outcome.
+    /// </summary>
+    public void RewireEdge(NodeEdgeViewModel edge, string? targetId)
+    {
+        ArgumentNullException.ThrowIfNull(edge);
+        // A node cannot be reached from its own outcome without an infinite loop that the
+        // canvas would draw as a knot; the validator has no rule against it, so the editor
+        // simply refuses to create one by drag.
+        var owner = Nodes.FirstOrDefault(node => node.Edges.Contains(edge));
+        if (owner is not null && string.Equals(owner.NodeId, targetId, StringComparison.Ordinal))
+        {
+            return;
+        }
+        edge.TargetId = targetId ?? string.Empty;
+    }
+
+    /// <summary>Opens one box as an editor of itself (1e) and closes any other.</summary>
+    public void ExpandNode(NodeRowViewModel? row)
+    {
+        foreach (var node in Nodes)
+        {
+            node.IsExpanded = ReferenceEquals(node, row);
+        }
+        if (row is not null)
+        {
+            SelectedNode = row;
+        }
+    }
+
+    /// <summary>Collapses whatever box is expanded (Esc).</summary>
+    public void CollapseNodes() => ExpandNode(null);
 
     /// <summary>Findings of the last save attempt (errors and warnings).</summary>
     public ObservableCollection<ValidationIssueViewModel> Issues { get; } = [];
@@ -470,6 +700,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     public NodeRowViewModel AddNode(MacroNodeKind kind)
     {
         var row = NodeRowViewModel.Create(kind, NextNodeId());
+        // Placed before it joins the list, so the free-slot scan does not see itself.
+        var (x, y) = MacroGraphLayout.NextFreeSlot(Nodes);
+        row.SetPosition(x, y);
         AttachNode(row);
         Nodes.Add(row);
 
@@ -482,6 +715,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
 
         RebuildChoices();
+        RebuildEdges();
         SelectedNode = row;
         return row;
     }
@@ -500,47 +734,28 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
         DetachNode(row);
 
-        var removedId = row.NodeId;
-        foreach (var edge in AllEdges())
+        using (SuspendEdgeRebuild())
         {
-            if (string.Equals(edge.TargetId, removedId, StringComparison.Ordinal))
+            var removedId = row.NodeId;
+            foreach (var edge in AllEdges())
             {
-                edge.TargetId = string.Empty;
+                if (string.Equals(edge.TargetId, removedId, StringComparison.Ordinal))
+                {
+                    edge.TargetId = string.Empty;
+                }
             }
-        }
-        if (string.Equals(_startNodeId, removedId, StringComparison.Ordinal))
-        {
-            _startNodeId = Nodes.Count > 0 ? Nodes[0].NodeId : string.Empty;
-        }
+            if (string.Equals(_startNodeId, removedId, StringComparison.Ordinal))
+            {
+                _startNodeId = Nodes.Count > 0 ? Nodes[0].NodeId : string.Empty;
+            }
 
-        if (ReferenceEquals(SelectedNode, row))
-        {
-            SelectedNode = null;
+            if (ReferenceEquals(SelectedNode, row))
+            {
+                SelectedNode = null;
+            }
+            RebuildChoices();
         }
-        RebuildChoices();
         OnPropertyChanged(nameof(StartNodeId));
-    }
-
-    /// <summary>Moves a node one slot up. Display order only — edges are unaffected.</summary>
-    public void MoveNodeUp(NodeRowViewModel row)
-    {
-        var index = Nodes.IndexOf(row);
-        if (index > 0)
-        {
-            Nodes.Move(index, index - 1);
-            RebuildChoices();
-        }
-    }
-
-    /// <summary>Moves a node one slot down. Display order only — edges are unaffected.</summary>
-    public void MoveNodeDown(NodeRowViewModel row)
-    {
-        var index = Nodes.IndexOf(row);
-        if (index >= 0 && index < Nodes.Count - 1)
-        {
-            Nodes.Move(index, index + 1);
-            RebuildChoices();
-        }
     }
 
     /// <summary>Highlights the node an issue refers to.</summary>
@@ -716,17 +931,27 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             Triggers.Add(TriggerRowViewModel.FromTrigger(trigger));
         }
-        foreach (var node in graph.Nodes)
+        using (SuspendEdgeRebuild())
         {
-            var row = NodeRowViewModel.FromNode(node);
-            AttachNode(row);
-            Nodes.Add(row);
-        }
+            foreach (var node in graph.Nodes)
+            {
+                var row = NodeRowViewModel.FromNode(node);
+                AttachNode(row);
+                Nodes.Add(row);
+            }
 
-        _startNodeId = graph.StartNodeId;
-        HasOpenMacro = true;
-        RebuildChoices();
+            _startNodeId = graph.StartNodeId;
+            HasOpenMacro = true;
+            RebuildChoices();
+
+            // Graphs written before the canvas existed carry no coordinates. Laying them
+            // out HERE rather than on first paint means the baseline below is taken with
+            // the positions already in it, so opening an old macro does not read as an
+            // unsaved edit — but saving it for any other reason does persist the layout.
+            MacroGraphLayout.EnsurePositions(Nodes, _startNodeId);
+        }
         OnPropertyChanged(nameof(StartNodeId));
+        ResetView();
 
         // Baseline for "dirty" is the editor's own round-trip, not the file: loading
         // normalises a few shapes, and that normalisation is not a user edit.
@@ -736,6 +961,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         SelectedNode = null;
         ErrorMessage = null;
         StatusMessage = null;
+        SyncCurrentFlags();
     }
 
     // ---- hotkey suspension ----------------------------------------------------------
@@ -882,6 +1108,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             _suppressSelectionReload = false;
         }
 
+        SyncCurrentFlags();
+        RebuildGroups();
         RebuildMacroChoices(macros);
     }
 
@@ -932,6 +1160,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
         Nodes.Clear();
         Triggers.Clear();
+        CanvasEdges.Clear();
         ClearIssues();
         _loadedName = null;
         _loadedJson = string.Empty;
@@ -943,6 +1172,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         ChangedOnDisk = false;
         SelectedNode = null;
         RebuildChoices();
+        SyncCurrentFlags();
     }
 
     private void AttachNode(NodeRowViewModel row)
@@ -951,6 +1181,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         foreach (var edge in row.Edges)
         {
             edge.Choices = NodeIdChoices;
+            // Re-pointing an outcome moves a line on the canvas, whether it was done in
+            // the inspector's drop-down or by dragging the port.
+            edge.PropertyChanged += OnEdgeChanged;
         }
         if (row is RunMacroNodeRowViewModel runMacro)
         {
@@ -958,7 +1191,88 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void DetachNode(NodeRowViewModel row) => row.IdChanged -= OnNodeIdChanged;
+    private void DetachNode(NodeRowViewModel row)
+    {
+        row.IdChanged -= OnNodeIdChanged;
+        foreach (var edge in row.Edges)
+        {
+            edge.PropertyChanged -= OnEdgeChanged;
+        }
+    }
+
+    private void OnEdgeChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(NodeEdgeViewModel.TargetId))
+        {
+            RebuildEdges();
+        }
+    }
+
+    /// <summary>
+    /// Recomputes every edge path. Cheap (a macro is tens of nodes, not thousands) and
+    /// called on every frame of a node drag, which is what keeps the lines glued to the box.
+    /// </summary>
+    private void RebuildEdges()
+    {
+        if (_edgeRebuildSuspended > 0)
+        {
+            return;
+        }
+        CanvasEdges.Clear();
+        foreach (var edge in CanvasEdgeRouter.BuildAll(Nodes))
+        {
+            CanvasEdges.Add(edge);
+        }
+    }
+
+    // Batches a structural edit so the canvas is routed once, at the end, against a
+    // consistent graph.
+    private IDisposable SuspendEdgeRebuild()
+    {
+        _edgeRebuildSuspended++;
+        return new EdgeRebuildScope(this);
+    }
+
+    private sealed class EdgeRebuildScope(MacroEditorViewModel owner) : IDisposable
+    {
+        private bool _done;
+
+        public void Dispose()
+        {
+            if (_done)
+            {
+                return;
+            }
+            _done = true;
+            owner._edgeRebuildSuspended--;
+            owner.RebuildEdges();
+        }
+    }
+
+    // The library is a tree of groups, so "which row is highlighted" is a flag on the row
+    // rather than a ListBox selection.
+    private void SyncCurrentFlags()
+    {
+        var current = _loadedName ?? _selectedMacro?.Name;
+        foreach (var item in Macros)
+        {
+            item.IsCurrent = current is not null
+                && string.Equals(item.Name, current, StringComparison.Ordinal);
+        }
+    }
+
+    private void RebuildGroups()
+    {
+        var visible = _librarySearch.Trim().Length == 0
+            ? Macros.AsEnumerable()
+            : Macros.Where(item => item.Name.Contains(_librarySearch.Trim(), StringComparison.CurrentCultureIgnoreCase));
+
+        MacroGroups.Clear();
+        foreach (var group in MacroLibraryGrouping.Build(visible))
+        {
+            MacroGroups.Add(group);
+        }
+    }
 
     // Renaming a node has to carry its inbound edges with it, or the rename would silently
     // sever every link into the node.
@@ -976,6 +1290,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             _startNodeId = row.NodeId;
         }
         RebuildChoices();
+        RebuildEdges();
         OnPropertyChanged(nameof(StartNodeId));
     }
 
@@ -1079,12 +1394,31 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasIssues));
     }
 
+    /// <summary>
+    /// Reconciles a choice list IN PLACE.
+    ///
+    /// Not <c>Clear()</c> + re-add, which is what this used to be. A clear raises a Reset,
+    /// and every <c>ComboBox</c> bound to the list answers a Reset by dropping its
+    /// <c>SelectedItem</c> — so re-opening a macro that was already open (the «Перечитать»
+    /// path, where the ids are IDENTICAL before and after) left the start-node picker
+    /// blank. Rebuilding in place means the common case raises nothing at all.
+    /// </summary>
     private static void Replace(ObservableCollection<string> target, IReadOnlyList<string> values)
     {
-        target.Clear();
-        foreach (var value in values)
+        for (var i = 0; i < values.Count; i++)
         {
-            target.Add(value);
+            if (i >= target.Count)
+            {
+                target.Add(values[i]);
+            }
+            else if (!string.Equals(target[i], values[i], StringComparison.Ordinal))
+            {
+                target[i] = values[i];
+            }
+        }
+        while (target.Count > values.Count)
+        {
+            target.RemoveAt(target.Count - 1);
         }
     }
 }

@@ -211,6 +211,52 @@
     <SolidColorBrush x:Key="NocturneChipInputBorderBrush" Color="#4a4470" />
 
     <!-- ================================================================
+         CANVAS (wave D3a)
+         The node editor is its own visual plane: a darker ground than the window so the
+         boxes read as floating on it, plus one shade per node chrome part. All of these
+         are the mockup's own values (opt-1d / opt-1e) and, like the surfaces above, they
+         sit past the ramps on purpose — a dense graph needs finer steps than 100-per-stop.
+         ================================================================ -->
+
+    <!-- The plane the graph is drawn on, and the dot grid over it. -->
+    <SolidColorBrush x:Key="NocturneCanvasBrush" Color="#12131e" />
+    <SolidColorBrush x:Key="NocturneCanvasGridBrush" Color="#242737" />
+
+    <!-- Deep panels flanking the canvas: the inspector and the run-log strip. -->
+    <SolidColorBrush x:Key="NocturnePanelDeepBrush" Color="#141520" />
+    <SolidColorBrush x:Key="NocturnePanelDeepDividerBrush" Color="#212434" />
+
+    <!-- An action node: neutral chrome. -->
+    <SolidColorBrush x:Key="NocturneNodeSurfaceBrush" Color="#1e2030" />
+    <SolidColorBrush x:Key="NocturneNodeBorderBrush" Color="#343849" />
+    <SolidColorBrush x:Key="NocturneNodeHeaderBrush" Color="#242739" />
+    <SolidColorBrush x:Key="NocturneNodeHeaderBorderBrush" Color="#2e3243" />
+
+    <!-- A conditional node: the same box with an accent-leaning header, so the two
+         families are told apart before a single word is read. -->
+    <SolidColorBrush x:Key="NocturneNodeConditionalHeaderBrush" Color="#262238" />
+    <SolidColorBrush x:Key="NocturneNodeConditionalHeaderBorderBrush" Color="#322d4a" />
+
+    <!-- The node the executor is standing on (D3b lights this up). -->
+    <SolidColorBrush x:Key="NocturneNodeRunningBrush" Color="#232038" />
+    <SolidColorBrush x:Key="NocturneNodeRunningHeaderBrush" Color="#2e2951" />
+    <SolidColorBrush x:Key="NocturneNodeRunningHeaderBorderBrush" Color="#46407a" />
+
+    <!-- Edges and their ports. Active = accent, and it is the ONLY accent line on the
+         canvas, which is what makes a live path readable at a glance. -->
+    <SolidColorBrush x:Key="NocturneEdgeBrush" Color="#464b61" />
+    <SolidColorBrush x:Key="NocturneEdgeActiveBrush" Color="{StaticResource NocturneAccentColor}" />
+
+    <!-- A key label rendered as a keycap: flat top, thicker bottom edge. -->
+    <SolidColorBrush x:Key="NocturneKeycapBrush" Color="#2a2e40" />
+
+    <!-- Node elevation. Distinct from NocturneShadow* because a node is a small card on a
+         dark plane, not a popup: no bright edge, just the drop. -->
+    <BoxShadows x:Key="NocturneShadowNode">0 3 10 0 #80000000</BoxShadows>
+    <!-- Selected / expanded: the accent glow of the system, at card scale. -->
+    <BoxShadows x:Key="NocturneShadowNodeSelected">0 0 0 4 #1f9184d9, 0 10 28 0 #99000000</BoxShadows>
+
+    <!-- ================================================================
          SPACING — density 0.7×, steps 1 2 3 4 6 8
          ================================================================ -->
 

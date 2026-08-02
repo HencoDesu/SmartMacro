@@ -16,6 +16,13 @@
     · a 30px run bar, always present. Its presence IS the feature — when nothing runs it
       shows an idle line rather than collapsing.
 
+  D3a grew the window from the 900×482 of mockup 1b to 1520×840. The canvas editor is
+  mockup 1d, which is 1628px wide for a reason: at 900 the 172px rail plus a 228px library
+  plus a 308px inspector left the graph under 200px, which is not even one node box. 1500
+  is what it takes for the three-column wrapping layout (780px) to fit at 100% zoom. The minimum is
+  1100 — below that the canvas holds fewer than two columns and the layout stops making
+  sense (it still pans and zooms, so nothing is unreachable).
+
   Every colour and padding comes from Themes/Tokens.axaml. If a value is missing, add a
   token; do not type a hex here.
 -->
@@ -27,8 +34,8 @@
         x:Class="SmartMacro.App.MainWindow"
         x:DataType="vm:ShellViewModel"
         x:Name="Root"
-        Width="900" Height="482"
-        MinWidth="820" MinHeight="420"
+        Width="1520" Height="840"
+        MinWidth="1100" MinHeight="620"
         Background="{DynamicResource NocturneBgBrush}"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaChromeHints="NoChrome"

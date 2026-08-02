@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml;
 using SmartMacro.App.ViewModels;
 using SmartMacro.Contracts.Ipc;
 
@@ -19,7 +18,7 @@ public partial class WindowsView : UserControl
     // fire well before a nine-client sweep finished.
     private static readonly TimeSpan DumpCapturesTimeout = TimeSpan.FromMinutes(2);
 
-    public WindowsView() => AvaloniaXamlLoader.Load(this);
+    public WindowsView() => InitializeComponent();
 
     private ShellViewModel? Vm => DataContext as ShellViewModel;
 

@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Markup.Xaml;
 using SmartMacro.App.ViewModels;
 
 namespace SmartMacro.App.Views;
@@ -8,7 +7,7 @@ namespace SmartMacro.App.Views;
 /// <summary>«Прогоны» — the full run list. The run bar in the shell is its one-line summary.</summary>
 public partial class RunsView : UserControl
 {
-    public RunsView() => AvaloniaXamlLoader.Load(this);
+    public RunsView() => InitializeComponent();
 
     private ShellViewModel? Vm => DataContext as ShellViewModel;
 

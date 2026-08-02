@@ -10,7 +10,11 @@ public abstract class ObservableObject : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    // Virtual so a derived type can fan one change out to its computed properties. The
+    // canvas needs it: a node box shows a one-line summary derived from whichever fields
+    // that node type happens to have, and hand-raising it from every setter is how one
+    // gets forgotten.
+    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     protected bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

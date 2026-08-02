@@ -205,20 +205,6 @@ public class MacroEditorViewModelTests
         await Assert.That(vm.NodeIdChoices).IsEquivalentTo(new[] { string.Empty, "n1", "n2" });
     }
 
-    [Test]
-    public async Task MoveNode_ReordersTheListWithoutTouchingEdges()
-    {
-        using var vm = CreateEditor(new DaemonLibraryStub());
-        vm.LoadGraph(Chain());
-
-        vm.MoveNodeDown(vm.Nodes[0]);
-
-        var graph = vm.BuildGraph();
-        await Assert.That(graph.Nodes.Select(n => n.Id)).IsEquivalentTo(new[] { "b", "a", "c" });
-        await Assert.That(((DelayNode)graph.Nodes.Single(n => n.Id == "a")).Next).IsEqualTo("b");
-        await Assert.That(graph.StartNodeId).IsEqualTo("a");
-    }
-
     // ---- save gating --------------------------------------------------------------------
 
     [Test]
@@ -356,9 +342,24 @@ public class MacroEditorViewModelTests
         // covers the polymorphic $type discriminators surviving the request.
         var received = daemon.Find(original.Name);
         await Assert.That(received).IsNotNull();
-        await Assert.That(MacroGraphJson.Serialize(received!))
-            .IsEqualTo(MacroGraphJson.Serialize(original));
+        // Canvas coordinates are the ONE thing a round trip is allowed to add: D3a places
+        // unplaced nodes on load, so every node comes back with an Editor. Everything else
+        // has to be byte-identical.
+        await Assert.That(MacroGraphJson.Serialize(WithoutLayout(received!)))
+            .IsEqualTo(MacroGraphJson.Serialize(WithoutLayout(original)));
+        await Assert.That(received!.Nodes.All(node => node.Editor is not null)).IsTrue();
+        // …and a node that already had coordinates keeps exactly the ones it had.
+        await Assert.That(received.Nodes.Single(node => node.Id == "key").Editor)
+            .IsEqualTo(new NodeEditorInfo(12.5, -40));
     }
+
+    private static MacroGraph WithoutLayout(MacroGraph graph) => new()
+    {
+        Name = graph.Name,
+        Triggers = graph.Triggers,
+        StartNodeId = graph.StartNodeId,
+        Nodes = [.. graph.Nodes.Select(node => node with { Editor = null })],
+    };
 
     // ---- library / hot reload -----------------------------------------------------------
 

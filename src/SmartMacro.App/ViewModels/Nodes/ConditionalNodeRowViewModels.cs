@@ -26,6 +26,26 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
 
     /// <summary>Edge taken when it does not (NotFound / Timeout / NotMatched).</summary>
     public NodeEdgeViewModel NegativeEdge => Edges[1];
+
+    /// <summary>
+    /// Wires a region editor's changes into <see cref="NodeRowViewModel.Summary"/>. The
+    /// region lives in its own view-model, so its four fields do not travel up the row's
+    /// own change notifications and the box's "160×35" would otherwise never update.
+    /// </summary>
+    protected void TrackRegion(RegionEditorViewModel region)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        region.PropertyChanged += (_, _) => OnPropertyChanged(nameof(Summary));
+    }
+
+    /// <summary>"160×35", or "всё окно" for a degenerate rectangle.</summary>
+    protected static string DescribeRegion(RegionEditorViewModel region)
+    {
+        var rect = region.ToRect();
+        return rect.Width <= 0 || rect.Height <= 0
+            ? "всё окно"
+            : $"{rect.Width}×{rect.Height}";
+    }
 }
 
 /// <summary>Editor for <see cref="FindElementNode"/>: one-shot template search.</summary>
@@ -40,9 +60,12 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
         _template = node.Template;
         _foundPointVar = node.FoundPointVar ?? string.Empty;
         Region = RegionEditorViewModel.FromRect(node.Region);
+        TrackRegion(Region);
     }
 
     public override string TypeLabel => "Найти элемент";
+
+    public override string Summary => Join(_template, DescribeRegion(Region));
 
     /// <summary>Template file stem, resolved by the primitives layer.</summary>
     public string Template
@@ -101,9 +124,13 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
         _timeoutMsText = NodeInput.FormatInt(node.TimeoutMs);
         _foundPointVar = node.FoundPointVar ?? string.Empty;
         Region = RegionEditorViewModel.FromRect(node.Region);
+        TrackRegion(Region);
     }
 
     public override string TypeLabel => "Ждать элемент";
+
+    public override string Summary =>
+        Join(_template, $"{NodeInput.FormatSeconds(NodeInput.ParseInt(_timeoutMsText) ?? 0)} с");
 
     public string Template
     {
@@ -173,9 +200,13 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
         _resultVar = node.ResultVar;
         _applyTag = node.ApplyTag;
         Region = RegionEditorViewModel.FromRect(node.Region);
+        TrackRegion(Region);
     }
 
     public override string TypeLabel => "Распознать тег";
+
+    public override string Summary =>
+        Join(_templateSet.Length > 0 ? $"набор {_templateSet}" : null, DescribeRegion(Region));
 
     /// <summary>Template set name; each file's stem in the set is a candidate tag.</summary>
     public string TemplateSet

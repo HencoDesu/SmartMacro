@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using SmartMacro.App.Mvvm;
+using SmartMacro.App.ViewModels.Canvas;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
 
@@ -48,6 +49,14 @@ public sealed class NodeEdgeViewModel : ObservableObject
     /// <summary>Outcome name shown next to the drop-down ("Далее", "Найдено", …).</summary>
     public string Label { get; }
 
+    /// <summary>
+    /// Same name in the canvas's lower-case voice ("далее", "нашёл"). The box rows are set
+    /// in 9.5px and a capital there reads as a heading rather than as a port label.
+    /// </summary>
+    public string ShortLabel => Label.Length == 0
+        ? Label
+        : string.Concat(char.ToLowerInvariant(Label[0]).ToString(), Label.AsSpan(1));
+
     /// <summary>Selected node id; <c>""</c> = end of run.</summary>
     public string TargetId
     {
@@ -55,8 +64,24 @@ public sealed class NodeEdgeViewModel : ObservableObject
         // A ComboBox pushes null when its SelectedItem leaves the ItemsSource (e.g. the
         // list is rebuilt after a node is deleted). Normalising to "" turns that into the
         // meaningful "no target" value instead of a null that would blow up later.
-        set => SetField(ref _targetId, value ?? string.Empty);
+        set
+        {
+            if (SetField(ref _targetId, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(IsEnd));
+                OnPropertyChanged(nameof(BoxLabel));
+            }
+        }
     }
+
+    /// <summary>
+    /// <c>true</c> when this outcome ends the run. NOT an error and NOT a node: the canvas
+    /// says so in the port row itself rather than drawing an edge to a terminal box.
+    /// </summary>
+    public bool IsEnd => _targetId.Length == 0;
+
+    /// <summary>Port-row caption on the collapsed box: "нашёл" or "таймаут → конец".</summary>
+    public string BoxLabel => IsEnd ? $"{ShortLabel} → конец" : ShortLabel;
 
     /// <summary>Model form of <see cref="TargetId"/>.</summary>
     public string? TargetOrNull => string.IsNullOrEmpty(_targetId) ? null : _targetId;
@@ -108,6 +133,41 @@ public sealed class TargetSelectorViewModel : ObservableObject
     {
         get => _excludeText;
         set => SetField(ref _excludeText, value);
+    }
+
+    /// <summary>
+    /// The canvas's targets chip. It says what the SELECTOR is, never how many windows it
+    /// currently matches — the panel has no way to ask (the mockup's «8 окон · кроме Склад»
+    /// badge needs an IPC request that does not exist, plan §D4), and an invented number
+    /// beside a real one is worse than no number.
+    /// </summary>
+    public string Summary
+    {
+        get
+        {
+            if (!_useSelector)
+            {
+                return "контекст-окно";
+            }
+            var require = _requireText.Trim();
+            var exclude = _excludeText.Trim();
+            return (require.Length, exclude.Length) switch
+            {
+                (0, 0) => "все окна",
+                (_, 0) => require,
+                (0, _) => $"кроме {exclude}",
+                _ => $"{require} · кроме {exclude}",
+            };
+        }
+    }
+
+    protected override void OnPropertyChanged(string? propertyName = null)
+    {
+        base.OnPropertyChanged(propertyName);
+        if (propertyName is not (null or nameof(Summary)))
+        {
+            base.OnPropertyChanged(nameof(Summary));
+        }
     }
 
     /// <summary>Builds the model selector, or <c>null</c> when targeting the context window.</summary>
@@ -241,7 +301,7 @@ internal static class NodeInput
 }
 
 /// <summary>
-/// Base for the rows of the node editor — one row per node of the open graph.
+/// Base for the boxes of the node editor — one per node of the open graph.
 ///
 /// The hierarchy is polymorphic on purpose: each concrete row owns exactly the parameters
 /// its node type has, renders through an implicit <c>DataTemplate</c> matched on its own
@@ -249,20 +309,37 @@ internal static class NodeInput
 /// <see cref="FromNode"/>). That pair is the contract the whole editor rests on and is
 /// what the round-trip test pins down.
 ///
-/// Edges are edited as drop-downs of node ids rather than by drawing links — this is the
-/// rows editor; the canvas is W0.4. <see cref="Editor"/> (canvas coordinates) is carried
-/// through untouched so opening a hand-arranged graph here does not flatten its layout.
+/// Since D3a the same object is also the canvas box: it carries its own position
+/// (<see cref="X"/>/<see cref="Y"/>, persisted as the model's <c>NodeEditorInfo</c>), the
+/// collapsed/expanded state of the in-place editor, and the one-line
+/// <see cref="Summary"/> the box shows. Keeping that on the row rather than in a parallel
+/// "canvas node" hierarchy means there is exactly one object per node and no syncing.
 /// </summary>
 public abstract class NodeRowViewModel : ObservableObject
 {
     private string _nodeId;
     private bool _isSelected;
+    private double _x;
+    private double _y;
+    private bool _hasPosition;
+    private bool _isExpanded;
+    private bool _isExecuting;
 
     protected NodeRowViewModel(string nodeId, TargetSelectorViewModel? target, params NodeEdgeViewModel[] edges)
     {
         _nodeId = nodeId;
         Target = target;
         Edges = edges;
+        if (target is not null)
+        {
+            // The box's targets chip mirrors the selector, which is edited through its own
+            // view-model — so its changes have to be forwarded or the chip goes stale.
+            target.PropertyChanged += (_, _) =>
+            {
+                OnPropertyChanged(nameof(TargetSummary));
+                OnPropertyChanged(nameof(ShowsTargetChip));
+            };
+        }
     }
 
     /// <summary>
@@ -291,12 +368,114 @@ public abstract class NodeRowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Canvas placement (W0.4). Round-tripped, never edited here.</summary>
-    public NodeEditorInfo? Editor { get; set; }
+    /// <summary>
+    /// Canvas placement, in the model's own shape. <c>null</c> means "never placed" — a
+    /// graph authored before the canvas existed — and the editor lays those out on load
+    /// rather than piling them at the origin.
+    /// </summary>
+    public NodeEditorInfo? Editor
+    {
+        get => _hasPosition ? new NodeEditorInfo(_x, _y) : null;
+        set
+        {
+            if (value is null)
+            {
+                _hasPosition = false;
+                _x = 0;
+                _y = 0;
+            }
+            else
+            {
+                _hasPosition = true;
+                _x = value.X;
+                _y = value.Y;
+            }
+            OnPropertyChanged(nameof(X));
+            OnPropertyChanged(nameof(Y));
+            OnPropertyChanged(nameof(HasPosition));
+        }
+    }
+
+    /// <summary>Canvas X of the box's top-left corner.</summary>
+    public double X
+    {
+        get => _x;
+        set
+        {
+            _hasPosition = true;
+            SetField(ref _x, value);
+        }
+    }
+
+    /// <summary>Canvas Y of the box's top-left corner.</summary>
+    public double Y
+    {
+        get => _y;
+        set
+        {
+            _hasPosition = true;
+            SetField(ref _y, value);
+        }
+    }
+
+    /// <summary><c>false</c> until the node has been placed (by hand, by load, or by auto-layout).</summary>
+    public bool HasPosition => _hasPosition;
+
+    /// <summary>Moves the box. One call so a drag raises two changes, not four.</summary>
+    public void SetPosition(double x, double y)
+    {
+        X = x;
+        Y = y;
+    }
 
     /// <summary>
-    /// Highlighted in the list. Set by the editor when a validation issue naming this node
-    /// is clicked — the cheap version of "scroll to the offending node".
+    /// Height the ROUTER uses. Always the collapsed height, even while the box is expanded:
+    /// an expanded node is a transient editing state that deliberately overlaps its
+    /// neighbours, and re-routing every edge around it would make the graph jump.
+    /// </summary>
+    public double LayoutHeight => IsConditional
+        ? CanvasMetrics.ConditionalNodeHeight
+        : CanvasMetrics.ActionNodeHeight;
+
+    /// <summary>Rendered height: the collapsed height, or auto (<c>NaN</c>) while expanded.</summary>
+    public double BoxHeight => _isExpanded ? double.NaN : LayoutHeight;
+
+    /// <summary>Rendered width — wider while expanded, to fit the parameter fields.</summary>
+    public double BoxWidth => _isExpanded ? CanvasMetrics.ExpandedNodeWidth : CanvasMetrics.NodeWidth;
+
+    /// <summary>Two outcomes rather than one — drives the box's height and its header glyph.</summary>
+    public bool IsConditional => Edges.Count > 1;
+
+    /// <summary>
+    /// The box is an editor of itself (mockup 1e). Double click opens it, Esc closes it;
+    /// the inspector on the right stays in sync because both edit the same object.
+    /// </summary>
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            if (SetField(ref _isExpanded, value))
+            {
+                OnPropertyChanged(nameof(BoxHeight));
+                OnPropertyChanged(nameof(BoxWidth));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The executor is standing on this node. Wave D3b sets it from the run-event stream;
+    /// nothing sets it today, so every box renders in its idle state.
+    /// </summary>
+    public bool IsExecuting
+    {
+        get => _isExecuting;
+        set => SetField(ref _isExecuting, value);
+    }
+
+    /// <summary>
+    /// Highlighted on the canvas and shown in the inspector. Set by clicking a box or a
+    /// validation issue.
     /// </summary>
     public bool IsSelected
     {
@@ -304,8 +483,39 @@ public abstract class NodeRowViewModel : ObservableObject
         set => SetField(ref _isSelected, value);
     }
 
-    /// <summary>Russian type label shown in the row header.</summary>
+    /// <summary>Russian type label shown in the box header.</summary>
     public abstract string TypeLabel { get; }
+
+    /// <summary>
+    /// The one mono line under the id: whatever identifies this node's job at a glance
+    /// (the key, the point, the template, the delay). Recomputed on any property change —
+    /// see <see cref="OnPropertyChanged"/>.
+    /// </summary>
+    public abstract string Summary { get; }
+
+    /// <summary>
+    /// <c>false</c> when the box should not print the summary line: either there is nothing
+    /// to say, or the node renders a <see cref="Keycap"/> instead and printing both would
+    /// show the same key twice.
+    /// </summary>
+    public bool HasSummary => Summary.Length > 0 && Keycap is null;
+
+    /// <summary>The targets chip, or <c>null</c> for the node types that have no selector.</summary>
+    public string? TargetSummary => Target?.Summary;
+
+    /// <summary>
+    /// Whether the box prints the targets chip at all. Only when the node routes by TAGS:
+    /// a 210px header cannot carry both a type label and a chip, and "acts on the context
+    /// window" is the default every second node has — it is the departure from it that is
+    /// worth a word.
+    /// </summary>
+    public bool ShowsTargetChip => Target?.UseSelector == true;
+
+    /// <summary>
+    /// Non-null only for <see cref="KeyPressNodeRowViewModel"/>: the box draws a keycap
+    /// instead of a line of text, because a key is a thing you press and reads as one.
+    /// </summary>
+    public virtual string? Keycap => null;
 
     /// <summary>Outgoing edges, in display order.</summary>
     public IReadOnlyList<NodeEdgeViewModel> Edges { get; }
@@ -320,8 +530,49 @@ public abstract class NodeRowViewModel : ObservableObject
     /// <summary>Drives the visibility of the selector block.</summary>
     public bool HasTarget => Target is not null;
 
+    /// <summary>
+    /// Joins the parts of a box summary with the middle dot, skipping blanks. A node whose
+    /// template has not been typed in yet must read <c>всё окно</c>, not <c>· всё окно</c>.
+    /// </summary>
+    protected static string Join(params string?[] parts) =>
+        string.Join(" · ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+
     /// <summary>Builds the model node from the current editor state.</summary>
     public abstract MacroNode ToNode();
+
+    /// <summary>
+    /// Every change re-raises <see cref="Summary"/>.
+    ///
+    /// The alternative is a hand-written raise in each of the ~25 parameter setters across
+    /// ten row types, and the failure mode of forgetting one is a box that quietly shows
+    /// stale text — the kind of bug that survives a full test suite. The pure-presentation
+    /// properties are excluded so dragging a box does not churn its text.
+    /// </summary>
+    protected override void OnPropertyChanged(string? propertyName = null)
+    {
+        base.OnPropertyChanged(propertyName);
+        switch (propertyName)
+        {
+            case null:
+            case nameof(Summary):
+            case nameof(HasSummary):
+            case nameof(TargetSummary):
+            case nameof(ShowsTargetChip):
+            case nameof(X):
+            case nameof(Y):
+            case nameof(HasPosition):
+            case nameof(IsSelected):
+            case nameof(IsExpanded):
+            case nameof(IsExecuting):
+            case nameof(BoxWidth):
+            case nameof(BoxHeight):
+                return;
+            default:
+                base.OnPropertyChanged(nameof(Summary));
+                base.OnPropertyChanged(nameof(HasSummary));
+                return;
+        }
+    }
 
     /// <summary>
     /// Field-level complaints ("X is not a number") in Russian, empty when the row is
