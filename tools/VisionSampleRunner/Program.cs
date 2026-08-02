@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using PerfectWorldAgent.Vision;
+using SmartMacro.Vision;
 
 // Iterative harness for the vision pipeline. After the class-based identification
 // refactor this runner is just the Tesseract coord-reader debug pass — the old name-
@@ -68,7 +68,7 @@ static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];
 static string FindRepoRoot()
 {
     var dir = new DirectoryInfo(AppContext.BaseDirectory);
-    while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "PerfectWorldAgent.slnx")))
+    while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "SmartMacro.slnx")))
     {
         dir = dir.Parent;
     }

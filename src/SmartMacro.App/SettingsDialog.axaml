@@ -1,0 +1,119 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SmartMacro.App.ViewModels"
+        xmlns:conv="using:SmartMacro.App.Converters"
+        xmlns:controls="using:SmartMacro.App.Controls"
+        x:Class="SmartMacro.App.SettingsDialog"
+        x:DataType="vm:SettingsDialogViewModel"
+        Width="640" Height="720"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        Title="Settings">
+    <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="16">
+
+        <StackPanel Grid.Row="0" Spacing="4">
+            <TextBlock FontSize="14" Text="Global hotkeys" />
+            <TextBlock FontSize="11"
+                       Foreground="#888"
+                       TextWrapping="Wrap"
+                       Text="Click a binding, then press the desired key combo (with modifiers). Escape cancels, Delete/Backspace clears. Saves to hotkeys.json next to the executable and re-registers immediately." />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" Margin="0,12">
+            <StackPanel Spacing="16">
+
+                <!-- Fixed triggers section -->
+                <Border BorderThickness="1" BorderBrush="#333" CornerRadius="3" Padding="0">
+                    <StackPanel>
+                        <Border Background="#202020" Padding="10,6">
+                            <TextBlock FontSize="12" FontWeight="Bold" Text="Built-in actions" />
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:HotkeyBindingRow">
+                                    <Grid ColumnDefinitions="*,220" Margin="10,6">
+                                        <TextBlock Grid.Column="0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="12"
+                                                   Text="{Binding TriggerLabel}" />
+                                        <controls:KeyBindingPicker Grid.Column="1"
+                                                                   CaptureModifiers="True"
+                                                                   Modifiers="{Binding Modifiers, Mode=TwoWay}"
+                                                                   Key="{Binding Key, Mode=TwoWay}"
+                                                                   MouseButton="{Binding MouseButton, Mode=TwoWay}"
+                                                                   HorizontalAlignment="Stretch"
+                                                                   HorizontalContentAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- Macro hotkeys section -->
+                <Border BorderThickness="1" BorderBrush="#333" CornerRadius="3" Padding="0">
+                    <StackPanel>
+                        <Border Background="#202020" Padding="10,6">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" FontSize="12" FontWeight="Bold" Text="Macro hotkeys" VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Content="+ Add macro hotkey"
+                                        FontSize="11"
+                                        Click="OnAddMacroRowClicked" />
+                            </Grid>
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding MacroRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MacroHotkeyRow">
+                                    <Grid ColumnDefinitions="*,220,Auto" Margin="10,6">
+                                        <AutoCompleteBox Grid.Column="0"
+                                                         ItemsSource="{Binding AvailableMacroNames}"
+                                                         Text="{Binding MacroName, Mode=TwoWay}"
+                                                         FilterMode="Contains"
+                                                         MinimumPrefixLength="0"
+                                                         HorizontalAlignment="Stretch" />
+                                        <controls:KeyBindingPicker Grid.Column="1"
+                                                                   CaptureModifiers="True"
+                                                                   Modifiers="{Binding Modifiers, Mode=TwoWay}"
+                                                                   Key="{Binding Key, Mode=TwoWay}"
+                                                                   MouseButton="{Binding MouseButton, Mode=TwoWay}"
+                                                                   Margin="8,0,0,0"
+                                                                   HorizontalAlignment="Stretch"
+                                                                   HorizontalContentAlignment="Center" />
+                                        <Button Grid.Column="2"
+                                                Content="×"
+                                                FontSize="11"
+                                                Padding="10,4"
+                                                Margin="8,0,0,0"
+                                                Click="OnRemoveMacroRowClicked" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <TextBlock Grid.Row="2"
+                   Foreground="#E06060"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,8"
+                   IsVisible="{Binding ErrorMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
+                   Text="{Binding ErrorMessage}" />
+
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8">
+            <Button x:Name="CancelButton"
+                    Content="Cancel"
+                    Click="OnCancel" />
+            <Button x:Name="SaveButton"
+                    Content="Save"
+                    Classes="accent"
+                    Click="OnSave" />
+        </StackPanel>
+    </Grid>
+</Window>

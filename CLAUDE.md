@@ -15,12 +15,14 @@ Until that plan is executed, the sections below describe the CURRENT (pre-refact
 ## Commands
 
 ```bash
-dotnet build PerfectWorldAgent.slnx           # full solution
-dotnet run --project src/PerfectWorldAgent.App
+dotnet build SmartMacro.slnx                  # full solution
+dotnet run --project src/SmartMacro.App
 dotnet run --project tools/VisionSampleRunner # vision debugging harness (coord OCR over samples/)
+dotnet test                                   # test gate (TUnit on MTP; MTP-mode opt-in lives in global.json)
+dotnet run --project tests/SmartMacro.Tests   # equivalent single-project run, works without global.json
 ```
 
-There are no tests. Build warnings NU1903 (Tmds.DBus.Protocol) are known noise.
+Build warnings NU1903 (Tmds.DBus.Protocol) are known noise.
 
 **DLL-lock gotcha:** if the app is running, `dotnet build` fails copying DLLs (MSB3027/MSB3021 with a PID). The user must Exit via the tray icon (window close only hides to tray), then rebuild. Code-compile errors vs file-lock errors look similar in output — check before diagnosing.
 

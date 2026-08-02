@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/docs/">
+    <File Path="docs/spec.md" />
+    <File Path="docs/state-diagram.mmd" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/SmartMacro.App/SmartMacro.App.csproj" />
+    <Project Path="src/SmartMacro.Core/SmartMacro.Core.csproj" />
+    <Project Path="src/SmartMacro.Native/SmartMacro.Native.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SmartMacro.Tests/SmartMacro.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/VisionSampleRunner/VisionSampleRunner.csproj" />
+  </Folder>
+</Solution>

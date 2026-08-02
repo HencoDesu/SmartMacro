@@ -1,0 +1,93 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:SmartMacro.App.ViewModels"
+        xmlns:conv="using:SmartMacro.App.Converters"
+        x:Class="SmartMacro.App.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Width="820" Height="820"
+        MinWidth="600" MinHeight="500"
+        Title="SmartMacro">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="12">
+        <TextBlock Grid.Row="0"
+                   FontSize="18"
+                   Text="SmartMacro" />
+
+        <Border Grid.Row="1"
+                Margin="0,12"
+                BorderThickness="1"
+                BorderBrush="#444"
+                CornerRadius="4">
+            <ScrollViewer>
+                <ItemsControl ItemsSource="{Binding Agents}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AgentRowViewModel">
+                            <Border Padding="10"
+                                    Margin="4"
+                                    BorderThickness="1"
+                                    BorderBrush="#333"
+                                    CornerRadius="3"
+                                    Background="#1a1a1a">
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+                                    <TextBlock Grid.Column="0"
+                                               FontSize="14"
+                                               VerticalAlignment="Center"
+                                               Text="{Binding Name}" />
+                                    <TextBlock Grid.Column="1"
+                                               FontSize="11"
+                                               Foreground="#888"
+                                               Margin="12,0"
+                                               VerticalAlignment="Center"
+                                               Text="{Binding State}" />
+                                    <TextBlock Grid.Column="2"
+                                               FontSize="11"
+                                               Foreground="{Binding IsIdentified, Converter={x:Static conv:IdentifiedToBrushConverter.Instance}}"
+                                               VerticalAlignment="Center"
+                                               Text="{Binding IsIdentified, Converter={x:Static conv:IdentifiedToLabelConverter.Instance}}" />
+                                    <ComboBox Grid.Column="3"
+                                              Margin="12,0,0,0"
+                                              FontSize="11"
+                                              MinWidth="130"
+                                              ItemsSource="{x:Static vm:AgentRowViewModel.AvailableClasses}"
+                                              SelectedItem="{Binding SelectedClass, Mode=TwoWay}"
+                                              IsVisible="{Binding !IsIdentified}" />
+                                    <Button Grid.Column="4"
+                                            Content="Assign"
+                                            FontSize="11"
+                                            Padding="10,4"
+                                            Margin="6,0,0,0"
+                                            Click="OnAssignClassClicked"
+                                            IsVisible="{Binding !IsIdentified}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto,Auto">
+            <TextBlock Grid.Column="0"
+                       Foreground="#666"
+                       FontSize="11"
+                       VerticalAlignment="Center"
+                       Text="{Binding Agents.Count, StringFormat='Активных агентов: {0}'}" />
+            <Button Grid.Column="1"
+                    Content="Dump captures"
+                    FontSize="11"
+                    Padding="10,4"
+                    Margin="0,0,8,0"
+                    Click="OnDumpCapturesClicked" />
+            <Button Grid.Column="2"
+                    Content="Macros"
+                    FontSize="11"
+                    Padding="10,4"
+                    Margin="0,0,8,0"
+                    Click="OnMacrosClicked" />
+            <Button Grid.Column="3"
+                    Content="Settings"
+                    FontSize="11"
+                    Padding="10,4"
+                    Click="OnSettingsClicked" />
+        </Grid>
+    </Grid>
+</Window>
