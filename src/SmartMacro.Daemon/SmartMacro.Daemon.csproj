@@ -12,6 +12,25 @@
     <RootNamespace>SmartMacro.Daemon</RootNamespace>
     <AssemblyName>SmartMacro.Daemon</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Stage 4A. This is a Windows-only, x64-only tool (Win32 message injection,
+         requireAdministrator, PrintWindow), so there is no reason to carry every RID a
+         package happens to ship. Without this, OpenCvSharp4.runtime.win alone laid down
+         runtimes/win-x86 next to runtimes/win-x64 — 148 MB of runtimes/ for an output
+         that needs 85 MB of it. Output: 169 MB → 106 MB.
+         It costs no RAM either way (the extra RIDs were never loaded); this is purely
+         build output and copy time.
+         SelfContained=false: RID-specific stopped implying self-contained in .NET 6, but
+         say it out loud — an accidental self-contained daemon would be a 70 MB apphost.
+         AppendRuntimeIdentifierToOutputPath=false: keeps bin/Debug/net10.0-windows/ as
+         the output path. DaemonLauncher/UiExecutableLocator find each other by swapping
+         the project-folder segment of an otherwise identical path, and CLAUDE.md documents
+         that path — a win-x64/ segment would break both. The native blobs simply move
+         from runtimes/win-x64/native/ into the output root, which is where the loader
+         looks first anyway (verified: OpenCvSharpExtern still resolves on first vision
+         call). -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
   </PropertyGroup>
 
   <ItemGroup>

@@ -9,6 +9,15 @@
     <RootNamespace>SmartMacro.App</RootNamespace>
     <AssemblyName>SmartMacro.App</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Stage 4A, same reasoning as SmartMacro.Daemon.csproj — see the comment there.
+         Avalonia is the expensive one here: without a RID the output carried Skia and
+         HarfBuzz for linux-x64, linux-musl-x64, linux-arm, linux-arm64, osx, win-arm64
+         and win-x86 as well as the one build that can ever run. Output: 112 MB → 29 MB.
+         Disk only — libSkiaSharp/libHarfBuzzSharp just move to the output root, and the
+         panel still starts and connects. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <!-- LibraryImport source generators emit unsafe ref-handling code (Win32MessageBox). -->
