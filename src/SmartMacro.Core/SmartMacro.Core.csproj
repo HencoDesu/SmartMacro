@@ -27,6 +27,12 @@
     <Compile Update="Agents\CharacterAgent.Logging.cs">
       <DependentUpon>CharacterAgent.cs</DependentUpon>
     </Compile>
+    <Compile Update="Ipc\IpcRequestDispatcher.Logging.cs">
+      <DependentUpon>IpcRequestDispatcher.cs</DependentUpon>
+    </Compile>
+    <Compile Update="Ipc\IpcServer.Logging.cs">
+      <DependentUpon>IpcServer.cs</DependentUpon>
+    </Compile>
     <Compile Update="Macros\Storage\MacroGraphStore.Logging.cs">
       <DependentUpon>MacroGraphStore.cs</DependentUpon>
     </Compile>

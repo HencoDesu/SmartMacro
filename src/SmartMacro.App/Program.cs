@@ -117,6 +117,9 @@ internal static class Program
         services.AddSingleton<WindowRegistry>();
 
         services.AddSingleton<IClassMatcher, ClassMatcher>();
+        // Stage 2B moved the "Dump captures" sweep out of MainWindow into Core; the button
+        // resolves it from here. After stage 3 only the daemon registers it.
+        services.AddSingleton<CaptureDumpService>();
         services.AddSingleton<TemplateSetProvider>();
         services.AddSingleton<ICoordinateReader, TesseractCoordinateReader>();
         services.AddSingleton<WindowIconService>();

@@ -40,6 +40,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     private readonly FileSystemWatcher? _watcher;
 
     private CancellationTokenSource? _pendingReload;
+    private int _disposed;
     private ImmutableList<MacroGraph> _macros = [];
     // Snapshot of "path → last write time" as of the last load/write WE performed. A
     // debounced reload whose signature matches this is either our own write echoing back
@@ -535,8 +536,22 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         LogSeeded(written, _directory);
     }
 
+    // Idempotent, and it has to be: the store is registered twice (as itself and as
+    // IMacroGraphResolver via a factory), so the DI scope tracks the SAME instance in its
+    // disposable list twice and calls this method twice on shutdown. The second call used
+    // to reach an already-disposed _pendingReload and throw ObjectDisposedException out of
+    // host teardown — which surfaced as "SmartMacro daemon terminated unexpectedly" and a
+    // non-zero exit code, but only in sessions where the watcher had actually fired (a
+    // never-touched macros/ folder leaves _pendingReload null and the throw invisible).
+    // Taking the field with Interlocked also closes the race against a watcher callback
+    // that slipped in while we were tearing down.
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         if (_watcher is not null)
         {
             _watcher.EnableRaisingEvents = false;
@@ -546,8 +561,19 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             _watcher.Renamed -= OnFileChanged;
             _watcher.Dispose();
         }
-        _pendingReload?.Cancel();
-        _pendingReload?.Dispose();
+
+        var pending = Interlocked.Exchange(ref _pendingReload, null);
+        try
+        {
+            pending?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // A concurrent OnFileChanged superseded and disposed it between our read and
+            // the Cancel. Nothing to cancel then.
+        }
+        pending?.Dispose();
+
         _writeLock.Dispose();
     }
 }

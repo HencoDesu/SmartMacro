@@ -12,7 +12,9 @@ namespace SmartMacro.Ipc;
 /// <see cref="MacroRunSnapshot"/>. (The <c>ValidationIssue</c> mapper is the exception —
 /// both of its ends are Contracts types, so it lives there.)
 ///
-/// Nothing consumes this yet; the Stage 2 IPC server is its first caller.
+/// Every window/run payload the daemon puts on the wire — <c>GetWindows</c>,
+/// <c>GetRunningMacros</c>, and the <c>Window*</c> / <c>RunningMacrosChanged</c> pushes —
+/// goes through here.
 /// </summary>
 public static class DtoMappers
 {

@@ -245,4 +245,39 @@ public class MacroGraphStoreTests
             DeleteTempDir(dir);
         }
     }
+
+    [Test]
+    [NotInParallel]
+    public async Task Dispose_IsIdempotent_EvenAfterTheWatcherArmedAReload()
+    {
+        // Regression (found running the stage 2B daemon): the store is registered twice in
+        // DI — as itself and as IMacroGraphResolver through a factory — so the scope tracks
+        // ONE instance in its disposable list TWICE and calls Dispose twice on shutdown. The
+        // second call used to Cancel an already-disposed CancellationTokenSource and take
+        // host teardown down with it ("terminated unexpectedly", non-zero exit code).
+        //
+        // It only reproduces once a watcher event has armed a reload — with a never-touched
+        // folder the field is null and the double dispose is silently harmless, which is why
+        // it went unnoticed until an external edit happened in the same session.
+        var dir = CreateTempDir();
+        try
+        {
+            var store = CreateStore(dir);
+            var changed = 0;
+            store.MacrosChanged += _ => Interlocked.Increment(ref changed);
+
+            File.WriteAllText(
+                Path.Combine(dir, "macros", "external.json"),
+                MacroGraphJson.Serialize(SimpleMacro("external")));
+            var armed = await WaitUntilAsync(() => Volatile.Read(ref changed) > 0);
+            await Assert.That(armed).IsTrue();
+
+            store.Dispose();
+            await Assert.That(store.Dispose).ThrowsNothing();
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
 }

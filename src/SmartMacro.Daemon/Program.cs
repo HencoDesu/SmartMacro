@@ -7,6 +7,7 @@ using SmartMacro.Config;
 using SmartMacro.GameWindows;
 using SmartMacro.Hotkeys;
 using SmartMacro.Input;
+using SmartMacro.Ipc;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Native.Hotkey;
@@ -31,7 +32,10 @@ namespace SmartMacro.Daemon;
 // ONE of them until stage 3 strips App's composition. The tray's "Открыть панель" launch is
 // safe today only because the App's engine is idempotent-ish, not because it's correct.
 //
-// No IPC yet — stage 2B adds the named-pipe server that lets the panel talk to this process.
+// Stage 2B added the control endpoint: IpcServer listens on the named pipe
+// "smartmacro-control" (JSON Lines, multi-client) and exposes the engine to the panel —
+// window/tag snapshots and pushes, macro CRUD and runs, hotkey suspend/resume, capture
+// dumps, shutdown. Stage 3 writes the client that talks to it.
 internal static class Program
 {
     public static int Main(string[] args)
@@ -147,6 +151,26 @@ internal static class Program
         // Single Orchestrator instance, also drives the dispatch-loop lifecycle via IHostedService.
         services.AddSingleton<Orchestrator>();
         services.AddHostedService(sp => sp.GetRequiredService<Orchestrator>());
+
+        // --- IPC (stage 2B) ----------------------------------------------------------
+        //
+        // The two narrow seams the dispatcher needs. Both resolve to the singletons above:
+        // the interfaces exist so the request handlers can be unit-tested without a live
+        // engine, not because there is a second implementation.
+        services.AddSingleton<IMacroRunner>(sp => sp.GetRequiredService<Orchestrator>());
+        services.AddSingleton<IHotkeyRegistration>(sp => sp.GetRequiredService<HotkeyListener>());
+        services.AddSingleton<CaptureDumpService>();
+        services.AddSingleton<IpcRequestDispatcher>();
+        services.AddSingleton<IpcServer>();
+
+        // Registered AFTER the engine and BEFORE the tray, which pins both ends of its
+        // lifetime: hosted services start in registration order, so the pipe only appears
+        // once ProcessMonitor/HotkeyListener/Orchestrator are up and a client connecting the
+        // instant it sees the pipe gets a live registry; they stop in REVERSE order, so the
+        // pipe is torn down early — right after the tray icon, before agents and hotkeys
+        // unwind — and the panel learns the daemon is going away instead of hanging on a
+        // half-dead engine.
+        services.AddHostedService(sp => sp.GetRequiredService<IpcServer>());
 
         // Tray last: hosted services stop in reverse registration order, so the icon is the
         // first thing to disappear when the user picks "Выход" — no stale icon hanging around

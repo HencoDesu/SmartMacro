@@ -10,7 +10,6 @@ using SmartMacro.App.ViewModels;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Vision;
-using SmartMacro.Windows;
 
 namespace SmartMacro.App;
 
@@ -90,57 +89,27 @@ public partial class MainWindow : Window
     private void OnStopAllRunsClicked(object? sender, RoutedEventArgs e) =>
         (DataContext as MainWindowViewModel)?.StopAllRuns();
 
-    // Diagnostic — dump the vision pipeline's view of each live window:
-    //   *-full.png       — raw PrintWindow capture
-    //   *-class-bin.png  — ClassMatcher.DebugBinarizeClassRegion (what MatchTemplate sees)
-    // Lets us check whether a configured region lands where it should and whether
-    // binarisation produces a readable mask. Open the in-game stats window (default C)
-    // before clicking this — without it, the class region is empty.
+    // Diagnostic — dump the vision pipeline's view of each live window. The sweep itself
+    // moved into Core's CaptureDumpService in stage 2B: capturing needs the window handles
+    // and OpenCV, both of which live in the daemon after the split, so all the UI does is
+    // ask for a dump and open the folder it gets back. Stage 3 replaces the direct call
+    // with a DumpCaptures request and this handler stays as it is.
     private async void OnDumpCapturesClicked(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainWindowViewModel vm || Program.Services is not { } services)
+        if (Program.Services is not { } services)
         {
             return;
         }
 
-        var registry = services.GetRequiredService<WindowRegistry>();
-        var matcher = services.GetRequiredService<IClassMatcher>();
-        var debugDir = Path.Combine(AppContext.BaseDirectory, "debug");
-        Directory.CreateDirectory(debugDir);
-
-        foreach (var row in vm.Windows.ToArray())
+        string folder;
+        try
         {
-            // The registry is the only hwnd → drivable-window lookup there is; a row whose
-            // window died between the snapshot and here simply has nothing to capture.
-            if (registry.TryGetWindow(row.Hwnd) is not { } window)
-            {
-                continue;
-            }
-
-            var label = row.Tags.Count > 0 ? row.Tags[0].Text : row.HwndHex;
-            var stem = SafeFileName($"{row.ProcessName}-{label}");
-
-            byte[] fullCapture;
-            try
-            {
-                fullCapture = window.CaptureScreenshot();
-                await File.WriteAllBytesAsync(Path.Combine(debugDir, $"{stem}-full.png"), fullCapture);
-            }
-            catch (Exception ex)
-            {
-                await File.WriteAllTextAsync(Path.Combine(debugDir, $"{stem}.error.txt"), ex.ToString());
-                continue;
-            }
-
-            try
-            {
-                var binarised = matcher.DebugBinarizeClassRegion(fullCapture);
-                await File.WriteAllBytesAsync(Path.Combine(debugDir, $"{stem}-class-bin.png"), binarised);
-            }
-            catch (Exception ex)
-            {
-                await File.WriteAllTextAsync(Path.Combine(debugDir, $"{stem}-class-bin.error.txt"), ex.ToString());
-            }
+            folder = await services.GetRequiredService<CaptureDumpService>().DumpAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Не удалось выгрузить отладочные снимки");
+            return;
         }
 
         // Pop the debug folder so the user can see results immediately.
@@ -148,13 +117,14 @@ public partial class MainWindow : Window
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = debugDir,
+                FileName = folder,
                 UseShellExecute = true,
             });
         }
-        catch
+        catch (Exception ex)
         {
             // Folder opening is best-effort; the files are there either way.
+            Serilog.Log.Debug(ex, "Не удалось открыть папку '{Folder}'", folder);
         }
     }
 
@@ -185,17 +155,4 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string SafeFileName(string s)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var span = s.ToCharArray();
-        for (var i = 0; i < span.Length; i++)
-        {
-            if (Array.IndexOf(invalid, span[i]) >= 0)
-            {
-                span[i] = '_';
-            }
-        }
-        return new string(span);
-    }
 }

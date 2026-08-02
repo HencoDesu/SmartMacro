@@ -19,7 +19,7 @@ namespace SmartMacro.Hotkeys;
 /// keyboard chords, WH_MOUSE_LL for mouse chords); this class only owns the id → macro
 /// mapping and the start/stop/suspend lifecycle.
 /// </summary>
-public sealed partial class HotkeyListener : IHostedService, IDisposable
+public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration, IDisposable
 {
     private readonly Win32HotkeyMonitor _keyboardMonitor;
     private readonly Win32MouseHookMonitor _mouseMonitor;
@@ -70,8 +70,7 @@ public sealed partial class HotkeyListener : IHostedService, IDisposable
     /// <summary>
     /// Unregisters every chord. A hotkey-picker UI needs this: Win32 RegisterHotKey
     /// swallows presses of already-bound combos, so a bound key would otherwise be
-    /// impossible to re-bind. No caller until W0.3 restores the picker — kept because the
-    /// constraint it works around is a property of Win32, not of the deleted dialog.
+    /// impossible to re-bind. Reached from the UI process over IPC (<c>SuspendHotkeys</c>).
     /// </summary>
     public async Task SuspendAsync(CancellationToken cancellationToken = default)
     {

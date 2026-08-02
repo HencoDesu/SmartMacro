@@ -31,7 +31,7 @@ namespace SmartMacro.Orchestration;
 // hold them so shutdown can stop them all. Nothing outside observes that set — since W0.3
 // the UI watches WindowRegistry and MacroRunRegistry instead. Agents no longer receive
 // commands either — there is no inbox broadcast any more, just macro runs against handles.
-public sealed partial class Orchestrator : IHostedService, IDisposable
+public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDisposable
 {
     private readonly ILogger<Orchestrator> _logger;
     private readonly Channel<AgentMessage> _inbox;
