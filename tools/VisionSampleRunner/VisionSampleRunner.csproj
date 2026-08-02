@@ -10,6 +10,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Direct reference, not inherited: SmartMacro.Core marks Tesseract PrivateAssets="all"
+         so the 16 MB of native blobs stop reaching SmartMacro.Daemon, which never OCRs
+         anything. This runner is the ONE live consumer of TesseractCoordinateReader, so it
+         asks for the package itself (and ships the matching tessdata\ below). -->
+    <PackageReference Include="Tesseract" Version="5.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\SmartMacro.Core\SmartMacro.Core.csproj" />
   </ItemGroup>
 

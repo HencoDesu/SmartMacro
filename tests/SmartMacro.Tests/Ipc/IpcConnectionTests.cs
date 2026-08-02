@@ -1,7 +1,5 @@
 using System.Text.Json;
-using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
-using SmartMacro.Ipc;
 using SmartMacro.Tests.Macros;
 
 namespace SmartMacro.Tests.Ipc;

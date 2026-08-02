@@ -10,7 +10,6 @@ namespace SmartMacro.GameWindows;
 //   try
 //   {
 //       await window.PressKeyAsync(...);     // or any number of input calls
-//       await window.PressChordAsync(...);
 //       await window.ClickAsync(...);
 //   }
 //   finally
@@ -18,10 +17,14 @@ namespace SmartMacro.GameWindows;
 //       await window.DeactivateAsync();
 //   }
 //
-// Sequences (chord + follow-up, combat rotations, etc.) all run inside ONE activation,
-// which avoids subtle races where PW drops queued input on deactivation between calls.
-// CaptureScreenshot is the one self-contained exception — it manages its own activation
-// because it's used by sync UI paths.
+// Sequences run inside ONE activation, which avoids subtle races where PW drops queued
+// input on deactivation between calls. CaptureScreenshot is the one self-contained
+// exception — it manages its own activation because it's used by sync UI paths.
+//
+// There is deliberately no chord (Shift+N) primitive: PW reads modifier state through
+// GetKeyState, which a cross-thread SendMessage never updates, so an injected chord
+// arrives as the bare key. The macro-level answer is a ClickNode on the UI the chord
+// would have reached (see the pw-assist example, which clicks party slot 1).
 public interface IGameWindow
 {
     IntPtr Handle { get; }
@@ -62,13 +65,6 @@ public interface IGameWindow
     Task PressKeyAsync(VirtualKey key, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Posts a chord: <paramref name="modifier"/> down → <paramref name="key"/> down →
-    /// hold → key up → modifier up. Used for PW UI shortcuts like Shift+1
-    /// (select party member 1). Does NOT manage activation.
-    /// </summary>
-    Task PressChordAsync(VirtualKey modifier, VirtualKey key, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Posts a left-button click at the given client-area point. Does NOT manage activation.
     /// </summary>
     Task ClickAsync(ScreenPoint point, CancellationToken cancellationToken = default);
@@ -87,16 +83,6 @@ public interface IGameWindow
     /// session.
     /// </summary>
     byte[] CaptureScreenshot();
-
-    /// <summary>
-    /// Passive capture: no activation, just PrintWindow against whatever frame DWM has.
-    /// Use for periodic polling (identification, future boss/quest checks) — running
-    /// active capture every 2s on 9 windows was disrupting the user's manual window focus
-    /// in dungeons (WM_ACTIVATEAPP traffic interfering with foreground input).
-    /// Trade-off: a frozen background window may return a stale or partial frame; for
-    /// identification that just means "try again next tick", not a correctness issue.
-    /// </summary>
-    byte[] CaptureScreenshotPassive();
 
     /// <summary>
     /// Replaces the game window's title-bar / taskbar icon with the contents of an image

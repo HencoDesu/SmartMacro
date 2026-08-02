@@ -15,7 +15,25 @@
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
     <PackageReference Include="OpenCvSharp4" Version="4.10.0.20241108" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.10.0.20241108" />
-    <PackageReference Include="Tesseract" Version="5.2.0" />
+    <!-- PrivateAssets="all" (stage 4B): Tesseract compiles TesseractCoordinateReader here but
+         does NOT flow to projects that reference Core. The reader is parked — nothing in the
+         daemon resolves ICoordinateReader — yet the package was laying 16.2 MB of native
+         blobs (x64/ + x86/ leptonica + tesseract50) plus a 4 MB eng.traineddata into
+         SmartMacro.Daemon's output for code that never loads.
+         ⚠️ CONSEQUENCE: SmartMacro.Core.dll ships to the daemon with a metadata reference to
+         Tesseract.dll that is NOT next to it. That is harmless only while nothing in the
+         daemon touches TesseractCoordinateReader — the CLR resolves the assembly lazily, on
+         first use of that type. Un-parking the reader (stuck detection) means deleting
+         PrivateAssets here so the payload flows again. Its live consumer,
+         tools/VisionSampleRunner, carries its own Tesseract PackageReference and tessdata.
+         ExcludeAssets="build" is the other half and is NOT redundant: PrivateAssets only
+         stops lib/ (Tesseract.dll) from flowing. The package's build/Tesseract.targets adds
+         four plain <None CopyToOutputDirectory> items for x64\ + x86\ leptonica+tesseract50,
+         and None items with CopyToOutputDirectory propagate through a ProjectReference no
+         matter what PrivateAssets says — that is how 12.2 MB of natives kept landing next to
+         the daemon. Skipping the targets in Core drops them at the source; the runner
+         imports its own copy of the same targets and still gets them. -->
+    <PackageReference Include="Tesseract" Version="5.2.0" PrivateAssets="all" ExcludeAssets="build;buildTransitive" />
   </ItemGroup>
 
   <ItemGroup>

@@ -106,9 +106,6 @@ public sealed partial class GameWindow : IGameWindow
     public Task PressKeyAsync(VirtualKey key, CancellationToken cancellationToken = default) =>
         _keyboard.SendKeyAsync(Handle, key, cancellationToken);
 
-    public Task PressChordAsync(VirtualKey modifier, VirtualKey key, CancellationToken cancellationToken = default) =>
-        _keyboard.SendChordAsync(Handle, modifier, key, cancellationToken);
-
     public Task ClickAsync(ScreenPoint point, CancellationToken cancellationToken = default) =>
         _mouse.ClickAsync(Handle, point.X, point.Y, cancellationToken);
 
@@ -134,15 +131,6 @@ public sealed partial class GameWindow : IGameWindow
         }
         return png;
     }
-
-    // No activation, no deactivation — just whatever frame DWM has for this window.
-    // Used by polling loops (identification, future boss/quest checks). The WM_ACTIVATEAPP
-    // traffic from active CaptureScreenshot on 9 windows every 2s was disrupting the
-    // user's manual window focus in dungeons; passive capture removes that interference.
-    // Trade-off: a frozen background window may return a stale or partial frame — for
-    // periodic identification that just means "try again next tick", not a correctness
-    // issue. The user can always force a fresh capture via the Label dialog.
-    public byte[] CaptureScreenshotPassive() => _nativeWindow.CapturePng();
 
     public bool SetIconFromFile(string imagePath) => _nativeWindow.SetIconFromFile(imagePath);
 
@@ -265,9 +253,8 @@ public sealed partial class GameWindow : IGameWindow
         // elements (chat panel icons etc.) sit on semi-transparent darkened backgrounds
         // where bleed-through from the world below makes binarization unstable. CCoeff
         // subtracts the mean and normalises by stddev so brightness shifts cancel out.
-        // Keeps LuminanceThreshold unused here — Binarize() is dead code now but stays
-        // for symmetry with ClassMatcher which still benefits from binarisation (solid
-        // text on solid panel = clean separation).
+        // ClassMatcher is the one place that still binarises, because its subject (class
+        // text on the opaque stats panel) separates cleanly at a fixed luminance cut.
         using var result = new Mat();
         Cv2.MatchTemplate(sourceGray, templateGray, result, TemplateMatchModes.CCoeffNormed);
         Cv2.MinMaxLoc(result, out _, out var maxVal, out _, out var maxLoc);

@@ -6,8 +6,11 @@ namespace SmartMacro.Contracts.Ipc;
 /// response payload; "—" means the payload is <c>null</c>/absent.
 ///
 /// The names are the strings themselves so an unparsed line is still readable in a log.
-/// Nothing consumes these yet — the server dispatcher arrives in Stage 2, the client in
-/// Stage 3.
+///
+/// Every constant here is live on both ends: each request type has a <c>case</c> in
+/// <c>IpcRequestDispatcher</c> (daemon) and a caller in <c>IpcClient</c> (panel); each event
+/// type has an <c>IpcServer</c> publisher and a panel subscriber. Adding a constant without
+/// wiring both ends is the thing to avoid — this catalog is the protocol, not a wish list.
 /// </summary>
 public static class IpcMessageTypes
 {

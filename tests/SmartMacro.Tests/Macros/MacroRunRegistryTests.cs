@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
-using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 

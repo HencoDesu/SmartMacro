@@ -16,11 +16,11 @@ namespace SmartMacro.App.Controls;
 // "Press a key..."; the next KeyDown / mouse-button press becomes the bound input.
 // Escape cancels, Delete / Backspace clears.
 //
-// PARKED: no XAML binds this control right now. W0.2b deleted the two dialogs that used
-// it (the settings hotkey editor and the legacy per-action macro editor); W0.3 brings it
-// back for editing a macro's KeyPressNode keys and its HotkeyTrigger chords. Kept rather
-// than deleted-and-rewritten because the capture semantics below are fiddly and tested by
-// hand against real input.
+// Live since W0.3: MacrosDialog.axaml binds it twice — once for a KeyPressNode's key, once
+// for a HotkeyTrigger's chord (CaptureModifiers mode). It briefly had no consumer between
+// W0.2b (which deleted the settings hotkey editor and the legacy per-action macro editor)
+// and W0.3, and was kept rather than deleted-and-rewritten because the capture semantics
+// below are fiddly and tested by hand against real input.
 //
 // The bound value (Key property) is a string matching VirtualKey enum names ("F1", "A",
 // "D5", ...), which is what the node model round-trips through JSON — callers parse with

@@ -10,11 +10,4 @@ public interface IKeyboardInput
     /// given window handle.
     /// </summary>
     Task SendKeyAsync(IntPtr hwnd, VirtualKey key, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Sends a chord — modifier held while a main key is tapped. Sequence:
-    /// modifier DOWN → key DOWN → key UP → modifier UP. Used for Shift+N / Ctrl+N
-    /// party-member selection and similar PW UI shortcuts.
-    /// </summary>
-    Task SendChordAsync(IntPtr hwnd, VirtualKey modifier, VirtualKey key, CancellationToken cancellationToken = default);
 }

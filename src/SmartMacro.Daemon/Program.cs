@@ -100,7 +100,6 @@ internal static class Program
         // "ProcessProfiles" is a raw JSON array, so bind it into the wrapper's list.
         services.AddOptions<ProcessProfileOptions>()
             .Configure(options => configuration.GetSection(ProcessProfileOptions.SectionName).Bind(options.Profiles));
-        services.Configure<CoordinateReaderOptions>(configuration.GetSection("Vision:CoordinateReader"));
         services.Configure<ClassMatcherOptions>(configuration.GetSection("Vision:ClassMatcher"));
         services.Configure<WindowVisionOptions>(configuration.GetSection("Vision:Window"));
 
@@ -116,7 +115,13 @@ internal static class Program
 
         services.AddSingleton<IClassMatcher, ClassMatcher>();
         services.AddSingleton<TemplateSetProvider>();
-        services.AddSingleton<ICoordinateReader, TesseractCoordinateReader>();
+        // NOTE: ICoordinateReader/TesseractCoordinateReader is deliberately NOT registered
+        // (stage 4B). Nothing in the daemon injects it, and its constructor eagerly opens a
+        // TesseractEngine — so the registration only ever cost a leptonica+tesseract native
+        // load and a 4 MB eng.traineddata read to the first component that asked for it. The
+        // reader itself is parked for future stuck-detection work and still runs under
+        // tools/VisionSampleRunner; un-parking it means restoring this line AND dropping the
+        // PrivateAssets guard on the Tesseract package in SmartMacro.Core.csproj.
         services.AddSingleton<WindowIconService>();
         services.AddSingleton<AgentInputDispatcher>();
         services.AddSingleton<CursorPositionProvider>();
