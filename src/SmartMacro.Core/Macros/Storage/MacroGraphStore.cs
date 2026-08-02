@@ -486,9 +486,17 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
     }
 
+    // Seeded exactly once per install, tracked by a marker file rather than by
+    // "is the folder empty". Empty-folder gating looked equivalent but wasn't: a user
+    // migrating from the legacy pipeline lands here with a non-empty folder (their own
+    // macros) and would never receive the pw-* examples — which are the ONLY remaining
+    // implementation of the built-in broadcasts (immunity/assist/cursor-click/identify)
+    // that migration deletes. The marker also keeps deletions sticky: remove an example
+    // you don't want and it stays gone.
     private void SeedDefaultsIfEmpty()
     {
-        if (EnumerateFilesSafe().Any())
+        var marker = Path.Combine(_directory, ".examples-seeded");
+        if (File.Exists(marker))
         {
             return;
         }
@@ -496,9 +504,15 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         var written = 0;
         foreach (var graph in DefaultMacroGraphs.Build())
         {
+            // Never clobber a user's own macro that happens to share the name.
+            var path = PathFor(graph.Name);
+            if (File.Exists(path))
+            {
+                continue;
+            }
             try
             {
-                File.WriteAllText(PathFor(graph.Name), MacroGraphJson.Serialize(graph));
+                File.WriteAllText(path, MacroGraphJson.Serialize(graph));
                 written++;
             }
             catch (Exception ex)
@@ -506,6 +520,18 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
                 LogSeedFailed(ex, graph.Name);
             }
         }
+
+        try
+        {
+            File.WriteAllText(marker, string.Empty);
+        }
+        catch (Exception ex)
+        {
+            // Marker write failed — examples would be re-offered next start. Harmless
+            // (the File.Exists guard above makes re-seeding a no-op), so just log.
+            LogSeedFailed(ex, ".examples-seeded");
+        }
+
         LogSeeded(written, _directory);
     }
 

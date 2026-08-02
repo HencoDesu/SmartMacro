@@ -75,7 +75,9 @@ public class MacroMigrationTests
         {
             File.WriteAllText(Path.Combine(dir, "macros.json"), SingleTagFixture);
 
-            using var store = CreateStore(dir);
+            // seedDefaults:false isolates the migration result — example seeding is
+            // covered separately by MigratedFolder_StillReceivesThePwExamples.
+            using var store = CreateStore(dir, seedDefaults: false);
 
             await Assert.That(store.All).Count().IsEqualTo(1);
             var graph = store.TryGet("Баг госта");
@@ -114,7 +116,7 @@ public class MacroMigrationTests
         {
             File.WriteAllText(Path.Combine(dir, "macros.json"), MultiTagFixture);
 
-            using var store = CreateStore(dir);
+            using var store = CreateStore(dir, seedDefaults: false);
 
             await Assert.That(store.All).Count().IsEqualTo(3);
 
@@ -155,7 +157,7 @@ public class MacroMigrationTests
         {
             File.WriteAllText(Path.Combine(dir, "macros.json"), SingleTagFixture);
 
-            using (var store = CreateStore(dir))
+            using (var store = CreateStore(dir, seedDefaults: false))
             {
                 await Assert.That(store.All).Count().IsEqualTo(1);
             }
@@ -194,6 +196,52 @@ public class MacroMigrationTests
 
             // Seeding writes real files, so a restart picks them up rather than re-seeding.
             await Assert.That(File.Exists(Path.Combine(dir, "macros", "pw-boot.json"))).IsTrue();
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+
+    // Regression: seeding used to be gated on "folder is empty", which silently skipped
+    // the examples for every upgrading user — migration fills the folder with their own
+    // macros first, and the pw-* examples are the only remaining implementation of the
+    // built-in broadcasts that the same upgrade deletes.
+    [Test]
+    public async Task MigratedFolder_StillReceivesThePwExamples()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "macros.json"), SingleTagFixture);
+
+            using var store = CreateStore(dir);
+
+            var names = store.All.Select(graph => graph.Name).ToList();
+            await Assert.That(names).Contains("pw-immunity");
+            await Assert.That(names).Contains("Баг госта");
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+
+    [Test]
+    public async Task DeletedExample_StaysDeletedAcrossRestarts()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            using (var first = CreateStore(dir))
+            {
+                await Assert.That(first.All.Any(g => g.Name == "pw-immunity")).IsTrue();
+            }
+
+            File.Delete(Path.Combine(dir, "macros", "pw-immunity.json"));
+
+            using var second = CreateStore(dir);
+            await Assert.That(second.All.Any(g => g.Name == "pw-immunity")).IsFalse();
         }
         finally
         {
