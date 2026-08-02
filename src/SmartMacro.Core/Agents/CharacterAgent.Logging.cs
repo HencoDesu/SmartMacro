@@ -7,11 +7,11 @@ namespace SmartMacro.Agents;
 // shrank to a window-lifetime shell in W0.2b.
 public sealed partial class CharacterAgent
 {
-    [LoggerMessage(LogLevel.Information, "Agent '{Name}' watching its window (poll={Poll})")]
-    partial void LogStarted(string name, TimeSpan poll);
+    [LoggerMessage(LogLevel.Information, "Agent hwnd=0x{Hwnd:X} watching its window (poll={Poll})")]
+    partial void LogStarted(long hwnd, TimeSpan poll);
 
-    [LoggerMessage(LogLevel.Information, "Agent '{Name}' run loop stopped")]
-    partial void LogStopped(string name);
+    [LoggerMessage(LogLevel.Information, "Agent hwnd=0x{Hwnd:X} run loop stopped")]
+    partial void LogStopped(long hwnd);
 
     [LoggerMessage(LogLevel.Information, "Agent window no longer alive; exiting run loop")]
     partial void LogWindowGone();

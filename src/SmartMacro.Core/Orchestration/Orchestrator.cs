@@ -28,8 +28,9 @@ namespace SmartMacro.Orchestration;
 // Both seed the `cursor` variable, because a macro can't know how it was started.
 //
 // Beyond that the orchestrator only owns agent lifecycle: spawn one per appeared process,
-// track them for the UI, stop them all on shutdown. Agents no longer receive commands —
-// there is no inbox broadcast any more, just macro runs against window handles.
+// hold them so shutdown can stop them all. Nothing outside observes that set — since W0.3
+// the UI watches WindowRegistry and MacroRunRegistry instead. Agents no longer receive
+// commands either — there is no inbox broadcast any more, just macro runs against handles.
 public sealed partial class Orchestrator : IHostedService, IDisposable
 {
     private readonly ILogger<Orchestrator> _logger;
@@ -47,9 +48,6 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
 
     private CancellationTokenSource? _dispatchCts;
     private Task? _dispatchLoop;
-
-    public event Action<CharacterAgent>? AgentStarted;
-    public event Action<CharacterAgent>? AgentStopped;
 
     public Orchestrator(
         ProcessMonitor processMonitor,
@@ -80,19 +78,6 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
         {
             SingleReader = true,
         });
-    }
-
-    /// <summary>
-    /// Snapshot of currently-tracked agents. Used by late subscribers (e.g. a UI VM built
-    /// after the first <see cref="ProcessMonitor"/> poll already spawned agents) to catch
-    /// up on missed <see cref="AgentStarted"/> events.
-    /// </summary>
-    public IReadOnlyCollection<CharacterAgent> SnapshotAgents()
-    {
-        lock (_agentsLock)
-        {
-            return _agents.ToArray();
-        }
     }
 
     /// <summary>
@@ -179,7 +164,6 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
             // Start registers the window (and its drivable facade) in WindowRegistry — it
             // must happen before any macro targets the handle.
             agent.Start();
-            AgentStarted?.Invoke(agent);
         }
         catch (Exception ex)
         {
@@ -324,7 +308,6 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
                 {
                     _agents.Remove(stopping.Agent);
                 }
-                AgentStopped?.Invoke(stopping.Agent);
                 break;
 
             default:

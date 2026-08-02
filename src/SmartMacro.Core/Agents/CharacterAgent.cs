@@ -21,10 +21,13 @@ namespace SmartMacro.Agents;
 //   * Stop()   — cancels the loop for orderly shutdown.
 //
 // Identity lives entirely in the registry: "identified" just means "carries at least one
-// tag". Tags are applied by RecognizeTagNode/AddTagNode, or by hand from the UI.
+// tag". Tags are applied by RecognizeTagNode/AddTagNode, or by hand from the UI — the agent
+// itself never reads them, and logs the hwnd, which is the stable key everything else
+// addresses this window by.
 //
-// TODO(W0.3): now that this is a lifetime shell, folding it into WindowRegistry (or a
-// small WindowHost) is the natural next simplification — out of scope for W0.2b.
+// TODO(W0.4): now that this is a lifetime shell, folding it into WindowRegistry (or a
+// small WindowHost) is the natural next simplification — the remaining obstacle is that
+// the registry has no async creation path and no per-window poll loop of its own.
 public sealed partial class CharacterAgent
 {
     private readonly IGameWindow _window;
@@ -32,7 +35,6 @@ public sealed partial class CharacterAgent
     private readonly WindowRegistry _registry;
     private readonly ChannelWriter<AgentMessage> _outbox;
     private readonly TimeSpan _pollInterval;
-    private readonly string _placeholderName;
     private readonly ILogger<CharacterAgent> _logger;
 
     private CancellationTokenSource? _runCts;
@@ -51,31 +53,12 @@ public sealed partial class CharacterAgent
         _outbox = outbox;
         _pollInterval = TimeSpan.FromSeconds(options.Value.AgentPollIntervalSeconds);
         _logger = logger;
-
-        // Born tagless — placeholder name unique per-hwnd so it doesn't clash with
-        // tagged windows until the first tag lands.
-        _placeholderName = $"Unknown (hwnd=0x{window.Handle.ToInt64():X})";
     }
-
-    /// <summary>Display name — the window's first tag, or a per-hwnd placeholder until tagged.</summary>
-    public string Name => FirstTagOrNull() ?? _placeholderName;
-
-    /// <summary>
-    /// Coarse state string for UI binding, derived from <see cref="IsIdentified"/>.
-    /// Transitional — W0.3 rebuilds the UI around windows + tag chips.
-    /// </summary>
-    public string State => IsIdentified ? "Idle" : "AwaitingIdentification";
-
-    /// <summary>Identified = the registry holds at least one tag for this window.</summary>
-    public bool IsIdentified => _registry.GetTags(Handle).Count > 0;
 
     /// <summary>Underlying game-window handle — the key macros address this window by.</summary>
     public IntPtr Handle => _window.Handle;
 
     public Task? RunningTask { get; private set; }
-
-    /// <summary>Active capture of the current game window. Exposed for the diagnostics dump flow.</summary>
-    public byte[] CaptureScreenshot() => _window.CaptureScreenshot();
 
     /// <summary>
     /// Registers the window in <see cref="WindowRegistry"/> — handle, process name, and
@@ -87,7 +70,8 @@ public sealed partial class CharacterAgent
     {
         if (RunningTask is not null)
         {
-            throw new InvalidOperationException($"Agent '{Name}' is already started.");
+            throw new InvalidOperationException(
+                $"Agent for hwnd=0x{Handle.ToInt64():X} is already started.");
         }
 
         _registry.Register(Handle, _processName, _window);
@@ -111,7 +95,7 @@ public sealed partial class CharacterAgent
     // matching tag selectors, so every fan-out would waste an activation cycle on it.
     private async Task RunLoopAsync(CancellationToken cancellationToken)
     {
-        LogStarted(Name, _pollInterval);
+        LogStarted(Handle.ToInt64(), _pollInterval);
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -138,7 +122,7 @@ public sealed partial class CharacterAgent
         }
         finally
         {
-            LogStopped(Name);
+            LogStopped(Handle.ToInt64());
             // Window is gone (or we're shutting down) — the registry entry and its tags
             // die with it. Raises WindowClosed for registry subscribers.
             _registry.Unregister(Handle);
@@ -146,14 +130,5 @@ public sealed partial class CharacterAgent
             _runCts?.Dispose();
             _runCts = null;
         }
-    }
-
-    private string? FirstTagOrNull()
-    {
-        foreach (var tag in _registry.GetTags(Handle))
-        {
-            return tag;
-        }
-        return null;
     }
 }
