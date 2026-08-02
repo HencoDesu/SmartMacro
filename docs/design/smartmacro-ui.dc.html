@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/nocturne-60a10b6f-f6b0-4e7a-b3ed-d9a424d5d17b/styles.css">
+<script src="_ds/nocturne-60a10b6f-f6b0-4e7a-b3ed-d9a424d5d17b/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:#0d0e16;font-family:Inter,system-ui,sans-serif}
+a{color:var(--color-accent-400)}a:hover{color:var(--color-accent-300)}
+.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(233,233,237,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 22px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:var(--color-accent);color:var(--color-bg);border-radius:4px;text-decoration:none}
+.dv-tname{font:500 13px/1.2 Inter,sans-serif;color:var(--color-text)}
+.dv-opts{display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(145,132,217,.18);color:var(--color-accent-300);border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 Inter,sans-serif;color:rgba(233,233,237,.6)}
+.dv-note{max-width:640px;margin:0;font:400 11px/1.6 Inter,sans-serif;color:rgba(233,233,237,.42)}
+.dv-card{max-width:100%;border-radius:9px;overflow:hidden;box-shadow:0 18px 46px rgba(0,0,0,.6),0 0 0 1px #3f424d}
+.dv-opt:target .dv-oid{background:var(--color-accent);color:var(--color-bg)}
+.dv-next{margin:24px 0 0;font:12px/1.6 Inter,sans-serif;color:rgba(233,233,237,.45)}
+@keyframes smPulse{0%,100%{box-shadow:0 0 0 1px #9184d9,0 0 0 4px rgba(145,132,217,.22),0 4px 16px rgba(0,0,0,.5)}50%{box-shadow:0 0 0 1px #b5abfc,0 0 0 8px rgba(145,132,217,.10),0 4px 16px rgba(0,0,0,.5)}}
+@keyframes smDash{to{stroke-dashoffset:-14}}
+</style></helmet>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">SmartMacro — главное окно, редактор макросов на canvas, виджет хоткея</span></div>
+<div class="dv-opts">
+
+<!-- ============================= 1a ============================= -->
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Главное окно — отдельное окно (как сейчас)</div>
+<div class="dv-card" style="width:900px;background:var(--color-bg)">
+  <div style="display:flex;align-items:center;height:30px;padding:0 10px;background:#1c1e2a;border-bottom:1px solid #2b2e3d">
+    <span style="width:9px;height:9px;border-radius:2px;background:var(--color-accent-700);margin-right:8px"></span>
+    <span style="font:500 11.5px Inter,sans-serif;color:var(--color-neutral-300)">SmartMacro</span>
+    <div style="margin-left:auto;display:flex;gap:14px;font:400 12px Inter,sans-serif;color:var(--color-neutral-600)"><span>—</span><span>▢</span><span>✕</span></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #262939;background:#191b28">
+    <span style="font:500 12px Inter,sans-serif;color:var(--color-text)">Окна</span>
+    <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">11 · отслеживаются</span>
+    <span style="display:flex;align-items:center;gap:5px;margin-left:6px;padding:2px 7px;border-radius:10px;background:rgba(145,132,217,.14);font:400 10.5px Inter,sans-serif;color:var(--color-accent-400)"><span style="width:5px;height:5px;border-radius:50%;background:var(--color-accent)"></span>8 опознано</span>
+    <span style="display:flex;align-items:center;gap:5px;padding:2px 7px;border-radius:10px;background:rgba(219,178,119,.12);font:400 10.5px Inter,sans-serif;color:#dbb277"><span style="width:5px;height:5px;border-radius:50%;background:#dbb277"></span>3 без тегов</span>
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button style="height:24px;padding:0 10px;border:1px solid var(--color-neutral-800);border-radius:5px;background:transparent;font:400 11px Inter,sans-serif;color:var(--color-neutral-300);cursor:pointer" style-hover="background:rgba(145,132,217,.10);border-color:var(--color-accent-700)">Опознать все</button>
+      <button style="height:24px;padding:0 10px;border:1px solid var(--color-neutral-800);border-radius:5px;background:transparent;font:400 11px Inter,sans-serif;color:var(--color-neutral-300);cursor:pointer" style-hover="background:rgba(145,132,217,.10);border-color:var(--color-accent-700)">Дамп скриншотов</button>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr;gap:1px;background:#20222f">
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:5px 12px;background:#171926;font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376"><span>процесс</span><span>hwnd</span><span>теги</span><span></span></div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:var(--color-bg)">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent)"></span><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x1402F8</span>
+      <div style="display:flex;gap:5px"><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 4px 0 8px;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Лучник<span style="color:var(--color-neutral-600);cursor:pointer" style-hover="color:#dd8189">✕</span></span><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 4px 0 8px;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Мастер<span style="color:var(--color-neutral-600);cursor:pointer" style-hover="color:#dd8189">✕</span></span></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;opacity:.55"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #33364a;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #33364a;border-radius:4px;background:transparent;color:var(--color-neutral-500);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:var(--color-bg)">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent)"></span><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x14031C</span>
+      <div style="display:flex;gap:5px"><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 4px 0 8px;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Жрец<span style="color:var(--color-neutral-600)">✕</span></span></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;opacity:.55"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #33364a;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #33364a;border-radius:4px;background:transparent;color:var(--color-neutral-500);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:#181a27">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent)"></span><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x1403A4</span>
+      <div style="display:flex;gap:5px"><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 4px 0 8px;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Оборотень<span style="color:var(--color-neutral-600)">✕</span></span></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;opacity:.55"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #33364a;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #33364a;border-radius:4px;background:transparent;color:var(--color-neutral-500);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:var(--color-bg)">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent)"></span><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x140412</span>
+      <div style="display:flex;gap:5px"><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 4px 0 8px;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Жрец<span style="color:var(--color-neutral-600)">✕</span></span></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;opacity:.55"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #33364a;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #33364a;border-radius:4px;background:transparent;color:var(--color-neutral-500);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:#181a27">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent)"></span><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x1404C8</span>
+      <div style="display:flex;gap:5px"><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 4px 0 8px;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Лучник<span style="color:var(--color-neutral-600)">✕</span></span></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;opacity:.55"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #33364a;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #33364a;border-radius:4px;background:transparent;color:var(--color-neutral-500);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:var(--color-bg)">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent)"></span><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x140550</span>
+      <div style="display:flex;gap:5px"><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 4px 0 8px;border-radius:10px;background:rgba(219,178,119,.12);border:1px solid #5c4f33;font:400 10.5px Inter,sans-serif;color:#dbb277">Склад<span style="color:var(--color-neutral-600)">✕</span></span></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;opacity:.55"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #33364a;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #33364a;border-radius:4px;background:transparent;color:var(--color-neutral-500);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:#181a27">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent)"></span><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x1405E2</span>
+      <div style="display:flex;gap:5px"><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 4px 0 8px;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Оборотень<span style="color:var(--color-neutral-600)">✕</span></span></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;opacity:.55"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #33364a;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #33364a;border-radius:4px;background:transparent;color:var(--color-neutral-500);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:var(--color-bg)">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent)"></span><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x14066A</span>
+      <div style="display:flex;gap:5px"><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 4px 0 8px;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Шаман<span style="color:var(--color-neutral-600)">✕</span></span></div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;opacity:.55"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #33364a;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #33364a;border-radius:4px;background:transparent;color:var(--color-neutral-500);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:#14151f">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;border:1px solid #5c4f33"></span><span style="font:400 12px Inter,sans-serif;color:#8b8fa2">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:#5f6376">0x1406F0</span>
+      <span style="font:400 10.5px Inter,sans-serif;color:#dbb277;opacity:.8">не опознано</span>
+      <div style="display:flex;gap:6px;justify-content:flex-end"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #4a4470;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #4a4470;border-radius:4px;background:rgba(145,132,217,.12);color:var(--color-accent-400);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:#14151f">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;border:1px solid #5c4f33"></span><span style="font:400 12px Inter,sans-serif;color:#8b8fa2">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:#5f6376">0x140778</span>
+      <span style="font:400 10.5px Inter,sans-serif;color:#dbb277;opacity:.8">не опознано</span>
+      <div style="display:flex;gap:6px;justify-content:flex-end"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #4a4470;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #4a4470;border-radius:4px;background:rgba(145,132,217,.12);color:var(--color-accent-400);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:190px 96px 1fr 200px;align-items:center;gap:10px;padding:0 12px;height:34px;background:#14151f">
+      <div style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;border:1px solid #5c4f33"></span><span style="font:400 12px Inter,sans-serif;color:#8b8fa2">elementclient_64</span></div>
+      <span style="font:400 11px ui-monospace,monospace;color:#5f6376">0x140804</span>
+      <span style="font:400 10.5px Inter,sans-serif;color:#dbb277;opacity:.8">не опознано</span>
+      <div style="display:flex;gap:6px;justify-content:flex-end"><input placeholder="новый тег" style="width:110px;height:22px;padding:0 7px;border:1px solid #4a4470;border-radius:4px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:24px;height:22px;border:1px solid #4a4470;border-radius:4px;background:rgba(145,132,217,.12);color:var(--color-accent-400);font-size:12px;cursor:pointer">+</button></div>
+    </div>
+  </div>
+
+  <div style="border-top:1px solid #2b2e3d;background:#191b28">
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 12px 5px">
+      <span style="font:500 11px Inter,sans-serif;color:var(--color-neutral-300)">Прогоны</span>
+      <span style="font:400 10.5px ui-monospace,monospace;color:var(--color-neutral-600)">1</span>
+      <button style="margin-left:auto;height:22px;padding:0 10px;border:1px solid #5c3a40;border-radius:5px;background:rgba(221,129,137,.08);font:400 10.5px Inter,sans-serif;color:#dd8189;cursor:pointer" style-hover="background:rgba(221,129,137,.16)">Стоп всё</button>
+    </div>
+    <div style="display:grid;grid-template-columns:16px 150px 54px 1fr 60px;align-items:center;gap:9px;padding:0 12px;height:30px;border-top:1px solid #232637">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--color-accent);box-shadow:0 0 0 3px rgba(145,132,217,.2)"></span>
+      <span style="font:400 12px Inter,sans-serif;color:var(--color-text)">pw-boot</span>
+      <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-500)">0:12</span>
+      <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 10.5px ui-monospace,monospace;color:var(--color-accent-400);white-space:nowrap">▸ wait-in-world</span><span style="font:400 10.5px Inter,sans-serif;color:#5f6376;white-space:nowrap">0x140804 · шаг 5 из 10</span></div>
+      <button style="height:21px;border:1px solid var(--color-neutral-800);border-radius:4px;background:transparent;font:400 10.5px Inter,sans-serif;color:var(--color-neutral-300);cursor:pointer" style-hover="border-color:#5c3a40;color:#dd8189">Стоп</button>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid #2b2e3d;background:#14151f">
+    <span style="font:400 10.5px ui-monospace,monospace;color:#5f6376">хук активен · 26 макросов · 9 хоткеев</span>
+    <button style="margin-left:auto;height:26px;padding:0 14px;border:1px solid var(--color-accent-700);border-radius:5px;background:transparent;font:500 11.5px Inter,sans-serif;color:var(--color-accent-400);cursor:pointer" style-hover="background:rgba(145,132,217,.12)">Макросы</button>
+  </div>
+</div>
+<p class="dv-note">Строка окна ужата до одной высоты (34 px): процесс, hwnd и теги в фиксированных колонках читаются столбцом, а не блоками. Неопознанные окна собраны внизу и приглушены — у них единственное активное действие, поле тега, поэтому оно у них подсвечено, а у опознанных — притушено.</p>
+</div>
+
+<!-- ============================= 1b ============================= -->
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Главное окно — одно окно, слева режимы<span style="margin-left:2px;padding:2px 7px;border-radius:9px;background:rgba(145,132,217,.18);border:1px solid #4a4470;font:500 9.5px Inter,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--color-accent-300)">выбрано</span></div>
+<div class="dv-card" style="width:900px;background:var(--color-bg)">
+  <div style="display:flex;align-items:center;height:30px;padding:0 10px;background:#1c1e2a;border-bottom:1px solid #2b2e3d">
+    <span style="width:9px;height:9px;border-radius:2px;background:var(--color-accent-700);margin-right:8px"></span>
+    <span style="font:500 11.5px Inter,sans-serif;color:var(--color-neutral-300)">SmartMacro</span>
+    <div style="margin-left:auto;display:flex;gap:14px;font:400 12px Inter,sans-serif;color:var(--color-neutral-600)"><span>—</span><span>▢</span><span>✕</span></div>
+  </div>
+  <div style="display:flex;height:452px">
+    <div style="width:172px;flex:none;background:#131420;border-right:1px solid #262939;padding:8px 0;display:flex;flex-direction:column;gap:1px">
+      <div style="display:flex;align-items:center;gap:9px;height:30px;padding:0 12px;background:rgba(145,132,217,.12);border-left:2px solid var(--color-accent)"><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">Окна</span><span style="margin-left:auto;font:400 10.5px ui-monospace,monospace;color:var(--color-accent-400)">11</span></div>
+      <div style="display:flex;align-items:center;gap:9px;height:30px;padding:0 12px;border-left:2px solid transparent"><span style="font:400 12px Inter,sans-serif;color:var(--color-neutral-500)">Макросы</span><span style="margin-left:auto;font:400 10.5px ui-monospace,monospace;color:#5f6376">26</span></div>
+      <div style="display:flex;align-items:center;gap:9px;height:30px;padding:0 12px;border-left:2px solid transparent"><span style="font:400 12px Inter,sans-serif;color:var(--color-neutral-500)">Прогоны</span><span style="margin-left:auto;display:flex;align-items:center;gap:4px;font:400 10.5px ui-monospace,monospace;color:var(--color-accent-400)"><span style="width:5px;height:5px;border-radius:50%;background:var(--color-accent)"></span>1</span></div>
+      <div style="display:flex;align-items:center;gap:9px;height:30px;padding:0 12px;border-left:2px solid transparent"><span style="font:400 12px Inter,sans-serif;color:var(--color-neutral-500)">Шаблоны</span><span style="margin-left:auto;font:400 10.5px ui-monospace,monospace;color:#5f6376">31</span></div>
+      <div style="display:flex;align-items:center;gap:9px;height:30px;padding:0 12px;border-left:2px solid transparent"><span style="font:400 12px Inter,sans-serif;color:var(--color-neutral-500)">Лог</span></div>
+      <div style="margin-top:auto;padding:10px 12px 2px;display:flex;flex-direction:column;gap:6px">
+        <div style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#4e5265">теги</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          <span style="display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:9px;background:rgba(145,132,217,.13);border:1px solid #3a3560;font:400 10px Inter,sans-serif;color:#c3bbe8">Лучник<span style="color:var(--color-neutral-600)">2</span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:9px;background:rgba(145,132,217,.13);border:1px solid #3a3560;font:400 10px Inter,sans-serif;color:#c3bbe8">Жрец<span style="color:var(--color-neutral-600)">2</span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:9px;background:rgba(145,132,217,.13);border:1px solid #3a3560;font:400 10px Inter,sans-serif;color:#c3bbe8">Оборотень<span style="color:var(--color-neutral-600)">2</span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:9px;background:rgba(145,132,217,.13);border:1px solid #3a3560;font:400 10px Inter,sans-serif;color:#c3bbe8">Мастер<span style="color:var(--color-neutral-600)">1</span></span>
+          <span style="display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 7px;border-radius:9px;background:rgba(219,178,119,.12);border:1px solid #5c4f33;font:400 10px Inter,sans-serif;color:#dbb277">Склад<span style="color:var(--color-neutral-600)">1</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #262939;background:#191b28">
+        <span style="font:500 12px Inter,sans-serif;color:var(--color-text)">Окна</span>
+        <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">8 опознано · 3 без тегов</span>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button style="height:24px;padding:0 10px;border:1px solid var(--color-neutral-800);border-radius:5px;background:transparent;font:400 11px Inter,sans-serif;color:var(--color-neutral-300);cursor:pointer">Опознать все</button>
+          <button style="height:24px;padding:0 10px;border:1px solid var(--color-neutral-800);border-radius:5px;background:transparent;font:400 11px Inter,sans-serif;color:var(--color-neutral-300);cursor:pointer">Дамп</button>
+        </div>
+      </div>
+      <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;gap:1px;background:#20222f">
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:var(--color-bg)"><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x1402F8</span><div style="display:flex;gap:5px"><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 8px;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Лучник</span><span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 8px;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Мастер</span></div></div>
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:#181a27"><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x14031C</span><div><span style="display:inline-flex;height:19px;padding:0 8px;align-items:center;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Жрец</span></div></div>
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:var(--color-bg)"><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x1403A4</span><div><span style="display:inline-flex;height:19px;padding:0 8px;align-items:center;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Оборотень</span></div></div>
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:#181a27"><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x140412</span><div><span style="display:inline-flex;height:19px;padding:0 8px;align-items:center;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Жрец</span></div></div>
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:var(--color-bg)"><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x1404C8</span><div><span style="display:inline-flex;height:19px;padding:0 8px;align-items:center;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Лучник</span></div></div>
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:#181a27"><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x140550</span><div><span style="display:inline-flex;height:19px;padding:0 8px;align-items:center;border-radius:10px;background:rgba(219,178,119,.12);border:1px solid #5c4f33;font:400 10.5px Inter,sans-serif;color:#dbb277">Склад</span></div></div>
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:var(--color-bg)"><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x1405E2</span><div><span style="display:inline-flex;height:19px;padding:0 8px;align-items:center;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Оборотень</span></div></div>
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:#181a27"><span style="font:400 12px Inter,sans-serif;color:var(--color-text)">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-600)">0x14066A</span><div><span style="display:inline-flex;height:19px;padding:0 8px;align-items:center;border-radius:10px;background:rgba(145,132,217,.15);border:1px solid #443f6b;font:400 10.5px Inter,sans-serif;color:#cfc8f0">Шаман</span></div></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:0 12px;height:26px;background:#131420"><span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5c4f33">не опознано · 3</span><span style="flex:1;height:1px;background:linear-gradient(to right,#332d1f,transparent)"></span></div>
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:#14151f"><span style="font:400 12px Inter,sans-serif;color:#8b8fa2">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:#5f6376">0x1406F0</span><div style="display:flex;gap:6px"><input placeholder="новый тег" style="width:120px;height:21px;padding:0 7px;border:1px solid #4a4470;border-radius:4px;background:#1c1e2a;font:400 10.5px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:22px;height:21px;border:1px solid #4a4470;border-radius:4px;background:rgba(145,132,217,.12);color:var(--color-accent-400);font-size:11px;cursor:pointer">+</button></div></div>
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:#14151f"><span style="font:400 12px Inter,sans-serif;color:#8b8fa2">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:#5f6376">0x140778</span><div style="display:flex;gap:6px"><input placeholder="новый тег" style="width:120px;height:21px;padding:0 7px;border:1px solid #4a4470;border-radius:4px;background:#1c1e2a;font:400 10.5px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:22px;height:21px;border:1px solid #4a4470;border-radius:4px;background:rgba(145,132,217,.12);color:var(--color-accent-400);font-size:11px;cursor:pointer">+</button></div></div>
+        <div style="display:grid;grid-template-columns:160px 88px 1fr;align-items:center;gap:10px;padding:0 12px;height:32px;background:#14151f"><span style="font:400 12px Inter,sans-serif;color:#8b8fa2">elementclient_64</span><span style="font:400 11px ui-monospace,monospace;color:#5f6376">0x140804</span><div style="display:flex;gap:6px"><input placeholder="новый тег" style="width:120px;height:21px;padding:0 7px;border:1px solid #4a4470;border-radius:4px;background:#1c1e2a;font:400 10.5px Inter,sans-serif;color:var(--color-neutral-300)"><button style="width:22px;height:21px;border:1px solid #4a4470;border-radius:4px;background:rgba(145,132,217,.12);color:var(--color-accent-400);font-size:11px;cursor:pointer">+</button></div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:0 12px;height:30px;border-top:1px solid #2b2e3d;background:#191b28">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--color-accent);box-shadow:0 0 0 3px rgba(145,132,217,.2)"></span>
+        <span style="font:400 11.5px Inter,sans-serif;color:var(--color-text)">pw-boot</span>
+        <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-500)">0:12</span>
+        <span style="font:400 10.5px ui-monospace,monospace;color:var(--color-accent-400)">▸ wait-in-world</span>
+        <div style="margin-left:auto;display:flex;gap:6px"><button style="height:21px;padding:0 10px;border:1px solid var(--color-neutral-800);border-radius:4px;background:transparent;font:400 10.5px Inter,sans-serif;color:var(--color-neutral-300);cursor:pointer">Стоп</button><button style="height:21px;padding:0 10px;border:1px solid #5c3a40;border-radius:4px;background:rgba(221,129,137,.08);font:400 10.5px Inter,sans-serif;color:#dd8189;cursor:pointer">Стоп всё</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="dv-note">Тот же контент, но редактор макросов перестаёт быть модалкой: слева режимы, справа рабочая область, полоса прогонов всегда внизу и видна из любого режима. Сайдбар заодно даёт место сводке по тегам — это единственное место, где виден «состав отряда» целиком.</p>
+</div>
+
+<!-- ============================= 1d ============================= -->
+<div class="dv-opt" id="1d">
+<div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Редактор — режим canvas, идёт живой прогон <span style="font-family:ui-monospace,monospace">pw-boot</span></div>
+<div class="dv-card" style="width:1628px;background:var(--color-bg)">
+  <div style="display:flex;align-items:center;height:30px;padding:0 10px;background:#1c1e2a;border-bottom:1px solid #2b2e3d">
+    <span style="width:9px;height:9px;border-radius:2px;background:var(--color-accent-700);margin-right:8px"></span>
+    <span style="font:500 11.5px Inter,sans-serif;color:var(--color-neutral-300)">Макросы — pw-boot</span>
+    <span style="margin-left:12px;display:inline-flex;align-items:center;gap:6px;font:400 10.5px Inter,sans-serif;color:var(--color-accent-400)"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent);box-shadow:0 0 0 3px rgba(145,132,217,.22)"></span>выполняется</span>
+    <div style="margin-left:auto;display:flex;gap:14px;font:400 12px Inter,sans-serif;color:var(--color-neutral-600)"><span>—</span><span>▢</span><span>✕</span></div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #262939;background:#191b28">
+    <input value="pw-boot" style="width:170px;height:26px;padding:0 8px;border:1px solid #33364a;border-radius:5px;background:#1c1e2a;font:500 12px Inter,sans-serif;color:var(--color-text)">
+    <span style="width:1px;height:18px;background:#2b2e3d"></span>
+    <div style="display:flex;gap:4px">
+      <button style="display:flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--color-accent-700);border-radius:5px;background:rgba(145,132,217,.14);font:400 11px Inter,sans-serif;color:var(--color-accent-300);cursor:pointer">⏸ Пауза</button>
+      <button style="display:flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--color-neutral-800);border-radius:5px;background:transparent;font:400 11px Inter,sans-serif;color:var(--color-neutral-300);cursor:pointer" style-hover="border-color:var(--color-accent-700);color:var(--color-accent-400)">⤼ Шаг</button>
+      <button style="display:flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--color-neutral-800);border-radius:5px;background:transparent;font:400 11px Inter,sans-serif;color:var(--color-neutral-300);cursor:pointer" style-hover="border-color:var(--color-accent-700);color:var(--color-accent-400)">▷| До курсора</button>
+      <button style="display:flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid #5c3a40;border-radius:5px;background:rgba(221,129,137,.08);font:400 11px Inter,sans-serif;color:#dd8189;cursor:pointer">■ Стоп</button>
+    </div>
+    <span style="width:1px;height:18px;background:#2b2e3d"></span>
+    <div style="display:flex;align-items:center;gap:7px;height:26px;padding:0 4px 0 9px;border:1px solid #33364a;border-radius:5px;background:#1c1e2a">
+      <span style="font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">прогон</span>
+      <span style="font:400 11px ui-monospace,monospace;color:var(--color-text)">0x140804</span>
+      <span style="font:400 10px ui-monospace,monospace;color:var(--color-neutral-600)">3 / 11</span>
+      <span style="display:flex;gap:2px;color:#8b8fa2;font-size:10px"><span style="cursor:pointer">◂</span><span style="cursor:pointer">▸</span></span>
+    </div>
+    <span style="font:400 11px ui-monospace,monospace;color:var(--color-neutral-500)">0:12.4</span>
+    <div style="margin-left:auto;display:flex;gap:6px">
+      <button style="height:26px;padding:0 10px;border:1px solid var(--color-neutral-800);border-radius:5px;background:transparent;font:400 11px Inter,sans-serif;color:#8b8fa2;cursor:pointer">Авто-раскладка</button>
+      <button style="height:26px;padding:0 16px;border:1px solid var(--color-accent-700);border-radius:5px;background:rgba(145,132,217,.14);font:500 11px Inter,sans-serif;color:var(--color-accent-300);cursor:pointer">Сохранить</button>
+    </div>
+  </div>
+
+  <div style="display:flex;height:690px">
+    <!-- library -->
+    <div style="width:228px;flex:none;background:#131420;border-right:1px solid #262939;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:8px"><input placeholder="поиск…" style="width:100%;min-width:0;height:24px;padding:0 8px;border:1px solid #33364a;border-radius:5px;background:#1c1e2a;font:400 11px Inter,sans-serif;color:var(--color-neutral-300)"></div>
+      <div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:6px;padding:8px 10px 4px;font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#4e5265">pw · 6</div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;background:rgba(145,132,217,.13);border-left:2px solid var(--color-accent);padding:0 10px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:var(--color-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">pw-boot</span><span style="font:400 9.5px ui-monospace,monospace;color:var(--color-accent-400);padding:1px 5px;border-radius:3px;background:rgba(145,132,217,.16)">процесс</span></div><div style="display:flex;gap:3px;color:var(--color-neutral-500);font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">pw-immunity</span><span style="font:400 9.5px ui-monospace,monospace;color:#8b8fa2;padding:1px 5px;border-radius:3px;background:#20222f">F23</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">pw-assist</span><span style="font:400 9.5px ui-monospace,monospace;color:#8b8fa2;padding:1px 5px;border-radius:3px;background:#20222f">F19</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">pw-cursor-click</span><span style="font:400 9.5px ui-monospace,monospace;color:#8b8fa2;padding:1px 5px;border-radius:3px;background:#20222f">F22</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">pw-identify</span><span style="font:400 9.5px ui-monospace,monospace;color:#8b8fa2;padding:1px 5px;border-radius:3px;background:#20222f">F20</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">pw-identify-one</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+
+        <div style="display:flex;align-items:center;gap:6px;padding:8px 10px 4px;font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#4e5265">баг госта · 5</div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Баг госта</span><span style="font:400 9.5px ui-monospace,monospace;color:#8b8fa2;padding:1px 5px;border-radius:3px;background:#20222f">Ctrl+Shift+F1</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Баг госта-Лучник</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Баг госта-Жрец</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Баг госта-Оборотень</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Баг госта-Мастер</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+
+        <div style="display:flex;align-items:center;gap:6px;padding:8px 10px 4px;font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#4e5265">иммун проходка · 4</div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Иммун проходка</span><span style="font:400 9.5px ui-monospace,monospace;color:#8b8fa2;padding:1px 5px;border-radius:3px;background:#20222f">Mouse4</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Иммун проходка-Жрец</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Иммун проходка-Лучник</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Иммун проходка-Склад</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+
+        <div style="display:flex;align-items:center;gap:6px;padding:8px 10px 4px;font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#4e5265">прочее · 11</div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Портал в столицу</span><span style="font:400 9.5px ui-monospace,monospace;color:#8b8fa2;padding:1px 5px;border-radius:3px;background:#20222f">F17</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+        <div style="display:grid;grid-template-columns:1fr auto;align-items:center;gap:6px;height:28px;padding:0 10px 0 12px"><div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font:400 11.5px Inter,sans-serif;color:#c2c5d2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Сбор наград</span></div><div style="display:flex;gap:3px;color:#5f6376;font-size:9px"><span style="cursor:pointer">▶</span><span style="cursor:pointer">■</span><span style="cursor:pointer">✕</span></div></div>
+
+      </div>
+      <div style="padding:8px;border-top:1px solid #262939"><button style="width:100%;height:26px;border:1px solid var(--color-accent-700);border-radius:5px;background:transparent;font:400 11px Inter,sans-serif;color:var(--color-accent-400);cursor:pointer" style-hover="background:rgba(145,132,217,.12)">+ Новый макрос</button></div>
+    </div>
+
+    <!-- canvas pane -->
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid #262939">
+      <div style="flex:1;position:relative;overflow:hidden;background:#12131e">
+        <sc-if value="{{ showGrid }}" hint-placeholder-val="{{ true }}">
+          <div style="position:absolute;inset:0;background-image:radial-gradient(#242737 1px,transparent 1px);background-size:22px 22px;opacity:.75"></div>
+        </sc-if>
+
+        <div style="position:absolute;left:34px;top:26px;width:816px;height:500px">
+          <svg width="816" height="500" viewBox="0 0 816 500" style="position:absolute;inset:0;overflow:visible;pointer-events:none">
+            <defs>
+              <marker id="ahd" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#464b61"></path></marker>
+              <marker id="aha" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#9184d9"></path></marker>
+              <marker id="ahv" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a7443"></path></marker>
+            </defs>
+            <path d="M210,80 C245,80 252,44 285,44" fill="none" stroke="#9184d9" stroke-width="1.6" marker-end="url(#aha)"></path>
+            <path d="M495,75 C528,75 540,44 570,44" fill="none" stroke="#9184d9" stroke-width="1.6" marker-end="url(#aha)"></path>
+            <path d="M780,80 C802,80 806,90 806,102 L806,120 C806,130 798,134 786,134 L120,134 C110,134 105,138 105,146" fill="none" stroke="#9184d9" stroke-width="1.6" marker-end="url(#aha)"></path>
+            <path d="M210,207 C245,207 252,176 285,176" fill="none" stroke="#9184d9" stroke-width="1.6" marker-end="url(#aha)"></path>
+            <path d="M495,212 C528,212 540,176 570,176" fill="none" stroke="#464b61" stroke-width="1.4" marker-end="url(#ahd)"></path>
+            <path d="M780,207 C802,207 806,217 806,229 L806,250 C806,260 798,264 786,264 L120,264 C110,264 105,268 105,278" fill="none" stroke="#464b61" stroke-width="1.4" marker-end="url(#ahd)"></path>
+            <path d="M210,339 C245,339 252,308 285,308" fill="none" stroke="#464b61" stroke-width="1.4" marker-end="url(#ahd)"></path>
+            <path d="M495,352 C528,352 540,308 570,308" fill="none" stroke="#464b61" stroke-width="1.4" marker-end="url(#ahd)"></path>
+            <path d="M495,366 C512,366 518,374 518,384 L518,394 C518,402 510,406 500,406 L92,406 C84,406 80,406 80,410" fill="none" stroke="#464b61" stroke-width="1.4" marker-end="url(#ahd)"></path>
+            <path d="M780,339 C802,339 806,349 806,361 L806,380 C806,390 798,394 786,394 L146,394 C136,394 132,398 132,410" fill="none" stroke="#464b61" stroke-width="1.4" marker-end="url(#ahd)"></path>
+            <path d="M462,352 C470,330 520,318 560,312" fill="none" stroke="#8a7443" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#ahv)" opacity=".9"></path>
+          </svg>
+
+          <!-- n1 -->
+          <div style="position:absolute;left:0px;top:14px;width:210px;height:92px;background:#1b1d2b;border:1px solid #3a3560;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;opacity:.85">
+            <div style="display:flex;align-items:center;gap:6px;height:19px;padding:0 7px;background:#221f33;border-bottom:1px solid #2e2b44"><span style="width:7px;height:7px;transform:rotate(45deg);border:1px solid var(--color-accent);background:rgba(145,132,217,.3)"></span><span style="font:500 10.5px Inter,sans-serif;color:#c3bbe8">Ждать элемент</span><span style="margin-left:auto;font:400 10px Inter,sans-serif;color:var(--color-accent)">✓ 1.2 с</span></div>
+            <div style="padding:3px 7px 0;font:400 9.5px ui-monospace,monospace;color:#6b6f82">wait-server-select</div>
+            <div style="padding:1px 7px;font:400 10.5px ui-monospace,monospace;color:var(--color-neutral-300);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ServerSelectButton · 60 с</div>
+            <div style="margin-top:auto;padding-bottom:4px">
+              <div style="height:15px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px;font:400 9.5px Inter,sans-serif;color:var(--color-accent-400)">нашёл<span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent);margin-right:-10px"></span></div>
+              <div style="height:15px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px;font:400 9.5px Inter,sans-serif;color:#5f6376">таймаут → конец<span style="width:6px;height:6px;border-radius:50%;border:1px solid #464b61;margin-right:-10px"></span></div>
+            </div>
+          </div>
+
+          <!-- n2 -->
+          <div style="position:absolute;left:285px;top:14px;width:210px;height:70px;background:#1b1d2b;border:1px solid #3a3560;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;opacity:.85">
+            <div style="display:flex;align-items:center;gap:6px;height:19px;padding:0 7px;background:#212433;border-bottom:1px solid #2b2e3d"><span style="width:7px;height:7px;border-radius:2px;background:#5f6376"></span><span style="font:500 10.5px Inter,sans-serif;color:var(--color-neutral-300)">Клик</span><span style="margin-left:auto;font:400 10px Inter,sans-serif;color:var(--color-accent)">✓ 40 мс</span></div>
+            <div style="padding:3px 7px 0;font:400 9.5px ui-monospace,monospace;color:#6b6f82">click-server-select</div>
+            <div style="padding:1px 7px;font:400 10.5px ui-monospace,monospace;color:var(--color-neutral-300)">1192, 1805</div>
+            <div style="margin-top:auto;height:18px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px 4px;font:400 9.5px Inter,sans-serif;color:#8b8fa2">далее<span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent);margin-right:-10px"></span></div>
+          </div>
+
+          <!-- n3 -->
+          <div style="position:absolute;left:570px;top:14px;width:210px;height:92px;background:#1b1d2b;border:1px solid #3a3560;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;opacity:.85">
+            <div style="display:flex;align-items:center;gap:6px;height:19px;padding:0 7px;background:#221f33;border-bottom:1px solid #2e2b44"><span style="width:7px;height:7px;transform:rotate(45deg);border:1px solid var(--color-accent);background:rgba(145,132,217,.3)"></span><span style="font:500 10.5px Inter,sans-serif;color:#c3bbe8">Ждать элемент</span><span style="margin-left:auto;font:400 10px Inter,sans-serif;color:var(--color-accent)">✓ 8.6 с</span></div>
+            <div style="padding:3px 7px 0;font:400 9.5px ui-monospace,monospace;color:#6b6f82">wait-character-select</div>
+            <div style="padding:1px 7px;font:400 10.5px ui-monospace,monospace;color:var(--color-neutral-300);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">CharacterSelectButton · 60 с</div>
+            <div style="margin-top:auto;padding-bottom:4px">
+              <div style="height:15px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px;font:400 9.5px Inter,sans-serif;color:var(--color-accent-400)">нашёл<span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent);margin-right:-10px"></span></div>
+              <div style="height:15px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px;font:400 9.5px Inter,sans-serif;color:#5f6376">таймаут → конец<span style="width:6px;height:6px;border-radius:50%;border:1px solid #464b61;margin-right:-10px"></span></div>
+            </div>
+          </div>
+
+          <!-- n4 -->
+          <div style="position:absolute;left:0px;top:146px;width:210px;height:70px;background:#1b1d2b;border:1px solid #3a3560;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;opacity:.85">
+            <div style="display:flex;align-items:center;gap:6px;height:19px;padding:0 7px;background:#212433;border-bottom:1px solid #2b2e3d"><span style="width:7px;height:7px;border-radius:2px;background:#5f6376"></span><span style="font:500 10.5px Inter,sans-serif;color:var(--color-neutral-300)">Клик</span><span style="margin-left:auto;font:400 10px Inter,sans-serif;color:var(--color-accent)">✓ 38 мс</span></div>
+            <div style="padding:3px 7px 0;font:400 9.5px ui-monospace,monospace;color:#6b6f82">click-character-select</div>
+            <div style="padding:1px 7px;font:400 10.5px ui-monospace,monospace;color:var(--color-neutral-300)">1958, 2053</div>
+            <div style="margin-top:auto;height:18px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px 4px;font:400 9.5px Inter,sans-serif;color:#8b8fa2">далее<span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent);margin-right:-10px"></span></div>
+          </div>
+
+          <!-- n5 — current -->
+          <div style="position:absolute;left:285px;top:146px;width:210px;height:92px;background:#232038;border:1px solid var(--color-accent);border-radius:6px;display:flex;flex-direction:column;overflow:hidden;animation:smPulse 1.8s ease-in-out infinite">
+            <div style="display:flex;align-items:center;gap:6px;height:19px;padding:0 7px;background:#2e2951;border-bottom:1px solid #46407a"><span style="width:7px;height:7px;transform:rotate(45deg);border:1px solid var(--color-accent-300);background:var(--color-accent)"></span><span style="font:500 10.5px Inter,sans-serif;color:var(--color-text)">Ждать элемент</span><span style="margin-left:auto;font:400 10px ui-monospace,monospace;color:var(--color-accent-300)">▸ 2.4 с</span></div>
+            <div style="padding:3px 7px 0;font:400 9.5px ui-monospace,monospace;color:#9d9ec0">wait-in-world</div>
+            <div style="padding:1px 7px;font:400 10.5px ui-monospace,monospace;color:#f0eefd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ChatPanelButtons · 0,2100 160×60</div>
+            <div style="margin-top:auto;padding-bottom:4px">
+              <div style="height:15px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px;font:400 9.5px Inter,sans-serif;color:var(--color-accent-300)">нашёл<span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent-300);margin-right:-10px"></span></div>
+              <div style="height:15px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px;font:400 9.5px Inter,sans-serif;color:#7d7f96">таймаут → конец<span style="width:6px;height:6px;border-radius:50%;border:1px solid #56597a;margin-right:-10px"></span></div>
+            </div>
+          </div>
+
+          <!-- n6 -->
+          <div style="position:absolute;left:570px;top:146px;width:210px;height:70px;background:#1e2030;border:1px solid #343849;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:6px;height:19px;padding:0 7px;background:#242739;border-bottom:1px solid #2e3243"><span style="width:7px;height:7px;border-radius:2px;background:#5f6376"></span><span style="font:500 10.5px Inter,sans-serif;color:var(--color-neutral-300)">Нажать клавишу</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font:400 9px Inter,sans-serif;color:#6b6f82"><span style="width:4px;height:4px;border-radius:50%;border:1px solid #6b6f82"></span>контекст</span></div>
+            <div style="padding:3px 7px 0;font:400 9.5px ui-monospace,monospace;color:#6b6f82">open-stats</div>
+            <div style="padding:1px 7px;display:flex;align-items:center;gap:6px"><span style="display:inline-flex;align-items:center;height:16px;padding:0 7px;border-radius:3px;background:#2a2e40;border:1px solid var(--color-neutral-800);border-bottom-width:2px;font:500 10px ui-monospace,monospace;color:var(--color-text)">C</span></div>
+            <div style="margin-top:auto;height:18px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px 4px;font:400 9.5px Inter,sans-serif;color:#8b8fa2">далее<span style="width:6px;height:6px;border-radius:50%;background:#5f6376;margin-right:-10px"></span></div>
+          </div>
+
+          <!-- n7 -->
+          <div style="position:absolute;left:0px;top:278px;width:210px;height:70px;background:#1e2030;border:1px solid #343849;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:6px;height:19px;padding:0 7px;background:#242739;border-bottom:1px solid #2e3243"><span style="width:7px;height:7px;border-radius:2px;background:#5f6376"></span><span style="font:500 10.5px Inter,sans-serif;color:var(--color-neutral-300)">Задержка</span></div>
+            <div style="padding:3px 7px 0;font:400 9.5px ui-monospace,monospace;color:#6b6f82">await-stats</div>
+            <div style="padding:1px 7px;font:400 10.5px ui-monospace,monospace;color:var(--color-neutral-300)">0.5 с</div>
+            <div style="margin-top:auto;height:18px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px 4px;font:400 9.5px Inter,sans-serif;color:#8b8fa2">далее<span style="width:6px;height:6px;border-radius:50%;background:#5f6376;margin-right:-10px"></span></div>
+          </div>
+
+          <!-- n8 — breakpoint -->
+          <div style="position:absolute;left:285px;top:278px;width:210px;height:100px;background:#1e2030;border:1px solid #343849;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:visible">
+            <div style="position:absolute;left:-6px;top:-6px;width:11px;height:11px;border-radius:50%;background:#dd8189;box-shadow:0 0 0 2px #12131e"></div>
+            <div style="display:flex;align-items:center;gap:6px;height:19px;padding:0 7px;background:#262238;border-bottom:1px solid #322d4a;border-radius:5px 5px 0 0"><span style="width:7px;height:7px;transform:rotate(45deg);border:1px solid var(--color-accent);background:rgba(145,132,217,.3)"></span><span style="font:500 10.5px Inter,sans-serif;color:#c3bbe8">Распознать тег</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font:400 9px Inter,sans-serif;color:#6b6f82"><span style="width:4px;height:4px;border-radius:50%;border:1px solid #6b6f82"></span>контекст</span></div>
+            <div style="padding:3px 7px 0;font:400 9.5px ui-monospace,monospace;color:#6b6f82">recognize-class</div>
+            <div style="padding:1px 7px;font:400 10.5px ui-monospace,monospace;color:var(--color-neutral-300)">набор classes · 160×35</div>
+            <div style="padding:1px 7px"><span style="display:inline-flex;align-items:center;gap:4px;height:15px;padding:0 6px;border-radius:3px;background:rgba(219,178,119,.10);border:1px solid #5c4f33;font:400 9.5px ui-monospace,monospace;color:#dbb277">↥ пишет {tag}</span></div>
+            <div style="margin-top:auto;padding-bottom:4px">
+              <div style="height:15px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px;font:400 9.5px Inter,sans-serif;color:var(--color-accent-400)">распознал<span style="width:6px;height:6px;border-radius:50%;background:#5f6376;margin-right:-10px"></span></div>
+              <div style="height:15px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px;font:400 9.5px Inter,sans-serif;color:#8b8fa2">не распознал<span style="width:6px;height:6px;border-radius:50%;background:#5f6376;margin-right:-10px"></span></div>
+            </div>
+          </div>
+
+          <!-- n9 -->
+          <div style="position:absolute;left:570px;top:278px;width:210px;height:70px;background:#1e2030;border:1px solid #343849;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:6px;height:19px;padding:0 7px;background:#242739;border-bottom:1px solid #2e3243"><span style="width:7px;height:7px;border-radius:2px;background:#5f6376"></span><span style="font:500 10.5px Inter,sans-serif;color:var(--color-neutral-300)">Иконка окна</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font:400 9px Inter,sans-serif;color:#6b6f82"><span style="width:4px;height:4px;border-radius:50%;border:1px solid #6b6f82"></span>контекст</span></div>
+            <div style="padding:3px 7px 0;font:400 9.5px ui-monospace,monospace;color:#6b6f82">set-icon</div>
+            <div style="padding:1px 7px;font:400 10px ui-monospace,monospace;color:var(--color-neutral-300);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">…/ClassIcons/<span style="color:#dbb277">{tag}</span>.png</div>
+            <div style="margin-top:auto;height:18px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px 4px;font:400 9.5px Inter,sans-serif;color:#8b8fa2">далее<span style="width:6px;height:6px;border-radius:50%;background:#5f6376;margin-right:-10px"></span></div>
+          </div>
+
+          <!-- n10 -->
+          <div style="position:absolute;left:0px;top:410px;width:210px;height:70px;background:#1e2030;border:1px solid #343849;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:6px;height:19px;padding:0 7px;background:#242739;border-bottom:1px solid #2e3243"><span style="width:7px;height:7px;border-radius:2px;background:#5f6376"></span><span style="font:500 10.5px Inter,sans-serif;color:var(--color-neutral-300)">Нажать клавишу</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font:400 9px Inter,sans-serif;color:#6b6f82"><span style="width:4px;height:4px;border-radius:50%;border:1px solid #6b6f82"></span>контекст</span></div>
+            <div style="padding:3px 7px 0;font:400 9.5px ui-monospace,monospace;color:#6b6f82">close-stats</div>
+            <div style="padding:1px 7px"><span style="display:inline-flex;align-items:center;height:16px;padding:0 7px;border-radius:3px;background:#2a2e40;border:1px solid var(--color-neutral-800);border-bottom-width:2px;font:500 10px ui-monospace,monospace;color:var(--color-text)">C</span></div>
+            <div style="margin-top:auto;height:18px;display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 7px 4px;font:400 9.5px Inter,sans-serif;color:#5f6376">далее → конец<span style="width:6px;height:6px;border-radius:50%;border:1px solid #464b61;margin-right:-10px"></span></div>
+          </div>
+        </div>
+
+        <div style="position:absolute;right:12px;top:12px;display:flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:5px;background:rgba(18,19,30,.9);border:1px solid #2b2e3d;font:400 10.5px ui-monospace,monospace;color:#8b8fa2">− 100% + · пробел+ЛКМ — панорама</div>
+        <div style="position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:10px;height:24px;padding:0 10px;border-radius:5px;background:rgba(18,19,30,.9);border:1px solid #2b2e3d;font:400 10px Inter,sans-serif;color:#8b8fa2"><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;transform:rotate(45deg);border:1px solid var(--color-accent)"></span>условие</span><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:2px;background:#5f6376"></span>действие</span><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:12px;height:0;border-top:1px dashed #8a7443"></span>переменная</span></div>
+      </div>
+
+      <sc-if value="{{ showDebugLog }}" hint-placeholder-val="{{ true }}">
+      <div style="height:158px;flex:none;border-top:1px solid #262939;background:#141520;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:10px;padding:0 12px;height:26px;border-bottom:1px solid #212434">
+          <span style="font:500 10.5px Inter,sans-serif;color:var(--color-neutral-300)">Лог прогона</span>
+          <span style="font:400 10px ui-monospace,monospace;color:#5f6376">0x140804</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;padding:1px 6px;border-radius:9px;background:rgba(221,129,137,.1);border:1px solid #5c3a40;font:400 9.5px Inter,sans-serif;color:#dd8189"><span style="width:5px;height:5px;border-radius:50%;background:#dd8189"></span>брейкпоинт: recognize-class</span>
+          <span style="margin-left:auto;font:400 10px Inter,sans-serif;color:#5f6376">только текущее окно ▾ · очистить</span>
+        </div>
+        <div style="flex:1;overflow:hidden;font:400 10.5px ui-monospace,monospace">
+          <div style="display:grid;grid-template-columns:62px 156px 96px 1fr;gap:10px;padding:3px 12px;color:#7d8195;background:#181a27"><span>0:00.0</span><span>wait-server-select</span><span style="color:var(--color-accent-400)">нашёл</span><span style="color:#5f6376">ServerSelectButton @ 1190,1802 · 1.2 с</span></div>
+          <div style="display:grid;grid-template-columns:62px 156px 96px 1fr;gap:10px;padding:3px 12px;color:#7d8195"><span>0:01.2</span><span>click-server-select</span><span style="color:#8b8fa2">ок</span><span style="color:#5f6376">PostMessage 1192,1805 · 40 мс</span></div>
+          <div style="display:grid;grid-template-columns:62px 156px 96px 1fr;gap:10px;padding:3px 12px;color:#7d8195;background:#181a27"><span>0:01.3</span><span>wait-character-select</span><span style="color:var(--color-accent-400)">нашёл</span><span style="color:#5f6376">36 тиков · 8.6 с</span></div>
+          <div style="display:grid;grid-template-columns:62px 156px 96px 1fr;gap:10px;padding:3px 12px;color:#7d8195"><span>0:09.9</span><span>click-character-select</span><span style="color:#8b8fa2">ок</span><span style="color:#5f6376">PostMessage 1958,2053 · 38 мс</span></div>
+          <div style="display:grid;grid-template-columns:62px 156px 96px 1fr;gap:10px;padding:3px 12px;color:var(--color-text);background:rgba(145,132,217,.10);border-left:2px solid var(--color-accent)"><span>0:10.0</span><span>wait-in-world</span><span style="color:var(--color-accent-300)">▸ ждёт</span><span style="color:#9d9ec0">ChatPanelButtons · 10 тиков · 2.4 с / 60 с</span></div>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+
+    <!-- inspector -->
+    <div style="width:308px;flex:none;background:#141520;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:8px;padding:0 12px;height:30px;border-bottom:1px solid #232637;background:#191b28">
+        <span style="width:7px;height:7px;transform:rotate(45deg);border:1px solid var(--color-accent);background:rgba(145,132,217,.3)"></span>
+        <span style="font:500 11.5px Inter,sans-serif;color:var(--color-text)">Ждать элемент</span>
+        <span style="margin-left:auto;font:400 10px Inter,sans-serif;color:var(--color-accent-400)">выполняется</span>
+      </div>
+      <div style="padding:9px 12px;display:flex;flex-direction:column;gap:9px;border-bottom:1px solid #232637">
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">id</span><input value="wait-in-world" style="flex:1;min-width:0;height:24px;padding:0 7px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 11px ui-monospace,monospace;color:var(--color-text)"></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">шаблон</span><input value="ChatPanelButtons" style="flex:1;min-width:0;height:24px;padding:0 7px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 11px ui-monospace,monospace;color:var(--color-text)"><button style="width:26px;height:24px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;color:#8b8fa2;font-size:10px;cursor:pointer" style-hover="border-color:var(--color-accent-700);color:var(--color-accent-400)">⛶</button></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">регион</span><div style="flex:1;min-width:0;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px"><input value="0" style="width:100%;min-width:0;height:24px;padding:0 4px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10.5px ui-monospace,monospace;color:var(--color-text);text-align:center"><input value="2100" style="width:100%;min-width:0;height:24px;padding:0 4px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10.5px ui-monospace,monospace;color:var(--color-text);text-align:center"><input value="160" style="width:100%;min-width:0;height:24px;padding:0 4px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10.5px ui-monospace,monospace;color:var(--color-text);text-align:center"><input value="60" style="width:100%;min-width:0;height:24px;padding:0 4px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10.5px ui-monospace,monospace;color:var(--color-text);text-align:center"></div></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:56px"></span><span style="flex:1;min-width:0;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;font:400 9px Inter,sans-serif;color:#4e5265;text-align:center"><span>X</span><span>Y</span><span>Ш</span><span>В</span></span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">таймаут</span><input value="60000" style="width:88px;height:24px;padding:0 7px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 11px ui-monospace,monospace;color:var(--color-text)"><span style="font:400 10px Inter,sans-serif;color:#5f6376">мс</span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">точка →</span><input placeholder="переменная (необяз.)" style="flex:1;min-width:0;height:24px;padding:0 7px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 11px ui-monospace,monospace;color:var(--color-text)"></div>
+      </div>
+
+      <div style="padding:9px 12px;display:flex;flex-direction:column;gap:7px;border-bottom:1px solid #232637">
+        <div style="display:flex;align-items:center;gap:8px"><span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376">цели</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:10px;border:1px solid #2f3242;background:#1b1d29;font:400 10px Inter,sans-serif;color:#8b8fa2"><span style="width:5px;height:5px;border-radius:50%;border:1px solid var(--color-neutral-600)"></span>1 окно · контекст</span></div>
+        <div style="display:flex;gap:6px"><label style="flex:1;display:flex;align-items:center;gap:6px;height:24px;padding:0 8px;border:1px solid var(--color-accent-700);border-radius:4px;background:rgba(145,132,217,.10);font:400 10.5px Inter,sans-serif;color:var(--color-accent-300);cursor:pointer"><span style="width:9px;height:9px;border-radius:50%;border:3px solid var(--color-accent)"></span>контекст-окно</label><label style="flex:1;display:flex;align-items:center;gap:6px;height:24px;padding:0 8px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10.5px Inter,sans-serif;color:#8b8fa2;cursor:pointer"><span style="width:9px;height:9px;border-radius:50%;border:1px solid #4e5265"></span>по тегам</label></div>
+        <div style="display:flex;flex-direction:column;gap:5px;opacity:.45">
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">нужны</span><div style="flex:1;display:flex;align-items:center;gap:4px;min-height:24px;padding:2px 6px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29"><span style="font:400 10px Inter,sans-serif;color:#4e5265">любые</span></div></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">исключить</span><div style="flex:1;display:flex;align-items:center;gap:4px;min-height:24px;padding:2px 6px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29"><span style="font:400 10px Inter,sans-serif;color:#4e5265">—</span></div></div>
+        </div>
+      </div>
+
+      <div style="padding:9px 12px;display:flex;flex-direction:column;gap:6px;border-bottom:1px solid #232637">
+        <span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376">выходы</span>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;font:400 10px Inter,sans-serif;color:var(--color-accent-400)">нашёл</span><span style="flex:1;display:flex;align-items:center;justify-content:space-between;height:24px;padding:0 7px;border-radius:4px;background:#1b1d29;border:1px solid #2b2e3d;font:400 10.5px ui-monospace,monospace;color:var(--color-text)">open-stats<span style="color:#5f6376">▾</span></span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:56px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">таймаут</span><span style="flex:1;display:flex;align-items:center;justify-content:space-between;height:24px;padding:0 7px;border-radius:4px;background:#1b1d29;border:1px solid #2b2e3d;font:400 10.5px Inter,sans-serif;color:#5f6376">конец прогона<span>▾</span></span></div>
+        <label style="display:flex;align-items:center;gap:7px;margin-top:2px;font:400 10.5px Inter,sans-serif;color:#8b8fa2;cursor:pointer"><span style="width:12px;height:12px;border-radius:3px;border:1px solid #4e5265;background:#1b1d29"></span>Брейкпоинт на этой ноде</label>
+      </div>
+
+      <sc-if value="{{ showVarPanel }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:1;min-height:0;overflow:auto;padding:9px 12px;display:flex;flex-direction:column;gap:8px;background:#12131e;border-top:1px solid #232637">
+        <div style="display:flex;align-items:center;gap:8px"><span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376">переменные макроса</span><span style="margin-left:auto;font:400 10px Inter,sans-serif;color:#4e5265">2</span></div>
+
+        <div style="flex:none;border:1px solid #2b2e3d;border-radius:6px;background:#181a27;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;background:rgba(219,178,119,.07);border-bottom:1px solid #2b2e3d"><span style="font:500 11px ui-monospace,monospace;color:#dbb277">{tag}</span><span style="font:400 9.5px Inter,sans-serif;color:#8a7443">строка</span><span style="margin-left:auto;font:400 10px ui-monospace,monospace;color:var(--color-text)">«Жрец»</span></div>
+          <div style="display:flex;align-items:center;gap:7px;padding:4px 8px"><span style="font:400 9.5px Inter,sans-serif;color:var(--color-neutral-600);width:42px">пишет</span><span style="font:400 10.5px ui-monospace,monospace;color:var(--color-neutral-300)">recognize-class</span></div>
+          <div style="display:flex;align-items:center;gap:7px;padding:0 8px 5px"><span style="font:400 9.5px Inter,sans-serif;color:var(--color-neutral-600);width:42px">читает</span><span style="font:400 10.5px ui-monospace,monospace;color:var(--color-neutral-300)">set-icon</span><span style="font:400 9.5px Inter,sans-serif;color:#5f6376">в пути к иконке</span></div>
+        </div>
+
+        <div style="flex:none;border:1px solid #2b2e3d;border-radius:6px;background:#181a27;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;background:#1c1e2a;border-bottom:1px solid #2b2e3d"><span style="font:500 11px ui-monospace,monospace;color:var(--color-neutral-500)">{cursor}</span><span style="font:400 9.5px Inter,sans-serif;color:#5f6376">точка</span><span style="margin-left:auto;font:400 10px ui-monospace,monospace;color:#8b8fa2">1804, 902</span></div>
+          <div style="display:flex;align-items:center;gap:7px;padding:4px 8px"><span style="font:400 9.5px Inter,sans-serif;color:var(--color-neutral-600);width:42px">пишет</span><span style="font:400 10.5px Inter,sans-serif;color:#5f6376">триггер (сид)</span></div>
+          <div style="display:flex;align-items:center;gap:7px;padding:0 8px 5px"><span style="font:400 9.5px Inter,sans-serif;color:var(--color-neutral-600);width:42px">читает</span><span style="font:400 10.5px Inter,sans-serif;color:#5f6376">никто</span></div>
+        </div>
+
+        <p style="margin:0;font:400 10px/1.5 Inter,sans-serif;color:#4e5265">Наведение на переменную подсвечивает на canvas ноду-источник и всех потребителей и рисует между ними пунктир.</p>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+<p class="dv-note">Canvas — единственный режим редактирования: раскладка «строками с переносом», рёбра идут по свободным жёлобам между рядами, у условной ноды оба исхода — подписанные строки внизу бокса, поэтому «в конец» не превращается в лишний узел. Прогон читается без чтения текста: пройденное приглушено с галочкой и временем, текущая нода пульсирует, брейкпоинт — красная точка на углу, а лог внизу синхронен с подсветкой.</p>
+</div>
+
+<!-- ============================= 1e ============================= -->
+<div class="dv-opt" id="1e">
+<div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Canvas — редактирование без инспектора: бокс раскрывается на месте</div>
+<div class="dv-card" style="width:660px;background:#12131e">
+  <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;background:#191b28;border-bottom:1px solid #262939">
+    <span style="font:500 11px Inter,sans-serif;color:var(--color-neutral-300)">Фрагмент графа · зум 135%</span>
+    <span style="margin-left:auto;font:400 10px Inter,sans-serif;color:#5f6376">двойной клик по боксу — раскрыть · Esc — свернуть</span>
+  </div>
+  <div style="position:relative;height:430px;overflow:hidden">
+    <div style="position:absolute;inset:0;background-image:radial-gradient(#242737 1px,transparent 1px);background-size:26px 26px;opacity:.75"></div>
+    <svg width="660" height="430" viewBox="0 0 660 430" style="position:absolute;inset:0;overflow:visible;pointer-events:none">
+      <defs><marker id="ahd2" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#464b61"></path></marker></defs>
+      <path d="M244,66 C266,66 272,96 296,96" fill="none" stroke="#464b61" stroke-width="1.5" marker-end="url(#ahd2)"></path>
+      <path d="M556,238 C568,238 572,248 572,260 L572,300 C572,310 564,314 552,314 L112,314 C102,314 96,318 96,330" fill="none" stroke="#464b61" stroke-width="1.5" marker-end="url(#ahd2)"></path>
+      <path d="M556,268 C566,268 570,278 570,288 L570,296" fill="none" stroke="#464b61" stroke-width="1.5" stroke-dasharray="0"></path>
+    </svg>
+
+    <div style="position:absolute;left:24px;top:36px;width:220px;height:60px;background:#1e2030;border:1px solid #343849;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;background:#242739;border-bottom:1px solid #2e3243"><span style="width:7px;height:7px;border-radius:2px;background:#5f6376"></span><span style="font:500 11px Inter,sans-serif;color:var(--color-neutral-300)">Задержка</span></div>
+      <div style="padding:3px 8px 0;font:400 10px ui-monospace,monospace;color:#6b6f82">await-stats</div>
+      <div style="padding:0 8px;font:400 11px ui-monospace,monospace;color:var(--color-neutral-300)">0.5 с</div>
+    </div>
+
+    <!-- expanded node -->
+    <div style="position:absolute;left:296px;top:34px;width:300px;background:#1e2030;border:1px solid var(--color-accent);border-radius:7px;box-shadow:0 0 0 4px rgba(145,132,217,.12),0 10px 28px rgba(0,0,0,.6);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:7px;height:24px;padding:0 9px;background:#2b2743;border-bottom:1px solid #3a3560"><span style="width:8px;height:8px;transform:rotate(45deg);border:1px solid var(--color-accent-300);background:var(--color-accent)"></span><span style="font:500 11.5px Inter,sans-serif;color:var(--color-text)">Распознать тег</span><span style="margin-left:auto;font:400 10px ui-monospace,monospace;color:#9d9ec0">recognize-class</span><span style="color:#8b8fa2;font-size:10px;margin-left:6px;cursor:pointer">⌄</span></div>
+      <div style="padding:8px 9px;display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:64px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">набор</span><input value="classes" style="flex:1;min-width:0;height:23px;padding:0 7px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10.5px ui-monospace,monospace;color:var(--color-text)"></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:64px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">регион</span><div style="flex:1;min-width:0;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px"><input value="3200" style="width:100%;min-width:0;height:23px;padding:0 3px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10px ui-monospace,monospace;color:var(--color-text);text-align:center"><input value="1060" style="width:100%;min-width:0;height:23px;padding:0 3px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10px ui-monospace,monospace;color:var(--color-text);text-align:center"><input value="160" style="width:100%;min-width:0;height:23px;padding:0 3px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10px ui-monospace,monospace;color:var(--color-text);text-align:center"><input value="35" style="width:100%;min-width:0;height:23px;padding:0 3px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10px ui-monospace,monospace;color:var(--color-text);text-align:center"></div></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:64px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">результат</span><span style="display:inline-flex;align-items:center;gap:5px;height:23px;padding:0 8px;border-radius:4px;background:rgba(219,178,119,.10);border:1px solid #5c4f33;font:400 10.5px ui-monospace,monospace;color:#dbb277">↥ {tag}</span><label style="display:flex;align-items:center;gap:6px;font:400 10.5px Inter,sans-serif;color:var(--color-neutral-300);cursor:pointer"><span style="width:12px;height:12px;border-radius:3px;border:1px solid var(--color-accent-700);background:rgba(145,132,217,.25)"></span>вешать тег</label></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:64px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">цели</span><span style="display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:11px;border:1px solid #2f3242;background:#1b1d29;font:400 10px Inter,sans-serif;color:#8b8fa2;cursor:pointer">◦ 1 окно · контекст ▾</span></div>
+      </div>
+      <div style="border-top:1px solid #2b2e3d;padding:6px 9px;display:flex;flex-direction:column;gap:5px;background:#1a1c2a">
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:64px;font:400 10px Inter,sans-serif;color:var(--color-accent-400)">распознал</span><span style="flex:1;display:flex;align-items:center;justify-content:space-between;height:22px;padding:0 7px;border-radius:4px;background:#1b1d29;border:1px solid #2b2e3d;font:400 10.5px ui-monospace,monospace;color:var(--color-text)">set-icon<span style="color:#5f6376">▾</span></span><span style="width:7px;height:7px;border-radius:50%;background:#5f6376;margin-right:-13px"></span></div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="width:64px;font:400 10px Inter,sans-serif;color:#8b8fa2">не распознал</span><span style="flex:1;display:flex;align-items:center;justify-content:space-between;height:22px;padding:0 7px;border-radius:4px;background:#1b1d29;border:1px solid #2b2e3d;font:400 10.5px ui-monospace,monospace;color:var(--color-text)">close-stats<span style="color:#5f6376">▾</span></span><span style="width:7px;height:7px;border-radius:50%;background:#5f6376;margin-right:-13px"></span></div>
+      </div>
+    </div>
+
+    <div style="position:absolute;left:24px;top:300px;width:220px;height:60px;background:#1e2030;border:1px solid #343849;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;background:#242739;border-bottom:1px solid #2e3243"><span style="width:7px;height:7px;border-radius:2px;background:#5f6376"></span><span style="font:500 11px Inter,sans-serif;color:var(--color-neutral-300)">Нажать клавишу</span></div>
+      <div style="padding:3px 8px 0;font:400 10px ui-monospace,monospace;color:#6b6f82">close-stats</div>
+      <div style="padding:0 8px"><span style="display:inline-flex;align-items:center;height:17px;padding:0 8px;border-radius:3px;background:#2a2e40;border:1px solid var(--color-neutral-800);border-bottom-width:2px;font:500 10.5px ui-monospace,monospace;color:var(--color-text)">C</span></div>
+    </div>
+
+    <div style="position:absolute;left:296px;top:300px;width:220px;height:60px;background:#1e2030;border:1px solid #343849;border-radius:6px;box-shadow:0 3px 10px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;background:#242739;border-bottom:1px solid #2e3243"><span style="width:7px;height:7px;border-radius:2px;background:#5f6376"></span><span style="font:500 11px Inter,sans-serif;color:var(--color-neutral-300)">Иконка окна</span></div>
+      <div style="padding:3px 8px 0;font:400 10px ui-monospace,monospace;color:#6b6f82">set-icon</div>
+      <div style="padding:0 8px;font:400 10.5px ui-monospace,monospace;color:var(--color-neutral-300)">…/<span style="color:#dbb277">{tag}</span>.png</div>
+    </div>
+  </div>
+</div>
+<p class="dv-note">Второй способ правки, без правой панели: бокс раскрывается на месте и становится редактором самого себя — параметры, цели и оба выхода в одном месте, курсор не уезжает через весь экран. Минус — раскрытая нода толкает соседей, поэтому имеет смысл держать оба способа: двойной клик раскрывает, одиночный — наполняет инспектор (<a href="#1d">1d</a>).</p>
+</div>
+
+<!-- ============================= 1f ============================= -->
+<div class="dv-opt" id="1f">
+<div class="dv-olabel"><a class="dv-oid" href="#1f">1f</a>Виджет-ловушка хоткея — три состояния</div>
+<div class="dv-card" style="width:420px;background:var(--color-bg);padding:18px 18px 20px;display:flex;flex-direction:column;gap:16px">
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376">пусто</span>
+    <div style="display:flex;align-items:center;gap:8px"><span style="width:84px;font:400 11px Inter,sans-serif;color:var(--color-neutral-600)">Хоткей</span>
+      <button style="flex:1;display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;border:1px dashed #3f424d;border-radius:5px;background:#1b1d29;font:400 11px Inter,sans-serif;color:#6b6f82;cursor:pointer" style-hover="border-color:var(--color-accent-700);color:var(--color-accent-400)">⌨ нажмите, чтобы задать</button>
+      <span style="width:24px"></span></div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376">ловит</span>
+    <div style="display:flex;align-items:center;gap:8px"><span style="width:84px;font:400 11px Inter,sans-serif;color:var(--color-neutral-600)">Хоткей</span>
+      <div style="flex:1;display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;border:1px solid var(--color-accent);border-radius:5px;background:rgba(145,132,217,.10);font:500 11px Inter,sans-serif;color:var(--color-accent-300);animation:smPulse 1.4s ease-in-out infinite"><span style="width:6px;height:6px;border-radius:50%;background:var(--color-accent-300)"></span>Нажмите сочетание…</div>
+      <span style="width:24px"></span></div>
+    <div style="margin-left:92px;font:400 10px Inter,sans-serif;color:#5f6376">Esc — отмена · Del — очистить · ловятся и боковые кнопки мыши</div>
+    <div style="margin-left:92px;display:flex;align-items:center;gap:6px;font:400 10px Inter,sans-serif;color:#dbb277"><span>⚠</span>глобальные хоткеи приостановлены, пока открыт редактор</div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376">захвачено</span>
+    <div style="display:flex;align-items:center;gap:8px"><span style="width:84px;font:400 11px Inter,sans-serif;color:var(--color-neutral-600)">Хоткей</span>
+      <div style="flex:1;display:flex;align-items:center;gap:5px;height:28px;padding:0 8px;border:1px solid var(--color-neutral-800);border-radius:5px;background:#1b1d29;cursor:pointer" style-hover="border-color:var(--color-accent-700)">
+        <span style="display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:3px;background:#2a2e40;border:1px solid #464b61;border-bottom-width:2px;font:500 10.5px ui-monospace,monospace;color:var(--color-text)">Ctrl</span>
+        <span style="color:#5f6376;font-size:10px">+</span>
+        <span style="display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:3px;background:#2a2e40;border:1px solid #464b61;border-bottom-width:2px;font:500 10.5px ui-monospace,monospace;color:var(--color-text)">Shift</span>
+        <span style="color:#5f6376;font-size:10px">+</span>
+        <span style="display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:3px;background:rgba(145,132,217,.18);border:1px solid var(--color-accent-700);border-bottom-width:2px;font:500 10.5px ui-monospace,monospace;color:var(--color-accent-300)">F1</span>
+        <span style="margin-left:auto;font:400 10px Inter,sans-serif;color:#5f6376">клик — перезадать</span>
+      </div>
+      <button style="width:24px;height:24px;border:1px solid #2b2e3d;border-radius:4px;background:transparent;color:var(--color-neutral-600);font-size:10px;cursor:pointer" style-hover="border-color:#5c3a40;color:#dd8189">✕</button></div>
+    <div style="margin-left:92px;font:400 10px Inter,sans-serif;color:#5f6376">свободен · запустит «Баг госта» во всех окнах кроме <span style="font-family:ui-monospace,monospace;color:#8b8fa2">Склад</span></div>
+  </div>
+
+  <div style="height:1px;background:linear-gradient(to right,transparent,#2b2e3d 48px,#2b2e3d calc(100% - 48px),transparent)"></div>
+
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376">конфликт — четвёртое состояние, которого не хватало</span>
+    <div style="display:flex;align-items:center;gap:8px"><span style="width:84px;font:400 11px Inter,sans-serif;color:var(--color-neutral-600)">Хоткей</span>
+      <div style="flex:1;display:flex;align-items:center;gap:5px;height:28px;padding:0 8px;border:1px solid #7a3f47;border-radius:5px;background:rgba(221,129,137,.07)">
+        <span style="display:inline-flex;align-items:center;height:19px;padding:0 7px;border-radius:3px;background:#2a2e40;border:1px solid #464b61;border-bottom-width:2px;font:500 10.5px ui-monospace,monospace;color:var(--color-text)">F23</span>
+        <span style="margin-left:auto;font:400 10px Inter,sans-serif;color:#dd8189">уже занят pw-immunity</span>
+      </div>
+      <button style="width:24px;height:24px;border:1px solid #2b2e3d;border-radius:4px;background:transparent;color:var(--color-neutral-600);font-size:10px;cursor:pointer">✕</button></div>
+  </div>
+</div>
+<p class="dv-note">Ловушка — одна кнопка, меняющая содержимое: подсказка → пульсирующий приём → клавиши как физические кейкапы. Модификаторы отдельными кейкапами, а не строкой «Ctrl+Shift+F1»: так видно, что именно захвачено, и легче заметить конфликт с уже занятым сочетанием.</p>
+</div>
+
+<!-- ============================= 1g ============================= -->
+<div class="dv-opt" id="1g">
+<div class="dv-olabel"><a class="dv-oid" href="#1g">1g</a>Бейдж «фильтр целей» — свёрнутый вид и разворот</div>
+<div class="dv-card" style="width:480px;background:var(--color-bg);padding:18px;display:flex;flex-direction:column;gap:14px">
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376">свёрнуто — то, что видно в строке и на боксе</span>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;border:1px solid #2f3242;background:#1b1d29;font:400 10.5px Inter,sans-serif;color:#8b8fa2"><span style="width:5px;height:5px;border-radius:50%;border:1px solid var(--color-neutral-600)"></span>1 окно · контекст</span><span style="font:400 10.5px Inter,sans-serif;color:#5f6376">селектор пуст — бьёт в окно, из которого запущен макрос</span></div>
+      <div style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;border:1px solid #4a4470;background:rgba(145,132,217,.14);font:400 10.5px Inter,sans-serif;color:#c3bbe8"><span style="display:flex;gap:1.5px"><span style="width:3px;height:9px;border-radius:1px;background:var(--color-accent)"></span><span style="width:3px;height:9px;border-radius:1px;background:var(--color-accent)"></span><span style="width:3px;height:9px;border-radius:1px;background:var(--color-accent)"></span><span style="width:3px;height:9px;border-radius:1px;background:#4a4470"></span></span>8 окон · кроме Склад</span><span style="font:400 10.5px Inter,sans-serif;color:#5f6376">полоски = доля окон, в которые уйдёт действие</span></div>
+      <div style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;border:1px solid #4a4470;background:rgba(145,132,217,.14);font:400 10.5px Inter,sans-serif;color:#c3bbe8"><span style="display:flex;gap:1.5px"><span style="width:3px;height:9px;border-radius:1px;background:var(--color-accent)"></span><span style="width:3px;height:9px;border-radius:1px;background:#4a4470"></span><span style="width:3px;height:9px;border-radius:1px;background:#4a4470"></span><span style="width:3px;height:9px;border-radius:1px;background:#4a4470"></span></span>1 окно · Лучник</span><span style="font:400 10.5px Inter,sans-serif;color:#5f6376">мастер — единственное попадание</span></div>
+      <div style="display:flex;align-items:center;gap:10px"><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;border:1px solid #7a3f47;background:rgba(221,129,137,.08);font:400 10.5px Inter,sans-serif;color:#dd8189"><span style="width:5px;height:5px;border-radius:50%;background:#dd8189"></span>0 окон · Инквизитор</span><span style="font:400 10.5px Inter,sans-serif;color:#dd8189;opacity:.75">такого тега сейчас нет ни на одном окне</span></div>
+    </div>
+  </div>
+
+  <div style="height:1px;background:linear-gradient(to right,transparent,#2b2e3d 40px,#2b2e3d calc(100% - 40px),transparent)"></div>
+
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376">развёрнуто — попап по клику на бейдж</span>
+    <div style="width:322px;border:1px solid #3a3560;border-radius:7px;background:#1a1c2a;box-shadow:0 12px 30px rgba(0,0,0,.6);overflow:hidden">
+      <div style="padding:8px 10px;display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;gap:6px"><label style="flex:1;display:flex;align-items:center;gap:6px;height:24px;padding:0 8px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29;font:400 10.5px Inter,sans-serif;color:#8b8fa2;cursor:pointer"><span style="width:9px;height:9px;border-radius:50%;border:1px solid #4e5265"></span>контекст-окно</label><label style="flex:1;display:flex;align-items:center;gap:6px;height:24px;padding:0 8px;border:1px solid var(--color-accent-700);border-radius:4px;background:rgba(145,132,217,.10);font:400 10.5px Inter,sans-serif;color:var(--color-accent-300);cursor:pointer"><span style="width:9px;height:9px;border-radius:50%;border:3px solid var(--color-accent)"></span>по тегам</label></div>
+        <div style="display:flex;align-items:flex-start;gap:8px"><span style="width:60px;padding-top:5px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">нужны</span><div style="flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-height:26px;padding:3px 6px;border:1px solid #2b2e3d;border-radius:4px;background:#1b1d29"><span style="font:400 10px Inter,sans-serif;color:#4e5265">любые теги</span></div></div>
+        <div style="display:flex;align-items:flex-start;gap:8px"><span style="width:60px;padding-top:5px;font:400 10px Inter,sans-serif;color:var(--color-neutral-600)">исключить</span><div style="flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-height:26px;padding:3px 6px;border:1px solid #4a4470;border-radius:4px;background:#1b1d29"><span style="display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 4px 0 7px;border-radius:9px;background:rgba(219,178,119,.12);border:1px solid #5c4f33;font:400 10px Inter,sans-serif;color:#dbb277">Склад<span style="color:var(--color-neutral-600);cursor:pointer">✕</span></span><input placeholder="+ тег" style="flex:1;min-width:52px;height:18px;border:none;background:transparent;font:400 10px Inter,sans-serif;color:var(--color-neutral-300);outline:none"></div></div>
+      </div>
+      <div style="border-top:1px solid #2b2e3d;background:var(--color-bg);padding:7px 10px;display:flex;flex-direction:column;gap:5px">
+        <div style="display:flex;align-items:center;gap:7px"><span style="font:400 9.5px Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5f6376">сейчас попадает</span><span style="font:400 10px ui-monospace,monospace;color:var(--color-accent-400)">8 из 11</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          <span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border-radius:4px;background:rgba(145,132,217,.13);border:1px solid #3a3560;font:400 9.5px ui-monospace,monospace;color:#c3bbe8">0x1402F8 Лучник</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border-radius:4px;background:rgba(145,132,217,.13);border:1px solid #3a3560;font:400 9.5px ui-monospace,monospace;color:#c3bbe8">0x14031C Жрец</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border-radius:4px;background:rgba(145,132,217,.13);border:1px solid #3a3560;font:400 9.5px ui-monospace,monospace;color:#c3bbe8">0x1403A4 Оборотень</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border-radius:4px;background:rgba(145,132,217,.13);border:1px solid #3a3560;font:400 9.5px ui-monospace,monospace;color:#c3bbe8">0x140412 Жрец</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border-radius:4px;background:rgba(145,132,217,.13);border:1px solid #3a3560;font:400 9.5px ui-monospace,monospace;color:#c3bbe8">+4</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border-radius:4px;background:#1b1d29;border:1px solid #2b2e3d;font:400 9.5px ui-monospace,monospace;color:#5f6376;text-decoration:line-through">0x140550 Склад</span>
+          <span style="display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 7px;border-radius:4px;background:#1b1d29;border:1px solid #2b2e3d;font:400 9.5px ui-monospace,monospace;color:#5f6376">2 без тегов</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="dv-note">Фильтр целей у каждой ноды шумит, поэтому он свёрнут в один бейдж, где главное — не теги, а число окон: «8 окон · кроме Склад». Полоски слева дают долю с первого взгляда, ноль попаданий подсвечивается как ошибка, а разворот показывает поимённо, кто попадёт и кто отвалился.</p>
+</div>
+
+</div>
+<p class="dv-next">Дальше: «покажи фан-аут бейдж целей на pw-immunity» · «сделай <a class="dv-oid" href="#1b">1b</a> основным шеллом» · «добавь панель библиотеки макросов в <a class="dv-oid" href="#1d">1d</a>»</p>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showGrid&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Canvas&quot;},&quot;showVarPanel&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Canvas&quot;},&quot;showDebugLog&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Canvas&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const p = this.props || {};
+    return {
+      showGrid: p.showGrid ?? true,
+      showVarPanel: p.showVarPanel ?? true,
+      showDebugLog: p.showDebugLog ?? true,
+    };
+  }
+}
+</script>
+</body>
+</html>
