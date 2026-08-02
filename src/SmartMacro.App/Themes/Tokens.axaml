@@ -146,6 +146,14 @@
     <!-- A row that is present but not yet identified — dimmer than either row colour. -->
     <SolidColorBrush x:Key="NocturneSurfaceRowMutedBrush" Color="#14151f" />
 
+    <!-- The fading rule beside the "не опознано · N" separator (D2). A gradient, not a
+         colour, so it belongs here rather than in the view: #332d1f is the warning border
+         darkened to a hairline, fading out to the right. -->
+    <LinearGradientBrush x:Key="NocturneUntaggedRuleBrush" StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Offset="0" Color="#332d1f" />
+        <GradientStop Offset="1" Color="#00332d1f" />
+    </LinearGradientBrush>
+
     <SolidColorBrush x:Key="NocturneDividerBrush" Color="#262939" />
     <Color x:Key="NocturneDividerStrongColor">#2b2e3d</Color>
     <SolidColorBrush x:Key="NocturneDividerStrongBrush" Color="{StaticResource NocturneDividerStrongColor}" />
@@ -247,6 +255,10 @@
     <BoxShadows x:Key="NocturneShadowSm">0 0 0 1 #3f424d</BoxShadows>
     <BoxShadows x:Key="NocturneShadowMd">0 0 0 1 #595d6c, 0 6 18 0 #8c000000</BoxShadows>
     <BoxShadows x:Key="NocturneShadowLg">0 0 0 1 #9397ab, 0 16 40 0 #a6000000</BoxShadows>
+
+    <!-- Not elevation: the halo around the run bar's "something is running" dot (D2).
+         A 3px spread of accent @20% — the accent-as-glow rule at its smallest. -->
+    <BoxShadows x:Key="NocturneRunDotGlow">0 0 0 3 #339184d9</BoxShadows>
 
     <!-- ================================================================
          TYPE

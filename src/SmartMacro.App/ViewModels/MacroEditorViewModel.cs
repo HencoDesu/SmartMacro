@@ -741,8 +741,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     // ---- hotkey suspension ----------------------------------------------------------
 
     /// <summary>
-    /// Switches the daemon's global hotkeys off for the lifetime of the dialog. Must be
-    /// called before the hotkey picker can work at all — see <see cref="IHotkeySuspension"/>.
+    /// Switches the daemon's global hotkeys off. Must be called before the hotkey picker can
+    /// work at all — see <see cref="IHotkeySuspension"/>. WHEN it is called is the shell's
+    /// decision (D2 scopes it to the «Макросы» mode being on screen); this VM only forwards.
     /// </summary>
     public Task SuspendHotkeysAsync() => _hotkeys?.SuspendAsync() ?? Task.CompletedTask;
 

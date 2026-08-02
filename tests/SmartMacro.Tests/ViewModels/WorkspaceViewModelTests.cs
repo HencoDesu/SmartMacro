@@ -6,12 +6,13 @@ using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// Stage 3: the main window's view-model, now a pure IPC client — windows with tag chips and
-// the running-macros panel, all of it seeded by requests and kept current by daemon pushes.
+// The live-state view-model (MainWindowViewModel until D2 renamed it): a pure IPC client
+// holding windows with their tag chips and the running-macro list, seeded by requests and
+// kept current by daemon pushes.
 //
 // The fake client answers synchronously and ImmediateUiDispatcher runs posted work inline,
 // so the constructor's fire-and-forget refresh has already landed by the time a test looks.
-public class MainWindowViewModelTests
+public class WorkspaceViewModelTests
 {
     private const long HwndA = 0x1111;
     private const long HwndB = 0x2222;
@@ -22,7 +23,7 @@ public class MainWindowViewModelTests
     private static RunningMacroDto Run(Guid id, string name, string? node = null) =>
         new(id, name, DateTimeOffset.UtcNow, node);
 
-    private static MainWindowViewModel CreateVm(FakeIpcClient client) =>
+    private static WorkspaceViewModel CreateVm(FakeIpcClient client) =>
         new(client, ImmediateUiDispatcher.Instance);
 
     // ---- initial fetch ---------------------------------------------------------------------
@@ -90,7 +91,93 @@ public class MainWindowViewModelTests
 
         await Assert.That(vm.Windows).Count().IsEqualTo(1);
         await Assert.That(vm.Windows[0].HasTags).IsFalse();
-        await Assert.That(vm.WindowCountText).Contains("1");
+        // The count used to be rendered here as WindowCountText; D2 moved the number to the
+        // sidebar counter, so what this VM still owns is the «Окна» header summary.
+        await Assert.That(vm.WindowsSummaryText).Contains("1");
+    }
+
+    // ---- derived partitions (D2) --------------------------------------------------------
+
+    [Test]
+    public async Task Windows_ArePartitionedIntoTaggedAndUntagged()
+    {
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetWindows, new[]
+        {
+            Window(HwndA, "proc", "Лучник"),
+            Window(HwndB, "proc"),
+        });
+
+        using var vm = CreateVm(client);
+
+        await Assert.That(vm.TaggedWindows.Select(r => r.Hwnd)).IsEquivalentTo(new[] { HwndA });
+        await Assert.That(vm.UntaggedWindows.Select(r => r.Hwnd)).IsEquivalentTo(new[] { HwndB });
+        await Assert.That(vm.IdentifiedCount).IsEqualTo(1);
+        await Assert.That(vm.UntaggedCount).IsEqualTo(1);
+        await Assert.That(vm.HasUntagged).IsTrue();
+        await Assert.That(vm.WindowsSummaryText).IsEqualTo("1 опознано · 1 без тегов");
+        await Assert.That(vm.UntaggedHeaderText).IsEqualTo("НЕ ОПОЗНАНО · 1");
+    }
+
+    [Test]
+    public async Task TaggingAWindow_MovesItOutOfTheUntaggedGroup()
+    {
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, "proc") });
+        using var vm = CreateVm(client);
+        await Assert.That(vm.UntaggedWindows).Count().IsEqualTo(1);
+
+        client.RaiseEvent(IpcMessageTypes.WindowTagsChanged, Window(HwndA, "proc", "Жрец"));
+
+        await Assert.That(vm.UntaggedWindows).IsEmpty();
+        await Assert.That(vm.TaggedWindows).Count().IsEqualTo(1);
+        await Assert.That(vm.HasUntagged).IsFalse();
+        // The ROW survives the move: the partitions are reconciled, not rebuilt, so a
+        // half-typed tag box does not lose its focus when the list shifts.
+        await Assert.That(vm.TaggedWindows[0]).IsSameReferenceAs(vm.Windows[0]);
+    }
+
+    [Test]
+    public async Task TaggedRows_CarryAnAlternatingBackgroundFlag()
+    {
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetWindows, new[]
+        {
+            Window(0x10, "proc", "а"),
+            Window(0x20, "proc", "б"),
+            Window(0x30, "proc", "в"),
+        });
+
+        using var vm = CreateVm(client);
+
+        await Assert.That(vm.TaggedWindows.Select(r => r.IsAlternate))
+            .IsEquivalentTo(new[] { false, true, false });
+    }
+
+    [Test]
+    public async Task WindowsChanged_FiresOnAppearanceTaggingAndClosure()
+    {
+        var client = new FakeIpcClient();
+        using var vm = CreateVm(client);
+        var fired = 0;
+        vm.WindowsChanged += () => fired++;
+
+        client.RaiseEvent(IpcMessageTypes.WindowAppeared, Window(HwndA, "proc"));
+        await Assert.That(fired).IsEqualTo(1);
+
+        client.RaiseEvent(IpcMessageTypes.WindowTagsChanged, Window(HwndA, "proc", "Шаман"));
+        await Assert.That(fired).IsEqualTo(2);
+
+        client.RaiseEvent(IpcMessageTypes.WindowClosed, new WindowClosedEvent(HwndA));
+        await Assert.That(fired).IsEqualTo(3);
+    }
+
+    [Test]
+    public async Task NoWindows_ReadsAsAnEmptyState()
+    {
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetWindows, Array.Empty<WindowDto>());
+
+        using var vm = CreateVm(client);
+
+        await Assert.That(vm.HasNoWindows).IsTrue();
+        await Assert.That(vm.WindowsSummaryText).IsEqualTo("нет окон под управлением");
     }
 
     [Test]

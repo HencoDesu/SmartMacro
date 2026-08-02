@@ -1,0 +1,52 @@
+<!--
+  «Лог» — chrome only, same reasoning as TemplatesView.
+
+  The daemon writes Serilog files under its own logs/ folder and the protocol carries
+  nothing about them: no tail request, no log event on the wire. The mode exists so the rail
+  matches the design and the gap is visible; its counter stays blank.
+
+  What it needs: either a streamed log event (the same channel plan D5 wants for run
+  events), or a "read the last N lines" request.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SmartMacro.App.ViewModels"
+             x:Class="SmartMacro.App.Views.LogView"
+             x:DataType="vm:ShellViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+        <Border Grid.Row="0"
+                Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,9">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Лог"
+                           FontSize="{DynamicResource NocturneFontSizeBody}"
+                           FontWeight="Medium"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="нет данных"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                           Foreground="{DynamicResource NocturneNeutral600Brush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="1"
+                    MaxWidth="420"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Spacing="8">
+            <TextBlock Text="Журнал ещё не подключён."
+                       FontSize="{DynamicResource NocturneFontSizeTitle}"
+                       HorizontalAlignment="Center"
+                       Foreground="{DynamicResource NocturneTextMutedBrush}" />
+            <TextBlock TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       FontSize="{DynamicResource NocturneFontSizeSmall}"
+                       Foreground="{DynamicResource NocturneTextFaintBrush}"
+                       Text="Демон пишет свой лог файлами, и по IPC он не передаётся ни строкой, ни событием. Пока — logs/ рядом с SmartMacro.Daemon.exe." />
+        </StackPanel>
+    </Grid>
+</UserControl>

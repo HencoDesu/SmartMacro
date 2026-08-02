@@ -47,13 +47,21 @@ internal sealed class AppServices : IAsyncDisposable
     public string MacroFolderPath { get; }
 
     /// <summary>
-    /// Builds the main window's view-model. Deliberately a factory rather than a property:
-    /// the VM posts through Avalonia's dispatcher as soon as it is constructed, so it must
-    /// not exist before the framework is initialised.
+    /// Builds the whole shell — the mode rail plus both mode view-models. Deliberately a
+    /// factory rather than a property: the VMs post through Avalonia's dispatcher as soon as
+    /// they are constructed, so they must not exist before the framework is initialised.
+    ///
+    /// D2 folded the macro editor into the shell: it used to be built per dialog, and is now
+    /// built once here and kept alive for the life of the window, which is what lets a
+    /// half-edited graph survive a trip through another mode.
     /// </summary>
-    public MainWindowViewModel CreateMainViewModel() => new(Client, Dispatcher);
+    public ShellViewModel CreateShellViewModel() =>
+        new(CreateWorkspaceViewModel(), CreateMacroEditorViewModel(), MacroLauncher);
 
-    /// <summary>Builds a macro-editor view-model for one dialog instance.</summary>
+    /// <summary>Builds the windows-and-runs view-model on its own (used by the designer path).</summary>
+    public WorkspaceViewModel CreateWorkspaceViewModel() => new(Client, Dispatcher);
+
+    /// <summary>Builds the macro-editor view-model behind the «Макросы» mode.</summary>
     public MacroEditorViewModel CreateMacroEditorViewModel() =>
         new(Client, MacroLauncher, HotkeySuspension, Dispatcher, MacroFolderPath);
 

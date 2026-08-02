@@ -1,0 +1,100 @@
+<!--
+  «Прогоны» — the full list of what the daemon is running.
+
+  The run bar below it names one run and is always on screen; this mode is where the rest
+  of them live, one 30px row each. Same three facts per row as the bar (macro, elapsed,
+  current node) so the eye does not have to re-learn the layout when it looks down.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SmartMacro.App.ViewModels"
+             x:Class="SmartMacro.App.Views.RunsView"
+             x:DataType="vm:ShellViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+
+        <Border Grid.Row="0"
+                Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,9">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="Прогоны"
+                           FontSize="{DynamicResource NocturneFontSizeBody}"
+                           FontWeight="Medium"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Margin="10,0,0,0"
+                           Text="{Binding Workspace.RunsHeaderText}"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                           Foreground="{DynamicResource NocturneNeutral600Brush}"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="3"
+                        Content="Стоп всё"
+                        Classes="danger"
+                        Height="24"
+                        Padding="10,0"
+                        IsEnabled="{Binding HasRuns}"
+                        Click="OnStopAllRunsClicked" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Background="{DynamicResource NocturneSurfaceInsetBrush}">
+            <ScrollViewer>
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding Workspace.Runs}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RunningMacroRowViewModel">
+                                <Border Margin="0,0,0,1"
+                                        Padding="12,0"
+                                        Height="30"
+                                        Background="{DynamicResource NocturneBgBrush}">
+                                    <Grid ColumnDefinitions="180,70,*,Auto">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding MacroName}"
+                                                   FontSize="{DynamicResource NocturneFontSizeBody}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Elapsed}"
+                                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                   Foreground="{DynamicResource NocturneNeutral500Brush}"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding CurrentNodeText, StringFormat='▸ {0}'}"
+                                                   FontSize="10.5"
+                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                   Foreground="{DynamicResource NocturneAccent400Brush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip.Tip="Текущая нода"
+                                                   VerticalAlignment="Center" />
+                                        <Button Grid.Column="3"
+                                                Content="Стоп"
+                                                Height="21"
+                                                Padding="10,0"
+                                                Click="OnStopRunClicked" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Margin="12,40" Spacing="6" IsVisible="{Binding !HasRuns}">
+                        <TextBlock Text="Сейчас ничего не выполняется."
+                                   FontSize="{DynamicResource NocturneFontSizeTitle}"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource NocturneTextMutedBrush}" />
+                        <TextBlock Text="Запуск — хоткеем макроса, появлением процесса или кнопкой ▸ в режиме «Макросы»."
+                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                   HorizontalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource NocturneTextFaintBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

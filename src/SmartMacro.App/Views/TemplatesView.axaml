@@ -1,0 +1,53 @@
+<!--
+  «Шаблоны» — chrome only, on purpose.
+
+  The mockup shows a counter of 31 and a browser of the daemon's templates/ tree. There is
+  no protocol behind either: IpcMessageTypes has no "list templates" request and no way to
+  read one back, so the sidebar counter for this mode is deliberately BLANK rather than a
+  made-up number, and the body says what is missing instead of pretending.
+
+  What it needs: a request returning the template names (Assets/GameUiElements + the
+  "classes" set), and one returning a single template's bytes for the preview.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SmartMacro.App.ViewModels"
+             x:Class="SmartMacro.App.Views.TemplatesView"
+             x:DataType="vm:ShellViewModel">
+
+    <Grid RowDefinitions="Auto,*">
+        <Border Grid.Row="0"
+                Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,9">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Шаблоны"
+                           FontSize="{DynamicResource NocturneFontSizeBody}"
+                           FontWeight="Medium"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="нет данных"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                           Foreground="{DynamicResource NocturneNeutral600Brush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="1"
+                    MaxWidth="420"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Spacing="8">
+            <TextBlock Text="Браузер шаблонов ещё не подключён."
+                       FontSize="{DynamicResource NocturneFontSizeTitle}"
+                       HorizontalAlignment="Center"
+                       Foreground="{DynamicResource NocturneTextMutedBrush}" />
+            <TextBlock TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       FontSize="{DynamicResource NocturneFontSizeSmall}"
+                       Foreground="{DynamicResource NocturneTextFaintBrush}"
+                       Text="Шаблоны лежат у демона, а в протоколе нет ни запроса их списка, ни чтения файла — поэтому счётчик режима пуст, а не выдуман. Появятся вместе с новыми сообщениями IPC." />
+        </StackPanel>
+    </Grid>
+</UserControl>

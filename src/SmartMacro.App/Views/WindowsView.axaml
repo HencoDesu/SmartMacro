@@ -1,0 +1,250 @@
+<!--
+  «Окна» — the dense window list of opt-1b.html.
+
+  Two groups, and the split is the whole point of the layout:
+
+    · tagged windows first, 32px rows on a 160 / 88 / 1fr grid with alternating
+      backgrounds. Their tags are chips with an ×; adding another is a quiet "+" that
+      reveals the box, because these rows are already done.
+    · untagged windows below a dim "НЕ ОПОЗНАНО · N" separator, rendered muted — except
+      their tag box, which is the ONE emphasised control on the screen (accent border),
+      because tagging them is the only thing left to do with them.
+
+  The 1px gaps between rows are the inset surface showing through, exactly as the mockup's
+  flex `gap` over a #20222f container.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SmartMacro.App.ViewModels"
+             xmlns:conv="using:SmartMacro.App.Converters"
+             x:Class="SmartMacro.App.Views.WindowsView"
+             x:DataType="vm:ShellViewModel">
+
+    <UserControl.Styles>
+        <!-- Shared by both groups. ColumnDefinitions is not an AvaloniaProperty, so the
+             160 / 88 / 1fr grid has to be repeated on each row rather than set here. -->
+        <Style Selector="Grid.windowrow">
+            <Setter Property="Height" Value="32" />
+        </Style>
+        <Style Selector="Grid.windowrow > TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+
+        <!-- ================================ header ================================= -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,9">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="Окна"
+                           FontSize="{DynamicResource NocturneFontSizeBody}"
+                           FontWeight="Medium"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Margin="10,0,0,0"
+                           Text="{Binding Workspace.WindowsSummaryText}"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                           Foreground="{DynamicResource NocturneNeutral600Brush}"
+                           VerticalAlignment="Center" />
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6">
+                    <Button Content="Опознать все"
+                            Height="24"
+                            Padding="10,0"
+                            IsEnabled="{Binding CanIdentifyAll}"
+                            ToolTip.Tip="Запустить макрос pw-identify по всем окнам"
+                            Click="OnIdentifyAllClicked" />
+                    <Button Content="Дамп"
+                            Height="24"
+                            Padding="10,0"
+                            ToolTip.Tip="Сохранить снимки окон в debug/ для настройки регионов"
+                            Click="OnDumpCapturesClicked" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ================================= rows ================================== -->
+        <Border Grid.Row="1" Background="{DynamicResource NocturneSurfaceInsetBrush}">
+            <ScrollViewer>
+                <StackPanel>
+
+                    <!-- ==== tagged ==== -->
+                    <ItemsControl ItemsSource="{Binding Workspace.TaggedWindows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:WindowRowViewModel">
+                                <Border Margin="0,0,0,1"
+                                        Padding="12,0"
+                                        Background="{Binding IsAlternate, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneSurfaceRowAltBrush|NocturneBgBrush}">
+                                    <Grid Classes="windowrow" ColumnDefinitions="160,88,*">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding ProcessName}"
+                                                   FontSize="{DynamicResource NocturneFontSizeBody}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding HwndHex}"
+                                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                   Foreground="{DynamicResource NocturneNeutral600Brush}" />
+                                        <!-- Chips, then the add affordance immediately after
+                                             them: parked at the far right of the 1fr column
+                                             it reads as an unrelated row action. -->
+                                        <Grid Grid.Column="2" ColumnDefinitions="Auto,Auto,*">
+                                            <ItemsControl Grid.Column="0" ItemsSource="{Binding Tags}" VerticalAlignment="Center">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:TagChipViewModel">
+                                                        <Border Height="19"
+                                                                Margin="0,0,5,0"
+                                                                Padding="8,0,3,0"
+                                                                CornerRadius="{DynamicResource NocturneRadiusPill}"
+                                                                Background="{DynamicResource NocturneChipFillBrush}"
+                                                                BorderBrush="{DynamicResource NocturneChipBorderBrush}"
+                                                                BorderThickness="1">
+                                                            <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                                                                <TextBlock Text="{Binding Text}"
+                                                                           FontSize="10.5"
+                                                                           Foreground="{DynamicResource NocturneChipTextBrush}"
+                                                                           VerticalAlignment="Center" />
+                                                                <Button Content="×"
+                                                                        Classes="ghost"
+                                                                        FontSize="10.5"
+                                                                        MinWidth="0"
+                                                                        Padding="3,0"
+                                                                        Margin="0"
+                                                                        VerticalAlignment="Center"
+                                                                        ToolTip.Tip="Снять тег"
+                                                                        Click="OnRemoveTagClicked" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <!-- Quiet add-tag: a "+" that opens the box only when asked. -->
+                                            <Button Grid.Column="1"
+                                                    Content="+"
+                                                    Classes="ghost"
+                                                    Padding="6,0"
+                                                    MinWidth="0"
+                                                    IsVisible="{Binding !IsAddingTag}"
+                                                    ToolTip.Tip="Добавить тег"
+                                                    Click="OnBeginAddTagClicked" />
+                                            <StackPanel Grid.Column="1"
+                                                        Orientation="Horizontal"
+                                                        Spacing="4"
+                                                        IsVisible="{Binding IsAddingTag}">
+                                                <TextBox Width="120"
+                                                         Height="21"
+                                                         MinHeight="21"
+                                                         Padding="7,0"
+                                                         VerticalContentAlignment="Center"
+                                                         FontSize="10.5"
+                                                         Watermark="новый тег"
+                                                         Text="{Binding NewTagText, Mode=TwoWay}"
+                                                         KeyDown="OnTagInputKeyDown"
+                                                         AttachedToVisualTree="OnInlineTagBoxAttached" />
+                                                <Button Content="+"
+                                                        Height="21"
+                                                        MinWidth="22"
+                                                        Padding="0"
+                                                        ToolTip.Tip="Добавить тег"
+                                                        Click="OnAddTagClicked" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- ==== separator ==== -->
+                    <Border Background="{DynamicResource NocturneSurfaceSunkenBrush}"
+                            Height="26"
+                            Margin="0,0,0,1"
+                            Padding="12,0"
+                            IsVisible="{Binding Workspace.HasUntagged}">
+                        <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding Workspace.UntaggedHeaderText}"
+                                       FontSize="9.5"
+                                       LetterSpacing="0.7"
+                                       Foreground="{DynamicResource NocturneWarningBorderBrush}"
+                                       VerticalAlignment="Center" />
+                            <Border Grid.Column="1"
+                                    Height="1"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource NocturneUntaggedRuleBrush}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- ==== untagged ==== -->
+                    <ItemsControl ItemsSource="{Binding Workspace.UntaggedWindows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:WindowRowViewModel">
+                                <Border Margin="0,0,0,1"
+                                        Padding="12,0"
+                                        Background="{DynamicResource NocturneSurfaceRowMutedBrush}">
+                                    <Grid Classes="windowrow" ColumnDefinitions="160,88,*">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding ProcessName}"
+                                                   FontSize="{DynamicResource NocturneFontSizeBody}"
+                                                   Foreground="{DynamicResource NocturneTextMutedBrush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding HwndHex}"
+                                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                   Foreground="{DynamicResource NocturneTextFaintBrush}" />
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                                            <TextBox Width="120"
+                                                     Height="21"
+                                                     MinHeight="21"
+                                                     Padding="7,0"
+                                                     VerticalContentAlignment="Center"
+                                                     FontSize="10.5"
+                                                     Watermark="новый тег"
+                                                     Background="{DynamicResource NocturneSurfaceOverlayBrush}"
+                                                     BorderBrush="{DynamicResource NocturneChipInputBorderBrush}"
+                                                     Text="{Binding NewTagText, Mode=TwoWay}"
+                                                     KeyDown="OnTagInputKeyDown" />
+                                            <Button Content="+"
+                                                    Classes="accent"
+                                                    Height="21"
+                                                    MinWidth="22"
+                                                    Padding="0"
+                                                    ToolTip.Tip="Добавить тег"
+                                                    Click="OnAddTagClicked" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- ==== empty state ==== -->
+                    <StackPanel Margin="12,40" Spacing="6" IsVisible="{Binding Workspace.HasNoWindows}">
+                        <TextBlock Text="Демон не видит ни одного окна."
+                                   FontSize="{DynamicResource NocturneFontSizeTitle}"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource NocturneTextMutedBrush}" />
+                        <TextBlock Text="Список наполняется сам, как только запустится процесс из ProcessProfiles."
+                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                   HorizontalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource NocturneTextFaintBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

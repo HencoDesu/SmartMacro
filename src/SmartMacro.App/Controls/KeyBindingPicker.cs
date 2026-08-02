@@ -16,8 +16,8 @@ namespace SmartMacro.App.Controls;
 // "Press a key..."; the next KeyDown / mouse-button press becomes the bound input.
 // Escape cancels, Delete / Backspace clears.
 //
-// Live since W0.3: MacrosDialog.axaml binds it twice — once for a KeyPressNode's key, once
-// for a HotkeyTrigger's chord (CaptureModifiers mode). It briefly had no consumer between
+// Live since W0.3: Views/MacrosView.axaml binds it twice — once for a KeyPressNode's key,
+// once for a HotkeyTrigger's chord (CaptureModifiers mode). It briefly had no consumer between
 // W0.2b (which deleted the settings hotkey editor and the legacy per-action macro editor)
 // and W0.3, and was kept rather than deleted-and-rewritten because the capture semantics
 // below are fiddly and tested by hand against real input.

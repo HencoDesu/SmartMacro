@@ -45,6 +45,8 @@ public sealed class WindowRowViewModel : ObservableObject
 {
     private readonly IIpcClient _client;
     private string _newTagText = string.Empty;
+    private bool _isAlternate;
+    private bool _isAddingTag;
 
     public WindowRowViewModel(IIpcClient client, WindowDto window)
     {
@@ -78,6 +80,28 @@ public sealed class WindowRowViewModel : ObservableObject
     public bool HasTags => Tags.Count > 0;
 
     /// <summary>
+    /// Every other row of the tagged group gets the alternate background. Display state,
+    /// assigned by <c>WorkspaceViewModel</c> when it repartitions: Avalonia's
+    /// <c>ItemsControl</c> has no alternation index, so the index has to live on the item.
+    /// </summary>
+    public bool IsAlternate
+    {
+        get => _isAlternate;
+        set => SetField(ref _isAlternate, value);
+    }
+
+    /// <summary>
+    /// The tag box is revealed on a tagged row (untagged rows show it permanently — it is
+    /// their only meaningful action, so the 1b layout gives it the accent border while a
+    /// tagged row hides it behind a quiet "+").
+    /// </summary>
+    public bool IsAddingTag
+    {
+        get => _isAddingTag;
+        set => SetField(ref _isAddingTag, value);
+    }
+
+    /// <summary>
     /// Sends whatever is typed in <see cref="NewTagText"/> to the daemon. The box is only
     /// cleared when a request actually went out, so a duplicate (or a failed call) leaves the
     /// text in place for the user to correct instead of vanishing silently.
@@ -105,7 +129,18 @@ public sealed class WindowRowViewModel : ObservableObject
         }
 
         NewTagText = string.Empty;
+        IsAddingTag = false;
         return true;
+    }
+
+    /// <summary>Opens the inline tag box on a row that already has chips.</summary>
+    public void BeginAddTag() => IsAddingTag = true;
+
+    /// <summary>Abandons the inline tag box and whatever was half-typed in it.</summary>
+    public void CancelAddTag()
+    {
+        NewTagText = string.Empty;
+        IsAddingTag = false;
     }
 
     /// <summary>Asks the daemon to remove one tag from the window.</summary>

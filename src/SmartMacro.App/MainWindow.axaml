@@ -1,205 +1,294 @@
 <!--
-  Main window (W0.3): the tracked WINDOWS with their tag chips, plus the live list of
-  running macros. It replaced the agent-row list — after W0.1 there are no per-character
-  agents to show, only windows and the tags that route macros at them.
+  The 1b shell (wave D2). Source of truth: docs/design/opt-1b.html.
 
-  D1 repainted this in Nocturne without moving anything: same grid, same rows, same
-  bindings. Every colour and every padding now comes from Themes/Tokens.axaml — if you
-  find yourself typing a hex here, add a token instead. D2 is the wave that reshapes the
-  shell into the 1b layout (left rail, always-on runs strip), so resist tidying the
-  structure now.
+  One window, four parts:
+
+    · a 30px CUSTOM title bar. ExtendClientAreaToDecorationsHint removes the OS frame —
+      D1 found the stock Windows caption renders light and cannot be darkened through
+      RequestedThemeVariant, and this is the fix. The bar therefore has to do the OS's job
+      itself: BeginMoveDrag to move, double-tap to maximise, three real buttons.
+    · a 172px mode rail. It is a ListBox on purpose: the ListBoxItem theme from D1 already
+      draws selection as a 2px accent rule over a 12% wash, which is exactly the mockup's
+      nav pattern, and keyboard navigation comes free.
+    · the work area, one view per mode. All five are constructed once and toggled with
+      IsVisible rather than swapped through a ContentControl, so a half-typed tag, a
+      scrolled node list and the editor's dirty state all survive a trip to another mode.
+    · a 30px run bar, always present. Its presence IS the feature — when nothing runs it
+      shows an idle line rather than collapsing.
+
+  Every colour and padding comes from Themes/Tokens.axaml. If a value is missing, add a
+  token; do not type a hex here.
 -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:SmartMacro.App.ViewModels"
+        xmlns:views="using:SmartMacro.App.Views"
         xmlns:conv="using:SmartMacro.App.Converters"
         x:Class="SmartMacro.App.MainWindow"
-        x:DataType="vm:MainWindowViewModel"
-        Width="820" Height="820"
-        MinWidth="600" MinHeight="500"
+        x:DataType="vm:ShellViewModel"
+        x:Name="Root"
+        Width="900" Height="482"
+        MinWidth="820" MinHeight="420"
+        Background="{DynamicResource NocturneBgBrush}"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="-1"
         Title="SmartMacro">
 
-    <Window.DataTemplates>
-        <!-- Tag chip: the tag text plus its own remove button. -->
-        <DataTemplate DataType="vm:TagChipViewModel" x:DataType="vm:TagChipViewModel">
-            <Border Background="{DynamicResource NocturneChipFillBrush}"
-                    BorderBrush="{DynamicResource NocturneChipBorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{DynamicResource NocturneRadiusPill}"
-                    Padding="{DynamicResource NocturneInsetChip}"
-                    Margin="0,0,5.6,2.8">
-                <StackPanel Orientation="Horizontal" Spacing="5.6">
-                    <TextBlock Text="{Binding Text}"
-                               FontSize="{DynamicResource NocturneFontSizeSmall}"
-                               Foreground="{DynamicResource NocturneChipTextBrush}"
+    <Window.Styles>
+        <!-- Caption buttons. The mockup draws bare glyphs; a real window needs a hit target,
+             so these are 38×30 chrome-less buttons that only light up on hover. -->
+        <Style Selector="Button.caption">
+            <Setter Property="Width" Value="38" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeBody}" />
+        </Style>
+        <Style Selector="Button.caption /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral600Brush}" />
+        </Style>
+        <Style Selector="Button.caption:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneAccentTint08Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral200Brush}" />
+        </Style>
+        <Style Selector="Button.caption.close:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneDangerSurfaceHoverBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneDangerBrush}" />
+        </Style>
+
+        <!-- Mode rail. The theme's 8.4,5.6 padding would make a 30px row impossible; 10px
+             on the left plus the item's own 2px rule reproduces the mockup's 12px inset. -->
+        <Style Selector="ListBox.rail">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.rail ListBoxItem">
+            <Setter Property="Padding" Value="10,0,12,0" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral500Brush}" />
+        </Style>
+
+        <!-- The uppercase eyebrow over a section ("ТЕГИ", "НЕ ОПОЗНАНО · 3"). -->
+        <Style Selector="TextBlock.eyebrow">
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="LetterSpacing" Value="0.7" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextGhostBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Styles>
+
+    <!-- OffScreenMargin keeps a maximised extended-client-area window off the screen edges
+         (and out from under the taskbar); it is zero in every other state. -->
+    <Grid RowDefinitions="30,*" Margin="{Binding #Root.OffScreenMargin}">
+
+        <!-- ================================ title bar ================================ -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource NocturneSurfaceOverlayBrush}"
+                BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                BorderThickness="0,0,0,1"
+                PointerPressed="OnTitleBarPointerPressed"
+                DoubleTapped="OnTitleBarDoubleTapped">
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="10,0,0,0">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Border Width="9" Height="9"
+                            CornerRadius="2"
+                            Background="{DynamicResource NocturneAccent700Brush}" />
+                    <TextBlock Text="SmartMacro"
+                               FontSize="11.5"
+                               FontWeight="Medium"
+                               Foreground="{DynamicResource NocturneNeutral300Brush}"
                                VerticalAlignment="Center" />
-                    <Button Content="×"
-                            Classes="ghost"
-                            FontSize="{DynamicResource NocturneFontSizeSmall}"
-                            Padding="2.8,0"
-                            Margin="0"
-                            MinWidth="0"
-                            ToolTip.Tip="Снять тег"
-                            Click="OnRemoveTagClicked" />
                 </StackPanel>
-            </Border>
-        </DataTemplate>
-    </Window.DataTemplates>
 
-    <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="{DynamicResource NocturneInsetWindow}">
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-            <!-- Headings are never heavier than 500 — hierarchy is size and space. -->
-            <TextBlock Grid.Column="0"
-                       FontSize="{DynamicResource NocturneFontSizeHeading}"
-                       FontWeight="Medium"
-                       Text="SmartMacro"
-                       VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1"
-                       FontSize="{DynamicResource NocturneFontSizeSmall}"
-                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
-                       Foreground="{DynamicResource NocturneTextFaintBrush}"
-                       VerticalAlignment="Center"
-                       Text="{Binding WindowCountText}" />
-        </Grid>
-
-        <!-- Windows -->
-        <Border Grid.Row="1"
-                Margin="0,11.2,0,0"
-                BorderThickness="1"
-                BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
-                Background="{DynamicResource NocturneBgBrush}"
-                CornerRadius="{DynamicResource NocturneRadiusSm}">
-            <ScrollViewer>
-                <ItemsControl ItemsSource="{Binding Windows}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:WindowRowViewModel">
-                            <Border Padding="{DynamicResource NocturneInsetPanel}"
-                                    Margin="{DynamicResource NocturneSpace1Thickness}"
-                                    BorderThickness="1"
-                                    BorderBrush="{DynamicResource NocturneDividerBrush}"
-                                    CornerRadius="{DynamicResource NocturneRadiusSm}"
-                                    Background="{DynamicResource NocturneSurfaceRaisedBrush}">
-                                <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto,Auto">
-                                    <StackPanel Grid.Row="0" Grid.Column="0"
-                                                Orientation="Horizontal"
-                                                Spacing="8.4"
-                                                VerticalAlignment="Center">
-                                        <TextBlock FontSize="{DynamicResource NocturneFontSizeTitle}"
-                                                   Foreground="{Binding HasTags, Converter={x:Static conv:TaggedToBrushConverter.Instance}}"
-                                                   VerticalAlignment="Center"
-                                                   Text="{Binding ProcessName}" />
-                                        <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
-                                                   Foreground="{DynamicResource NocturneTextFaintBrush}"
-                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
-                                                   VerticalAlignment="Center"
-                                                   Text="{Binding HwndHex}" />
-                                        <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
-                                                   Foreground="{DynamicResource NocturneTextGhostBrush}"
-                                                   VerticalAlignment="Center"
-                                                   IsVisible="{Binding !HasTags}"
-                                                   Text="без тегов" />
-                                    </StackPanel>
-
-                                    <TextBox Grid.Row="0" Grid.Column="1"
-                                             MinWidth="140"
-                                             Watermark="новый тег"
-                                             Text="{Binding NewTagText, Mode=TwoWay}"
-                                             KeyDown="OnTagInputKeyDown" />
-                                    <Button Grid.Row="0" Grid.Column="2"
-                                            Content="+"
-                                            Classes="accent"
-                                            Padding="{DynamicResource NocturneInsetTight}"
-                                            Margin="5.6,0,0,0"
-                                            MinWidth="24"
-                                            ToolTip.Tip="Добавить тег"
-                                            Click="OnAddTagClicked" />
-
-                                    <ItemsControl Grid.Row="1" Grid.ColumnSpan="3"
-                                                  Margin="0,8.4,0,0"
-                                                  IsVisible="{Binding HasTags}"
-                                                  ItemsSource="{Binding Tags}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                    </ItemsControl>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
-        </Border>
-
-        <!-- Running macros -->
-        <Border Grid.Row="2"
-                Margin="0,8.4,0,8.4"
-                Padding="{DynamicResource NocturneInsetPanel}"
-                BorderThickness="1"
-                BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
-                Background="{DynamicResource NocturneSurfaceRaisedBrush}"
-                CornerRadius="{DynamicResource NocturneRadiusSm}">
-            <Grid RowDefinitions="Auto,Auto">
-                <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-                    <TextBlock Grid.Column="0"
-                               FontSize="{DynamicResource NocturneFontSizeBody}"
-                               Foreground="{DynamicResource NocturneTextSecondaryBrush}"
-                               VerticalAlignment="Center"
-                               Text="{Binding RunsHeaderText}" />
-                    <Button Grid.Column="1"
-                            Content="Стоп всё"
-                            Classes="danger"
-                            IsEnabled="{Binding HasRuns}"
-                            Click="OnStopAllRunsClicked" />
-                </Grid>
-
-                <ScrollViewer Grid.Row="1" MaxHeight="150" Margin="0,5.6,0,0">
-                    <ItemsControl ItemsSource="{Binding Runs}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:RunningMacroRowViewModel">
-                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,2.8">
-                                    <TextBlock Grid.Column="0"
-                                               FontSize="{DynamicResource NocturneFontSizeBody}"
-                                               VerticalAlignment="Center"
-                                               Text="{Binding MacroName}" />
-                                    <TextBlock Grid.Column="1"
-                                               FontSize="{DynamicResource NocturneFontSizeSmall}"
-                                               Foreground="{DynamicResource NocturneTextFaintBrush}"
-                                               FontFamily="{DynamicResource NocturneFontFamilyMono}"
-                                               VerticalAlignment="Center"
-                                               Margin="8.4,0"
-                                               Text="{Binding Elapsed}" />
-                                    <TextBlock Grid.Column="2"
-                                               FontSize="{DynamicResource NocturneFontSizeSmall}"
-                                               FontFamily="{DynamicResource NocturneFontFamilyMono}"
-                                               Foreground="{DynamicResource NocturneAccent400Brush}"
-                                               VerticalAlignment="Center"
-                                               MinWidth="120"
-                                               ToolTip.Tip="Текущая нода"
-                                               Text="{Binding CurrentNodeText}" />
-                                    <Button Grid.Column="3"
-                                            Content="Стоп"
-                                            Padding="{DynamicResource NocturneInsetTight}"
-                                            Click="OnStopRunClicked" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button Classes="caption" Content="—" ToolTip.Tip="Свернуть" Click="OnMinimiseClicked" />
+                    <Button Classes="caption" Content="▢" ToolTip.Tip="Развернуть" Click="OnMaximiseClicked" />
+                    <Button Classes="caption close" Content="✕" ToolTip.Tip="Закрыть" Click="OnCloseClicked" />
+                </StackPanel>
             </Grid>
         </Border>
 
-        <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto">
-            <Button Grid.Column="1"
-                    Content="Dump captures"
-                    Margin="0,0,5.6,0"
-                    ToolTip.Tip="Сохранить снимки окон в debug/ для настройки регионов"
-                    Click="OnDumpCapturesClicked" />
-            <Button Grid.Column="2"
-                    Content="Макросы"
-                    Classes="accent"
-                    Click="OnMacrosClicked" />
+        <!-- ================================== body =================================== -->
+        <Grid Grid.Row="1" ColumnDefinitions="172,*">
+
+            <!-- =============================== sidebar =============================== -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource NocturneSurfaceSunkenBrush}"
+                    BorderBrush="{DynamicResource NocturneDividerBrush}"
+                    BorderThickness="0,0,1,0">
+                <Grid RowDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+
+                    <ListBox Grid.Row="0"
+                             Classes="rail"
+                             ItemsSource="{Binding Modes}"
+                             SelectedItem="{Binding SelectedMode, Mode=TwoWay}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ShellModeViewModel">
+                                <Grid ColumnDefinitions="*,Auto" Height="30">
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding Title}"
+                                               FontSize="{DynamicResource NocturneFontSizeBody}"
+                                               VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1"
+                                                Orientation="Horizontal"
+                                                Spacing="4"
+                                                VerticalAlignment="Center"
+                                                IsVisible="{Binding HasCounter}">
+                                        <Border Width="5" Height="5"
+                                                CornerRadius="2.5"
+                                                VerticalAlignment="Center"
+                                                Background="{DynamicResource NocturneAccentBrush}"
+                                                IsVisible="{Binding ShowsActivityDot}" />
+                                        <TextBlock Text="{Binding CounterText}"
+                                                   FontSize="10.5"
+                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{Binding CounterIsAccent, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneAccent400Brush|NocturneTextFaintBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- Tag summary, pinned to the bottom. The designer's note: this is the
+                         only place the whole party composition is visible at once. -->
+                    <StackPanel Grid.Row="2" Margin="12,10,12,8" Spacing="6">
+                        <TextBlock Classes="eyebrow" Text="ТЕГИ" />
+                        <ItemsControl ItemsSource="{Binding TagSummary}" IsVisible="{Binding HasTagSummary}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TagSummaryItemViewModel">
+                                    <Border Height="18"
+                                            Margin="0,0,4,4"
+                                            Padding="7,0"
+                                            CornerRadius="9"
+                                            Background="{DynamicResource NocturneChipFillSoftBrush}"
+                                            BorderBrush="{DynamicResource NocturneChipBorderSoftBrush}"
+                                            BorderThickness="1">
+                                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Tag}"
+                                                       FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                       Foreground="{DynamicResource NocturneChipTextSoftBrush}"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding CountText}"
+                                                       FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                       Foreground="{DynamicResource NocturneNeutral600Brush}"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="ни одного окна не опознано"
+                                   FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource NocturneTextGhostBrush}"
+                                   IsVisible="{Binding !HasTagSummary}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ========================= work area + run bar ========================= -->
+            <Grid Grid.Column="1" RowDefinitions="*,30">
+
+                <Panel Grid.Row="0">
+                    <views:WindowsView IsVisible="{Binding IsWindowsMode}" />
+                    <Panel IsVisible="{Binding IsMacrosMode}">
+                        <views:MacrosView DataContext="{Binding Editor}" />
+                    </Panel>
+                    <views:RunsView IsVisible="{Binding IsRunsMode}" />
+                    <views:TemplatesView IsVisible="{Binding IsTemplatesMode}" />
+                    <views:LogView IsVisible="{Binding IsLogMode}" />
+                </Panel>
+
+                <Border Grid.Row="1"
+                        Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                        BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="12,0">
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
+                        <!-- Live: accent dot with its halo, then macro / elapsed / node. -->
+                        <Border Grid.Column="0"
+                                Width="7" Height="7"
+                                Margin="0,0,10,0"
+                                CornerRadius="3.5"
+                                VerticalAlignment="Center"
+                                IsVisible="{Binding HasRuns}"
+                                Background="{DynamicResource NocturneAccentBrush}"
+                                BoxShadow="{DynamicResource NocturneRunDotGlow}" />
+                        <Border Grid.Column="0"
+                                Width="7" Height="7"
+                                Margin="0,0,10,0"
+                                CornerRadius="3.5"
+                                VerticalAlignment="Center"
+                                IsVisible="{Binding !HasRuns}"
+                                Background="{DynamicResource NocturneNeutral800Brush}" />
+
+                        <TextBlock Grid.Column="1"
+                                   FontSize="11.5"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding HasRuns}"
+                                   Text="{Binding PrimaryRun.MacroName}" />
+                        <TextBlock Grid.Column="2"
+                                   Margin="10,0,0,0"
+                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                   Foreground="{DynamicResource NocturneNeutral500Brush}"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding HasRuns}"
+                                   Text="{Binding PrimaryRun.Elapsed}" />
+                        <TextBlock Grid.Column="3"
+                                   Margin="10,0,0,0"
+                                   FontSize="10.5"
+                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                   Foreground="{DynamicResource NocturneAccent400Brush}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="Текущая нода"
+                                   IsVisible="{Binding HasRuns}"
+                                   Text="{Binding PrimaryRun.CurrentNodeText, StringFormat='▸ {0}'}" />
+                        <TextBlock Grid.Column="4"
+                                   Margin="10,0,0,0"
+                                   FontSize="10.5"
+                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                   Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                   VerticalAlignment="Center"
+                                   ToolTip.Tip="Ещё прогоны — весь список в режиме «Прогоны»"
+                                   IsVisible="{Binding HasOtherRuns}"
+                                   Text="{Binding OtherRunsText}" />
+
+                        <!-- Idle: the bar stays, and says so. -->
+                        <TextBlock Grid.Column="1"
+                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                   Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding !HasRuns}"
+                                   Text="{Binding IdleText}" />
+
+                        <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
+                            <Button Content="Стоп"
+                                    Height="21"
+                                    Padding="10,0"
+                                    IsEnabled="{Binding HasRuns}"
+                                    ToolTip.Tip="Остановить прогон, названный в полосе"
+                                    Click="OnStopPrimaryRunClicked" />
+                            <Button Content="Стоп всё"
+                                    Classes="danger"
+                                    Height="21"
+                                    Padding="10,0"
+                                    IsEnabled="{Binding HasRuns}"
+                                    Click="OnStopAllRunsClicked" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

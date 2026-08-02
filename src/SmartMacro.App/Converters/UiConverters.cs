@@ -80,6 +80,44 @@ public sealed class NodeIdDisplayConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>
+/// Picks one of two Nocturne tokens from a boolean, named by the converter parameter as
+/// <c>"TrueKey|FalseKey"</c> — e.g. <c>"NocturneAccent400Brush|NocturneTextFaintBrush"</c>.
+///
+/// One parameterised converter rather than a family of one-off classes: D2 alone needs
+/// "accent when live", "alternate row background" and "muted when untagged", and every one
+/// of them is the same two-token choice. The keys are still real token names, so the
+/// "no literal colours in markup" rule holds.
+/// </summary>
+public sealed class TokenBrushConverter : IValueConverter
+{
+    public static readonly TokenBrushConverter Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (parameter is not string spec)
+        {
+            return null;
+        }
+
+        var separator = spec.IndexOf('|', StringComparison.Ordinal);
+        if (separator < 0)
+        {
+            return null;
+        }
+
+        var key = value is true
+            ? spec[..separator]
+            : spec[(separator + 1)..];
+        // Fallback is deliberately the neutral mid-grey: only reachable in the designer and
+        // in unit tests, where Application.Current has no resources yet.
+        return NocturneBrushes.Get(key, 0xFF9397AB);
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>Danger for validation errors (which block the save), warning amber for the rest.</summary>
 public sealed class IssueSeverityToBrushConverter : IValueConverter
 {

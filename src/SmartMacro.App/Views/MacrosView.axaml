@@ -1,36 +1,32 @@
 <!--
-  Macro editor (W0.3) — the rows editor of plan §0.5.
+  «Макросы» — the rows editor of plan §0.5, which until D2 was the modal MacrosDialog.
 
   Left: the library. Right: the selected graph's triggers and its nodes, one row each.
   A node row is a shell (type, id, reorder/delete) plus three parts rendered from the row
   view-model's own type: the type-specific parameter block, the target selector, and one
   drop-down per outgoing edge. Editing edges as node-id drop-downs is what makes branchy
-  graphs fully editable here; W0.4's canvas adds direct manipulation over the same model.
+  graphs fully editable here; D3's canvas adds direct manipulation over the same model.
 
-  IMPORTANT: opening this window suspends the global hotkey listener (see the code-behind).
-  Win32 RegisterHotKey swallows presses of already-registered chords, so without that the
-  hotkey picker could never capture the combos most in need of re-binding.
+  D2 moved this markup out of a Window and changed as little as it could get away with:
+  the dialog's own header/close row is gone (there is no dialog to close), the library
+  column narrowed 280 → 220 to fit the 900px shell, and the node list scrolls horizontally
+  instead of clipping. Everything else — every binding, every handler name — is what the
+  dialog had. D3 replaces the innards wholesale, so it is deliberately NOT restructured.
 
-  D1 repainted this in Nocturne — colours and paddings now come from Themes/Tokens.axaml,
-  the markup is otherwise untouched. D3 replaces this rows editor with the canvas, so it is
-  deliberately NOT being restructured here.
+  Global hotkeys are suspended for as long as this mode is on screen; that bracket now
+  lives in ShellViewModel, not here.
 -->
-<Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:sys="using:System"
-        xmlns:vm="using:SmartMacro.App.ViewModels"
-        xmlns:nodes="using:SmartMacro.App.ViewModels.Nodes"
-        xmlns:conv="using:SmartMacro.App.Converters"
-        xmlns:controls="using:SmartMacro.App.Controls"
-        x:Class="SmartMacro.App.MacrosDialog"
-        x:DataType="vm:MacroEditorViewModel"
-        Width="1180" Height="820"
-        MinWidth="900" MinHeight="600"
-        WindowStartupLocation="CenterOwner"
-        CanResize="True"
-        Title="Макросы">
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="using:System"
+             xmlns:vm="using:SmartMacro.App.ViewModels"
+             xmlns:nodes="using:SmartMacro.App.ViewModels.Nodes"
+             xmlns:conv="using:SmartMacro.App.Converters"
+             xmlns:controls="using:SmartMacro.App.Controls"
+             x:Class="SmartMacro.App.Views.MacrosView"
+             x:DataType="vm:MacroEditorViewModel">
 
-    <Window.Styles>
+    <UserControl.Styles>
         <!-- The parameter blocks below are a wall of tiny "label: field" pairs. Naming the
              two recurring roles once keeps the token references out of every single row. -->
         <Style Selector="TextBlock.label">
@@ -46,9 +42,9 @@
         <Style Selector="TextBox.numeric">
             <Setter Property="FontFamily" Value="{DynamicResource NocturneFontFamilyMono}" />
         </Style>
-    </Window.Styles>
+    </UserControl.Styles>
 
-    <Window.DataTemplates>
+    <UserControl.DataTemplates>
 
         <!-- ==== shared building blocks ==== -->
 
@@ -263,19 +259,40 @@
                            Text="{Binding Display}" />
             </Button>
         </DataTemplate>
-    </Window.DataTemplates>
+    </UserControl.DataTemplates>
 
-    <Grid ColumnDefinitions="280,*" Margin="{DynamicResource NocturneInsetWindow}">
+    <Grid RowDefinitions="Auto,*">
 
-        <!-- ==== library ==== -->
-        <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
-            <TextBlock Grid.Row="0"
-                       FontSize="{DynamicResource NocturneFontSizeTitle}"
-                       FontWeight="Medium"
-                       Text="Библиотека"
-                       Margin="0,0,0,5.6" />
+        <!-- Mode header, same chrome as «Окна» / «Прогоны» so the rail reads as one app. -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,9">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="Макросы"
+                           FontSize="{DynamicResource NocturneFontSizeBody}"
+                           FontWeight="Medium"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Margin="10,0,0,0"
+                           Text="глобальные хоткеи выключены, пока открыт редактор"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           Foreground="{DynamicResource NocturneNeutral600Brush}"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="3"
+                        Content="+ Новый макрос"
+                        Height="24"
+                        Padding="10,0"
+                        Click="OnNewMacroClicked" />
+            </Grid>
+        </Border>
 
-            <Border Grid.Row="1"
+        <Grid Grid.Row="1" ColumnDefinitions="220,*" Margin="{DynamicResource NocturneInsetPanel}">
+
+            <!-- ==== library ==== -->
+            <Border Grid.Column="0"
                     BorderThickness="1"
                     BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
                     Background="{DynamicResource NocturneBgBrush}"
@@ -320,209 +337,202 @@
                 </ListBox>
             </Border>
 
-            <Button Grid.Row="2"
-                    Content="+ Новый макрос"
-                    Margin="0,8.4,0,0"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Center"
-                    Click="OnNewMacroClicked" />
-        </Grid>
+            <!-- ==== editor ==== -->
+            <Grid Grid.Column="1" Margin="11.2,0,0,0" RowDefinitions="Auto,Auto,*,Auto,Auto"
+                  IsVisible="{Binding HasOpenMacro}">
 
-        <!-- ==== editor ==== -->
-        <Grid Grid.Column="1" Margin="11.2,0,0,0" RowDefinitions="Auto,Auto,*,Auto,Auto"
-              IsVisible="{Binding HasOpenMacro}">
+                <!-- name + start node -->
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,8.4">
+                    <TextBlock Grid.Column="0" Classes="label" Text="Имя" FontSize="{DynamicResource NocturneFontSizeSmall}" Margin="0,0,5.6,0" />
+                    <TextBox Grid.Column="1" FontSize="{DynamicResource NocturneFontSizeBody}" Text="{Binding MacroName, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="2" Classes="label" Text="старт" FontSize="{DynamicResource NocturneFontSizeSmall}" Margin="11.2,0,5.6,0" />
+                    <ComboBox Grid.Column="3"
+                              MinWidth="170"
+                              ItemsSource="{Binding StartNodeChoices}"
+                              SelectedItem="{Binding StartNodeId, Mode=TwoWay}" />
+                </Grid>
 
-            <!-- name + start node -->
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,8.4">
-                <TextBlock Grid.Column="0" Classes="label" Text="Имя" FontSize="{DynamicResource NocturneFontSizeSmall}" Margin="0,0,5.6,0" />
-                <TextBox Grid.Column="1" FontSize="{DynamicResource NocturneFontSizeBody}" Text="{Binding MacroName, Mode=TwoWay}" />
-                <TextBlock Grid.Column="2" Classes="label" Text="старт" FontSize="{DynamicResource NocturneFontSizeSmall}" Margin="11.2,0,5.6,0" />
-                <ComboBox Grid.Column="3"
-                          MinWidth="170"
-                          ItemsSource="{Binding StartNodeChoices}"
-                          SelectedItem="{Binding StartNodeId, Mode=TwoWay}" />
-            </Grid>
+                <!-- triggers -->
+                <Border Grid.Row="1"
+                        Padding="{DynamicResource NocturneInsetPanel}"
+                        Margin="0,0,0,8.4"
+                        BorderThickness="1"
+                        BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                        Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                        CornerRadius="{DynamicResource NocturneRadiusSm}">
+                    <StackPanel Spacing="2.8">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                            <TextBlock Grid.Column="0"
+                                       FontSize="{DynamicResource NocturneFontSizeBody}"
+                                       Foreground="{DynamicResource NocturneTextSecondaryBrush}"
+                                       VerticalAlignment="Center"
+                                       Text="Триггеры" />
+                            <Button Grid.Column="1" Content="+ хоткей" Padding="{DynamicResource NocturneInsetTight}" Click="OnAddHotkeyTriggerClicked" />
+                            <Button Grid.Column="2" Content="+ процесс" Padding="{DynamicResource NocturneInsetTight}" Margin="5.6,0,0,0" Click="OnAddProcessTriggerClicked" />
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Triggers}" />
+                    </StackPanel>
+                </Border>
 
-            <!-- triggers -->
-            <Border Grid.Row="1"
-                    Padding="{DynamicResource NocturneInsetPanel}"
-                    Margin="0,0,0,8.4"
-                    BorderThickness="1"
-                    BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
-                    Background="{DynamicResource NocturneSurfaceRaisedBrush}"
-                    CornerRadius="{DynamicResource NocturneRadiusSm}">
-                <StackPanel Spacing="2.8">
-                    <Grid ColumnDefinitions="*,Auto,Auto">
-                        <TextBlock Grid.Column="0"
-                                   FontSize="{DynamicResource NocturneFontSizeBody}"
-                                   Foreground="{DynamicResource NocturneTextSecondaryBrush}"
-                                   VerticalAlignment="Center"
-                                   Text="Триггеры" />
-                        <Button Grid.Column="1" Content="+ хоткей" Padding="{DynamicResource NocturneInsetTight}" Click="OnAddHotkeyTriggerClicked" />
-                        <Button Grid.Column="2" Content="+ процесс" Padding="{DynamicResource NocturneInsetTight}" Margin="5.6,0,0,0" Click="OnAddProcessTriggerClicked" />
-                    </Grid>
-                    <ItemsControl ItemsSource="{Binding Triggers}" />
-                </StackPanel>
-            </Border>
+                <!-- nodes -->
+                <Border Grid.Row="2"
+                        BorderThickness="1"
+                        BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                        Background="{DynamicResource NocturneBgBrush}"
+                        CornerRadius="{DynamicResource NocturneRadiusSm}">
+                    <!-- Horizontal scrolling, not clipping: a node row is wider than the
+                         shell's work area at the mockup's 900px, and D3 is what fixes that
+                         properly. -->
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Nodes}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="nodes:NodeRowViewModel">
+                                    <Border Padding="{DynamicResource NocturneInsetPanel}"
+                                            Margin="{DynamicResource NocturneSpace1Thickness}"
+                                            BorderThickness="1"
+                                            BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                            CornerRadius="{DynamicResource NocturneRadiusSm}"
+                                            Background="{DynamicResource NocturneSurfaceRaisedBrush}">
+                                        <Grid ColumnDefinitions="Auto,*">
+                                            <!-- selection accent, lit by clicking a validation issue -->
+                                            <Border Grid.Column="0"
+                                                    Width="2"
+                                                    CornerRadius="1"
+                                                    Margin="0,0,8.4,0"
+                                                    Background="{DynamicResource NocturneAccentBrush}"
+                                                    IsVisible="{Binding IsSelected}" />
+                                            <StackPanel Grid.Column="1" Spacing="2.8">
+                                                <Grid ColumnDefinitions="Auto,Auto,180,*,Auto,Auto,Auto">
+                                                    <TextBlock Grid.Column="0"
+                                                               FontSize="{DynamicResource NocturneFontSizeBody}"
+                                                               Foreground="{DynamicResource NocturneAccent300Brush}"
+                                                               MinWidth="140"
+                                                               VerticalAlignment="Center"
+                                                               Text="{Binding TypeLabel}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Classes="label"
+                                                               Text="id"
+                                                               Margin="0,0,5.6,0" />
+                                                    <TextBox Grid.Column="2"
+                                                             Classes="numeric"
+                                                             ToolTip.Tip="Переименование автоматически перешивает входящие рёбра"
+                                                             Text="{Binding NodeId, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                                    <Button Grid.Column="4" Content="↑" Padding="{DynamicResource NocturneInsetTight}" Click="OnMoveNodeUpClicked" />
+                                                    <Button Grid.Column="5" Content="↓" Padding="{DynamicResource NocturneInsetTight}" Margin="2.8,0,0,0" Click="OnMoveNodeDownClicked" />
+                                                    <Button Grid.Column="6" Content="×" Classes="ghost" Margin="5.6,0,0,0" ToolTip.Tip="Удалить ноду" Click="OnDeleteNodeClicked" />
+                                                </Grid>
 
-            <!-- nodes -->
-            <Border Grid.Row="2"
-                    BorderThickness="1"
-                    BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
-                    Background="{DynamicResource NocturneBgBrush}"
-                    CornerRadius="{DynamicResource NocturneRadiusSm}">
-                <ScrollViewer>
-                    <ItemsControl ItemsSource="{Binding Nodes}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="nodes:NodeRowViewModel">
-                                <Border Padding="{DynamicResource NocturneInsetPanel}"
-                                        Margin="{DynamicResource NocturneSpace1Thickness}"
-                                        BorderThickness="1"
-                                        BorderBrush="{DynamicResource NocturneDividerBrush}"
-                                        CornerRadius="{DynamicResource NocturneRadiusSm}"
-                                        Background="{DynamicResource NocturneSurfaceRaisedBrush}">
-                                    <Grid ColumnDefinitions="Auto,*">
-                                        <!-- selection accent, lit by clicking a validation issue -->
-                                        <Border Grid.Column="0"
-                                                Width="2"
-                                                CornerRadius="1"
-                                                Margin="0,0,8.4,0"
-                                                Background="{DynamicResource NocturneAccentBrush}"
-                                                IsVisible="{Binding IsSelected}" />
-                                        <StackPanel Grid.Column="1" Spacing="2.8">
-                                            <Grid ColumnDefinitions="Auto,Auto,180,*,Auto,Auto,Auto">
-                                                <TextBlock Grid.Column="0"
-                                                           FontSize="{DynamicResource NocturneFontSizeBody}"
-                                                           Foreground="{DynamicResource NocturneAccent300Brush}"
-                                                           MinWidth="140"
-                                                           VerticalAlignment="Center"
-                                                           Text="{Binding TypeLabel}" />
-                                                <TextBlock Grid.Column="1"
-                                                           Classes="label"
-                                                           Text="id"
-                                                           Margin="0,0,5.6,0" />
-                                                <TextBox Grid.Column="2"
-                                                         Classes="numeric"
-                                                         ToolTip.Tip="Переименование автоматически перешивает входящие рёбра"
-                                                         Text="{Binding NodeId, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                                <Button Grid.Column="4" Content="↑" Padding="{DynamicResource NocturneInsetTight}" Click="OnMoveNodeUpClicked" />
-                                                <Button Grid.Column="5" Content="↓" Padding="{DynamicResource NocturneInsetTight}" Margin="2.8,0,0,0" Click="OnMoveNodeDownClicked" />
-                                                <Button Grid.Column="6" Content="×" Classes="ghost" Margin="5.6,0,0,0" ToolTip.Tip="Удалить ноду" Click="OnDeleteNodeClicked" />
-                                            </Grid>
+                                                <!-- type-specific parameters, matched on the row's concrete type -->
+                                                <ContentControl Content="{Binding}" />
 
-                                            <!-- type-specific parameters, matched on the row's concrete type -->
-                                            <ContentControl Content="{Binding}" />
+                                                <!-- selector: absent for conditionals and Delay -->
+                                                <ContentControl Content="{Binding Target}" IsVisible="{Binding HasTarget}" />
 
-                                            <!-- selector: absent for conditionals and Delay -->
-                                            <ContentControl Content="{Binding Target}" IsVisible="{Binding HasTarget}" />
-
-                                            <ItemsControl ItemsSource="{Binding Edges}" Margin="0,2.8,0,0">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <WrapPanel />
-                                                    </ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
-            </Border>
-
-            <!-- messages + validation -->
-            <StackPanel Grid.Row="3" Spacing="2.8" Margin="0,8.4,0,8.4">
-                <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
-                           Foreground="{DynamicResource NocturneWarningBrush}"
-                           TextWrapping="Wrap"
-                           IsVisible="{Binding ChangedOnDisk}"
-                           Text="Макрос изменён на диске, а здесь есть несохранённые правки. «Перечитать» — взять версию с диска, «Сохранить» — затереть её." />
-                <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
-                           Foreground="{DynamicResource NocturneDangerBrush}"
-                           TextWrapping="Wrap"
-                           IsVisible="{Binding ErrorMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
-                           Text="{Binding ErrorMessage}" />
-                <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
-                           Foreground="{DynamicResource NocturneTextFaintBrush}"
-                           TextWrapping="Wrap"
-                           IsVisible="{Binding StatusMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
-                           Text="{Binding StatusMessage}" />
-                <Border BorderThickness="1"
-                        BorderBrush="{DynamicResource NocturneDangerBorderBrush}"
-                        Background="{DynamicResource NocturneDangerSurfaceBrush}"
-                        CornerRadius="{DynamicResource NocturneRadiusSm}"
-                        Padding="{DynamicResource NocturneInsetTight}"
-                        IsVisible="{Binding HasIssues}">
-                    <ScrollViewer MaxHeight="120">
-                        <ItemsControl ItemsSource="{Binding Issues}" />
+                                                <ItemsControl ItemsSource="{Binding Edges}" Margin="0,2.8,0,0">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </ScrollViewer>
                 </Border>
-            </StackPanel>
 
-            <!-- actions -->
-            <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*,Auto,Auto">
-                <Button Grid.Column="0" x:Name="AddNodeButton" Content="+ Нода">
-                    <Button.Flyout>
-                        <Flyout Placement="Top">
-                            <ItemsControl ItemsSource="{Binding NodeKinds}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="nodes:MacroNodeKindOption">
-                                        <Button Content="{Binding Label}"
-                                                Classes="ghost"
-                                                Padding="{DynamicResource NocturneInsetField}"
-                                                MinWidth="180"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Left"
-                                                Click="OnAddNodeClicked" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
-                <Button Grid.Column="1"
-                        Content="Перечитать"
-                        Margin="5.6,0,0,0"
-                        ToolTip.Tip="Отбросить правки и взять версию с диска"
-                        Click="OnReloadClicked" />
-                <Button Grid.Column="2"
-                        Content="Папка макросов"
-                        Margin="5.6,0,0,0"
-                        HorizontalAlignment="Left"
-                        ToolTip.Tip="{Binding FolderPath}"
-                        Click="OnOpenFolderClicked" />
-                <Button Grid.Column="3"
-                        Content="Сохранить"
-                        Classes="accent"
-                        Click="OnSaveClicked" />
-                <Button Grid.Column="4"
-                        Content="Закрыть"
-                        Margin="5.6,0,0,0"
-                        Click="OnCloseClicked" />
+                <!-- messages + validation -->
+                <StackPanel Grid.Row="3" Spacing="2.8" Margin="0,8.4,0,8.4">
+                    <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                               Foreground="{DynamicResource NocturneWarningBrush}"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding ChangedOnDisk}"
+                               Text="Макрос изменён на диске, а здесь есть несохранённые правки. «Перечитать» — взять версию с диска, «Сохранить» — затереть её." />
+                    <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                               Foreground="{DynamicResource NocturneDangerBrush}"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding ErrorMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
+                               Text="{Binding ErrorMessage}" />
+                    <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                               Foreground="{DynamicResource NocturneTextFaintBrush}"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding StatusMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
+                               Text="{Binding StatusMessage}" />
+                    <Border BorderThickness="1"
+                            BorderBrush="{DynamicResource NocturneDangerBorderBrush}"
+                            Background="{DynamicResource NocturneDangerSurfaceBrush}"
+                            CornerRadius="{DynamicResource NocturneRadiusSm}"
+                            Padding="{DynamicResource NocturneInsetTight}"
+                            IsVisible="{Binding HasIssues}">
+                        <ScrollViewer MaxHeight="120">
+                            <ItemsControl ItemsSource="{Binding Issues}" />
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+
+                <!-- actions -->
+                <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*,Auto">
+                    <Button Grid.Column="0" x:Name="AddNodeButton" Content="+ Нода">
+                        <Button.Flyout>
+                            <Flyout Placement="Top">
+                                <ItemsControl ItemsSource="{Binding NodeKinds}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="nodes:MacroNodeKindOption">
+                                            <Button Content="{Binding Label}"
+                                                    Classes="ghost"
+                                                    Padding="{DynamicResource NocturneInsetField}"
+                                                    MinWidth="180"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left"
+                                                    Click="OnAddNodeClicked" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button Grid.Column="1"
+                            Content="Перечитать"
+                            Margin="5.6,0,0,0"
+                            ToolTip.Tip="Отбросить правки и взять версию с диска"
+                            Click="OnReloadClicked" />
+                    <Button Grid.Column="2"
+                            Content="Папка макросов"
+                            Margin="5.6,0,0,0"
+                            HorizontalAlignment="Left"
+                            ToolTip.Tip="{Binding FolderPath}"
+                            Click="OnOpenFolderClicked" />
+                    <Button Grid.Column="3"
+                            Content="Сохранить"
+                            Classes="accent"
+                            Click="OnSaveClicked" />
+                </Grid>
             </Grid>
-        </Grid>
 
-        <!-- empty state -->
-        <StackPanel Grid.Column="1"
-                    Margin="11.2,0,0,0"
-                    VerticalAlignment="Center"
-                    HorizontalAlignment="Center"
-                    Spacing="8.4"
-                    IsVisible="{Binding !HasOpenMacro}">
-            <TextBlock FontSize="{DynamicResource NocturneFontSizeTitle}"
-                       Foreground="{DynamicResource NocturneTextMutedBrush}"
-                       Text="Выберите макрос слева или создайте новый." />
-            <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
-                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
-                       Foreground="{DynamicResource NocturneTextFaintBrush}"
-                       HorizontalAlignment="Center"
-                       Text="{Binding FolderPath}" />
+            <!-- empty state -->
+            <StackPanel Grid.Column="1"
+                        Margin="11.2,0,0,0"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="8.4"
+                        IsVisible="{Binding !HasOpenMacro}">
+                <TextBlock FontSize="{DynamicResource NocturneFontSizeTitle}"
+                           Foreground="{DynamicResource NocturneTextMutedBrush}"
+                           Text="Выберите макрос слева или создайте новый." />
+                <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                           Foreground="{DynamicResource NocturneTextFaintBrush}"
+                           HorizontalAlignment="Center"
+                           TextWrapping="Wrap"
+                           Text="{Binding FolderPath}" />
                 <Button Content="Открыть папку макросов"
                         Classes="accent"
                         HorizontalAlignment="Center"
                         Click="OnOpenFolderClicked" />
-        </StackPanel>
+            </StackPanel>
+        </Grid>
     </Grid>
-</Window>
+</UserControl>

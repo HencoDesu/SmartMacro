@@ -41,7 +41,7 @@ public partial class App : Application
             // always there, because Program refuses to start Avalonia without a connection.
             var window = services is null
                 ? new MainWindow()
-                : new MainWindow(services.CreateMainViewModel());
+                : new MainWindow(services.CreateShellViewModel());
             window.Icon = LoadIcon();
 
             desktop.MainWindow = window;
