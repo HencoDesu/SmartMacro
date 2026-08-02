@@ -11,6 +11,8 @@ using SmartMacro.Native.Hotkey;
 using SmartMacro.Orchestration;
 using SmartMacro.Presentation;
 using SmartMacro.ProcessMonitoring;
+using SmartMacro.App.Mvvm;
+using SmartMacro.App.Services;
 using SmartMacro.App.ViewModels;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Storage;
@@ -134,6 +136,14 @@ internal static class Program
         // Single Orchestrator instance, also drives the dispatch-loop lifecycle via IHostedService.
         services.AddSingleton<Orchestrator>();
         services.AddHostedService(sp => sp.GetRequiredService<Orchestrator>());
+
+        // UI seams. The view-models take these as interfaces so they can be exercised
+        // headlessly (and so stage 3 can swap in IPC-backed implementations without
+        // touching a single VM): thread marshalling, "start this macro", and the hotkey
+        // suspend/resume the chord picker depends on.
+        services.AddSingleton<IUiDispatcher>(AvaloniaUiDispatcher.Instance);
+        services.AddSingleton<IMacroLauncher, OrchestratorMacroLauncher>();
+        services.AddSingleton<IHotkeySuspension, HotkeyListenerSuspension>();
 
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<MainWindow>();

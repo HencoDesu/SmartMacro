@@ -1,89 +1,524 @@
 <!--
-  Transitional macro list (W0.2b). The old per-tag/per-action editor bound to the legacy
-  flat macro model, which no longer exists — W0.3 rebuilds a real editor against the node
-  graph. Until then this dialog is deliberately read-only plus Run/Stop: enough to drive
-  the engine, with the files themselves editable by hand in the macros/ folder.
+  Macro editor (W0.3) — the rows editor of plan §0.5.
+
+  Left: the library. Right: the selected graph's triggers and its nodes, one row each.
+  A node row is a shell (type, id, reorder/delete) plus three parts rendered from the row
+  view-model's own type: the type-specific parameter block, the target selector, and one
+  drop-down per outgoing edge. Editing edges as node-id drop-downs is what makes branchy
+  graphs fully editable here; W0.4's canvas adds direct manipulation over the same model.
+
+  IMPORTANT: opening this window suspends the global hotkey listener (see the code-behind).
+  Win32 RegisterHotKey swallows presses of already-registered chords, so without that the
+  hotkey picker could never capture the combos most in need of re-binding.
 -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="using:System"
         xmlns:vm="using:SmartMacro.App.ViewModels"
+        xmlns:nodes="using:SmartMacro.App.ViewModels.Nodes"
         xmlns:conv="using:SmartMacro.App.Converters"
+        xmlns:controls="using:SmartMacro.App.Controls"
         x:Class="SmartMacro.App.MacrosDialog"
-        x:DataType="vm:MacrosDialogViewModel"
-        Width="620" Height="520"
+        x:DataType="vm:MacroEditorViewModel"
+        Width="1180" Height="820"
+        MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterOwner"
         CanResize="True"
         Title="Макросы">
 
-    <Grid RowDefinitions="Auto,*,Auto,Auto" Margin="12">
-        <TextBlock Grid.Row="0"
-                   FontSize="11"
-                   Foreground="#888"
-                   TextWrapping="Wrap"
-                   Text="{Binding FolderHint}" />
+    <Window.DataTemplates>
 
-        <Border Grid.Row="1"
-                Margin="0,10"
-                BorderThickness="1"
-                BorderBrush="#444"
-                CornerRadius="4">
-            <ScrollViewer>
-                <ItemsControl ItemsSource="{Binding Rows}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:MacroRowViewModel">
-                            <Border Padding="10"
-                                    Margin="4"
-                                    BorderThickness="1"
-                                    BorderBrush="#333"
-                                    CornerRadius="3"
-                                    Background="#1a1a1a">
-                                <Grid ColumnDefinitions="*,Auto,Auto">
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock FontSize="14" Text="{Binding Name}" />
-                                        <TextBlock FontSize="11"
-                                                   Foreground="#888"
-                                                   Margin="0,2,0,0"
-                                                   Text="{Binding Summary}" />
-                                    </StackPanel>
-                                    <Button Grid.Column="1"
-                                            Content="Run"
-                                            FontSize="11"
-                                            Padding="12,4"
-                                            Margin="8,0,0,0"
-                                            IsEnabled="{Binding !IsRunning}"
-                                            Click="OnRunClicked" />
-                                    <Button Grid.Column="2"
-                                            Content="Stop"
-                                            FontSize="11"
-                                            Padding="12,4"
-                                            Margin="6,0,0,0"
-                                            IsEnabled="{Binding IsRunning}"
-                                            Click="OnStopClicked" />
-                                </Grid>
-                            </Border>
+        <!-- ==== shared building blocks ==== -->
+
+        <!-- One outgoing edge: outcome label + a drop-down of node ids ("" = end of run). -->
+        <DataTemplate DataType="{x:Type nodes:NodeEdgeViewModel}" x:DataType="nodes:NodeEdgeViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,12,0">
+                <TextBlock Text="{Binding Label}"
+                           FontSize="10"
+                           Foreground="#888"
+                           VerticalAlignment="Center" />
+                <ComboBox MinWidth="170"
+                          FontSize="11"
+                          ItemsSource="{Binding Choices}"
+                          SelectedItem="{Binding TargetId, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="sys:String">
+                            <TextBlock Text="{Binding ., Converter={x:Static conv:NodeIdDisplayConverter.Instance}}" />
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
-        </Border>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+        </DataTemplate>
 
-        <TextBlock Grid.Row="2"
-                   Foreground="#E06060"
-                   FontSize="11"
-                   TextWrapping="Wrap"
-                   Margin="0,0,0,8"
-                   IsVisible="{Binding ErrorMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
-                   Text="{Binding ErrorMessage}" />
+        <!-- Target selector: off = context window, on = fan out by tags. -->
+        <DataTemplate DataType="{x:Type nodes:TargetSelectorViewModel}" x:DataType="nodes:TargetSelectorViewModel">
+            <StackPanel Spacing="3" Margin="0,4,0,0">
+                <CheckBox Content="Цели по тегам (выкл. — контекст-окно)"
+                          FontSize="11"
+                          IsChecked="{Binding UseSelector, Mode=TwoWay}" />
+                <Grid ColumnDefinitions="Auto,*,Auto,*"
+                      IsVisible="{Binding UseSelector}">
+                    <TextBlock Grid.Column="0"
+                               Text="нужны:"
+                               FontSize="10"
+                               Foreground="#888"
+                               VerticalAlignment="Center"
+                               Margin="0,0,6,0" />
+                    <TextBox Grid.Column="1"
+                             FontSize="11"
+                             Watermark="через запятую"
+                             Text="{Binding RequireText, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="2"
+                               Text="исключить:"
+                               FontSize="10"
+                               Foreground="#888"
+                               VerticalAlignment="Center"
+                               Margin="12,0,6,0" />
+                    <TextBox Grid.Column="3"
+                             FontSize="11"
+                             Watermark="через запятую"
+                             Text="{Binding ExcludeText, Mode=TwoWay}" />
+                </Grid>
+            </StackPanel>
+        </DataTemplate>
 
-        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto">
-            <Button Grid.Column="0"
-                    Content="Открыть папку"
+        <!-- Client-space rectangle. -->
+        <DataTemplate DataType="{x:Type nodes:RegionEditorViewModel}" x:DataType="nodes:RegionEditorViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="регион" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                <TextBox Width="62" FontSize="11" Watermark="X" FontFamily="Consolas, monospace" Text="{Binding XText, Mode=TwoWay}" />
+                <TextBox Width="62" FontSize="11" Watermark="Y" FontFamily="Consolas, monospace" Text="{Binding YText, Mode=TwoWay}" />
+                <TextBox Width="62" FontSize="11" Watermark="W" FontFamily="Consolas, monospace" Text="{Binding WidthText, Mode=TwoWay}" />
+                <TextBox Width="62" FontSize="11" Watermark="H" FontFamily="Consolas, monospace" Text="{Binding HeightText, Mode=TwoWay}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- ==== node parameter blocks (one per node type) ==== -->
+
+        <DataTemplate DataType="{x:Type nodes:KeyPressNodeRowViewModel}" x:DataType="nodes:KeyPressNodeRowViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="клавиша" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                <controls:KeyBindingPicker MinWidth="150"
+                                           CaptureModifiers="False"
+                                           Key="{Binding KeyName, Mode=TwoWay}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type nodes:ClickNodeRowViewModel}" x:DataType="nodes:ClickNodeRowViewModel">
+            <StackPanel Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="14">
+                    <CheckBox Content="из переменной" FontSize="11" IsChecked="{Binding UseVariable, Mode=TwoWay}" />
+                    <CheckBox Content="двойной клик" FontSize="11" IsChecked="{Binding DoubleClick, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding UseLiteralPoint}">
+                    <TextBlock Text="X" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                    <TextBox Width="80" FontSize="11" FontFamily="Consolas, monospace" Text="{Binding XText, Mode=TwoWay}" />
+                    <TextBlock Text="Y" FontSize="10" Foreground="#888" VerticalAlignment="Center" Margin="6,0,0,0" />
+                    <TextBox Width="80" FontSize="11" FontFamily="Consolas, monospace" Text="{Binding YText, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding UseVariable}">
+                    <TextBlock Text="переменная" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                    <TextBox Width="160" FontSize="11" Watermark="cursor" Text="{Binding PointVar, Mode=TwoWay}" />
+                </StackPanel>
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type nodes:DelayNodeRowViewModel}" x:DataType="nodes:DelayNodeRowViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="пауза" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                <TextBox Width="90" FontSize="11" FontFamily="Consolas, monospace" Text="{Binding SecondsText, Mode=TwoWay}" />
+                <TextBlock Text="сек (дробное — можно: 1.5 = 1500 мс)"
+                           FontSize="10"
+                           Foreground="#777"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Add/Remove tag share one block: they differ only in direction, which the row header already says. -->
+        <DataTemplate DataType="{x:Type nodes:TagNodeRowViewModel}" x:DataType="nodes:TagNodeRowViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="тег" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                <TextBox Width="220" FontSize="11" Watermark="имя тега или {переменная}" Text="{Binding Tag, Mode=TwoWay}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type nodes:SetIconNodeRowViewModel}" x:DataType="nodes:SetIconNodeRowViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="иконка" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                <TextBox Width="330" FontSize="11" Watermark="Assets/ClassIcons/{tag}.png" Text="{Binding IconPath, Mode=TwoWay}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type nodes:RunMacroNodeRowViewModel}" x:DataType="nodes:RunMacroNodeRowViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="макрос" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                <ComboBox MinWidth="220"
+                          FontSize="11"
+                          ItemsSource="{Binding MacroChoices}"
+                          SelectedItem="{Binding MacroName, Mode=TwoWay}" />
+                <CheckBox Content="ждать завершения" FontSize="11" IsChecked="{Binding Await, Mode=TwoWay}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type nodes:FindElementNodeRowViewModel}" x:DataType="nodes:FindElementNodeRowViewModel">
+            <StackPanel Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="шаблон" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                    <TextBox Width="200" FontSize="11" Watermark="имя файла без .png" Text="{Binding Template, Mode=TwoWay}" />
+                    <TextBlock Text="точка →" FontSize="10" Foreground="#888" VerticalAlignment="Center" Margin="10,0,0,0" />
+                    <TextBox Width="130" FontSize="11" Watermark="переменная (необяз.)" Text="{Binding FoundPointVar, Mode=TwoWay}" />
+                </StackPanel>
+                <ContentControl Content="{Binding Region}" />
+                <TextBlock Text="W или H = 0 — искать по всему окну"
+                           FontSize="10"
+                           Foreground="#777" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type nodes:WaitForElementNodeRowViewModel}" x:DataType="nodes:WaitForElementNodeRowViewModel">
+            <StackPanel Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="шаблон" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                    <TextBox Width="200" FontSize="11" Watermark="имя файла без .png" Text="{Binding Template, Mode=TwoWay}" />
+                    <TextBlock Text="таймаут" FontSize="10" Foreground="#888" VerticalAlignment="Center" Margin="10,0,0,0" />
+                    <TextBox Width="90" FontSize="11" FontFamily="Consolas, monospace" Text="{Binding TimeoutMsText, Mode=TwoWay}" />
+                    <TextBlock Text="мс" FontSize="10" Foreground="#777" VerticalAlignment="Center" />
+                    <TextBlock Text="точка →" FontSize="10" Foreground="#888" VerticalAlignment="Center" Margin="10,0,0,0" />
+                    <TextBox Width="130" FontSize="11" Watermark="переменная (необяз.)" Text="{Binding FoundPointVar, Mode=TwoWay}" />
+                </StackPanel>
+                <ContentControl Content="{Binding Region}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type nodes:RecognizeTagNodeRowViewModel}" x:DataType="nodes:RecognizeTagNodeRowViewModel">
+            <StackPanel Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="набор" FontSize="10" Foreground="#888" VerticalAlignment="Center" />
+                    <TextBox Width="160" FontSize="11" Watermark="classes" Text="{Binding TemplateSet, Mode=TwoWay}" />
+                    <CheckBox Content="вешать тег" FontSize="11" IsChecked="{Binding ApplyTag, Mode=TwoWay}" Margin="10,0,0,0" />
+                    <TextBlock Text="результат →" FontSize="10" Foreground="#888" VerticalAlignment="Center" Margin="10,0,0,0" />
+                    <TextBox Width="120" FontSize="11" Watermark="tag" Text="{Binding ResultVar, Mode=TwoWay}" />
+                </StackPanel>
+                <ContentControl Content="{Binding Region}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- ==== trigger rows ==== -->
+
+        <DataTemplate DataType="{x:Type nodes:HotkeyTriggerRowViewModel}" x:DataType="nodes:HotkeyTriggerRowViewModel">
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+                <TextBlock Grid.Column="0"
+                           Text="Хоткей"
+                           FontSize="11"
+                           Foreground="#888"
+                           Width="130"
+                           VerticalAlignment="Center" />
+                <controls:KeyBindingPicker Grid.Column="1"
+                                           HorizontalAlignment="Stretch"
+                                           CaptureModifiers="True"
+                                           Key="{Binding KeyName, Mode=TwoWay}"
+                                           Modifiers="{Binding Modifiers, Mode=TwoWay}"
+                                           MouseButton="{Binding MouseButton, Mode=TwoWay}" />
+                <Button Grid.Column="2"
+                        Content="×"
+                        FontSize="11"
+                        Padding="8,2"
+                        Margin="6,0,0,0"
+                        Click="OnRemoveTriggerClicked" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate DataType="{x:Type nodes:ProcessTriggerRowViewModel}" x:DataType="nodes:ProcessTriggerRowViewModel">
+            <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+                <TextBlock Grid.Column="0"
+                           Text="Появление процесса"
+                           FontSize="11"
+                           Foreground="#888"
+                           Width="130"
+                           VerticalAlignment="Center" />
+                <TextBox Grid.Column="1"
+                         FontSize="11"
+                         Watermark="elementclient_64"
+                         Text="{Binding ProcessName, Mode=TwoWay}" />
+                <Button Grid.Column="2"
+                        Content="×"
+                        FontSize="11"
+                        Padding="8,2"
+                        Margin="6,0,0,0"
+                        Click="OnRemoveTriggerClicked" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- ==== validation issue ==== -->
+
+        <DataTemplate DataType="{x:Type vm:ValidationIssueViewModel}" x:DataType="vm:ValidationIssueViewModel">
+            <Button Background="Transparent"
+                    BorderThickness="0"
+                    Padding="2,1"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left"
+                    Click="OnIssueClicked">
+                <TextBlock FontSize="11"
+                           TextWrapping="Wrap"
+                           Foreground="{Binding IsError, Converter={x:Static conv:IssueSeverityToBrushConverter.Instance}}"
+                           Text="{Binding Display}" />
+            </Button>
+        </DataTemplate>
+    </Window.DataTemplates>
+
+    <Grid ColumnDefinitions="280,*" Margin="12">
+
+        <!-- ==== library ==== -->
+        <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
+            <TextBlock Grid.Row="0" FontSize="14" Text="Библиотека" Margin="0,0,0,6" />
+
+            <Border Grid.Row="1" BorderThickness="1" BorderBrush="#444" CornerRadius="4">
+                <ListBox ItemsSource="{Binding Macros}"
+                         SelectedItem="{Binding SelectedMacro, Mode=TwoWay}"
+                         Background="Transparent">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:MacroListItemViewModel">
+                            <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto,Auto,Auto">
+                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                           FontSize="13"
+                                           VerticalAlignment="Center"
+                                           Text="{Binding Name}" />
+                                <Button Grid.Row="0" Grid.Column="1"
+                                        Content="▶"
+                                        FontSize="10"
+                                        Padding="7,2"
+                                        ToolTip.Tip="Запустить"
+                                        IsEnabled="{Binding IsNotRunning}"
+                                        Click="OnRunMacroClicked" />
+                                <Button Grid.Row="0" Grid.Column="2"
+                                        Content="■"
+                                        FontSize="10"
+                                        Padding="7,2"
+                                        Margin="3,0,0,0"
+                                        ToolTip.Tip="Остановить"
+                                        IsEnabled="{Binding IsRunning}"
+                                        Click="OnStopMacroClicked" />
+                                <Button Grid.Row="0" Grid.Column="3"
+                                        Content="×"
+                                        FontSize="10"
+                                        Padding="7,2"
+                                        Margin="3,0,0,0"
+                                        ToolTip.Tip="Удалить"
+                                        Click="OnDeleteMacroClicked" />
+                                <TextBlock Grid.Row="1" Grid.ColumnSpan="4"
+                                           FontSize="10"
+                                           Foreground="#888"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="{Binding Summary}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <Button Grid.Row="2"
+                    Content="+ Новый макрос"
                     FontSize="11"
                     Padding="10,4"
-                    Click="OnOpenFolderClicked" />
-            <Button Grid.Column="2"
-                    Content="Закрыть"
-                    Click="OnClose" />
+                    Margin="0,8,0,0"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center"
+                    Click="OnNewMacroClicked" />
         </Grid>
+
+        <!-- ==== editor ==== -->
+        <Grid Grid.Column="1" Margin="12,0,0,0" RowDefinitions="Auto,Auto,*,Auto,Auto"
+              IsVisible="{Binding HasOpenMacro}">
+
+            <!-- name + start node -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,8">
+                <TextBlock Grid.Column="0" Text="Имя" FontSize="11" Foreground="#888" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <TextBox Grid.Column="1" FontSize="12" Text="{Binding MacroName, Mode=TwoWay}" />
+                <TextBlock Grid.Column="2" Text="старт" FontSize="11" Foreground="#888" VerticalAlignment="Center" Margin="12,0,6,0" />
+                <ComboBox Grid.Column="3"
+                          MinWidth="170"
+                          FontSize="11"
+                          ItemsSource="{Binding StartNodeChoices}"
+                          SelectedItem="{Binding StartNodeId, Mode=TwoWay}" />
+            </Grid>
+
+            <!-- triggers -->
+            <Border Grid.Row="1"
+                    Padding="8"
+                    Margin="0,0,0,8"
+                    BorderThickness="1"
+                    BorderBrush="#444"
+                    CornerRadius="4">
+                <StackPanel Spacing="4">
+                    <Grid ColumnDefinitions="*,Auto,Auto">
+                        <TextBlock Grid.Column="0" Text="Триггеры" FontSize="12" Foreground="#aaa" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="+ хоткей" FontSize="11" Padding="8,2" Click="OnAddHotkeyTriggerClicked" />
+                        <Button Grid.Column="2" Content="+ процесс" FontSize="11" Padding="8,2" Margin="6,0,0,0" Click="OnAddProcessTriggerClicked" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding Triggers}" />
+                </StackPanel>
+            </Border>
+
+            <!-- nodes -->
+            <Border Grid.Row="2" BorderThickness="1" BorderBrush="#444" CornerRadius="4">
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding Nodes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="nodes:NodeRowViewModel">
+                                <Border Padding="8"
+                                        Margin="4"
+                                        BorderThickness="1"
+                                        BorderBrush="#333"
+                                        CornerRadius="3"
+                                        Background="#1a1a1a">
+                                    <Grid ColumnDefinitions="Auto,*">
+                                        <!-- selection accent, lit by clicking a validation issue -->
+                                        <Border Grid.Column="0"
+                                                Width="3"
+                                                CornerRadius="2"
+                                                Margin="0,0,8,0"
+                                                Background="#6a9fd0"
+                                                IsVisible="{Binding IsSelected}" />
+                                        <StackPanel Grid.Column="1" Spacing="4">
+                                            <Grid ColumnDefinitions="Auto,Auto,180,*,Auto,Auto,Auto">
+                                                <TextBlock Grid.Column="0"
+                                                           FontSize="12"
+                                                           Foreground="#9ec7e8"
+                                                           MinWidth="140"
+                                                           VerticalAlignment="Center"
+                                                           Text="{Binding TypeLabel}" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="id"
+                                                           FontSize="10"
+                                                           Foreground="#888"
+                                                           VerticalAlignment="Center"
+                                                           Margin="0,0,6,0" />
+                                                <TextBox Grid.Column="2"
+                                                         FontSize="11"
+                                                         FontFamily="Consolas, monospace"
+                                                         ToolTip.Tip="Переименование автоматически перешивает входящие рёбра"
+                                                         Text="{Binding NodeId, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                                <Button Grid.Column="4" Content="↑" FontSize="11" Padding="8,2" Click="OnMoveNodeUpClicked" />
+                                                <Button Grid.Column="5" Content="↓" FontSize="11" Padding="8,2" Margin="3,0,0,0" Click="OnMoveNodeDownClicked" />
+                                                <Button Grid.Column="6" Content="×" FontSize="11" Padding="8,2" Margin="6,0,0,0" ToolTip.Tip="Удалить ноду" Click="OnDeleteNodeClicked" />
+                                            </Grid>
+
+                                            <!-- type-specific parameters, matched on the row's concrete type -->
+                                            <ContentControl Content="{Binding}" />
+
+                                            <!-- selector: absent for conditionals and Delay -->
+                                            <ContentControl Content="{Binding Target}" IsVisible="{Binding HasTarget}" />
+
+                                            <ItemsControl ItemsSource="{Binding Edges}" Margin="0,4,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <!-- messages + validation -->
+            <StackPanel Grid.Row="3" Spacing="4" Margin="0,8,0,8">
+                <TextBlock FontSize="11"
+                           Foreground="#E0AF68"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding ChangedOnDisk}"
+                           Text="Макрос изменён на диске, а здесь есть несохранённые правки. «Перечитать» — взять версию с диска, «Сохранить» — затереть её." />
+                <TextBlock FontSize="11"
+                           Foreground="#E06060"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding ErrorMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
+                           Text="{Binding ErrorMessage}" />
+                <TextBlock FontSize="11"
+                           Foreground="#888"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding StatusMessage, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
+                           Text="{Binding StatusMessage}" />
+                <Border BorderThickness="1"
+                        BorderBrush="#553333"
+                        CornerRadius="3"
+                        Padding="6"
+                        IsVisible="{Binding HasIssues}">
+                    <ScrollViewer MaxHeight="120">
+                        <ItemsControl ItemsSource="{Binding Issues}" />
+                    </ScrollViewer>
+                </Border>
+            </StackPanel>
+
+            <!-- actions -->
+            <Grid Grid.Row="4" ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                <Button Grid.Column="0" x:Name="AddNodeButton" Content="+ Нода" FontSize="11" Padding="12,4">
+                    <Button.Flyout>
+                        <Flyout Placement="Top">
+                            <ItemsControl ItemsSource="{Binding NodeKinds}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="nodes:MacroNodeKindOption">
+                                        <Button Content="{Binding Label}"
+                                                FontSize="11"
+                                                Padding="10,4"
+                                                MinWidth="180"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Left"
+                                                Click="OnAddNodeClicked" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+                <Button Grid.Column="1"
+                        Content="Перечитать"
+                        FontSize="11"
+                        Padding="12,4"
+                        Margin="8,0,0,0"
+                        ToolTip.Tip="Отбросить правки и взять версию с диска"
+                        Click="OnReloadClicked" />
+                <Button Grid.Column="2"
+                        Content="Папка макросов"
+                        FontSize="11"
+                        Padding="12,4"
+                        Margin="8,0,0,0"
+                        HorizontalAlignment="Left"
+                        ToolTip.Tip="{Binding FolderPath}"
+                        Click="OnOpenFolderClicked" />
+                <Button Grid.Column="3"
+                        Content="Сохранить"
+                        FontSize="11"
+                        Padding="16,4"
+                        Click="OnSaveClicked" />
+                <Button Grid.Column="4"
+                        Content="Закрыть"
+                        FontSize="11"
+                        Padding="12,4"
+                        Margin="8,0,0,0"
+                        Click="OnCloseClicked" />
+            </Grid>
+        </Grid>
+
+        <!-- empty state -->
+        <StackPanel Grid.Column="1"
+                    Margin="12,0,0,0"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Spacing="8"
+                    IsVisible="{Binding !HasOpenMacro}">
+            <TextBlock FontSize="13" Foreground="#888" Text="Выберите макрос слева или создайте новый." />
+            <TextBlock FontSize="11" Foreground="#666" HorizontalAlignment="Center" Text="{Binding FolderPath}" />
+            <Button Content="Открыть папку макросов"
+                    FontSize="11"
+                    Padding="10,4"
+                    HorizontalAlignment="Center"
+                    Click="OnOpenFolderClicked" />
+        </StackPanel>
     </Grid>
 </Window>

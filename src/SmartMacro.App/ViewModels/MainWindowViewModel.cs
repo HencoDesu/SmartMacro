@@ -1,117 +1,172 @@
 using System.Collections.ObjectModel;
-using Avalonia.Threading;
-using SmartMacro.Agents;
+using System.Globalization;
 using SmartMacro.App.Mvvm;
-using SmartMacro.Orchestration;
+using SmartMacro.Macros.Execution;
 using SmartMacro.Windows;
 
 namespace SmartMacro.App.ViewModels;
 
-// Bridges Orchestrator's agent set to an ObservableCollection the XAML list binds to.
-//
-// Two reconcile mechanisms work together:
-//
-//   1. Event subscriptions (AgentStarted/Stopped) — low-latency UI updates
-//      for the normal flow. Mutations are posted to Dispatcher.UIThread because the
-//      orchestrator fires events from arbitrary task threads.
-//
-//   2. Periodic reconcile timer — every 2 seconds, take a fresh snapshot from the
-//      orchestrator and diff against the displayed rows. Adds missing, removes stale,
-//      refreshes existing. This is the belt-and-suspenders that catches any event we
-//      somehow missed (handler exception, dispatcher congestion at startup, race where
-//      an agent appears between subscription and snapshot). The cap is 9 agents so the
-//      O(n²) diff is trivial. Trade-off: up to 2s lag if events fail entirely, but UI
-//      stays correct without anyone having to debug the event plumbing.
+/// <summary>
+/// The main window: every tracked window with its tag chips, plus the live list of running
+/// macros.
+///
+/// W0.3 replaced the old agent-row list with this. The change is not cosmetic — after W0.1
+/// there is no per-character state to show, only windows and the free-form tags that route
+/// macros at them, and after W0.2b the interesting runtime state is "which macros are
+/// executing right now".
+///
+/// Both sources (<see cref="WindowRegistry"/>, <see cref="MacroRunRegistry"/>) raise events
+/// from arbitrary threads, so every handler marshals through <see cref="IUiDispatcher"/>
+/// before touching an <c>ObservableCollection</c>. Subscription happens BEFORE the initial
+/// snapshot and the reconcile is keyed on hwnd/run-id, so a window that appears in that
+/// window shows up exactly once instead of racing into a duplicate or a miss.
+/// </summary>
 public sealed class MainWindowViewModel : ObservableObject, IDisposable
 {
-    private readonly Orchestrator _orchestrator;
     private readonly WindowRegistry _registry;
-    private readonly DispatcherTimer _reconcileTimer;
+    private readonly MacroRunRegistry _runs;
+    private readonly IUiDispatcher _dispatcher;
 
-    public ObservableCollection<AgentRowViewModel> Agents { get; } = [];
-
-    public MainWindowViewModel(Orchestrator orchestrator, WindowRegistry registry)
+    public MainWindowViewModel(WindowRegistry registry, MacroRunRegistry runs, IUiDispatcher? dispatcher = null)
     {
-        _orchestrator = orchestrator;
         _registry = registry;
-        _orchestrator.AgentStarted += OnAgentStarted;
-        _orchestrator.AgentStopped += OnAgentStopped;
+        _runs = runs;
+        _dispatcher = dispatcher ?? AvaloniaUiDispatcher.Instance;
 
-        // Initial fill — covers agents that already exist by the time the VM is built
-        // (typical case: orchestrator's hosted-service starts before Avalonia resolves
-        // the main window from DI).
-        ReconcileFromSnapshot();
+        _registry.WindowAppeared += OnWindowAppeared;
+        _registry.WindowTagsChanged += OnWindowTagsChanged;
+        _registry.WindowClosed += OnWindowClosed;
+        _runs.RunsChanged += OnRunsChanged;
 
-        _reconcileTimer = new DispatcherTimer(
-            TimeSpan.FromSeconds(2),
-            DispatcherPriority.Background,
-            (_, _) => ReconcileFromSnapshot());
-        _reconcileTimer.Start();
+        SyncWindows(_registry.Snapshot());
+        SyncRuns(_runs.Snapshot());
     }
 
-    private void OnAgentStarted(CharacterAgent agent)
+    /// <summary>Windows currently registered, in order of appearance.</summary>
+    public ObservableCollection<WindowRowViewModel> Windows { get; } = [];
+
+    /// <summary>Macro runs currently tracked by the registry.</summary>
+    public ObservableCollection<RunningMacroRowViewModel> Runs { get; } = [];
+
+    /// <summary>Footer counter.</summary>
+    public string WindowCountText =>
+        string.Create(CultureInfo.CurrentCulture, $"Окон под управлением: {Windows.Count}");
+
+    /// <summary>Header of the running-macros panel; doubles as its empty-state text.</summary>
+    public string RunsHeaderText => Runs.Count == 0
+        ? "Запущенные макросы: нет"
+        : string.Create(CultureInfo.CurrentCulture, $"Запущенные макросы: {Runs.Count}");
+
+    /// <summary><c>true</c> while at least one run is tracked — gates the "Стоп всё" button.</summary>
+    public bool HasRuns => Runs.Count > 0;
+
+    /// <summary>Adds the tag typed into <paramref name="row"/>'s box.</summary>
+    public bool AddTag(WindowRowViewModel row) => row.AddTag();
+
+    /// <summary>Removes one tag from a window.</summary>
+    public bool RemoveTag(WindowRowViewModel row, string tag) => row.RemoveTag(tag);
+
+    /// <summary>Cancels one run. The registry raises <c>RunsChanged</c> when the runner acknowledges.</summary>
+    public void StopRun(RunningMacroRowViewModel row) => _ = _runs.StopAsync(row.RunId);
+
+    /// <summary>Cancels every tracked run (the panic button).</summary>
+    public void StopAllRuns() => _ = _runs.StopAllAsync();
+
+    /// <summary>
+    /// Re-renders the elapsed column. Driven by the window's 1s timer — the VM keeps no
+    /// timer of its own so it stays free of Avalonia types.
+    /// </summary>
+    public void RefreshElapsed()
     {
-        Dispatcher.UIThread.Post(() =>
+        var now = DateTime.UtcNow;
+        foreach (var row in Runs)
         {
-            if (FindRow(agent) is null)
-            {
-                Agents.Add(new AgentRowViewModel(agent, _registry));
-            }
-        });
+            row.Refresh(now);
+        }
     }
 
-    private void OnAgentStopped(CharacterAgent agent)
+    public void Dispose()
     {
-        Dispatcher.UIThread.Post(() =>
-        {
-            var row = FindRow(agent);
-            if (row is not null)
-            {
-                Agents.Remove(row);
-            }
-        });
+        _registry.WindowAppeared -= OnWindowAppeared;
+        _registry.WindowTagsChanged -= OnWindowTagsChanged;
+        _registry.WindowClosed -= OnWindowClosed;
+        _runs.RunsChanged -= OnRunsChanged;
     }
 
-    // Sync the Agents collection to whatever the orchestrator currently has. Runs on
-    // the UI thread (DispatcherTimer fires there + ctor also runs there). Idempotent.
-    private void ReconcileFromSnapshot()
-    {
-        var snapshot = _orchestrator.SnapshotAgents();
+    private void OnWindowAppeared(ManagedWindowInfo info) => _dispatcher.Post(() => Upsert(info));
 
-        // Add missing + refresh existing.
-        foreach (var agent in snapshot)
+    private void OnWindowTagsChanged(ManagedWindowInfo info) => _dispatcher.Post(() => Upsert(info));
+
+    private void OnWindowClosed(ManagedWindowInfo info) => _dispatcher.Post(() =>
+    {
+        if (FindRow(info.Hwnd) is { } row)
         {
-            var row = FindRow(agent);
-            if (row is null)
+            Windows.Remove(row);
+            OnPropertyChanged(nameof(WindowCountText));
+        }
+    });
+
+    private void OnRunsChanged() => _dispatcher.Post(() => SyncRuns(_runs.Snapshot()));
+
+    // Add-or-update, keyed on hwnd. Idempotent so the "subscribe, then snapshot" startup
+    // order can't produce a duplicate row for a window that appeared in between.
+    private void Upsert(ManagedWindowInfo info)
+    {
+        if (FindRow(info.Hwnd) is { } existing)
+        {
+            existing.ApplyTags(info.Tags);
+            return;
+        }
+
+        Windows.Add(new WindowRowViewModel(_registry, info));
+        OnPropertyChanged(nameof(WindowCountText));
+    }
+
+    private void SyncWindows(IReadOnlyList<ManagedWindowInfo> snapshot)
+    {
+        foreach (var info in snapshot)
+        {
+            Upsert(info);
+        }
+    }
+
+    // Runs come and go wholesale, but rows are matched on RunId so a surviving run keeps
+    // its row object — and therefore its rendered elapsed value — across a refresh.
+    private void SyncRuns(IReadOnlyList<MacroRunSnapshot> snapshot)
+    {
+        var now = DateTime.UtcNow;
+        var seen = new HashSet<Guid>();
+
+        foreach (var run in snapshot)
+        {
+            seen.Add(run.RunId);
+            if (FindRun(run.RunId) is { } existing)
             {
-                Agents.Add(new AgentRowViewModel(agent, _registry));
+                existing.Refresh(now, run.CurrentNodeId);
             }
             else
             {
-                // Catches state changes (Idle → Following etc.) that we don't have a
-                // dedicated event for. Cheap — just raises PropertyChanged.
-                row.Refresh();
+                Runs.Add(new RunningMacroRowViewModel(run));
             }
         }
 
-        // Remove rows whose agent is no longer in the orchestrator's set. ReferenceEquals
-        // comparison via HashSet<T> needs the comparer because CharacterAgent doesn't
-        // override Equals.
-        var live = new HashSet<CharacterAgent>(snapshot, ReferenceEqualityComparer.Instance);
-        for (var i = Agents.Count - 1; i >= 0; i--)
+        for (var i = Runs.Count - 1; i >= 0; i--)
         {
-            if (!live.Contains(Agents[i].Agent))
+            if (!seen.Contains(Runs[i].RunId))
             {
-                Agents.RemoveAt(i);
+                Runs.RemoveAt(i);
             }
         }
+
+        OnPropertyChanged(nameof(RunsHeaderText));
+        OnPropertyChanged(nameof(HasRuns));
     }
 
-    private AgentRowViewModel? FindRow(CharacterAgent agent)
+    private WindowRowViewModel? FindRow(IntPtr hwnd)
     {
-        foreach (var row in Agents)
+        foreach (var row in Windows)
         {
-            if (ReferenceEquals(row.Agent, agent))
+            if (row.Hwnd == hwnd)
             {
                 return row;
             }
@@ -119,10 +174,15 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         return null;
     }
 
-    public void Dispose()
+    private RunningMacroRowViewModel? FindRun(Guid runId)
     {
-        _reconcileTimer.Stop();
-        _orchestrator.AgentStarted -= OnAgentStarted;
-        _orchestrator.AgentStopped -= OnAgentStopped;
+        foreach (var row in Runs)
+        {
+            if (row.RunId == runId)
+            {
+                return row;
+            }
+        }
+        return null;
     }
 }

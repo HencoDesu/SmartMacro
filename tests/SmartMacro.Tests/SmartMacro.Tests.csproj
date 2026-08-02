@@ -13,6 +13,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SmartMacro.Core\SmartMacro.Core.csproj" />
+    <!-- W0.3: view-model tests. The App project is a WinExe, but referencing it only
+         pulls in its assembly — the VMs under test take Core services through their
+         constructors and marshal through IUiDispatcher, so nothing here needs an
+         Avalonia application, a dispatcher loop, or a render surface. -->
+    <ProjectReference Include="..\..\src\SmartMacro.App\SmartMacro.App.csproj" />
   </ItemGroup>
 
   <ItemGroup>

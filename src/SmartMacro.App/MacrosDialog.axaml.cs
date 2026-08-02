@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using SmartMacro.App.ViewModels;
+using SmartMacro.App.ViewModels.Nodes;
 
 namespace SmartMacro.App;
 
@@ -9,31 +10,166 @@ public partial class MacrosDialog : Window
     // Designer needs a parameterless ctor; DI-side construction goes through the VM overload.
     public MacrosDialog() => InitializeComponent();
 
-    public MacrosDialog(MacrosDialogViewModel viewModel) : this()
+    public MacrosDialog(MacroEditorViewModel viewModel) : this()
     {
         DataContext = viewModel;
     }
 
-    private void OnRunClicked(object? sender, RoutedEventArgs e)
+    private MacroEditorViewModel? Vm => DataContext as MacroEditorViewModel;
+
+    // Global hotkeys go down for as long as this window is open. Win32 RegisterHotKey
+    // swallows presses of a chord it already owns, so a chord that is currently bound to a
+    // macro would never reach the picker — precisely the chord a user is most likely to be
+    // re-binding. Suspend on open, resume on close (from the CURRENT library, so anything
+    // just saved is registered immediately).
+    protected override void OnOpened(EventArgs e)
     {
-        if (DataContext is MacrosDialogViewModel vm && sender is Button { DataContext: MacroRowViewModel row })
+        base.OnOpened(e);
+        if (Vm is { } vm)
         {
-            vm.Run(row);
+            _ = SuspendAsync(vm);
         }
     }
 
-    private void OnStopClicked(object? sender, RoutedEventArgs e)
+    protected override void OnClosed(EventArgs e)
     {
-        if (DataContext is MacrosDialogViewModel vm && sender is Button { DataContext: MacroRowViewModel row })
+        base.OnClosed(e);
+        if (Vm is { } vm)
         {
-            vm.Stop(row);
+            // Resume before disposing: Dispose only detaches event handlers, but the order
+            // makes the intent explicit — hotkeys must come back even if the dialog is
+            // being torn down.
+            _ = ResumeAsync(vm);
+            vm.Dispose();
         }
     }
 
-    // Until W0.3 ships the node editor, "edit a macro" means "open its JSON file".
+    private static async Task SuspendAsync(MacroEditorViewModel vm)
+    {
+        try
+        {
+            await vm.SuspendHotkeysAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Failed to suspend global hotkeys for the macro editor");
+        }
+    }
+
+    private static async Task ResumeAsync(MacroEditorViewModel vm)
+    {
+        try
+        {
+            await vm.ResumeHotkeysAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Failed to resume global hotkeys after closing the macro editor");
+        }
+    }
+
+    // ---- library ---------------------------------------------------------------------
+
+    private void OnNewMacroClicked(object? sender, RoutedEventArgs e) => Vm?.NewMacro();
+
+    private void OnRunMacroClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: MacroListItemViewModel item })
+        {
+            vm.Run(item);
+        }
+    }
+
+    private void OnStopMacroClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: MacroListItemViewModel item })
+        {
+            vm.Stop(item);
+        }
+    }
+
+    private async void OnDeleteMacroClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: MacroListItemViewModel item })
+        {
+            await vm.DeleteMacroAsync(item);
+        }
+    }
+
+    // ---- triggers --------------------------------------------------------------------
+
+    private void OnAddHotkeyTriggerClicked(object? sender, RoutedEventArgs e) =>
+        Vm?.AddTrigger(MacroTriggerKind.Hotkey);
+
+    private void OnAddProcessTriggerClicked(object? sender, RoutedEventArgs e) =>
+        Vm?.AddTrigger(MacroTriggerKind.ProcessAppeared);
+
+    private void OnRemoveTriggerClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: TriggerRowViewModel row })
+        {
+            vm.RemoveTrigger(row);
+        }
+    }
+
+    // ---- nodes -----------------------------------------------------------------------
+
+    private void OnAddNodeClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: MacroNodeKindOption option })
+        {
+            vm.AddNode(option.Kind);
+            AddNodeButton.Flyout?.Hide();
+        }
+    }
+
+    private void OnDeleteNodeClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: NodeRowViewModel row })
+        {
+            vm.DeleteNode(row);
+        }
+    }
+
+    private void OnMoveNodeUpClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: NodeRowViewModel row })
+        {
+            vm.MoveNodeUp(row);
+        }
+    }
+
+    private void OnMoveNodeDownClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: NodeRowViewModel row })
+        {
+            vm.MoveNodeDown(row);
+        }
+    }
+
+    private void OnIssueClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: ValidationIssueViewModel issue })
+        {
+            vm.SelectIssue(issue);
+        }
+    }
+
+    // ---- editor actions --------------------------------------------------------------
+
+    private async void OnSaveClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+        {
+            await vm.SaveAsync();
+        }
+    }
+
+    private void OnReloadClicked(object? sender, RoutedEventArgs e) => Vm?.ReloadFromDisk();
+
     private void OnOpenFolderClicked(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not MacrosDialogViewModel vm)
+        if (Vm is not { } vm)
         {
             return;
         }
@@ -52,13 +188,5 @@ public partial class MacrosDialog : Window
         }
     }
 
-    private void OnClose(object? sender, RoutedEventArgs e) => Close();
-
-    // The VM subscribes to the store and the run registry, both DI singletons that
-    // outlive this transient dialog — unsubscribe or we leak a dialog per open.
-    protected override void OnClosed(EventArgs e)
-    {
-        base.OnClosed(e);
-        (DataContext as IDisposable)?.Dispose();
-    }
+    private void OnCloseClicked(object? sender, RoutedEventArgs e) => Close();
 }
