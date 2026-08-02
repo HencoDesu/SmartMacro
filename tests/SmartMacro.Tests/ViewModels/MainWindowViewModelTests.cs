@@ -1,54 +1,92 @@
-using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
-using SmartMacro.Macros.Execution;
-using SmartMacro.Windows;
+using SmartMacro.Contracts.Dto;
+using SmartMacro.Contracts.Ipc;
+using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// W0.3: the main window's view-model — windows with tag chips, and the running-macros
-// panel. Both registries are the real (logger-only) implementations; the VM's Avalonia
-// dependency is confined to IUiDispatcher, which the tests replace with an inline one so
-// registry events are observable without a message pump.
+// Stage 3: the main window's view-model, now a pure IPC client — windows with tag chips and
+// the running-macros panel, all of it seeded by requests and kept current by daemon pushes.
+//
+// The fake client answers synchronously and ImmediateUiDispatcher runs posted work inline,
+// so the constructor's fire-and-forget refresh has already landed by the time a test looks.
 public class MainWindowViewModelTests
 {
-    private static readonly IntPtr HwndA = new(0x1111);
-    private static readonly IntPtr HwndB = new(0x2222);
+    private const long HwndA = 0x1111;
+    private const long HwndB = 0x2222;
 
-    private static WindowRegistry CreateRegistry() => new(NullLogger<WindowRegistry>.Instance);
+    private static WindowDto Window(long hwnd, string process = "elementclient_64", params string[] tags) =>
+        new(hwnd, process, tags);
 
-    private static MacroRunRegistry CreateRuns() => new(NullLogger<MacroRunRegistry>.Instance);
+    private static RunningMacroDto Run(Guid id, string name, string? node = null) =>
+        new(id, name, DateTimeOffset.UtcNow, node);
 
-    private static MainWindowViewModel CreateVm(WindowRegistry registry, MacroRunRegistry runs) =>
-        new(registry, runs, ImmediateUiDispatcher.Instance);
+    private static MainWindowViewModel CreateVm(FakeIpcClient client) =>
+        new(client, ImmediateUiDispatcher.Instance);
 
-    // ---- windows ------------------------------------------------------------------------
+    // ---- initial fetch ---------------------------------------------------------------------
 
     [Test]
-    public async Task ExistingWindows_AreListedAtConstruction()
+    public async Task Construction_OnALiveConnection_FetchesBothSnapshots()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        registry.Register(HwndA, "elementclient_64");
-        registry.AddTag(HwndA, "Лучник");
+        var client = new FakeIpcClient()
+            .Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, tags: "Лучник") })
+            .Respond(IpcMessageTypes.GetRunningMacros, new[] { Run(Guid.NewGuid(), "pw-boot", "wait-in-world") });
 
-        using var vm = CreateVm(registry, runs);
+        using var vm = CreateVm(client);
 
+        await Assert.That(client.CountOf(IpcMessageTypes.GetWindows)).IsEqualTo(1);
+        await Assert.That(client.CountOf(IpcMessageTypes.GetRunningMacros)).IsEqualTo(1);
         await Assert.That(vm.Windows).Count().IsEqualTo(1);
         await Assert.That(vm.Windows[0].ProcessName).IsEqualTo("elementclient_64");
         await Assert.That(vm.Windows[0].HwndHex).IsEqualTo("0x1111");
         await Assert.That(vm.Windows[0].Tags.Select(t => t.Text)).IsEquivalentTo(new[] { "Лучник" });
         await Assert.That(vm.Windows[0].HasTags).IsTrue();
+        await Assert.That(vm.Runs[0].MacroName).IsEqualTo("pw-boot");
+        await Assert.That(vm.Runs[0].CurrentNodeText).IsEqualTo("wait-in-world");
+        await Assert.That(vm.HasRuns).IsTrue();
     }
+
+    [Test]
+    public async Task Construction_WhileDisconnected_AsksForNothing()
+    {
+        var client = new FakeIpcClient { IsConnected = false };
+
+        using var vm = CreateVm(client);
+
+        await Assert.That(client.Requests).IsEmpty();
+        await Assert.That(vm.Windows).IsEmpty();
+    }
+
+    [Test]
+    public async Task Reconnect_RefetchesAndDropsWindowsTheDaemonNoLongerReports()
+    {
+        var client = new FakeIpcClient()
+            .Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA), Window(HwndB) });
+        using var vm = CreateVm(client);
+        await Assert.That(vm.Windows).Count().IsEqualTo(2);
+
+        // While we were away one client closed and another got tagged. A reconnect has no
+        // way to replay those pushes, so the fresh snapshot has to win outright.
+        client.Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndB, tags: "Жрец") });
+        client.RaiseConnected();
+
+        await Assert.That(client.CountOf(IpcMessageTypes.GetWindows)).IsEqualTo(2);
+        await Assert.That(vm.Windows).Count().IsEqualTo(1);
+        await Assert.That(vm.Windows[0].Hwnd).IsEqualTo(HwndB);
+        await Assert.That(vm.Windows[0].Tags.Select(t => t.Text)).IsEquivalentTo(new[] { "Жрец" });
+    }
+
+    // ---- window events -----------------------------------------------------------------------
 
     [Test]
     public async Task WindowAppeared_AddsARow()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        using var vm = CreateVm(registry, runs);
+        var client = new FakeIpcClient();
+        using var vm = CreateVm(client);
 
-        registry.Register(HwndA, "proc");
+        client.RaiseEvent(IpcMessageTypes.WindowAppeared, Window(HwndA, "proc"));
 
         await Assert.That(vm.Windows).Count().IsEqualTo(1);
         await Assert.That(vm.Windows[0].HasTags).IsFalse();
@@ -58,15 +96,12 @@ public class MainWindowViewModelTests
     [Test]
     public async Task WindowTagsChanged_UpdatesTheExistingRowInPlace()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        registry.Register(HwndA, "proc");
-        using var vm = CreateVm(registry, runs);
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, "proc") });
+        using var vm = CreateVm(client);
         var row = vm.Windows.Single();
 
-        registry.AddTag(HwndA, "Жрец");
-        registry.AddTag(HwndA, "мул");
-        registry.RemoveTag(HwndA, "Жрец");
+        client.RaiseEvent(IpcMessageTypes.WindowTagsChanged, Window(HwndA, "proc", "Жрец", "мул"));
+        client.RaiseEvent(IpcMessageTypes.WindowTagsChanged, Window(HwndA, "proc", "мул"));
 
         await Assert.That(vm.Windows).Count().IsEqualTo(1);
         await Assert.That(vm.Windows.Single()).IsSameReferenceAs(row);
@@ -76,116 +111,114 @@ public class MainWindowViewModelTests
     [Test]
     public async Task WindowClosed_RemovesTheRow()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        registry.Register(HwndA, "proc");
-        registry.Register(HwndB, "proc");
-        using var vm = CreateVm(registry, runs);
+        var client = new FakeIpcClient()
+            .Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, "proc"), Window(HwndB, "proc") });
+        using var vm = CreateVm(client);
 
-        registry.Unregister(HwndA);
+        client.RaiseEvent(IpcMessageTypes.WindowClosed, new WindowClosedEvent(HwndA));
 
         await Assert.That(vm.Windows).Count().IsEqualTo(1);
         await Assert.That(vm.Windows[0].Hwnd).IsEqualTo(HwndB);
     }
 
+    // ---- tagging -------------------------------------------------------------------------------
+
     [Test]
-    public async Task AddTag_GoesThroughTheRegistry_AndClearsTheInputOnSuccess()
+    public async Task AddTag_SendsAddTag_AndClearsTheInput()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        registry.Register(HwndA, "proc");
-        using var vm = CreateVm(registry, runs);
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, "proc") });
+        using var vm = CreateVm(client);
         var row = vm.Windows.Single();
 
         row.NewTagText = "  Лучник  ";
-        var added = vm.AddTag(row);
+        var added = await vm.AddTagAsync(row);
 
         await Assert.That(added).IsTrue();
-        await Assert.That(registry.HasTag(HwndA, "Лучник")).IsTrue();
+        await Assert.That(client.PayloadsOf<AddTagRequest>(IpcMessageTypes.AddTag).Single())
+            .IsEqualTo(new AddTagRequest(HwndA, "Лучник"));
         await Assert.That(row.NewTagText).IsEmpty();
-        await Assert.That(row.Tags.Select(t => t.Text)).IsEquivalentTo(new[] { "Лучник" });
     }
 
     [Test]
-    public async Task AddTag_KeepsTheTextWhenTheTagDoesNotLand()
+    public async Task AddTag_KeepsTheTextWhenTheWindowAlreadyCarriesTheTag()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        registry.Register(HwndA, "proc");
-        registry.AddTag(HwndA, "Лучник");
-        using var vm = CreateVm(registry, runs);
+        // The daemon treats a duplicate as a silent no-op, so only the row can tell the
+        // difference — and it must not clear the box as if something happened.
+        var client = new FakeIpcClient()
+            .Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, "proc", "Лучник") });
+        using var vm = CreateVm(client);
         var row = vm.Windows.Single();
 
         row.NewTagText = "Лучник";
-        var added = vm.AddTag(row);
 
-        await Assert.That(added).IsFalse();
+        await Assert.That(await vm.AddTagAsync(row)).IsFalse();
+        await Assert.That(client.CountOf(IpcMessageTypes.AddTag)).IsEqualTo(0);
         await Assert.That(row.NewTagText).IsEqualTo("Лучник");
     }
 
     [Test]
     public async Task AddTag_IgnoresBlankInput()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        registry.Register(HwndA, "proc");
-        using var vm = CreateVm(registry, runs);
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, "proc") });
+        using var vm = CreateVm(client);
         var row = vm.Windows.Single();
 
         row.NewTagText = "   ";
 
-        await Assert.That(vm.AddTag(row)).IsFalse();
-        await Assert.That(registry.GetTags(HwndA)).IsEmpty();
+        await Assert.That(await vm.AddTagAsync(row)).IsFalse();
+        await Assert.That(client.CountOf(IpcMessageTypes.AddTag)).IsEqualTo(0);
     }
 
     [Test]
-    public async Task RemovingAChip_GoesThroughTheRegistry()
+    public async Task AddTag_KeepsTheTextWhenTheDaemonRefuses()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        registry.Register(HwndA, "proc");
-        registry.AddTag(HwndA, "Шаман");
-        using var vm = CreateVm(registry, runs);
+        var client = new FakeIpcClient()
+            .Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, "proc") })
+            .Fail(IpcMessageTypes.AddTag, "окна больше нет");
+        using var vm = CreateVm(client);
+        var row = vm.Windows.Single();
 
-        vm.Windows.Single().Tags.Single().Remove();
+        row.NewTagText = "Шаман";
 
-        await Assert.That(registry.HasTag(HwndA, "Шаман")).IsFalse();
+        await Assert.That(await vm.AddTagAsync(row)).IsFalse();
+        await Assert.That(row.NewTagText).IsEqualTo("Шаман");
+    }
+
+    [Test]
+    public async Task RemovingAChip_SendsRemoveTag()
+    {
+        var client = new FakeIpcClient()
+            .Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, "proc", "Шаман") });
+        using var vm = CreateVm(client);
+
+        await vm.RemoveTagAsync(vm.Windows.Single(), "Шаман");
+
+        await Assert.That(client.PayloadsOf<RemoveTagRequest>(IpcMessageTypes.RemoveTag).Single())
+            .IsEqualTo(new RemoveTagRequest(HwndA, "Шаман"));
+        // The chip stays until the daemon confirms with WindowTagsChanged — the registry is
+        // the owner, and an optimistic removal would lie when the call fails.
+        await Assert.That(vm.Windows.Single().Tags).Count().IsEqualTo(1);
+
+        client.RaiseEvent(IpcMessageTypes.WindowTagsChanged, Window(HwndA, "proc"));
         await Assert.That(vm.Windows.Single().Tags).IsEmpty();
         await Assert.That(vm.Windows.Single().HasTags).IsFalse();
     }
 
-    // ---- running macros --------------------------------------------------------------------
+    // ---- running macros ------------------------------------------------------------------------
 
     [Test]
-    public async Task RunsAlreadyTracked_AreRenderedAtConstruction()
+    public async Task RunningMacrosChanged_AddsAndRemovesRows()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        var handle = runs.TryBegin("pw-boot")!;
-        handle.CurrentNodeId = "wait-in-world";
-
-        using var vm = CreateVm(registry, runs);
-
-        await Assert.That(vm.Runs).Count().IsEqualTo(1);
-        await Assert.That(vm.Runs[0].MacroName).IsEqualTo("pw-boot");
-        await Assert.That(vm.Runs[0].CurrentNodeText).IsEqualTo("wait-in-world");
-        await Assert.That(vm.HasRuns).IsTrue();
-    }
-
-    [Test]
-    public async Task RunsChanged_AddsAndRemovesRows()
-    {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        using var vm = CreateVm(registry, runs);
+        var client = new FakeIpcClient();
+        using var vm = CreateVm(client);
 
         await Assert.That(vm.Runs).IsEmpty();
         await Assert.That(vm.HasRuns).IsFalse();
 
-        var handle = runs.TryBegin("pw-assist")!;
+        client.RaiseEvent(IpcMessageTypes.RunningMacrosChanged, new[] { Run(Guid.NewGuid(), "pw-assist") });
         await Assert.That(vm.Runs).Count().IsEqualTo(1);
 
-        runs.Complete(handle.RunId);
+        client.RaiseEvent(IpcMessageTypes.RunningMacrosChanged, Array.Empty<RunningMacroDto>());
         await Assert.That(vm.Runs).IsEmpty();
         await Assert.That(vm.HasRuns).IsFalse();
     }
@@ -193,58 +226,54 @@ public class MainWindowViewModelTests
     [Test]
     public async Task SurvivingRuns_KeepTheirRowAcrossARefresh()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        using var vm = CreateVm(registry, runs);
-        var first = runs.TryBegin("первый")!;
+        var first = Run(Guid.NewGuid(), "первый");
+        var second = Run(Guid.NewGuid(), "второй");
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetRunningMacros, new[] { first });
+        using var vm = CreateVm(client);
         var row = vm.Runs.Single();
 
-        var second = runs.TryBegin("второй")!;
-
+        client.RaiseEvent(IpcMessageTypes.RunningMacrosChanged, new[] { first, second });
         await Assert.That(vm.Runs).Count().IsEqualTo(2);
         await Assert.That(vm.Runs.Single(r => r.RunId == first.RunId)).IsSameReferenceAs(row);
 
-        runs.Complete(second.RunId);
+        client.RaiseEvent(IpcMessageTypes.RunningMacrosChanged, new[] { first });
         await Assert.That(vm.Runs.Single()).IsSameReferenceAs(row);
     }
 
     [Test]
-    public async Task StopRun_CancelsThatRunOnly()
+    public async Task StopRun_SendsStopMacroForThatRunOnly()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        using var vm = CreateVm(registry, runs);
-        var first = runs.TryBegin("первый")!;
-        var second = runs.TryBegin("второй")!;
+        var first = Run(Guid.NewGuid(), "первый");
+        var second = Run(Guid.NewGuid(), "второй");
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetRunningMacros, new[] { first, second });
+        using var vm = CreateVm(client);
 
-        vm.StopRun(vm.Runs.Single(r => r.RunId == first.RunId));
+        await vm.StopRunAsync(vm.Runs.Single(r => r.RunId == first.RunId));
 
-        await Assert.That(first.Token.IsCancellationRequested).IsTrue();
-        await Assert.That(second.Token.IsCancellationRequested).IsFalse();
+        await Assert.That(client.PayloadsOf<StopMacroRequest>(IpcMessageTypes.StopMacro).Select(p => p.RunId))
+            .IsEquivalentTo(new[] { first.RunId });
     }
 
     [Test]
-    public async Task StopAllRuns_CancelsEverything()
+    public async Task StopAllRuns_SendsStopMacroForEveryRun()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        using var vm = CreateVm(registry, runs);
-        var first = runs.TryBegin("первый")!;
-        var second = runs.TryBegin("второй")!;
+        var first = Run(Guid.NewGuid(), "первый");
+        var second = Run(Guid.NewGuid(), "второй");
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetRunningMacros, new[] { first, second });
+        using var vm = CreateVm(client);
 
-        vm.StopAllRuns();
+        await vm.StopAllRunsAsync();
 
-        await Assert.That(first.Token.IsCancellationRequested).IsTrue();
-        await Assert.That(second.Token.IsCancellationRequested).IsTrue();
+        await Assert.That(client.PayloadsOf<StopMacroRequest>(IpcMessageTypes.StopMacro).Select(p => p.RunId))
+            .IsEquivalentTo(new[] { first.RunId, second.RunId });
     }
 
     [Test]
     public async Task Elapsed_IsRenderedFromTheRunStart()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        using var vm = CreateVm(registry, runs);
-        runs.TryBegin("долгий");
+        var client = new FakeIpcClient()
+            .Respond(IpcMessageTypes.GetRunningMacros, new[] { Run(Guid.NewGuid(), "долгий") });
+        using var vm = CreateVm(client);
         var row = vm.Runs.Single();
 
         row.Refresh(row.StartedUtc.AddSeconds(65));
@@ -261,10 +290,9 @@ public class MainWindowViewModelTests
     [Test]
     public async Task RefreshElapsed_TicksEveryRow()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        using var vm = CreateVm(registry, runs);
-        runs.TryBegin("тик");
+        var client = new FakeIpcClient()
+            .Respond(IpcMessageTypes.GetRunningMacros, new[] { Run(Guid.NewGuid(), "тик") });
+        using var vm = CreateVm(client);
 
         vm.RefreshElapsed();
 
@@ -272,15 +300,15 @@ public class MainWindowViewModelTests
     }
 
     [Test]
-    public async Task Dispose_StopsTrackingBothRegistries()
+    public async Task Dispose_StopsListeningToTheDaemon()
     {
-        var registry = CreateRegistry();
-        using var runs = CreateRuns();
-        var vm = CreateVm(registry, runs);
+        var client = new FakeIpcClient();
+        var vm = CreateVm(client);
         vm.Dispose();
 
-        registry.Register(HwndA, "proc");
-        runs.TryBegin("после-dispose");
+        client.RaiseEvent(IpcMessageTypes.WindowAppeared, Window(HwndA, "proc"));
+        client.RaiseEvent(IpcMessageTypes.RunningMacrosChanged, new[] { Run(Guid.NewGuid(), "после-dispose") });
+        client.RaiseConnected();
 
         await Assert.That(vm.Windows).IsEmpty();
         await Assert.That(vm.Runs).IsEmpty();

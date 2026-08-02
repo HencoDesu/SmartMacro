@@ -46,34 +46,39 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Assets and tessdata still physically live under SmartMacro.App; they're linked in
-         here so the daemon's output directory is self-sufficient (vision templates, tag
-         icons, the tray .ico, the Tesseract language pack). Stage 3, which strips the engine
-         out of App, is the natural point to git-mv them across and delete these links. -->
-    <None Include="..\SmartMacro.App\tessdata\**\*">
+    <!-- Assets and tessdata physically live here as of stage 3 (they used to be linked out
+         of SmartMacro.App). Everything that reads them — the vision pipeline, the template
+         matcher, WindowIconService, Win32TrayIcon — runs in this process, so this is where
+         they belong; the panel keeps only its own embedded window icon.
+         Copied rather than embedded so the user can add or retouch a template without a
+         rebuild. -->
+    <None Include="tessdata\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>tessdata\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </None>
     <!-- Tray icon, loaded from disk by Win32TrayIcon (LoadImage + LR_LOADFROMFILE). -->
-    <None Include="..\SmartMacro.App\Assets\icon.ico">
+    <None Include="Assets\icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>Assets\icon.ico</Link>
     </None>
-    <None Include="..\SmartMacro.App\Assets\ClassIcons\*.png">
+    <!-- Per-tag taskbar icons. A SetIconNode names the file (typically
+         "Assets/ClassIcons/{tag}.png"); WindowIconService resolves it and skips with a
+         Debug log when it's missing. -->
+    <None Include="Assets\ClassIcons\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>Assets\ClassIcons\%(Filename)%(Extension)</Link>
     </None>
-    <None Include="..\SmartMacro.App\Assets\GameClassNames\*.png">
+    <!-- Tag templates for the stats-window template-match identification path
+         (filename stem = tag). -->
+    <None Include="Assets\GameClassNames\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>Assets\GameClassNames\%(Filename)%(Extension)</Link>
     </None>
-    <None Include="..\SmartMacro.App\Assets\GameUiElements\*.png">
+    <!-- Single UI-element templates, referenced by file stem from Find/Wait nodes. -->
+    <None Include="Assets\GameUiElements\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>Assets\GameUiElements\%(Filename)%(Extension)</Link>
     </None>
-    <None Include="..\SmartMacro.App\Assets\templates\**\*.png">
+    <!-- User-authored template SETS for RecognizeTag nodes: Assets/templates/{set}/{tag}.png.
+         Empty in the repo — the glob exists so a set dropped in here reaches the output on
+         the next build. -->
+    <None Include="Assets\templates\**\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>Assets\templates\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </None>
   </ItemGroup>
 

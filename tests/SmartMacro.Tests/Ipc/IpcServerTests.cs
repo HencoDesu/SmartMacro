@@ -115,6 +115,35 @@ public class IpcServerTests
         await serve;
     }
 
+    [Test]
+    public async Task RequestActivate_ReachesEveryClient_ThroughTheServerTheDispatcherWasHandedAtConstruction()
+    {
+        await using var fixture = new ServerFixture();
+        var (asker, askerServe) = await fixture.ConnectAsync();
+        var (panel, panelServe) = await fixture.ConnectAsync();
+
+        // The sender is a second UI launch; the recipient that matters is the OTHER
+        // connection. This also covers the wiring itself: IpcServer hands itself to the
+        // dispatcher in its constructor, because DI cannot resolve the cycle.
+        await asker.SendAsync(new IpcRequest(9, IpcMessageTypes.RequestActivate));
+
+        // The asker gets BOTH the reply and its own copy of the broadcast, and the response
+        // path and the event pump are independent writers — so the order is not guaranteed.
+        var askerLines = (await asker.ReadLinesAsync(2)).Select(Parse).ToList();
+        var reply = askerLines.Single(line => line.TryGetProperty("Id", out _));
+        await Assert.That(reply.GetProperty("Ok").GetBoolean()).IsTrue();
+        await Assert.That(askerLines.Where(line => !line.TryGetProperty("Id", out _)).Select(TypeOf))
+            .IsEquivalentTo(new[] { IpcMessageTypes.ActivateWindow });
+
+        var pushed = Parse(await panel.ReadLineAsync());
+        await Assert.That(pushed.TryGetProperty("Id", out _)).IsFalse();
+        await Assert.That(TypeOf(pushed)).IsEqualTo(IpcMessageTypes.ActivateWindow);
+
+        asker.CloseClient();
+        panel.CloseClient();
+        await Task.WhenAll(askerServe, panelServe);
+    }
+
     // ------------------------------------------------------------------- engine events
 
     [Test]

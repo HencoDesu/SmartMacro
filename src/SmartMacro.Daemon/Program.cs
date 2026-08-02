@@ -25,17 +25,15 @@ namespace SmartMacro.Daemon;
 // a Win32 tray icon. No Avalonia, no XAML, no render loop; the UI is a separate process the
 // tray launches on demand and the user can close again without stopping automation.
 //
-// ⚠ STAGE 2A TRANSITIONAL HAZARD: SmartMacro.App still builds the same composition root in
-// its own process (see the note at the top of App/Program.cs). Running both executables at
-// once means two engines: duplicate RegisterHotKey (one silently loses), duplicate
-// ProcessMonitor polling, duplicate agents, duplicate input into the same game windows. Run
-// ONE of them until stage 3 strips App's composition. The tray's "Открыть панель" launch is
-// safe today only because the App's engine is idempotent-ish, not because it's correct.
+// This is the ONLY process that hosts an engine. Stage 3 stripped SmartMacro.App down to an
+// IPC client with no SmartMacro.Core reference at all, which retired the stage-2A hazard of
+// two composition roots fighting over RegisterHotKey, the mouse hook and the game windows.
 //
-// Stage 2B added the control endpoint: IpcServer listens on the named pipe
+// The control endpoint is the whole interface: IpcServer listens on the named pipe
 // "smartmacro-control" (JSON Lines, multi-client) and exposes the engine to the panel —
 // window/tag snapshots and pushes, macro CRUD and runs, hotkey suspend/resume, capture
-// dumps, shutdown. Stage 3 writes the client that talks to it.
+// dumps, activate-the-panel, shutdown. Anything the UI needs is a message type here, not a
+// second copy of the engine there.
 internal static class Program
 {
     public static int Main(string[] args)
@@ -162,6 +160,10 @@ internal static class Program
         services.AddSingleton<CaptureDumpService>();
         services.AddSingleton<IpcRequestDispatcher>();
         services.AddSingleton<IpcServer>();
+        // Event fan-out as a capability, for the tray's "the panel is already up — bring it
+        // forward" path. (The dispatcher gets the same object handed to it by the server's
+        // constructor instead, because server → dispatcher → server would be a DI cycle.)
+        services.AddSingleton<IIpcBroadcaster>(sp => sp.GetRequiredService<IpcServer>());
 
         // Registered AFTER the engine and BEFORE the tray, which pins both ends of its
         // lifetime: hosted services start in registration order, so the pipe only appears

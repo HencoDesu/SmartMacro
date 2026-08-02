@@ -69,6 +69,20 @@ public static class IpcMessageTypes
     /// <summary>Request: — → Response: —. Orderly daemon shutdown; the reply is sent before the process exits.</summary>
     public const string Shutdown = "Shutdown";
 
+    // -------------------------------------------------------------- requests: lifecycle
+
+    /// <summary>
+    /// Request: — → Response: —. "Bring the panel to the front." The daemon answers by
+    /// broadcasting <see cref="ActivateWindow"/> to every client, INCLUDING the one that
+    /// asked — the sender is normally a second UI launch that is about to exit, and the
+    /// recipient is the panel already on screen.
+    ///
+    /// It exists as a round trip through the daemon rather than as a direct
+    /// process-to-process poke because the second instance knows nothing about the first:
+    /// no window handle, no pid, only the pipe they share.
+    /// </summary>
+    public const string RequestActivate = "RequestActivate";
+
     // ------------------------------------------------------------------------- events
 
     /// <summary>Payload: <c>WindowDto</c>. A new window of a monitored process was registered.</summary>
@@ -86,6 +100,10 @@ public static class IpcMessageTypes
     /// <summary>Payload: <c>RunningMacroDto[]</c>. The run registry changed; carries the new snapshot.</summary>
     public const string RunningMacrosChanged = "RunningMacrosChanged";
 
-    /// <summary>Payload: —. The user asked (via the tray) for the panel to come to the foreground.</summary>
+    /// <summary>
+    /// Payload: —. Someone asked for the panel to come to the foreground: the tray's
+    /// "Открыть панель" when a panel is already running, or a second UI launch via
+    /// <see cref="RequestActivate"/>.
+    /// </summary>
     public const string ActivateWindow = "ActivateWindow";
 }

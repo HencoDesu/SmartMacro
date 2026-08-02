@@ -43,7 +43,7 @@ namespace SmartMacro.Ipc;
 /// a UI catching up through a backlog. A single global queue was the alternative and is
 /// worse: one wedged client would stall event delivery to every other client.
 /// </summary>
-public sealed partial class IpcServer : IHostedService, IAsyncDisposable
+public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBroadcaster
 {
     /// <summary>
     /// Pipe name — taken from <see cref="IpcPipe.Name"/> in Contracts, which is the only
@@ -90,6 +90,12 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable
         _macros = macros;
         _runs = runs;
         _logger = logger;
+
+        // Hand ourselves to the dispatcher so RequestActivate has something to broadcast
+        // through. Done here rather than by DI because the dependency is genuinely circular
+        // (server → dispatcher → server) and this is the end of it that already holds the
+        // other object.
+        dispatcher.AttachBroadcaster(this);
     }
 
     /// <summary>Number of clients currently connected. Diagnostics and tests.</summary>
@@ -125,8 +131,8 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable
             _acceptLoop = null;
         }
 
-        // Every live connection is dropped, which closes its pipe — the signal stage 3's
-        // client turns into "демон остановлен" instead of a silent hang.
+        // Every live connection is dropped, which closes its pipe — the signal the panel's
+        // client turns into "служба остановлена" (and an exit) instead of a silent hang.
         foreach (var client in _clients.Keys)
         {
             client.Drop();
@@ -464,11 +470,10 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable
     private void OnRunsChanged() =>
         Broadcast(IpcMessageTypes.RunningMacrosChanged, () => IpcJson.Write(_runs.Snapshot().ToDto()));
 
-    // IpcMessageTypes.ActivateWindow has NO producer yet, by design: it is the tray's
-    // answer to a second UI launch ("a panel is already running — bring it forward"), and
-    // there is nothing to bring forward until stage 3 ships a client that can listen for
-    // it. TrayController.OpenPanel is where it will be raised, through the public
-    // Broadcast(IpcEvent) overload; the fan-out below already handles a payloadless event.
+    // IpcMessageTypes.ActivateWindow has two producers, both outside this class and both
+    // going through the public Broadcast(IpcEvent) overload via IIpcBroadcaster: the tray's
+    // "Открыть панель" when the panel it launched is still alive, and the dispatcher's
+    // RequestActivate handler (a second UI launch asking the first one to come forward).
 
     // ------------------------------------------------------------------------ teardown
 

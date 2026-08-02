@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using SmartMacro.Contracts.Ipc;
+using SmartMacro.Ipc;
 using SmartMacro.Native.Tray;
 
 namespace SmartMacro.Daemon;
@@ -27,21 +29,25 @@ internal sealed partial class TrayController : IHostedService, IDisposable
 
     private readonly Win32TrayIcon _tray;
     private readonly IHostApplicationLifetime _lifetime;
+    private readonly IIpcBroadcaster _broadcaster;
     private readonly ILogger<TrayController> _logger;
     private readonly Lock _uiProcessLock = new();
 
-    // The UI process we spawned, while it's alive. Stage 2B/3 replaces the "already running"
-    // no-op with an IPC ActivateWindow round-trip; until then the best we can do is refuse to
-    // start a second copy (two panels would mean two composition roots — see Program.cs).
+    // The UI process we spawned, while it's alive. A second click on "Открыть панель" does
+    // not start a second copy (single-instance is also enforced UI-side by a named mutex) —
+    // it pushes ActivateWindow at every connected client, and the panel already on screen
+    // brings itself forward.
     private Process? _uiProcess;
 
     public TrayController(
         Win32TrayIcon tray,
         IHostApplicationLifetime lifetime,
+        IIpcBroadcaster broadcaster,
         ILogger<TrayController> logger)
     {
         _tray = tray;
         _lifetime = lifetime;
+        _broadcaster = broadcaster;
         _logger = logger;
     }
 
@@ -101,7 +107,11 @@ internal sealed partial class TrayController : IHostedService, IDisposable
         {
             if (_uiProcess is { HasExited: false })
             {
+                // It may be hidden behind the game's full-screen clients; the panel listens
+                // for this and surfaces itself. Fire-and-forget by design — Broadcast never
+                // blocks and never throws, and there is no acknowledgement worth waiting for.
                 LogPanelAlreadyRunning(_uiProcess.Id);
+                _broadcaster.Broadcast(new IpcEvent(IpcMessageTypes.ActivateWindow));
                 return;
             }
 
@@ -150,7 +160,7 @@ internal sealed partial class TrayController : IHostedService, IDisposable
     [LoggerMessage(LogLevel.Information, "Панель запущена: '{Path}' (pid {Pid})")]
     partial void LogPanelStarted(string path, int pid);
 
-    [LoggerMessage(LogLevel.Information, "Панель уже запущена (pid {Pid}) — второй экземпляр не создаём")]
+    [LoggerMessage(LogLevel.Information, "Панель уже запущена (pid {Pid}) — просим её выйти на передний план")]
     partial void LogPanelAlreadyRunning(int pid);
 
     [LoggerMessage(LogLevel.Error, "Не найден исполняемый файл панели — искали '{ProbedPath}'")]

@@ -1,50 +1,54 @@
 using Avalonia;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using SmartMacro.Agents;
-using SmartMacro.Config;
-using SmartMacro.GameWindows;
-using SmartMacro.Hotkeys;
-using SmartMacro.Input;
-using SmartMacro.Native.Hotkey;
-using SmartMacro.Orchestration;
-using SmartMacro.Presentation;
-using SmartMacro.ProcessMonitoring;
-using SmartMacro.App.Mvvm;
-using SmartMacro.App.Services;
-using SmartMacro.App.ViewModels;
-using SmartMacro.Macros.Execution;
-using SmartMacro.Macros.Storage;
-using SmartMacro.Vision;
-using SmartMacro.Windows;
 using Serilog;
+using SmartMacro.App.Interop;
+using SmartMacro.App.Ipc;
+using SmartMacro.Contracts.Ipc;
 
 namespace SmartMacro.App;
 
-// ⚠ STAGE 2A TRANSITIONAL HAZARD — DO NOT RUN THIS AND SmartMacro.Daemon AT THE SAME TIME.
-//
-// Stage 2A gave the engine a second, headless home (SmartMacro.Daemon) but deliberately left
-// this composition root intact, because the view-models still call Core services
-// (WindowRegistry, MacroGraphStore, Orchestrator, HotkeyListener) directly and would break
-// the moment it went away. The result is two executables that can each host a full engine:
-//
-//   * RegisterHotKey is process-global — whichever starts second silently fails to bind and
-//     its macros never fire, while the first keeps working. Confusing to debug.
-//   * WH_MOUSE_LL hooks stack: a mouse chord fires the macro in BOTH processes.
-//   * Two ProcessMonitors spawn two agents per game window, two boot macros race on the same
-//     client, and input gets dispatched twice.
-//
-// Stage 3 deletes everything below and replaces it with an IPC client. Until then: run the
-// daemon OR the app, never both.
+/// <summary>
+/// The panel's entry point.
+///
+/// Stage 3 turned this file from a composition root into a bootstrapper. There is no engine
+/// here any more — no process monitor, no hotkeys, no vision, no macro store — only a
+/// connection to <c>SmartMacro.Daemon</c>, which owns all of it. That is the whole point of
+/// the split: OpenCV, Tesseract and their native blobs no longer load into the process the
+/// user opens and closes all day.
+///
+/// Startup, in order:
+///
+///   1. <b>Single instance.</b> A second launch must not open a second window. It connects,
+///      asks the daemon to broadcast <c>ActivateWindow</c> at the panel already running, and
+///      exits — so re-running the shortcut reads as "show me the panel".
+///   2. <b>Daemon or bust.</b> If nothing is listening we start the daemon ourselves and
+///      keep retrying the connect (it has a whole engine to build). Still nothing ⇒ an error
+///      box and exit 1, because a panel with no daemon can display nothing and change nothing.
+///   3. <b>Avalonia.</b> Closing the window now exits the process — the tray moved to the
+///      daemon, and automation keeps running without us.
+/// </summary>
 internal static class Program
 {
-    public static IServiceProvider? Services { get; private set; }
+    // Enough for the daemon to be already up (it either answers at once or isn't there).
+    private static readonly TimeSpan ExistingDaemonWindow = TimeSpan.FromSeconds(2);
+
+    // Enough for a cold start: composition root, macro library load, hotkey registration.
+    private static readonly TimeSpan LaunchedDaemonWindow = TimeSpan.FromSeconds(20);
+
+    // A second instance is talking to a daemon that is provably running (the first instance
+    // needed it too), so this only has to cover a busy pipe.
+    private static readonly TimeSpan ActivateWindow = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// The process-wide service holder. Set once before Avalonia starts, cleared on exit.
+    /// Windows and dialogs reach their dependencies through it.
+    /// </summary>
+    public static AppServices? Services { get; private set; }
 
     [STAThread]
     public static int Main(string[] args)
     {
-        var bootstrapConfiguration = new ConfigurationBuilder()
+        var configuration = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
             .AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true)
@@ -52,42 +56,50 @@ internal static class Program
             .Build();
 
         Log.Logger = new LoggerConfiguration()
-            .ReadFrom.Configuration(bootstrapConfiguration)
-            .CreateBootstrapLogger();
+            .ReadFrom.Configuration(configuration)
+            .Enrich.FromLogContext()
+            .CreateLogger();
 
         try
         {
-            Log.Information("SmartMacro starting");
+            using var instance = SingleInstanceLock.TryAcquire(SingleInstanceLock.AppMutexName);
+            if (instance is null)
+            {
+                Log.Information("Панель уже запущена — просим её выйти на передний план");
+                return ActivateRunningPanel();
+            }
 
-            var builder = Host.CreateApplicationBuilder(args);
-            builder.Configuration.AddConfiguration(bootstrapConfiguration);
+            Log.Information("SmartMacro UI starting");
 
-            builder.Services.AddSerilog((sp, lc) => lc
-                .ReadFrom.Configuration(builder.Configuration)
-                .ReadFrom.Services(sp)
-                .Enrich.FromLogContext());
+            var client = new IpcClient();
+            if (!ConnectToDaemon(client))
+            {
+                client.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                Win32MessageBox.Error(
+                    "SmartMacro",
+                    "Не удалось подключиться к службе SmartMacro.\n\n" +
+                    "Запустите SmartMacro.Daemon.exe вручную и откройте панель ещё раз.\n" +
+                    "Подробности — в logs/smartmacro-ui-*.log.");
+                return 1;
+            }
 
-            ConfigureServices(builder.Services, builder.Configuration);
-
-            using var host = builder.Build();
-            Services = host.Services;
-
-            Log.Information("Composition root built, starting hosted services");
-            host.StartAsync().GetAwaiter().GetResult();
+            Services = new AppServices(client, ResolveMacroFolder());
             try
             {
                 BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
             }
             finally
             {
-                Log.Information("Avalonia exited, stopping hosted services");
-                host.StopAsync().GetAwaiter().GetResult();
+                Log.Information("Avalonia exited, closing the daemon connection");
+                var services = Services;
+                Services = null;
+                services?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
             return 0;
         }
         catch (Exception ex)
         {
-            Log.Fatal(ex, "SmartMacro terminated unexpectedly");
+            Log.Fatal(ex, "SmartMacro UI terminated unexpectedly");
             return 1;
         }
         finally
@@ -96,75 +108,61 @@ internal static class Program
         }
     }
 
-    private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+    /// <summary>
+    /// Second-instance path: poke the daemon and leave. Never opens a window, and never
+    /// fails the launch — if the daemon is unreachable there is nothing useful to say to a
+    /// user who already has a panel on screen.
+    /// </summary>
+    private static int ActivateRunningPanel()
     {
-        services.Configure<AgentOptions>(configuration.GetSection("Agent"));
-        // "ProcessProfiles" is a raw JSON array, so bind it into the wrapper's list.
-        services.AddOptions<ProcessProfileOptions>()
-            .Configure(options => configuration.GetSection(ProcessProfileOptions.SectionName).Bind(options.Profiles));
-        services.Configure<CoordinateReaderOptions>(configuration.GetSection("Vision:CoordinateReader"));
-        services.Configure<ClassMatcherOptions>(configuration.GetSection("Vision:ClassMatcher"));
-        services.Configure<WindowVisionOptions>(configuration.GetSection("Vision:Window"));
+        var client = new IpcClient();
+        try
+        {
+            if (!client.StartAsync(ActivateWindow).GetAwaiter().GetResult())
+            {
+                Log.Warning("Демон недоступен — активировать существующую панель нечем");
+                return 0;
+            }
 
-        // GameWindowFactory bakes in the input-strategy choice (PostMessage + WM_ACTIVATEAPP
-        // wake-up) so neither DI nor the orchestrator has to know about Native types. Swap
-        // the factory implementation once we know what the live client likes.
-        // Win32NativeWindowSystem is a static class — no DI registration needed.
-        services.AddSingleton<IGameWindowFactory, GameWindowFactory>();
+            client.RequestAsync(IpcMessageTypes.RequestActivate).GetAwaiter().GetResult();
+            Log.Information("Запрошена активация уже запущенной панели");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Не удалось запросить активацию панели");
+        }
+        finally
+        {
+            client.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        return 0;
+    }
 
-        // Sole owner of window tags AND the hwnd → IGameWindow lookup — everything
-        // (agents, macro primitives, UI) reads window state from here.
-        services.AddSingleton<WindowRegistry>();
+    private static bool ConnectToDaemon(IpcClient client)
+    {
+        if (client.StartAsync(ExistingDaemonWindow).GetAwaiter().GetResult())
+        {
+            return true;
+        }
 
-        services.AddSingleton<IClassMatcher, ClassMatcher>();
-        // Stage 2B moved the "Dump captures" sweep out of MainWindow into Core; the button
-        // resolves it from here. After stage 3 only the daemon registers it.
-        services.AddSingleton<CaptureDumpService>();
-        services.AddSingleton<TemplateSetProvider>();
-        services.AddSingleton<ICoordinateReader, TesseractCoordinateReader>();
-        services.AddSingleton<WindowIconService>();
-        services.AddSingleton<AgentInputDispatcher>();
-        services.AddSingleton<CursorPositionProvider>();
-        services.AddSingleton<ICharacterAgentFactory, CharacterAgentFactory>();
-        services.AddSingleton<Win32HotkeyMonitor>();
-        services.AddSingleton<Win32MouseHookMonitor>();
+        Log.Information("Демон не отвечает — запускаем его");
+        if (!DaemonLauncher.TryStart(AppContext.BaseDirectory))
+        {
+            return false;
+        }
 
-        // Macro engine. The store is the library of record: it resolves sub-macros for
-        // RunMacroNode, supplies HotkeyListener's bindings, and tells the orchestrator
-        // which graphs a new process should boot. On first run it migrates a legacy
-        // macros.json and/or seeds the PW example set.
-        services.AddSingleton<MacroGraphStore>();
-        services.AddSingleton<IMacroGraphResolver>(sp => sp.GetRequiredService<MacroGraphStore>());
-        services.AddSingleton<IMacroPrimitives, MacroPrimitives>();
-        services.AddSingleton<MacroExecutor>();
-        services.AddSingleton<MacroRunRegistry>();
+        return client.StartAsync(LaunchedDaemonWindow).GetAwaiter().GetResult();
+    }
 
-        // ProcessMonitor and HotkeyListener are registered first because Orchestrator
-        // subscribes to their events during construction. DI resolves them before
-        // Orchestrator regardless of registration order, but listing them first reads
-        // naturally.
-        services.AddSingleton<ProcessMonitor>();
-        services.AddHostedService(sp => sp.GetRequiredService<ProcessMonitor>());
-
-        // Hotkey bindings come from the macro library itself (each graph's HotkeyTriggers),
-        // so the listener re-registers whenever the library changes. No hotkeys.json.
-        services.AddSingleton<HotkeyListener>();
-        services.AddHostedService(sp => sp.GetRequiredService<HotkeyListener>());
-
-        // Single Orchestrator instance, also drives the dispatch-loop lifecycle via IHostedService.
-        services.AddSingleton<Orchestrator>();
-        services.AddHostedService(sp => sp.GetRequiredService<Orchestrator>());
-
-        // UI seams. The view-models take these as interfaces so they can be exercised
-        // headlessly (and so stage 3 can swap in IPC-backed implementations without
-        // touching a single VM): thread marshalling, "start this macro", and the hotkey
-        // suspend/resume the chord picker depends on.
-        services.AddSingleton<IUiDispatcher>(AvaloniaUiDispatcher.Instance);
-        services.AddSingleton<IMacroLauncher, OrchestratorMacroLauncher>();
-        services.AddSingleton<IHotkeySuspension, HotkeyListenerSuspension>();
-
-        services.AddSingleton<MainWindowViewModel>();
-        services.AddSingleton<MainWindow>();
+    // The macro folder belongs to the daemon, so it is resolved relative to the daemon's
+    // executable — which in the dev tree is a sibling bin directory, not ours.
+    private static string ResolveMacroFolder()
+    {
+        var daemon = DaemonLauncher.Resolve(AppContext.BaseDirectory);
+        var directory = daemon is null
+            ? AppContext.BaseDirectory
+            : Path.GetDirectoryName(daemon) ?? AppContext.BaseDirectory;
+        return Path.Combine(directory, "macros");
     }
 
     // Used by the Avalonia previewer/designer; must be parameterless and named exactly this way.

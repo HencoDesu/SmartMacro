@@ -80,11 +80,11 @@ public partial class MacrosDialog : Window
         }
     }
 
-    private void OnStopMacroClicked(object? sender, RoutedEventArgs e)
+    private async void OnStopMacroClicked(object? sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && sender is Button { DataContext: MacroListItemViewModel item })
         {
-            vm.Stop(item);
+            await vm.StopAsync(item);
         }
     }
 

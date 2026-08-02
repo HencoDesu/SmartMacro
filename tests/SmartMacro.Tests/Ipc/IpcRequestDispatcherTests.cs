@@ -1,6 +1,7 @@
 using FakeItEasy;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Ipc;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
 using SmartMacro.Tests.Macros;
@@ -313,6 +314,36 @@ public class IpcRequestDispatcherTests
         var folder = IpcJson.Read<string>(response.Payload)!;
         await Assert.That(folder).IsEqualTo(harness.Captures.FolderPath);
         await Assert.That(Directory.Exists(folder)).IsTrue();
+    }
+
+    [Test]
+    public async Task RequestActivate_BroadcastsActivateWindow_ToEveryClient()
+    {
+        using var harness = new IpcDispatcherHarness();
+        var sent = new List<IpcEvent>();
+        var broadcaster = A.Fake<IIpcBroadcaster>();
+        A.CallTo(() => broadcaster.Broadcast(A<IpcEvent>._))
+            .Invokes((IpcEvent evt) => sent.Add(evt));
+        harness.Dispatcher.AttachBroadcaster(broadcaster);
+
+        var response = await harness.DispatchAsync(IpcMessageTypes.RequestActivate);
+
+        // Broadcast, not a reply payload: the asker is a second UI launch about to exit and
+        // the panel that must come forward is a different connection entirely.
+        await Assert.That(response.Ok).IsTrue();
+        await Assert.That(sent.Select(evt => evt.Type)).IsEquivalentTo(new[] { IpcMessageTypes.ActivateWindow });
+        await Assert.That(sent[0].Payload).IsNull();
+    }
+
+    [Test]
+    public async Task RequestActivate_WithNoServerAttached_IsRejectedRatherThanThrowing()
+    {
+        using var harness = new IpcDispatcherHarness();
+
+        var response = await harness.DispatchAsync(IpcMessageTypes.RequestActivate);
+
+        await Assert.That(response.Ok).IsFalse();
+        await Assert.That(response.Error).IsNotNull();
     }
 
     [Test]

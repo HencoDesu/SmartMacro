@@ -1,11 +1,13 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Serilog;
+using SmartMacro.App.Ipc;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.Services;
 using SmartMacro.App.ViewModels.Nodes;
-using SmartMacro.Macros.Execution;
+using SmartMacro.Contracts.Dto;
+using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Model;
-using SmartMacro.Macros.Storage;
 using SmartMacro.Macros.Validation;
 
 namespace SmartMacro.App.ViewModels;
@@ -17,6 +19,7 @@ public sealed class MacroListItemViewModel : ObservableObject
 
     public MacroListItemViewModel(MacroGraph macro)
     {
+        ArgumentNullException.ThrowIfNull(macro);
         Name = macro.Name;
         Summary = Describe(macro);
     }
@@ -67,6 +70,7 @@ public sealed class ValidationIssueViewModel
 {
     public ValidationIssueViewModel(ValidationIssue issue)
     {
+        ArgumentNullException.ThrowIfNull(issue);
         IsError = issue.Severity == ValidationSeverity.Error;
         NodeId = issue.NodeId;
         Display = issue.NodeId is null
@@ -101,32 +105,49 @@ public sealed class ValidationIssueViewModel
 /// express linear lists); the canvas in W0.4 adds direct manipulation on top of the same
 /// model, it does not unlock anything that is unreachable here.
 ///
-/// Everything Avalonia-shaped is kept out on purpose: Core services come in through the
-/// constructor, thread marshalling goes through <see cref="IUiDispatcher"/>, and the two
-/// side effects the dialog needs from the host process — starting a macro and suspending
-/// global hotkeys — are narrow interfaces. The whole class is therefore exercisable
-/// headlessly, which matters because the graph↔VM mapping is where a silent data-loss bug
-/// would live.
+/// <b>Stage 3: the library is remote.</b> Where this VM used to hold a <c>MacroGraphStore</c>
+/// it now holds a snapshot fetched over IPC, refreshed on <c>MacrosChanged</c> and on every
+/// reconnect. Three consequences worth knowing before editing this class:
+///
+///   * <b>The daemon is the validator of record.</b> <c>SaveMacro</c> answers with the issue
+///     list; an empty one means the graph was written. Warnings on a SUCCESSFUL save are not
+///     returned (the protocol gives that field one meaning — rejection reasons), so they are
+///     re-derived locally with the same <see cref="MacroGraphValidator"/>.
+///   * <b>The save's own echo can arrive before its reply.</b> The daemon broadcasts
+///     <c>MacrosChanged</c> from inside its save, on a different write path than the
+///     response — so the "is this an external edit?" baselines are set BEFORE the request
+///     goes out, and rolled back if it is refused.
+///   * <b>A successful write is merged into the local library immediately</b> rather than
+///     waiting for the push, so the list and the selection settle synchronously.
+///
+/// Everything Avalonia-shaped is kept out on purpose, so the whole class is exercisable
+/// headlessly against a fake <see cref="IIpcClient"/> — which matters because the graph↔VM
+/// mapping is where a silent data-loss bug would live.
 /// </summary>
 public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 {
     private const string DraftName = "новый-макрос";
 
-    private readonly MacroGraphStore _store;
-    private readonly MacroRunRegistry _runs;
+    /// <summary>Folder the daemon keeps its macro files in, relative to its own directory.</summary>
+    private const string MacroFolderName = "macros";
+
+    private readonly IIpcClient _client;
     private readonly IMacroLauncher? _launcher;
     private readonly IHotkeySuspension? _hotkeys;
     private readonly IUiDispatcher _dispatcher;
+
+    private IReadOnlyList<MacroGraph> _library = [];
+    private IReadOnlyList<RunningMacroDto> _runningMacros = [];
 
     private MacroListItemViewModel? _selectedMacro;
     private NodeRowViewModel? _selectedNode;
     private bool _suppressSelectionReload;
 
-    // Name of the macro currently open, as it exists on disk. null = unsaved draft.
+    // Name of the macro currently open, as it exists in the library. null = unsaved draft.
     private string? _loadedName;
     // Serialised form of the editor state as of the last load/save — the dirty baseline.
     private string _loadedJson = string.Empty;
-    // Serialised form of what we believe is on disk — the external-change baseline. Kept
+    // Serialised form of what we believe the daemon has — the external-change baseline. Kept
     // separately from _loadedJson because loading normalises (a degenerate region becomes
     // null, say), and normalisation must not read as "the file changed under us".
     private string _diskJson = string.Empty;
@@ -138,29 +159,40 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private string? _errorMessage;
     private string? _statusMessage;
 
+    /// <param name="client">Connection to the daemon — the library, the runs and the writes.</param>
+    /// <param name="launcher">Manual "Run" seam; <c>null</c> disables the button.</param>
+    /// <param name="hotkeys">Suspend/resume around the chord picker; <c>null</c> is a no-op.</param>
+    /// <param name="dispatcher">UI-thread marshalling for daemon pushes.</param>
+    /// <param name="macroFolderPath">
+    /// Absolute path behind the "open folder" button. Supplied by the host because only IT
+    /// knows where the daemon lives; defaults to <c>macros/</c> next to this executable,
+    /// which is correct for the deployed side-by-side layout.
+    /// </param>
     public MacroEditorViewModel(
-        MacroGraphStore store,
-        MacroRunRegistry runs,
+        IIpcClient client,
         IMacroLauncher? launcher = null,
         IHotkeySuspension? hotkeys = null,
-        IUiDispatcher? dispatcher = null)
+        IUiDispatcher? dispatcher = null,
+        string? macroFolderPath = null)
     {
-        _store = store;
-        _runs = runs;
+        _client = client;
         _launcher = launcher;
         _hotkeys = hotkeys;
         _dispatcher = dispatcher ?? AvaloniaUiDispatcher.Instance;
+        FolderPath = macroFolderPath ?? Path.Combine(AppContext.BaseDirectory, MacroFolderName);
 
-        RebuildLibrary(_store.All);
-        RefreshRunState();
+        _client.Connected += OnConnected;
+        _client.EventReceived += OnEventReceived;
 
-        _store.MacrosChanged += OnMacrosChanged;
-        _runs.RunsChanged += OnRunsChanged;
+        if (_client.IsConnected)
+        {
+            _ = RefreshAsync();
+        }
     }
 
     // ---- library (left pane) --------------------------------------------------------
 
-    /// <summary>Macros in the library, ordered as the store returns them (by name).</summary>
+    /// <summary>Macros in the library, ordered as the daemon returns them (by name).</summary>
     public ObservableCollection<MacroListItemViewModel> Macros { get; } = [];
 
     /// <summary>
@@ -181,7 +213,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 return;
             }
-            if (_store.TryGet(value.Name) is { } graph)
+            if (TryGet(value.Name) is { } graph)
             {
                 var discarded = _hasOpenMacro && IsDirty() ? _loadedName ?? _macroName : null;
                 LoadGraph(graph);
@@ -192,8 +224,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Absolute path of the macro folder — the "open folder" affordance.</summary>
-    public string FolderPath => _store.FolderPath;
+    /// <summary>Absolute path of the daemon's macro folder — the "open folder" affordance.</summary>
+    public string FolderPath { get; }
 
     // ---- open graph (right pane) ----------------------------------------------------
 
@@ -206,8 +238,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Editable name of the open graph. Saving under a different name renames the macro:
-    /// the store keys on the file stem, so a rename is "write the new file, delete the
-    /// old one" — which this VM does, because the store has no rename operation.
+    /// the daemon keys on the file stem, so a rename is "write the new file, delete the
+    /// old one" — which this VM does, because the protocol has no rename operation.
     /// </summary>
     public string MacroName
     {
@@ -307,6 +339,25 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     // ---- library commands -----------------------------------------------------------
 
+    /// <summary>Re-seeds the library and the run state from the daemon.</summary>
+    public async Task RefreshAsync()
+    {
+        try
+        {
+            var macros = await _client.RequestAsync<MacroGraph[]>(IpcMessageTypes.GetMacros).ConfigureAwait(false);
+            var runs = await _client.RequestAsync<RunningMacroDto[]>(IpcMessageTypes.GetRunningMacros).ConfigureAwait(false);
+            _dispatcher.Post(() =>
+            {
+                _runningMacros = runs ?? [];
+                ApplyLibrary(macros ?? []);
+            });
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        {
+            Log.Warning(ex, "Не удалось получить библиотеку макросов");
+        }
+    }
+
     /// <summary>
     /// Opens a fresh draft: one Delay node, so the graph is immediately valid and
     /// saveable rather than starting out failing the "start node must exist" rule.
@@ -337,10 +388,18 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(item);
         ErrorMessage = null;
 
-        var deleted = await _store.DeleteAsync(item.Name).ConfigureAwait(true);
-        if (!deleted)
+        try
+        {
+            // Deleting a macro that isn't there is a no-op by protocol, so the only failure
+            // that reaches here is a transport or IO problem.
+            await _client
+                .RequestAsync(IpcMessageTypes.DeleteMacro, new DeleteMacroRequest(item.Name))
+                .ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
         {
             ErrorMessage = $"Не удалось удалить «{item.Name}».";
+            Log.Warning(ex, "DeleteMacro '{Macro}' не выполнен", item.Name);
             return false;
         }
 
@@ -348,6 +407,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             CloseEditor();
         }
+        // Applied locally rather than waiting for the MacrosChanged push, so the list is
+        // settled by the time this returns.
+        SetLibrary([.. _library.Where(macro => !string.Equals(macro.Name, item.Name, StringComparison.Ordinal))]);
         StatusMessage = $"Макрос «{item.Name}» удалён.";
         return true;
     }
@@ -366,15 +428,27 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Cancels every tracked run of this macro (normally at most one).</summary>
-    public void Stop(MacroListItemViewModel item)
+    public async Task StopAsync(MacroListItemViewModel item)
     {
         ArgumentNullException.ThrowIfNull(item);
         ErrorMessage = null;
-        foreach (var run in _runs.Snapshot())
+
+        var runIds = _runningMacros
+            .Where(run => string.Equals(run.MacroName, item.Name, StringComparison.Ordinal))
+            .Select(run => run.RunId)
+            .ToList();
+
+        foreach (var runId in runIds)
         {
-            if (string.Equals(run.MacroName, item.Name, StringComparison.Ordinal))
+            try
             {
-                _ = _runs.StopAsync(run.RunId);
+                await _client
+                    .RequestAsync(IpcMessageTypes.StopMacro, new StopMacroRequest(runId))
+                    .ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+            {
+                Log.Warning(ex, "Не удалось остановить запуск {RunId} макроса '{Macro}'", runId, item.Name);
             }
         }
     }
@@ -498,10 +572,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Validates and persists the open graph.
     ///
-    /// Three gates, in order: the name must be a usable file name; every row's own fields
-    /// must parse; and <see cref="MacroGraphValidator"/> must report no ERRORs. Warnings
-    /// (unreachable node, hot loop) are listed but let the save through — they describe
-    /// graphs that run, just suspiciously.
+    /// Two gates, in order: every row's own fields must parse (checked here — the daemon
+    /// never sees a half-typed number, only the graph it produces), and then the daemon's
+    /// <c>SaveMacro</c> must come back with an empty issue list. A non-empty one means
+    /// nothing was written and carries the reasons, including the file-name check.
     /// </summary>
     /// <returns><c>false</c> when nothing was written; <see cref="Issues"/> explains why.</returns>
     public async Task<bool> SaveAsync(CancellationToken cancellationToken = default)
@@ -515,14 +589,6 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        var name = _macroName.Trim();
-        if (MacroGraphStore.ValidateName(name) is { } nameError)
-        {
-            AddIssue(new ValidationIssueViewModel($"Имя макроса: {nameError}", isError: true));
-            ErrorMessage = "Сохранение отменено: исправьте ошибки.";
-            return false;
-        }
-
         var inputErrors = Triggers.SelectMany(row => row.GetInputErrors())
             .Concat(Nodes.SelectMany(row => row.GetInputErrors()))
             .ToList();
@@ -530,47 +596,88 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             AddIssue(new ValidationIssueViewModel(error, isError: true));
         }
-
-        var graph = BuildGraph();
-        var blocking = inputErrors.Count > 0;
-        foreach (var issue in MacroGraphValidator.Validate(graph))
-        {
-            AddIssue(new ValidationIssueViewModel(issue));
-            blocking |= issue.Severity == ValidationSeverity.Error;
-        }
-
-        if (blocking)
+        if (inputErrors.Count > 0)
         {
             ErrorMessage = "Сохранение отменено: исправьте ошибки.";
             return false;
         }
 
-        var previousName = _loadedName;
-        // Set the baselines BEFORE writing: the store raises MacrosChanged synchronously
-        // from inside SaveAsync, and the hot-reload handler must recognise the write as
-        // ours rather than as an external edit.
-        _loadedName = name;
-        _loadedJson = MacroGraphJson.Serialize(graph);
-        _diskJson = _loadedJson;
+        var graph = BuildGraph();
+        var name = graph.Name;
 
+        // Baselines move BEFORE the request: the daemon broadcasts MacrosChanged from inside
+        // its save, on the event pump rather than the response path, so the echo can reach
+        // us first — and the hot-reload handler has to recognise it as ours.
+        var previousName = _loadedName;
+        var previousLoadedJson = _loadedJson;
+        var previousDiskJson = _diskJson;
+        var json = MacroGraphJson.Serialize(graph);
+        _loadedName = name;
+        _loadedJson = json;
+        _diskJson = json;
+
+        ValidationIssueDto[]? rejected;
         try
         {
-            await _store.SaveAsync(graph, cancellationToken).ConfigureAwait(true);
-            if (previousName is not null && !string.Equals(previousName, name, StringComparison.Ordinal))
-            {
-                // Rename: the name IS the file stem, so the old file has to go. Order
-                // matters — write first, delete second, so a crash in between leaves two
-                // copies rather than none.
-                await _store.DeleteAsync(previousName, cancellationToken).ConfigureAwait(true);
-            }
+            rejected = await _client
+                .RequestAsync<ValidationIssueDto[]>(
+                    IpcMessageTypes.SaveMacro,
+                    new SaveMacroRequest(graph),
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
         {
             _loadedName = previousName;
+            _loadedJson = previousLoadedJson;
+            _diskJson = previousDiskJson;
             ErrorMessage = $"Не удалось сохранить: {ex.Message}";
             return false;
         }
 
+        if (rejected is { Length: > 0 })
+        {
+            // Refused — nothing was written, so the editor stays exactly as dirty as it was.
+            _loadedName = previousName;
+            _loadedJson = previousLoadedJson;
+            _diskJson = previousDiskJson;
+            foreach (var issue in rejected)
+            {
+                AddIssue(new ValidationIssueViewModel(issue.ToIssue()));
+            }
+            ErrorMessage = "Сохранение отменено: исправьте ошибки.";
+            return false;
+        }
+
+        if (previousName is not null && !string.Equals(previousName, name, StringComparison.Ordinal))
+        {
+            // Rename: the name IS the file stem, so the old file has to go. Order matters —
+            // write first, delete second, so a failure in between leaves two copies rather
+            // than none.
+            try
+            {
+                await _client
+                    .RequestAsync(IpcMessageTypes.DeleteMacro, new DeleteMacroRequest(previousName), cancellationToken: cancellationToken)
+                    .ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+            {
+                Log.Warning(ex, "Переименование: старый файл '{Macro}' не удалён", previousName);
+            }
+        }
+
+        // A successful save returns an EMPTY list by protocol, warnings included — so they
+        // are re-derived here with the same validator the daemon ran. Errors cannot appear:
+        // the daemon would have refused the write.
+        foreach (var issue in MacroGraphValidator.Validate(graph))
+        {
+            if (issue.Severity != ValidationSeverity.Error)
+            {
+                AddIssue(new ValidationIssueViewModel(issue));
+            }
+        }
+
+        SetLibrary(MergeSaved(graph, previousName));
         ChangedOnDisk = false;
         SelectByName(name);
         StatusMessage = Issues.Count > 0
@@ -579,10 +686,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         return true;
     }
 
-    /// <summary>Discards local edits and re-reads the open macro from the library.</summary>
+    /// <summary>Discards local edits and re-reads the open macro from the library snapshot.</summary>
     public void ReloadFromDisk()
     {
-        if (_loadedName is null || _store.TryGet(_loadedName) is not { } graph)
+        if (_loadedName is null || TryGet(_loadedName) is not { } graph)
         {
             return;
         }
@@ -634,8 +741,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     // ---- hotkey suspension ----------------------------------------------------------
 
     /// <summary>
-    /// Switches global hotkeys off for the lifetime of the dialog. Must be called before
-    /// the hotkey picker can work at all — see <see cref="IHotkeySuspension"/>.
+    /// Switches the daemon's global hotkeys off for the lifetime of the dialog. Must be
+    /// called before the hotkey picker can work at all — see <see cref="IHotkeySuspension"/>.
     /// </summary>
     public Task SuspendHotkeysAsync() => _hotkeys?.SuspendAsync() ?? Task.CompletedTask;
 
@@ -644,8 +751,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        _store.MacrosChanged -= OnMacrosChanged;
-        _runs.RunsChanged -= OnRunsChanged;
+        _client.Connected -= OnConnected;
+        _client.EventReceived -= OnEventReceived;
         foreach (var row in Nodes)
         {
             DetachNode(row);
@@ -654,15 +761,51 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     // ---- internals ------------------------------------------------------------------
 
-    private void OnMacrosChanged(IReadOnlyList<MacroGraph> macros) =>
-        _dispatcher.Post(() => ApplyLibrary(macros));
+    private MacroGraph? TryGet(string name) =>
+        _library.FirstOrDefault(macro => string.Equals(macro.Name, name, StringComparison.Ordinal));
 
-    private void OnRunsChanged() => _dispatcher.Post(RefreshRunState);
+    private void OnConnected() => _ = RefreshAsync();
+
+    private void OnEventReceived(IpcEvent evt)
+    {
+        switch (evt.Type)
+        {
+            case IpcMessageTypes.MacrosChanged:
+                // Payloadless by protocol — the library can be large, so the daemon says
+                // "something changed" and we go and get it.
+                _ = ReloadLibraryAsync();
+                break;
+
+            case IpcMessageTypes.RunningMacrosChanged:
+                var runs = IpcJson.Read<RunningMacroDto[]>(evt.Payload) ?? [];
+                _dispatcher.Post(() =>
+                {
+                    _runningMacros = runs;
+                    RefreshRunState();
+                });
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    private async Task ReloadLibraryAsync()
+    {
+        try
+        {
+            var macros = await _client.RequestAsync<MacroGraph[]>(IpcMessageTypes.GetMacros).ConfigureAwait(false);
+            _dispatcher.Post(() => ApplyLibrary(macros ?? []));
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        {
+            Log.Warning(ex, "Не удалось перечитать библиотеку макросов");
+        }
+    }
 
     private void ApplyLibrary(IReadOnlyList<MacroGraph> macros)
     {
-        RebuildLibrary(macros);
-        RefreshRunState();
+        SetLibrary(macros);
 
         if (!HasOpenMacro || _loadedName is null)
         {
@@ -693,6 +836,26 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         LoadGraph(onDisk);
         StatusMessage = "Макрос обновлён на диске — перечитан.";
+    }
+
+    private void SetLibrary(IReadOnlyList<MacroGraph> macros)
+    {
+        _library = macros;
+        RebuildLibrary(macros);
+        RefreshRunState();
+    }
+
+    // The written graph replaces (or joins) the snapshot immediately, and a rename drops the
+    // old entry, so the list and the selection are correct before MacrosChanged arrives.
+    private IReadOnlyList<MacroGraph> MergeSaved(MacroGraph graph, string? renamedFrom)
+    {
+        var next = _library
+            .Where(macro => !string.Equals(macro.Name, graph.Name, StringComparison.Ordinal)
+                            && (renamedFrom is null || !string.Equals(macro.Name, renamedFrom, StringComparison.Ordinal)))
+            .Append(graph)
+            .OrderBy(macro => macro.Name, StringComparer.Ordinal)
+            .ToList();
+        return next;
     }
 
     private void RebuildLibrary(IReadOnlyList<MacroGraph> macros)
@@ -738,7 +901,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     private void RefreshRunState()
     {
-        var running = _runs.Snapshot()
+        var running = _runningMacros
             .Select(run => run.MacroName)
             .ToHashSet(StringComparer.Ordinal);
         foreach (var item in Macros)

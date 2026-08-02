@@ -11,6 +11,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <!-- LibraryImport source generators emit unsafe ref-handling code (Win32MessageBox). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,27 +21,29 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.3" />
     <PackageReference Include="Avalonia.Diagnostics" Version="11.2.3" Condition="'$(Configuration)' == 'Debug'" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
-    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <!-- Configuration, but no Hosting: after stage 3 the only thing appsettings.json
+         configures is Serilog, and the four objects this process owns are wired by hand in
+         AppServices rather than by a container. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.8" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Contracts (+ Native, transitively) and NOTHING ELSE.
+         Stage 3 removed the SmartMacro.Core reference: the panel is a pure IPC client now,
+         and this is the constraint that keeps OpenCV, Tesseract and their native blobs out
+         of the process the user opens and closes all day. If a view-model ever needs
+         something from Core, the answer is a message type, not a reference. -->
     <ProjectReference Include="..\SmartMacro.Contracts\SmartMacro.Contracts.csproj" />
-    <!-- Stage 1 keeps this: the App still calls WindowRegistry / MacroGraphStore /
-         MacroRunRegistry / Orchestrator / HotkeyListener directly. It goes away in
-         Stage 3, once the IPC client replaces those call sites. -->
-    <ProjectReference Include="..\SmartMacro.Core\SmartMacro.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- TODO(Stage 3): reduce appsettings.json to the Serilog section once the engine leaves
-         this process. The authoritative engine configuration moved to SmartMacro.Daemon in
-         stage 2A; what's left here duplicates the Agent / ProcessProfiles / Vision sections
-         only because App's transitional composition root (Program.ConfigureServices) still
-         binds them. JSON has no comments, hence the note lives here. -->
+    <!-- Serilog only. Every engine knob (Agent / ProcessProfiles / Vision) lives in the
+         daemon's appsettings.json — this process has nothing to configure. -->
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -47,43 +51,14 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <DependentUpon>appsettings.json</DependentUpon>
     </None>
-    <None Update="tessdata\**\*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Bundled tray + window icon; loaded via avares://SmartMacro.App/Assets/icon.png -->
+    <!-- The only asset left in this project: the window icon, embedded and loaded via
+         avares://SmartMacro.App/Assets/icon.png. The vision templates, the per-tag taskbar
+         icons, the tray .ico and the Tesseract language pack all moved to SmartMacro.Daemon
+         in stage 3 — they are read at runtime by code that no longer runs here. -->
     <AvaloniaResource Include="Assets\icon.png" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Per-tag taskbar icons. Loaded from disk (not embedded) so the user can swap
-         them out without rebuilding. A SetIconNode names the file (typically
-         "Assets/ClassIcons/{tag}.png"); WindowIconService resolves it and skips with a
-         Debug log when it's missing. -->
-    <None Include="Assets\ClassIcons\*.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>Assets\ClassIcons\%(Filename)%(Extension)</Link>
-    </None>
-    <!-- Tag templates for the stats-window template-match identification path
-         (filename stem = tag). -->
-    <None Include="Assets\GameClassNames\*.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>Assets\GameClassNames\%(Filename)%(Extension)</Link>
-    </None>
-    <!-- Single UI-element templates, referenced by file stem from Find/Wait nodes.
-         Loaded from disk so the user can add new templates without rebuilding. -->
-    <None Include="Assets\GameUiElements\*.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Link>Assets\GameUiElements\%(Filename)%(Extension)</Link>
-    </None>
-    <!-- User-authored template SETS for RecognizeTag nodes: Assets/templates/{set}/{tag}.png.
-         Empty in the repo — the glob exists so a set dropped in here reaches the output on
-         the next build, the same way the shipped folders do. -->
-    <None Include="Assets\templates\**\*.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 </Project>

@@ -1,26 +1,25 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
-using Microsoft.Extensions.DependencyInjection;
-using SmartMacro.App.Mvvm;
-using SmartMacro.App.Services;
 using SmartMacro.App.ViewModels;
-using SmartMacro.Macros.Execution;
-using SmartMacro.Macros.Storage;
-using SmartMacro.Vision;
+using SmartMacro.Contracts.Ipc;
 
 namespace SmartMacro.App;
 
 public partial class MainWindow : Window
 {
+    // Capturing N game windows takes seconds, not milliseconds — the daemon wakes each
+    // client, screenshots it and freezes it again. The default 10s request timeout would
+    // fire well before a nine-client sweep finished.
+    private static readonly TimeSpan DumpCapturesTimeout = TimeSpan.FromMinutes(2);
+
     // Elapsed times in the running-macros panel are rendered by the VM but ticked from
     // here: keeping the DispatcherTimer in the view is what lets every view-model in this
     // assembly stay free of Avalonia types and therefore unit-testable.
     private readonly DispatcherTimer _elapsedTimer;
 
-    // Designer needs a parameterless ctor; DI uses the (vm) overload.
+    // Designer needs a parameterless ctor; the app uses the (vm) overload.
     public MainWindow()
     {
         InitializeComponent();
@@ -36,18 +35,12 @@ public partial class MainWindow : Window
         DataContext = viewModel;
     }
 
-    // Hide-to-tray on window close. Real shutdown only via the tray Exit menu, which
-    // sets App.IsExitRequested before calling Shutdown — we let that flow through.
+    // Closing the window exits the panel process — the tray and the engine live in the
+    // daemon now, so there is nothing left here worth keeping alive in the background.
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        if (Application.Current is App app && !app.IsExitRequested)
-        {
-            e.Cancel = true;
-            Hide();
-            return;
-        }
-
         _elapsedTimer.Stop();
+        (DataContext as MainWindowViewModel)?.Dispose();
         base.OnClosing(e);
     }
 
@@ -55,7 +48,7 @@ public partial class MainWindow : Window
     {
         if (sender is Button { DataContext: WindowRowViewModel row })
         {
-            row.AddTag();
+            _ = row.AddTagAsync();
         }
     }
 
@@ -66,7 +59,7 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter && sender is TextBox { DataContext: WindowRowViewModel row })
         {
             e.Handled = true;
-            row.AddTag();
+            _ = row.AddTagAsync();
         }
     }
 
@@ -82,18 +75,21 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainWindowViewModel vm && sender is Button { DataContext: RunningMacroRowViewModel run })
         {
-            vm.StopRun(run);
+            _ = vm.StopRunAsync(run);
         }
     }
 
-    private void OnStopAllRunsClicked(object? sender, RoutedEventArgs e) =>
-        (DataContext as MainWindowViewModel)?.StopAllRuns();
+    private void OnStopAllRunsClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+        {
+            _ = vm.StopAllRunsAsync();
+        }
+    }
 
     // Diagnostic — dump the vision pipeline's view of each live window. The sweep itself
-    // moved into Core's CaptureDumpService in stage 2B: capturing needs the window handles
-    // and OpenCV, both of which live in the daemon after the split, so all the UI does is
-    // ask for a dump and open the folder it gets back. Stage 3 replaces the direct call
-    // with a DumpCaptures request and this handler stays as it is.
+    // runs in the daemon (it needs the window handles and OpenCV); all this does is ask for
+    // it and open the folder that comes back.
     private async void OnDumpCapturesClicked(object? sender, RoutedEventArgs e)
     {
         if (Program.Services is not { } services)
@@ -101,14 +97,21 @@ public partial class MainWindow : Window
             return;
         }
 
-        string folder;
+        string? folder;
         try
         {
-            folder = await services.GetRequiredService<CaptureDumpService>().DumpAsync();
+            folder = await services.Client.RequestAsync<string>(
+                IpcMessageTypes.DumpCaptures,
+                timeout: DumpCapturesTimeout);
         }
         catch (Exception ex)
         {
             Serilog.Log.Warning(ex, "Не удалось выгрузить отладочные снимки");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(folder))
+        {
             return;
         }
 
@@ -128,9 +131,8 @@ public partial class MainWindow : Window
         }
     }
 
-    // Opens the node editor. Dependencies are resolved from the container here rather
-    // than injected into MainWindow because the dialog is transient while the store,
-    // run registry, hotkey listener and orchestrator are all singletons.
+    // Opens the node editor. The dialog is transient and gets a fresh view-model each time;
+    // the connection it talks over is the process-wide one.
     private async void OnMacrosClicked(object? sender, RoutedEventArgs e)
     {
         if (Program.Services is not { } services)
@@ -140,13 +142,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var dialogVm = new MacroEditorViewModel(
-                services.GetRequiredService<MacroGraphStore>(),
-                services.GetRequiredService<MacroRunRegistry>(),
-                services.GetRequiredService<IMacroLauncher>(),
-                services.GetRequiredService<IHotkeySuspension>(),
-                services.GetRequiredService<IUiDispatcher>());
-            var dialog = new MacrosDialog(dialogVm);
+            var dialog = new MacrosDialog(services.CreateMacroEditorViewModel());
             await dialog.ShowDialog(this);
         }
         catch (Exception ex)
@@ -154,5 +150,4 @@ public partial class MainWindow : Window
             Serilog.Log.Warning(ex, "Macro editor failed to open");
         }
     }
-
 }

@@ -1,6 +1,6 @@
 using System.Globalization;
 using SmartMacro.App.Mvvm;
-using SmartMacro.Macros.Execution;
+using SmartMacro.Contracts.Dto;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -17,23 +17,28 @@ public sealed class RunningMacroRowViewModel : ObservableObject
     private string? _currentNodeId;
     private string _elapsed = "0:00";
 
-    public RunningMacroRowViewModel(MacroRunSnapshot snapshot)
+    public RunningMacroRowViewModel(RunningMacroDto run)
     {
-        RunId = snapshot.RunId;
-        MacroName = snapshot.MacroName;
-        StartedUtc = snapshot.StartedUtc;
-        _currentNodeId = snapshot.CurrentNodeId;
-        Refresh(DateTime.UtcNow);
+        ArgumentNullException.ThrowIfNull(run);
+        RunId = run.RunId;
+        MacroName = run.MacroName;
+        StartedUtc = run.StartedUtc;
+        _currentNodeId = run.CurrentNodeId;
+        Refresh(DateTimeOffset.UtcNow);
     }
 
-    /// <summary>Registry id — what <c>MacroRunRegistry.StopAsync</c> takes.</summary>
+    /// <summary>Daemon-side run id — what a <c>StopMacro</c> request takes.</summary>
     public Guid RunId { get; }
 
     /// <summary>Name of the macro being run.</summary>
     public string MacroName { get; }
 
-    /// <summary>Run start time, UTC.</summary>
-    public DateTime StartedUtc { get; }
+    /// <summary>
+    /// Run start time. A <see cref="DateTimeOffset"/> rather than a <see cref="DateTime"/>
+    /// because it crossed a process boundary: the wire DTO carries the offset explicitly so
+    /// neither end has to guess a <c>DateTimeKind</c>.
+    /// </summary>
+    public DateTimeOffset StartedUtc { get; }
 
     /// <summary>Id of the node the walker last entered; <c>null</c> before the first node.</summary>
     public string? CurrentNodeId
@@ -60,9 +65,9 @@ public sealed class RunningMacroRowViewModel : ObservableObject
 
     /// <summary>
     /// Re-renders <see cref="Elapsed"/> and picks up the walker's latest node. Called on a
-    /// timer tick and whenever the registry reports a change.
+    /// timer tick and whenever the daemon pushes a new run snapshot.
     /// </summary>
-    public void Refresh(DateTime nowUtc, string? currentNodeId = null)
+    public void Refresh(DateTimeOffset nowUtc, string? currentNodeId = null)
     {
         if (currentNodeId is not null)
         {

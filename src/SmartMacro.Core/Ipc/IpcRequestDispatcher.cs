@@ -43,6 +43,11 @@ public sealed partial class IpcRequestDispatcher
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<IpcRequestDispatcher> _logger;
 
+    // Set by IpcServer's constructor, not by DI — see AttachBroadcaster. Null in the
+    // dispatcher tests, which drive the catalogue without a server; RequestActivate is the
+    // only handler that needs it and it rejects politely when it is missing.
+    private IIpcBroadcaster? _broadcaster;
+
     public IpcRequestDispatcher(
         WindowRegistry windows,
         MacroGraphStore macros,
@@ -62,6 +67,13 @@ public sealed partial class IpcRequestDispatcher
         _lifetime = lifetime;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Supplies the event fan-out that <c>RequestActivate</c> pushes through. Called once,
+    /// by <see cref="IpcServer"/>'s constructor: the server is built FROM this dispatcher,
+    /// so it cannot also be injected into it.
+    /// </summary>
+    public void AttachBroadcaster(IIpcBroadcaster broadcaster) => _broadcaster = broadcaster;
 
     /// <summary>Routes one request to its handler and produces the reply.</summary>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> fired; the connection is closing.</exception>
@@ -184,6 +196,20 @@ public sealed partial class IpcRequestDispatcher
 
             case IpcMessageTypes.Shutdown:
                 return ShutdownAsync(request);
+
+            // ---------------------------------------------------------------- lifecycle
+
+            case IpcMessageTypes.RequestActivate:
+            {
+                // Broadcast, not "reply to the sender": the asker is a second UI launch
+                // that is about to exit, and the panel that must come forward is a
+                // DIFFERENT connection. Sending it to everyone costs nothing (there is
+                // normally exactly one panel) and needs no client bookkeeping here.
+                var broadcaster = _broadcaster
+                                  ?? throw new IpcRequestRejectedException("Событие активации некому разослать.");
+                broadcaster.Broadcast(new IpcEvent(IpcMessageTypes.ActivateWindow));
+                return Ok(request);
+            }
 
             default:
                 LogUnknownType(request.Type, request.Id);
