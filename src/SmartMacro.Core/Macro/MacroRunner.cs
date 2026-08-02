@@ -9,7 +9,7 @@ namespace SmartMacro.Macro;
 ///   * <see cref="KeyPressAction"/> → <see cref="AgentInputDispatcher.FireKeyAsync"/>
 ///   * <see cref="DelayAction"/>    → <see cref="Task.Delay(int, CancellationToken)"/>
 ///
-/// Stateless — safe as a singleton in DI. Concurrency / single-flight is the caller's
+/// Holds no state — safe as a singleton in DI. Concurrency / single-flight is the caller's
 /// responsibility (CharacterAgent uses <c>_operationLock</c>).
 /// </summary>
 public sealed partial class MacroRunner

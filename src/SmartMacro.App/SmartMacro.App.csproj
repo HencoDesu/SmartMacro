@@ -49,14 +49,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Per-class taskbar icons. Loaded from disk (not embedded) so the user can swap
-         them out without rebuilding. CharacterAgent maps CharacterClass → filename via
-         ClassIconNames; missing files just skip with a Debug log. -->
+    <!-- Per-tag taskbar icons. Loaded from disk (not embedded) so the user can swap
+         them out without rebuilding. ClassIconService maps tag → filename via
+         TagIconNames; missing files just skip with a Debug log. -->
     <None Include="Assets\ClassIcons\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Assets\ClassIcons\%(Filename)%(Extension)</Link>
     </None>
-    <!-- Class-name templates for the stats-window template-match identification path. -->
+    <!-- Tag templates for the stats-window template-match identification path
+         (filename stem = tag). -->
     <None Include="Assets\GameClassNames\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Assets\GameClassNames\%(Filename)%(Extension)</Link>

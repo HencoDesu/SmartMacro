@@ -16,6 +16,7 @@ using SmartMacro.ProcessMonitoring;
 using SmartMacro.App.ViewModels;
 using SmartMacro.Macro;
 using SmartMacro.Vision;
+using SmartMacro.Windows;
 using Serilog;
 
 namespace SmartMacro.App;
@@ -85,6 +86,9 @@ internal static class Program
         services.Configure<GameUiElementExamplesName>(configuration.GetSection("GameUiElementExamples"));
         services.Configure<HotkeyOptions>(configuration.GetSection("Hotkeys"));
         services.Configure<ActivatingInputOptions>(configuration.GetSection("Input:Activating"));
+        // "ProcessProfiles" is a raw JSON array, so bind it into the wrapper's list.
+        services.AddOptions<ProcessProfileOptions>()
+            .Configure(options => configuration.GetSection(ProcessProfileOptions.SectionName).Bind(options.Profiles));
         services.Configure<CoordinateReaderOptions>(configuration.GetSection("Vision:CoordinateReader"));
         services.Configure<ClassMatcherOptions>(configuration.GetSection("Vision:ClassMatcher"));
         services.Configure<WindowVisionOptions>(configuration.GetSection("Vision:Window"));
@@ -94,6 +98,11 @@ internal static class Program
         // the factory implementation once we know what the live client likes.
         // Win32NativeWindowSystem is a static class — no DI registration needed.
         services.AddSingleton<IGameWindowFactory, GameWindowFactory>();
+
+        // Sole owner of window tags — everything (agents, macro routing, UI) reads
+        // identity from here.
+        services.AddSingleton<WindowRegistry>();
+
         services.AddSingleton<IClassMatcher, ClassMatcher>();
         services.AddSingleton<ClassTemplateLoader>();
         services.AddSingleton<GameUiElementExample>();

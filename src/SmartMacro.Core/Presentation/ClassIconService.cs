@@ -1,42 +1,42 @@
 using Microsoft.Extensions.Logging;
 using SmartMacro.GameWindows;
-using SmartMacro.Models;
 
 namespace SmartMacro.Presentation;
 
-// Applies per-class taskbar icons to game windows. CharacterAgent delegates here on
+// Applies per-tag taskbar icons to game windows. CharacterAgent delegates here on
 // identification — keeps the agent focused on routing input and lifecycle, off the
-// concerns of where icon files live, how Russian class names map to English filenames,
+// concerns of where icon files live, how Russian tag names map to English filenames,
 // and what to do when a file is missing or corrupt.
 //
-// Singleton in DI. Stateless beyond the icon-name dictionary; safe to share.
+// Singleton in DI. No state beyond the icon-name dictionary; safe to share.
 public sealed partial class ClassIconService
 {
-    // CharacterClass enum uses Russian display names; user's icon files use English
-    // class names. Map between them here so the user can drop their existing icons in
-    // Assets/ClassIcons/ without renaming. Adjust if a mapping turns out wrong (e.g.
-    // Оборотень might be "tank" or "guardian" depending on which PW build the icons
-    // came from).
-    private static readonly IReadOnlyDictionary<CharacterClass, string> ClassIconNames =
-        new Dictionary<CharacterClass, string>
+    // Tags produced by identification use Russian display names (template filename
+    // stems); the user's icon files use English class names. Map between them here so
+    // the user can drop their existing icons in Assets/ClassIcons/ without renaming.
+    // Adjust if a mapping turns out wrong (e.g. Оборотень might be "tank" or "guardian"
+    // depending on which PW build the icons came from). Unmapped tags silently skip.
+    // TODO(W0.2): replaced by SetIconNode with a {tag}-templated icon path.
+    private static readonly IReadOnlyDictionary<string, string> TagIconNames =
+        new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            [CharacterClass.Маг] = "mage",
-            [CharacterClass.Воин] = "warrior",
-            [CharacterClass.Стрелок] = "gunner",
-            [CharacterClass.Друид] = "druid",
-            [CharacterClass.Оборотень] = "tank",       // Barbarian / shape-shifter
-            [CharacterClass.Странник] = "rover",
-            [CharacterClass.Жрец] = "priest",
-            [CharacterClass.Лучник] = "archer",
-            [CharacterClass.Паладин] = "paladin",
-            [CharacterClass.Шаман] = "shaman",
-            [CharacterClass.Убийца] = "assassin",
-            [CharacterClass.Бард] = "bard",
-            [CharacterClass.Мистик] = "mystic",
-            [CharacterClass.Страж] = "guardian",
-            [CharacterClass.ДухКрови] = "bloodspirit",
-            [CharacterClass.Жнец] = "reaper",
-            [CharacterClass.Призрак] = "ghost",
+            ["Маг"] = "mage",
+            ["Воин"] = "warrior",
+            ["Стрелок"] = "gunner",
+            ["Друид"] = "druid",
+            ["Оборотень"] = "tank",       // Barbarian / shape-shifter
+            ["Странник"] = "rover",
+            ["Жрец"] = "priest",
+            ["Лучник"] = "archer",
+            ["Паладин"] = "paladin",
+            ["Шаман"] = "shaman",
+            ["Убийца"] = "assassin",
+            ["Бард"] = "bard",
+            ["Мистик"] = "mystic",
+            ["Страж"] = "guardian",
+            ["ДухКрови"] = "bloodspirit",
+            ["Жнец"] = "reaper",
+            ["Призрак"] = "ghost",
             // Канлонг — no icon in the user's current set; will silently skip.
         };
 
@@ -54,34 +54,34 @@ public sealed partial class ClassIconService
     private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5)];
 
     /// <summary>
-    /// Best-effort apply of the class icon to a game window. Silent skip for
-    /// <see cref="CharacterClass.Unknown"/>. All failures logged; reported as <c>false</c>.
+    /// Best-effort apply of the tag's icon to a game window. Silent skip for empty or
+    /// unmapped tags. All failures logged; reported as <c>false</c>.
     /// After the initial apply, schedules two background retries at +2s and +5s to
     /// survive PW's post-boot init step that sometimes overwrites the taskbar icon
     /// when the agent auto-drove the client through server-select → in-world.
     /// </summary>
     /// <returns><c>true</c> when the initial apply succeeded; <c>false</c> on any skip or failure.</returns>
-    public bool TryApply(IGameWindow window, CharacterClass cls)
+    public bool TryApply(IGameWindow window, string tag)
     {
-        if (cls == CharacterClass.Unknown)
+        if (string.IsNullOrWhiteSpace(tag))
         {
             return false;
         }
 
-        if (!ClassIconNames.TryGetValue(cls, out var fileStem))
+        if (!TagIconNames.TryGetValue(tag, out var fileStem))
         {
-            LogClassIconUnmapped(cls);
+            LogTagIconUnmapped(tag);
             return false;
         }
 
         var path = Path.Combine(AppContext.BaseDirectory, "Assets", "ClassIcons", $"{fileStem}.png");
         if (!File.Exists(path))
         {
-            LogClassIconMissing(cls, path);
+            LogTagIconMissing(tag, path);
             return false;
         }
 
-        var applied = ApplyOnce(window, cls, path);
+        var applied = ApplyOnce(window, tag, path);
 
         // Fire-and-forget retries. Even if initial apply failed, retry — PW might have
         // still been mid-init and rejected/dropped the SendMessage; a later re-send
@@ -94,11 +94,11 @@ public sealed partial class ClassIconService
                 try
                 {
                     if (!window.IsAlive) return;
-                    ApplyOnce(window, cls, path);
+                    ApplyOnce(window, tag, path);
                 }
                 catch (Exception ex)
                 {
-                    LogClassIconException(ex, cls);
+                    LogTagIconException(ex, tag);
                     return;
                 }
             }
@@ -107,37 +107,37 @@ public sealed partial class ClassIconService
         return applied;
     }
 
-    private bool ApplyOnce(IGameWindow window, CharacterClass cls, string path)
+    private bool ApplyOnce(IGameWindow window, string tag, string path)
     {
         try
         {
             if (window.SetIconFromFile(path))
             {
-                LogClassIconApplied(cls);
+                LogTagIconApplied(tag);
                 return true;
             }
-            LogClassIconLoadFailed(cls, path);
+            LogTagIconLoadFailed(tag, path);
             return false;
         }
         catch (Exception ex)
         {
-            LogClassIconException(ex, cls);
+            LogTagIconException(ex, tag);
             return false;
         }
     }
 
-    [LoggerMessage(LogLevel.Debug, "Class icon file not found for {Cls} at {Path}; taskbar icon stays default")]
-    partial void LogClassIconMissing(CharacterClass cls, string path);
+    [LoggerMessage(LogLevel.Debug, "Tag icon file not found for '{Tag}' at {Path}; taskbar icon stays default")]
+    partial void LogTagIconMissing(string tag, string path);
 
-    [LoggerMessage(LogLevel.Information, "Class icon applied for {Cls}")]
-    partial void LogClassIconApplied(CharacterClass cls);
+    [LoggerMessage(LogLevel.Information, "Tag icon applied for '{Tag}'")]
+    partial void LogTagIconApplied(string tag);
 
-    [LoggerMessage(LogLevel.Warning, "Class icon LoadImage failed for {Cls} at {Path} (file may be corrupt or not a valid image)")]
-    partial void LogClassIconLoadFailed(CharacterClass cls, string path);
+    [LoggerMessage(LogLevel.Warning, "Tag icon LoadImage failed for '{Tag}' at {Path} (file may be corrupt or not a valid image)")]
+    partial void LogTagIconLoadFailed(string tag, string path);
 
-    [LoggerMessage(LogLevel.Error, "Class icon application threw for {Cls}")]
-    partial void LogClassIconException(Exception ex, CharacterClass cls);
+    [LoggerMessage(LogLevel.Error, "Tag icon application threw for '{Tag}'")]
+    partial void LogTagIconException(Exception ex, string tag);
 
-    [LoggerMessage(LogLevel.Debug, "No icon filename mapping for {Cls}; taskbar icon stays default")]
-    partial void LogClassIconUnmapped(CharacterClass cls);
+    [LoggerMessage(LogLevel.Debug, "No icon filename mapping for tag '{Tag}'; taskbar icon stays default")]
+    partial void LogTagIconUnmapped(string tag);
 }

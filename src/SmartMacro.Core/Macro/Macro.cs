@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using SmartMacro.Models;
 using SmartMacro.Native;
 
 namespace SmartMacro.Macro;
@@ -25,20 +24,26 @@ public sealed record DelayAction(int Ms) : MacroAction;
 public sealed record ClickAction(ScreenPoint Point, bool DoubleClick) : MacroAction;
 
 /// <summary>
-/// A named macro with per-class action sequences. Triggered from the Macros dialog's
+/// A named macro with per-tag action sequences. Triggered from the Macros dialog's
 /// per-row Run button → broadcasts <c>RunMacroMessage(name)</c> → each live agent
-/// looks up its class's actions and runs them via <see cref="MacroRunner"/>. Classes
-/// absent from <see cref="ActionsByClass"/> drop the broadcast silently.
+/// picks the first key its window's tag set contains and runs those actions via
+/// <see cref="MacroRunner"/>. Windows with no matching tag drop the broadcast silently.
 /// </summary>
 /// <remarks>
-/// Per-class because in-game cast times and rotations differ — a Лучник damage burst
-/// is different from a Жрец one. Editor format uses <c>[ClassName]</c> headers, then
-/// one action per line: a VirtualKey name (key press) or a non-negative integer (delay).
+/// Per-tag because in-game cast times and rotations differ — a Лучник damage burst
+/// is different from a Жрец one.
 /// </remarks>
 public sealed class Macro
 {
     public required string Name { get; init; }
+
     // Concrete Dictionary / List types because System.Text.Json deserialise into
     // interface-typed `required init` properties is finicky.
-    public required Dictionary<CharacterClass, List<MacroAction>> ActionsByClass { get; init; }
+    //
+    // TODO(W0.2): transitional bridge — dies with the node-graph macro model. The JSON
+    // property name stays "ActionsByClass" so pre-tag macros.json files keep loading:
+    // the old enum keys were serialized as their names ("Лучник"), which now read in
+    // as plain tag strings unchanged.
+    [JsonPropertyName("ActionsByClass")]
+    public required Dictionary<string, List<MacroAction>> ActionsByTag { get; init; }
 }

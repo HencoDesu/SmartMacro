@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenCvSharp;
+using SmartMacro.Config;
 using SmartMacro.Native;
 using SmartMacro.Native.Window;
 using SmartMacro.ProcessMonitoring;
@@ -15,7 +16,9 @@ public sealed partial class GameWindow : IGameWindow
     private readonly IKeyboardInput _keyboard;
     private readonly IMouseInput _mouse;
     private readonly INativeWindow _nativeWindow;
-    private readonly uint _activationLParam;
+    // Null = plain-input process (no profile / no ActivationLParam configured): the
+    // whole WM_ACTIVATEAPP wake-up/deactivate dance is skipped.
+    private readonly uint? _activationLParam;
     private readonly int _settleDelayMs;
     private readonly int _deactivationDelayMs;
     private readonly double _matchThreshold;
@@ -24,9 +27,9 @@ public sealed partial class GameWindow : IGameWindow
 
     public GameWindow(
         ProcessInfo info,
+        ProcessProfile profile,
         IKeyboardInput keyboard,
         IMouseInput mouse,
-        IOptions<ActivatingInputOptions> activatingOptions,
         IOptions<WindowVisionOptions> visionOptions,
         ILogger<GameWindow> logger)
     {
@@ -38,9 +41,9 @@ public sealed partial class GameWindow : IGameWindow
         _keyboard = keyboard;
         _mouse = mouse;
         _nativeWindow = Win32NativeWindowSystem.Open(info.MainWindowHandle);
-        _activationLParam = activatingOptions.Value.ActivationLParam;
-        _settleDelayMs = activatingOptions.Value.SettleDelayMs;
-        _deactivationDelayMs = activatingOptions.Value.DeactivationDelayMs;
+        _activationLParam = profile.ActivationLParam;
+        _settleDelayMs = profile.SettleDelayMs;
+        _deactivationDelayMs = profile.DeactivationDelayMs;
         _matchThreshold = visionOptions.Value.MatchThreshold;
         _pollInterval = TimeSpan.FromMilliseconds(visionOptions.Value.PollIntervalMs);
         _logger = logger;
@@ -61,10 +64,14 @@ public sealed partial class GameWindow : IGameWindow
 
     // PW freezes inactive clients (input + rendering pause). Activate sends the wake-up
     // WM_ACTIVATEAPP signal so subsequent input is processed; settle delay lets the
-    // engine actually come back online before we start posting input.
+    // engine actually come back online before we start posting input. Plain-input
+    // processes (no ActivationLParam in their profile) skip the signal entirely.
     public async Task ActivateAsync(CancellationToken cancellationToken = default)
     {
-        _nativeWindow.SendActivationSignal(_activationLParam);
+        if (_activationLParam is { } lParam)
+        {
+            _nativeWindow.SendActivationSignal(lParam);
+        }
         if (_settleDelayMs > 0)
         {
             await Task.Delay(_settleDelayMs, cancellationToken).ConfigureAwait(false);
@@ -80,6 +87,12 @@ public sealed partial class GameWindow : IGameWindow
     // it active so we don't yank focus away from them.
     public async Task DeactivateAsync(CancellationToken cancellationToken = default)
     {
+        if (_activationLParam is null)
+        {
+            // Plain-input window — we never activated it, so there's nothing to drain
+            // or put back to sleep.
+            return;
+        }
         if (_deactivationDelayMs > 0)
         {
             await Task.Delay(_deactivationDelayMs, cancellationToken).ConfigureAwait(false);
@@ -109,10 +122,13 @@ public sealed partial class GameWindow : IGameWindow
     // calling thread is imperceptible.
     public byte[] CaptureScreenshot()
     {
-        _nativeWindow.SendActivationSignal(_activationLParam);
-        Thread.Sleep(_settleDelayMs);
+        if (_activationLParam is { } lParam)
+        {
+            _nativeWindow.SendActivationSignal(lParam);
+            Thread.Sleep(_settleDelayMs);
+        }
         var png = _nativeWindow.CapturePng();
-        if (Win32NativeWindowSystem.GetForeground().Handle != Handle)
+        if (_activationLParam is not null && Win32NativeWindowSystem.GetForeground().Handle != Handle)
         {
             _nativeWindow.SendDeactivationSignal();
         }
@@ -176,13 +192,16 @@ public sealed partial class GameWindow : IGameWindow
     // in which case it stays active naturally). Used by WaitForElementAt's poll-loop.
     private async Task<byte[]> CaptureFreshAsync(CancellationToken cancellationToken)
     {
-        _nativeWindow.SendActivationSignal(_activationLParam);
-        if (_settleDelayMs > 0)
+        if (_activationLParam is { } lParam)
         {
-            await Task.Delay(_settleDelayMs, cancellationToken).ConfigureAwait(false);
+            _nativeWindow.SendActivationSignal(lParam);
+            if (_settleDelayMs > 0)
+            {
+                await Task.Delay(_settleDelayMs, cancellationToken).ConfigureAwait(false);
+            }
         }
         var png = _nativeWindow.CapturePng();
-        if (Win32NativeWindowSystem.GetForeground().Handle != Handle)
+        if (_activationLParam is not null && Win32NativeWindowSystem.GetForeground().Handle != Handle)
         {
             _nativeWindow.SendDeactivationSignal();
         }

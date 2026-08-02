@@ -1,30 +1,13 @@
 namespace SmartMacro.Native;
 
-// Tuning for IGameWindow.ActivateAsync / DeactivateAsync — the WM_ACTIVATEAPP wake-up
-// pair that brackets every input session against a frozen PW background client.
+// Residual tuning for AgentInputDispatcher's multi-step input sequences.
 //
-// SettleDelayMs — how long ActivateAsync waits between the wake-up signal and returning.
-// Too short and the engine hasn't unfrozen yet; too long and aggregate latency stacks up
-// across 9 agents when broadcasts fan out.
-//
-// DeactivationDelayMs — how long DeactivateAsync waits BEFORE posting the deactivation
-// signal. Both the activation and deactivation now go through PostMessage (same lane as
-// the input WM_KEYDOWN/UP), so the queue itself guarantees ordering — but PW still needs
-// wall-clock time to actually pump through the queued messages. The delay gives PW a
-// window to chew through ACTIVATE(TRUE) → KEYDOWN → KEYUP before we add ACTIVATE(FALSE)
-// to the tail. Empirically: PW's pump is slow when throttled in background, so we need
-// at least 100ms.
-//
-// ActivationLParam — the magic lParam paired with WM_ACTIVATEAPP. The engine reacts to
-// the message itself rather than validating the lParam, but it's exposed in case a future
-// client version starts checking. Default 0x91D8 is carried over from a known-working
-// third-party helper.
+// TODO(W0.2): SettleDelayMs / DeactivationDelayMs / ActivationLParam moved to
+// ProcessProfiles (per-process activation is a PW quirk, not a global input concern).
+// PartySlot1 + InterStepDelayMs remain here only because the assist path still needs
+// them — they dissolve into macro-node parameters with the node-graph model.
 public sealed class ActivatingInputOptions
 {
-    public int SettleDelayMs { get; init; } = 30;
-    public int DeactivationDelayMs { get; init; } = 100;
-    public uint ActivationLParam { get; init; } = 0x91D8;
-
     // Delay between consecutive input steps within ONE activation cycle — e.g. between
     // the party-slot-1 click (selects master) and the assist key (fires /assist macro
     // against the now-selected master) in the assist sequence.

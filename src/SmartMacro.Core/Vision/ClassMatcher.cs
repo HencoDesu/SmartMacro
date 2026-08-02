@@ -2,19 +2,18 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenCvSharp;
-using SmartMacro.Models;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace SmartMacro.Vision;
 
-// OpenCV-based template matcher for the in-game stats-window class-value text. Mirrors
-// the workflow of the old NameMatcher but keyed by CharacterClass and tunable via
-// ClassMatcherOptions (region + thresholds in appsettings.json):
+// OpenCV-based template matcher for the in-game stats-window class-value text. Keyed by
+// free tag strings (template filename stems) and tunable via ClassMatcherOptions (region
+// + thresholds in appsettings.json):
 //   1. Crop the screenshot to the configured stats-window class-value region.
 //   2. Convert to grayscale + binarize at LuminanceThreshold to keep just the text.
-//   3. For each (class, template) pair: binarize the template the same way, run
+//   3. For each (tag, template) pair: binarize the template the same way, run
 //      Cv2.MatchTemplate with TM_CCOEFF_NORMED, take the max score.
-//   4. Return the highest-scoring class if it crosses MatchThreshold.
+//   4. Return the highest-scoring tag if it crosses MatchThreshold.
 [SupportedOSPlatform("windows")]
 public sealed partial class ClassMatcher : IClassMatcher
 {
@@ -33,7 +32,7 @@ public sealed partial class ClassMatcher : IClassMatcher
         LogConfigured(_region.X, _region.Y, _region.Width, _region.Height, _luminanceThreshold, _matchThreshold);
     }
 
-    public ClassMatch? Match(byte[] screenshot, IReadOnlyDictionary<CharacterClass, byte[]> templates)
+    public TagMatch? Match(byte[] screenshot, IReadOnlyDictionary<string, byte[]> templates)
     {
         if (templates.Count == 0)
         {
@@ -53,13 +52,13 @@ public sealed partial class ClassMatcher : IClassMatcher
             return null;
         }
 
-        ClassMatch? best = null;
-        foreach (var (cls, templateBytes) in templates)
+        TagMatch? best = null;
+        foreach (var (tag, templateBytes) in templates)
         {
             using var template = BinarizeFullImage(templateBytes);
             if (template.Width > sourceCrop.Width || template.Height > sourceCrop.Height)
             {
-                LogTemplateTooLarge(cls, template.Width, template.Height, sourceCrop.Width, sourceCrop.Height);
+                LogTemplateTooLarge(tag, template.Width, template.Height, sourceCrop.Width, sourceCrop.Height);
                 continue;
             }
 
@@ -67,16 +66,16 @@ public sealed partial class ClassMatcher : IClassMatcher
             Cv2.MatchTemplate(sourceCrop, template, result, TemplateMatchModes.CCoeffNormed);
             Cv2.MinMaxLoc(result, out _, out var maxVal, out _, out _);
 
-            LogScore(cls, maxVal);
+            LogScore(tag, maxVal);
             if (best is null || maxVal > best.Score)
             {
-                best = new ClassMatch(cls, maxVal);
+                best = new TagMatch(tag, maxVal);
             }
         }
 
         if (best is null || best.Score < _matchThreshold)
         {
-            LogNoMatch(best?.Class, best?.Score, _matchThreshold);
+            LogNoMatch(best?.Tag, best?.Score, _matchThreshold);
             return null;
         }
 
@@ -135,14 +134,14 @@ public sealed partial class ClassMatcher : IClassMatcher
     [LoggerMessage(LogLevel.Information, "ClassMatcher configured: region=({X},{Y} {W}x{H}) luminance={Lum:F0} matchThreshold={Match:F2}")]
     partial void LogConfigured(int x, int y, int w, int h, double lum, double match);
 
-    [LoggerMessage(LogLevel.Debug, "Class template '{Cls}' score: {Score:F3}")]
-    partial void LogScore(CharacterClass cls, double score);
+    [LoggerMessage(LogLevel.Debug, "Tag template '{Tag}' score: {Score:F3}")]
+    partial void LogScore(string tag, double score);
 
-    [LoggerMessage(LogLevel.Information, "Class match: best={Cls} score={Score:F3} threshold={Threshold:F3}")]
-    partial void LogNoMatch(CharacterClass? cls, double? score, double threshold);
+    [LoggerMessage(LogLevel.Information, "Tag match: best={Tag} score={Score:F3} threshold={Threshold:F3}")]
+    partial void LogNoMatch(string? tag, double? score, double threshold);
 
-    [LoggerMessage(LogLevel.Warning, "Class template '{Cls}' ({TemplateW}x{TemplateH}) is larger than the search region ({SourceW}x{SourceH}); skipping")]
-    partial void LogTemplateTooLarge(CharacterClass cls, int templateW, int templateH, int sourceW, int sourceH);
+    [LoggerMessage(LogLevel.Warning, "Tag template '{Tag}' ({TemplateW}x{TemplateH}) is larger than the search region ({SourceW}x{SourceH}); skipping")]
+    partial void LogTemplateTooLarge(string tag, int templateW, int templateH, int sourceW, int sourceH);
 
     [LoggerMessage(LogLevel.Debug, "Binarised stats-class region is nearly empty ({Bright}/{Total} bright pixels) — stats window probably not open")]
     partial void LogEmptyRegion(int bright, int total);

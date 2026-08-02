@@ -1,24 +1,22 @@
-using SmartMacro.Models;
-
 namespace SmartMacro.Vision;
 
-// Identifies which character class is displayed in the in-game stats window. The stats
+// Identifies which tag template is displayed in the in-game stats window. The stats
 // window is opened by the user / agent (default hotkey C), screenshot captured, then this
 // matcher crops the fixed value-text region and template-matches against pre-rendered
-// class-name PNGs in Assets/ClassTemplates/.
+// class-name PNGs from Assets/GameClassNames/ (filename stem = tag).
 //
-// One template per CharacterClass (provided by the user, harvested from a stats-window
-// screenshot of each class). Same conceptual model as the old INameMatcher but keyed by
-// CharacterClass enum instead of per-character name.
+// Templates are keyed by free-form tag strings — the matched key becomes the window's
+// tag in WindowRegistry. The user provides templates by harvesting tight crops of the
+// "Класс: <name>" value from a sample stats-window screenshot per class.
 public interface IClassMatcher
 {
     /// <summary>
     /// Matches the screenshot's stats-window class-value region against the given templates.
     /// </summary>
     /// <param name="screenshot">Full client capture of a PW window with the stats panel open.</param>
-    /// <param name="templates">Class → template-PNG-bytes map. Typically the full set ClassTemplateLoader provides.</param>
-    /// <returns>The matched class above the configured threshold, or <c>null</c> on no match.</returns>
-    ClassMatch? Match(byte[] screenshot, IReadOnlyDictionary<CharacterClass, byte[]> templates);
+    /// <param name="templates">Tag → template-PNG-bytes map. Typically the full set ClassTemplateLoader provides.</param>
+    /// <returns>The matched tag above the configured threshold, or <c>null</c> on no match.</returns>
+    TagMatch? Match(byte[] screenshot, IReadOnlyDictionary<string, byte[]> templates);
 
     /// <summary>
     /// Diagnostic — returns the binarised view of the class-value crop region. Used by
@@ -29,6 +27,6 @@ public interface IClassMatcher
 }
 
 /// <summary>
-/// Match result — includes the score for threshold tuning / diagnostics.
+/// Match result — the winning template's tag plus the score for threshold tuning / diagnostics.
 /// </summary>
-public sealed record ClassMatch(CharacterClass Class, double Score);
+public sealed record TagMatch(string Tag, double Score);

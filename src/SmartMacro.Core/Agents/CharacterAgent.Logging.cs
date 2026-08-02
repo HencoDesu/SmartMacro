@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using SmartMacro.Models;
 using SmartMacro.Native;
 using SmartMacro.Vision;
 
@@ -12,27 +11,21 @@ namespace SmartMacro.Agents;
 public sealed partial class CharacterAgent
 {
     [LoggerMessage(LogLevel.Information, "Agent '{Name}' run loop started (state={State}, poll={Poll})")]
-    partial void LogStarted(string name, AgentState state, TimeSpan poll);
+    partial void LogStarted(string name, string state, TimeSpan poll);
 
     [LoggerMessage(LogLevel.Information, "Agent '{Name}' run loop stopped")]
     partial void LogStopped(string name);
 
-    [LoggerMessage(LogLevel.Information, "Agent promoted: '{OldName}' -> '{NewName}'")]
-    partial void LogPromoted(string oldName, string newName);
+    [LoggerMessage(LogLevel.Information, "Agent promoted: '{OldName}' -> tag '{Tag}'")]
+    partial void LogPromoted(string oldName, string tag);
 
     [LoggerMessage(LogLevel.Information, "Agent window no longer alive; exiting run loop")]
     partial void LogWindowGone();
 
-    [LoggerMessage(LogLevel.Debug, "State transition: {Source} -> {Destination} (trigger {Trigger})")]
-    partial void LogStateTransition(AgentState source, AgentState destination, AgentTrigger trigger);
-
-    [LoggerMessage(LogLevel.Warning, "Unhandled trigger {Trigger} in state {State}")]
-    partial void LogUnhandledTrigger(AgentTrigger trigger, AgentState state);
-
     [LoggerMessage(LogLevel.Information, "Identification attempt started for '{Name}' — opening stats")]
     partial void LogIdentifyAttemptStarted(string name);
 
-    [LoggerMessage(LogLevel.Information, "Identification for '{Name}' returned no match — stats window may not have rendered, class template may be missing, or class not yet registered in roster")]
+    [LoggerMessage(LogLevel.Information, "Identification for '{Name}' returned no match — stats window may not have rendered, or the tag template PNG may be missing from Assets/GameClassNames")]
     partial void LogIdentifyNoMatch(string name);
 
     [LoggerMessage(LogLevel.Error, "Identification failed for agent")]
@@ -83,8 +76,8 @@ public sealed partial class CharacterAgent
     [LoggerMessage(LogLevel.Debug, "Assist skipped for '{Name}' — IsMaster")]
     partial void LogAssistSkippedMaster(string name);
 
-    [LoggerMessage(LogLevel.Debug, "Broadcast {MessageType} ignored by '{Name}' — class {Cls} is in IgnoredClasses")]
-    partial void LogBroadcastIgnored(string messageType, string name, CharacterClass cls);
+    [LoggerMessage(LogLevel.Debug, "Broadcast {MessageType} ignored by '{Name}' — window tags [{Tags}] intersect IgnoredTags")]
+    partial void LogBroadcastIgnored(string messageType, string name, string tags);
 
     [LoggerMessage(LogLevel.Information, "Macro '{MacroName}' started on '{Name}'")]
     partial void LogMacroStarted(string name, string macroName);
@@ -95,8 +88,11 @@ public sealed partial class CharacterAgent
     [LoggerMessage(LogLevel.Warning, "Macro '{MacroName}' not found in library on '{Name}' — broadcast dropped")]
     partial void LogMacroNotFound(string name, string macroName);
 
-    [LoggerMessage(LogLevel.Information, "Macro '{MacroName}' has no steps defined for class {Cls} on '{Name}' — no-op")]
-    partial void LogMacroNoStepsForClass(string name, string macroName, CharacterClass cls);
+    [LoggerMessage(LogLevel.Information, "Macro '{MacroName}' has no actions for window tags [{Tags}] on '{Name}' — no-op")]
+    partial void LogMacroNoActionsForTags(string name, string macroName, string tags);
+
+    [LoggerMessage(LogLevel.Warning, "Macro '{MacroName}' matches multiple tag keys on '{Name}' — using '{ChosenTag}', ignoring '{IgnoredTag}'")]
+    partial void LogMacroMultipleTagMatches(string name, string macroName, string chosenTag, string ignoredTag);
 
     [LoggerMessage(LogLevel.Error, "Macro '{MacroName}' run failed")]
     partial void LogMacroFailed(Exception ex, string macroName);

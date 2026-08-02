@@ -4,7 +4,7 @@ using SmartMacro.Native.Internal;
 namespace SmartMacro.Native.Window;
 
 // Factory for INativeWindow + system-level window queries that aren't bound to a specific
-// hwnd (current foreground, screen size). Stateless — all methods just wrap user32 calls,
+// hwnd (current foreground, screen size). Holds no state — all methods just wrap user32 calls,
 // so the class is static rather than a singleton instance.
 [SupportedOSPlatform("windows")]
 public static class Win32NativeWindowSystem

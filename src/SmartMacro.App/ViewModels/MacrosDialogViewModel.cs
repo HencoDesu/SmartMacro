@@ -4,7 +4,6 @@ using System.Globalization;
 using Avalonia.Threading;
 using SmartMacro.App.Mvvm;
 using SmartMacro.Macro;
-using SmartMacro.Models;
 using SmartMacro.Native;
 using SmartMacro.Orchestration;
 
@@ -13,15 +12,15 @@ namespace SmartMacro.App.ViewModels;
 // VM for MacrosDialog. Hierarchy:
 //   MacrosDialogViewModel
 //     Rows: ObservableCollection<MacroRowViewModel>
-//       ClassPanels: ObservableCollection<MacroClassPanelViewModel>
+//       TagPanels: ObservableCollection<MacroTagPanelViewModel>
 //         Actions: ObservableCollection<MacroActionRowViewModel>  // polymorphic
 //
 // Polymorphic action rows render via Window-level DataTemplates: KeyPressRowViewModel
 // → KeyBindingPicker; DelayRowViewModel → TextBox in SECONDS (decimal) for ergonomic
 // match with PW's in-game cast-time units (e.g. 1.5 sec instead of 1500 ms).
 //
-// Save: walks the VM tree and rebuilds Dictionary<CharacterClass, List<MacroAction>>
-// for each Macro, validates, persists via MacroLibrary.
+// Save: walks the VM tree and rebuilds Dictionary<string, List<MacroAction>> (tag →
+// actions) for each Macro, validates, persists via MacroLibrary.
 public sealed class MacrosDialogViewModel : ObservableObject, IDisposable
 {
     private readonly MacroLibrary _library;
@@ -57,9 +56,9 @@ public sealed class MacrosDialogViewModel : ObservableObject, IDisposable
         foreach (var m in macros)
         {
             var row = new MacroRowViewModel(m.Name);
-            foreach (var (cls, actions) in m.ActionsByClass)
+            foreach (var (tag, actions) in m.ActionsByTag)
             {
-                var panel = new MacroClassPanelViewModel(cls);
+                var panel = new MacroTagPanelViewModel(tag);
                 foreach (var a in actions)
                 {
                     MacroActionRowViewModel rowVm = a switch
@@ -71,7 +70,7 @@ public sealed class MacrosDialogViewModel : ObservableObject, IDisposable
                     };
                     panel.Actions.Add(rowVm);
                 }
-                row.ClassPanels.Add(panel);
+                row.TagPanels.Add(panel);
             }
             Rows.Add(row);
         }
@@ -116,23 +115,24 @@ public sealed class MacrosDialogViewModel : ObservableObject, IDisposable
                 ErrorMessage = $"Duplicate macro name '{name}'.";
                 return false;
             }
-            if (row.ClassPanels.Count == 0)
+            if (row.TagPanels.Count == 0)
             {
-                ErrorMessage = $"Macro '{name}': add at least one class block.";
+                ErrorMessage = $"Macro '{name}': add at least one tag block.";
                 return false;
             }
 
-            var actionsByClass = new Dictionary<CharacterClass, List<MacroAction>>();
-            foreach (var panel in row.ClassPanels)
+            var actionsByTag = new Dictionary<string, List<MacroAction>>(StringComparer.Ordinal);
+            foreach (var panel in row.TagPanels)
             {
-                if (panel.Class == CharacterClass.Unknown)
+                var tag = panel.Tag?.Trim() ?? string.Empty;
+                if (tag.Length == 0)
                 {
-                    ErrorMessage = $"Macro '{name}': class block left as Unknown — pick a real class.";
+                    ErrorMessage = $"Macro '{name}': tag block left empty — type a tag.";
                     return false;
                 }
-                if (actionsByClass.ContainsKey(panel.Class))
+                if (actionsByTag.ContainsKey(tag))
                 {
-                    ErrorMessage = $"Macro '{name}': class {panel.Class} appears twice — merge the blocks.";
+                    ErrorMessage = $"Macro '{name}': tag '{tag}' appears twice — merge the blocks.";
                     return false;
                 }
 
@@ -144,7 +144,7 @@ public sealed class MacrosDialogViewModel : ObservableObject, IDisposable
                         case KeyPressRowViewModel k:
                             if (!Enum.TryParse<VirtualKey>(k.Key, ignoreCase: true, out var vk))
                             {
-                                ErrorMessage = $"Macro '{name}', class {panel.Class}: '{k.Key}' is not a known VirtualKey.";
+                                ErrorMessage = $"Macro '{name}', tag '{tag}': '{k.Key}' is not a known VirtualKey.";
                                 return false;
                             }
                             actions.Add(new KeyPressAction(vk));
@@ -153,7 +153,7 @@ public sealed class MacrosDialogViewModel : ObservableObject, IDisposable
                         case DelayRowViewModel d:
                             if (!double.TryParse(d.SecondsText, NumberStyles.Any, CultureInfo.InvariantCulture, out var seconds) || seconds < 0)
                             {
-                                ErrorMessage = $"Macro '{name}', class {panel.Class}: delay '{d.SecondsText}' is not a non-negative number of seconds.";
+                                ErrorMessage = $"Macro '{name}', tag '{tag}': delay '{d.SecondsText}' is not a non-negative number of seconds.";
                                 return false;
                             }
                             actions.Add(new DelayAction((int)Math.Round(seconds * 1000.0)));
@@ -162,22 +162,22 @@ public sealed class MacrosDialogViewModel : ObservableObject, IDisposable
                         case ClickRowViewModel c:
                             if (!int.TryParse(c.XText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var x) || x < 0)
                             {
-                                ErrorMessage = $"Macro '{name}', class {panel.Class}: click X '{c.XText}' is not a non-negative integer.";
+                                ErrorMessage = $"Macro '{name}', tag '{tag}': click X '{c.XText}' is not a non-negative integer.";
                                 return false;
                             }
                             if (!int.TryParse(c.YText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var y) || y < 0)
                             {
-                                ErrorMessage = $"Macro '{name}', class {panel.Class}: click Y '{c.YText}' is not a non-negative integer.";
+                                ErrorMessage = $"Macro '{name}', tag '{tag}': click Y '{c.YText}' is not a non-negative integer.";
                                 return false;
                             }
                             actions.Add(new ClickAction(new ScreenPoint(x, y), c.DoubleClick));
                             break;
                     }
                 }
-                actionsByClass[panel.Class] = actions;
+                actionsByTag[tag] = actions;
             }
 
-            parsed.Add(new Macro.Macro { Name = name, ActionsByClass = actionsByClass });
+            parsed.Add(new Macro.Macro { Name = name, ActionsByTag = actionsByTag });
         }
 
         try
@@ -201,67 +201,55 @@ public sealed class MacroRowViewModel : ObservableObject
     public MacroRowViewModel(string name)
     {
         _name = name;
-        ClassPanels = new ObservableCollection<MacroClassPanelViewModel>();
-        ClassPanels.CollectionChanged += OnClassPanelsChanged;
+        TagPanels = new ObservableCollection<MacroTagPanelViewModel>();
+        TagPanels.CollectionChanged += OnTagPanelsChanged;
     }
 
     public string Name { get => _name; set => SetField(ref _name, value); }
 
-    public ObservableCollection<MacroClassPanelViewModel> ClassPanels { get; }
+    public ObservableCollection<MacroTagPanelViewModel> TagPanels { get; }
 
-    public void AddClassPanel()
+    public void AddTagPanel() => TagPanels.Add(new MacroTagPanelViewModel(string.Empty));
+
+    public void RemoveTagPanel(MacroTagPanelViewModel panel) => TagPanels.Remove(panel);
+
+    public void MoveTagPanelUp(MacroTagPanelViewModel panel)
     {
-        var used = new HashSet<CharacterClass>(ClassPanels.Select(p => p.Class));
-        var firstUnused = MacroClassPanelViewModel.AllClasses.FirstOrDefault(c => !used.Contains(c));
-        // If every class is used, fall back to first real class (rare — 18 classes available).
-        if (firstUnused == default && MacroClassPanelViewModel.AllClasses.Count > 0)
-        {
-            firstUnused = MacroClassPanelViewModel.AllClasses[0];
-        }
-        ClassPanels.Add(new MacroClassPanelViewModel(firstUnused));
+        var idx = TagPanels.IndexOf(panel);
+        if (idx > 0) TagPanels.Move(idx, idx - 1);
     }
 
-    public void RemoveClassPanel(MacroClassPanelViewModel panel) => ClassPanels.Remove(panel);
-
-    public void MoveClassPanelUp(MacroClassPanelViewModel panel)
+    public void MoveTagPanelDown(MacroTagPanelViewModel panel)
     {
-        var idx = ClassPanels.IndexOf(panel);
-        if (idx > 0) ClassPanels.Move(idx, idx - 1);
+        var idx = TagPanels.IndexOf(panel);
+        if (idx >= 0 && idx < TagPanels.Count - 1) TagPanels.Move(idx, idx + 1);
     }
 
-    public void MoveClassPanelDown(MacroClassPanelViewModel panel)
-    {
-        var idx = ClassPanels.IndexOf(panel);
-        if (idx >= 0 && idx < ClassPanels.Count - 1) ClassPanels.Move(idx, idx + 1);
-    }
-
-    private void OnClassPanelsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void OnTagPanelsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.NewItems is null) return;
-        foreach (MacroClassPanelViewModel panel in e.NewItems)
+        foreach (MacroTagPanelViewModel panel in e.NewItems)
         {
             panel.Parent = this;
         }
     }
 }
 
-public sealed class MacroClassPanelViewModel : ObservableObject
+public sealed class MacroTagPanelViewModel : ObservableObject
 {
-    public static IReadOnlyList<CharacterClass> AllClasses { get; } =
-        Enum.GetValues<CharacterClass>().Where(c => c != CharacterClass.Unknown).ToArray();
+    private string _tag;
 
-    private CharacterClass _class;
-
-    public MacroClassPanelViewModel(CharacterClass cls)
+    public MacroTagPanelViewModel(string tag)
     {
-        _class = cls;
+        _tag = tag;
         Actions = new ObservableCollection<MacroActionRowViewModel>();
         Actions.CollectionChanged += OnActionsChanged;
     }
 
     public MacroRowViewModel? Parent { get; internal set; }
 
-    public CharacterClass Class { get => _class; set => SetField(ref _class, value); }
+    /// <summary>Free-form tag key — actions run on windows whose tag set contains it.</summary>
+    public string Tag { get => _tag; set => SetField(ref _tag, value); }
 
     public ObservableCollection<MacroActionRowViewModel> Actions { get; }
 
@@ -295,7 +283,7 @@ public sealed class MacroClassPanelViewModel : ObservableObject
 // Polymorphic base — concrete subclasses render via Window-level DataTemplates.
 public abstract class MacroActionRowViewModel : ObservableObject
 {
-    public MacroClassPanelViewModel? Parent { get; internal set; }
+    public MacroTagPanelViewModel? Parent { get; internal set; }
 }
 
 public sealed class KeyPressRowViewModel : MacroActionRowViewModel

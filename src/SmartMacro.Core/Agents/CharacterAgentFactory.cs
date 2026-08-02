@@ -10,18 +10,19 @@ using SmartMacro.Macro;
 using SmartMacro.Presentation;
 using SmartMacro.ProcessMonitoring;
 using SmartMacro.Vision;
+using SmartMacro.Windows;
 
 namespace SmartMacro.Agents;
 
-// Default factory — composes IGameWindow + ICharacterProvider + agent options into a
-// fresh agent. The agent constructs its own placeholder Character internally from the
-// pid; no identification work happens here (when ProcessMonitor sees the game process,
-// the user is still on the server-select screen and the nameplate isn't visible yet).
-// Stateless; safe as a singleton in DI.
+// Default factory — composes IGameWindow + WindowRegistry + identification stack into a
+// fresh agent. The agent starts tagless; no identification work happens here (when
+// ProcessMonitor sees the game process, the user is still on the server-select screen
+// and the stats window isn't reachable yet). Holds no state; safe as a singleton in DI.
 [SupportedOSPlatform("windows")]
 public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
 {
     private readonly IGameWindowFactory _windowFactory;
+    private readonly WindowRegistry _registry;
     private readonly ICharacterProvider _provider;
     private readonly ClassIconService _classIcons;
     private readonly AgentInputDispatcher _input;
@@ -34,6 +35,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
 
     public CharacterAgentFactory(
         IGameWindowFactory windowFactory,
+        WindowRegistry registry,
         ICharacterProvider provider,
         ClassIconService classIcons,
         AgentInputDispatcher input,
@@ -44,6 +46,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
         ILoggerFactory loggerFactory)
     {
         _windowFactory = windowFactory;
+        _registry = registry;
         _provider = provider;
         _classIcons = classIcons;
         _input = input;
@@ -77,6 +80,8 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
         LogAgentCreated(info.Pid);
         var agent = new CharacterAgent(
             window,
+            info.ProcessName,
+            _registry,
             outbox,
             _provider,
             _classIcons,

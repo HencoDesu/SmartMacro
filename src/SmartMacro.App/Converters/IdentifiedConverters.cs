@@ -5,7 +5,7 @@ using Avalonia.Media;
 namespace SmartMacro.App.Converters;
 
 // IValueConverter — Avalonia binding-side mapping from bool IsIdentified → display text
-// and accent colour. Stateless singletons, referenced from XAML via x:Static.
+// and accent colour. Immutable singletons, referenced from XAML via x:Static.
 
 public sealed class IdentifiedToLabelConverter : IValueConverter
 {

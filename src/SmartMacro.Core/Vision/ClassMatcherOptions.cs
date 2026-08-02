@@ -8,7 +8,7 @@ namespace SmartMacro.Vision;
 // The user opens the in-game stats window (default hotkey C) once at a fixed position;
 // these coords address the value-text area only (the part containing the class name,
 // e.g. "Жрец"). Template-matching pre-rendered PNGs of each class name against this
-// region returns the matched CharacterClass.
+// region returns the matched tag (template filename stem).
 //
 // Both region and thresholds are configurable in appsettings.json so the user can tune
 // to their own resolution / UI scale without recompiling.

@@ -1,16 +1,13 @@
-using SmartMacro.Models;
 using SmartMacro.Native;
 
 namespace SmartMacro.Config;
 
 // Infra/runtime settings bound from the "Agent" section of appsettings.json.
-// Separate from the per-character roster (handled by ICharacterRoster + roster.json) so
-// runtime tuning and roster editing have different change cadences.
+// Process selection moved to ProcessProfiles; identity moved to window tags (see
+// SmartMacro.Windows.WindowRegistry). Boot/stats fields are transitional — they turn
+// into macro nodes in W0.2.
 public sealed class AgentOptions
 {
-    // The OS-level process name to watch via ProcessMonitor.
-    public string GameProcessName { get; init; } = "elementclient";
-
     // How often ProcessMonitor polls Process.GetProcessesByName to diff against the
     // previous snapshot.
     public int ProcessPollIntervalSeconds { get; init; } = 1;
@@ -21,11 +18,13 @@ public sealed class AgentOptions
 
     // In-game hotkey that toggles the stats window. Used by IdentifyAsync to open the
     // stats panel, capture the class-text region, then close again. PW default is C.
+    // TODO(W0.2): becomes a node parameter in the pw-boot macro.
     public VirtualKey StatsHotkey { get; init; } = VirtualKey.C;
 
     // Wall-clock delay between sending the stats-open hotkey and capturing the
     // screenshot. PW renders the stats panel asynchronously; ~500ms covers a frozen
     // background client. Tune up if the binarised class region comes back empty.
+    // TODO(W0.2): becomes a node parameter.
     public int StatsOpenDelayMs { get; init; } = 500;
 
     // Boot-flow click targets and timing. When an agent starts (process appears or app
@@ -37,6 +36,7 @@ public sealed class AgentOptions
     // Coords are in client space (same model as PartySlot1 in ActivatingInputOptions).
     // Use the BroadcastDoubleClick trick (cursor → hotkey → log shows client coords)
     // to find each button at your resolution / UI scale.
+    // TODO(W0.2): the whole boot flow becomes the pw-boot example macro.
     public ScreenPoint ServerSelectButton { get; init; } = new(1192, 1805);
     public ScreenPoint CharacterSelectButton { get; init; } = new(1958, 2053);
 
@@ -58,14 +58,15 @@ public sealed class AgentOptions
     public string DefaultImmunityKey { get; init; } = "F1";
     public string DefaultAssistKey { get; init; } = "F2";
 
-    // The class designated as the master — the one being /assist'd by everyone else.
-    // Master skips TakeAssistMessage (no point assisting yourself); all other agents
-    // click party-slot-1 + fire AssistKey to target whatever master targets.
-    public CharacterClass MasterClass { get; init; } = CharacterClass.Лучник;
+    // The tag designating the master — the window being /assist'd by everyone else.
+    // A window carrying this tag skips TakeAssistMessage (no point assisting yourself);
+    // all other windows click party-slot-1 + fire AssistKey to target whatever master
+    // targets. TODO(W0.2): replaced by tag selectors on macro nodes.
+    public string MasterTag { get; init; } = "Лучник";
 
-    // Classes that ignore EVERY broadcast (immunity, combat, assist, cursor-click).
-    // Used for utility characters like a warehouse mule that's in-world but shouldn't
-    // react to party-wide commands. Boot/identify still runs for them — they just
-    // don't act on inbox messages once Idle.
-    public List<CharacterClass> IgnoredClasses { get; init; } = new();
+    // Windows carrying ANY of these tags ignore EVERY broadcast (immunity, combat,
+    // assist, cursor-click). Used for utility characters like a warehouse mule that's
+    // in-world but shouldn't react to party-wide commands. Boot/identify still runs
+    // for them. TODO(W0.2): replaced by tag selectors on macro nodes.
+    public List<string> IgnoredTags { get; init; } = ["Шаман"];
 }

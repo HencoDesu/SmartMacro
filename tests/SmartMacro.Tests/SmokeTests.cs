@@ -1,5 +1,4 @@
 using FakeItEasy;
-using SmartMacro.Models;
 using SmartMacro.Vision;
 
 namespace SmartMacro.Tests;
@@ -19,14 +18,14 @@ public class SmokeTests
     public async Task FakeItEasy_Fakes_Core_Interface()
     {
         var matcher = A.Fake<IClassMatcher>();
-        var expected = new ClassMatch(CharacterClass.Лучник, 0.97);
-        A.CallTo(() => matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<CharacterClass, byte[]>>._))
+        var expected = new TagMatch("Лучник", 0.97);
+        A.CallTo(() => matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._))
             .Returns(expected);
 
-        var result = matcher.Match([], new Dictionary<CharacterClass, byte[]>());
+        var result = matcher.Match([], new Dictionary<string, byte[]>());
 
         await Assert.That(result).IsEqualTo(expected);
-        A.CallTo(() => matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<CharacterClass, byte[]>>._))
+        A.CallTo(() => matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._))
             .MustHaveHappenedOnceExactly();
     }
 }

@@ -1,22 +1,19 @@
 using Microsoft.Extensions.Logging;
-using SmartMacro.Models;
 
 namespace SmartMacro.Vision;
 
-// Filesystem-backed loader for the per-class stats-window text templates. One PNG per
-// CharacterClass under Assets/GameClassNames/{enum}.png. Sibling to Assets/GameUiElements/
-// (boot UI templates) and Assets/ClassIcons/ (taskbar icons) — namespace separates kinds
-// of game-related templates. The user provides these by harvesting tight crops of the
-// "Класс: <name>" value from a sample stats-window screenshot per class.
+// Filesystem-backed loader for the stats-window tag-template set. Scans every *.png
+// under Assets/GameClassNames/ and keys it by filename stem — the stem IS the tag that
+// gets applied to the window on a match ("Лучник.png" → tag "Лучник"). Sibling to
+// Assets/GameUiElements/ (boot UI templates) and Assets/ClassIcons/ (taskbar icons).
 //
-// On startup, the loader scans the dir and caches whatever templates exist. Missing
-// templates are tolerated — the corresponding classes simply can't be matched. The
-// log warns once with a list of missing classes so the user knows which screenshots
-// they still need to provide.
+// Adding a recognisable tag = dropping a PNG in the folder; no enum, no code change.
+// Bytes are read as-is at startup — decoding happens later in ClassMatcher, so a broken
+// file surfaces as a match-time error, not a load-time crash.
 public sealed partial class ClassTemplateLoader
 {
     private readonly ILogger<ClassTemplateLoader> _logger;
-    private readonly IReadOnlyDictionary<CharacterClass, byte[]> _templates;
+    private readonly IReadOnlyDictionary<string, byte[]> _templates;
 
     public ClassTemplateLoader(ILogger<ClassTemplateLoader> logger)
         : this(Path.Combine(AppContext.BaseDirectory, "Assets", "GameClassNames"), logger)
@@ -30,14 +27,14 @@ public sealed partial class ClassTemplateLoader
     }
 
     /// <summary>
-    /// All successfully-loaded templates keyed by class. Hand to <see cref="IClassMatcher.Match"/>.
+    /// All successfully-loaded templates keyed by tag (case-sensitive filename stem).
+    /// Hand to <see cref="IClassMatcher.Match"/>.
     /// </summary>
-    public IReadOnlyDictionary<CharacterClass, byte[]> Templates => _templates;
+    public IReadOnlyDictionary<string, byte[]> Templates => _templates;
 
-    private IReadOnlyDictionary<CharacterClass, byte[]> Load(string templatesDir)
+    private Dictionary<string, byte[]> Load(string templatesDir)
     {
-        var dict = new Dictionary<CharacterClass, byte[]>();
-        var missing = new List<CharacterClass>();
+        var dict = new Dictionary<string, byte[]>(StringComparer.Ordinal);
 
         if (!Directory.Exists(templatesDir))
         {
@@ -45,47 +42,29 @@ public sealed partial class ClassTemplateLoader
             return dict;
         }
 
-        foreach (CharacterClass cls in Enum.GetValues<CharacterClass>())
+        foreach (var path in Directory.EnumerateFiles(templatesDir, "*.png"))
         {
-            if (cls == CharacterClass.Unknown)
-            {
-                continue;
-            }
-
-            var path = Path.Combine(templatesDir, $"{cls}.png");
-            if (!File.Exists(path))
-            {
-                missing.Add(cls);
-                continue;
-            }
-
+            var stem = Path.GetFileNameWithoutExtension(path);
             try
             {
-                dict[cls] = File.ReadAllBytes(path);
+                dict[stem] = File.ReadAllBytes(path);
             }
             catch (Exception ex)
             {
-                LogLoadFailed(ex, cls, path);
+                LogLoadFailed(ex, stem, path);
             }
         }
 
         LogLoaded(dict.Count);
-        if (missing.Count > 0)
-        {
-            LogMissing(missing.Count, string.Join(", ", missing));
-        }
         return dict;
     }
 
-    [LoggerMessage(LogLevel.Information, "Class templates loaded: {Count} from disk")]
+    [LoggerMessage(LogLevel.Information, "Tag templates loaded: {Count} from disk")]
     partial void LogLoaded(int count);
 
-    [LoggerMessage(LogLevel.Warning, "Class template directory not found at {Path} — identification will fail until PNGs are provided in Assets/GameClassNames/{{ClassName}}.png")]
+    [LoggerMessage(LogLevel.Warning, "Tag template directory not found at {Path} — identification will fail until PNGs are provided in Assets/GameClassNames/{{Tag}}.png")]
     partial void LogDirMissing(string path);
 
-    [LoggerMessage(LogLevel.Warning, "Missing class template(s) for {Count} class(es): {List}")]
-    partial void LogMissing(int count, string list);
-
-    [LoggerMessage(LogLevel.Error, "Failed to load class template for {Cls} from {Path}")]
-    partial void LogLoadFailed(Exception ex, CharacterClass cls, string path);
+    [LoggerMessage(LogLevel.Error, "Failed to load tag template '{Tag}' from {Path}")]
+    partial void LogLoadFailed(Exception ex, string tag, string path);
 }

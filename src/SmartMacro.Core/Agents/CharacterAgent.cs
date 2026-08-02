@@ -6,31 +6,25 @@ using SmartMacro.GameWindows;
 using SmartMacro.Identification;
 using SmartMacro.Input;
 using SmartMacro.Macro;
-using SmartMacro.Models;
 using SmartMacro.Presentation;
 using SmartMacro.Vision;
-using Stateless;
+using SmartMacro.Windows;
 
 namespace SmartMacro.Agents;
 
-// One agent per game-client process. Always created — even before the character is known.
+// One agent per game-client process. Always created — even before the window is tagged.
 // The game's startup flow goes process-launch → server-select → character-select → in-world,
-// and only the last screen exposes the nameplate we'd match against the roster. So an agent
-// is born in AwaitingIdentification with a placeholder Character and waits to be promoted
-// via Identify().
+// and only the last screen exposes the stats window we'd match against the tag templates.
 //
-// State graph (minimal v1):
-//
-//   AwaitingIdentification ── Identified ──► Idle
-//
-// AwaitingIdentification is now passive — no polling loop. The agent waits in this
-// state until it receives an EnterIdentifyMessage (fired by the BroadcastIdentify
-// hotkey), at which point it runs IdentifyAsync (open stats → capture → match → close).
-// On a class match, promote to Idle; on miss, stay in AwaitingIdentification.
+// Identity now lives in WindowRegistry: the agent registers its window on Start, applies
+// tags via Identify(), and unregisters when its run loop exits. "Identified" simply means
+// "the window carries at least one tag" — there is no state machine anymore; the State
+// string exposed for the UI is derived from IsIdentified.
 //
 // Lifecycle:
-//   * Start() — kicks off the main run loop on the thread pool. Owned CTS + Task.
-//   * Stop() — cancels the CTS; the loop exits, writes AgentStoppingMessage.
+//   * Start() — registers the window and kicks off the main run loop on the thread pool.
+//   * Stop() — cancels the CTS; the loop exits, unregisters the window, writes
+//     AgentStoppingMessage.
 //   * RunningTask — exposed so the orchestrator can await orderly shutdown.
 //
 // Agent → Orchestrator notifications (identification, stopping) go through the orchestrator's
@@ -38,6 +32,8 @@ namespace SmartMacro.Agents;
 public sealed partial class CharacterAgent
 {
     private readonly IGameWindow _window;
+    private readonly string _processName;
+    private readonly WindowRegistry _registry;
     private readonly ChannelWriter<AgentMessage> _outbox;
     private readonly Channel<AgentMessage> _inbox;
     private readonly ICharacterProvider _provider;
@@ -57,11 +53,13 @@ public sealed partial class CharacterAgent
     private readonly TimeSpan _bootPhaseTimeout;
     private readonly string _defaultImmunityKey;
     private readonly string _defaultAssistKey;
-    private readonly CharacterClass _masterClass;
-    private readonly HashSet<CharacterClass> _ignoredClasses;
+    private readonly string _masterTag;
+    private readonly HashSet<string> _ignoredTags;
+    private readonly string _placeholderName;
     private readonly ILogger<CharacterAgent> _logger;
-    private readonly StateMachine<AgentState, AgentTrigger> _machine;
-    private readonly Lock _stateLock = new();
+    // Guards the promote-once contract of Identify(): without it, a manual UI assign
+    // racing the auto-identify path could double-tag and double-notify.
+    private readonly Lock _identifyLock = new();
     // Single-flight guard shared by EnterWorldAsync and IdentifyAsync. WaitAsync(0)
     // returns false on contention so a stacked-up trigger no-ops instead of letting
     // two concurrent activate/click/key cycles race the same window.
@@ -71,6 +69,8 @@ public sealed partial class CharacterAgent
 
     public CharacterAgent(
         IGameWindow window,
+        string processName,
+        WindowRegistry registry,
         ChannelWriter<AgentMessage> outbox,
         ICharacterProvider provider,
         ClassIconService classIcons,
@@ -82,6 +82,8 @@ public sealed partial class CharacterAgent
         ILogger<CharacterAgent> logger)
     {
         _window = window;
+        _processName = processName;
+        _registry = registry;
         _outbox = outbox;
         _provider = provider;
         _classIcons = classIcons;
@@ -100,47 +102,40 @@ public sealed partial class CharacterAgent
         _bootPhaseTimeout = TimeSpan.FromMilliseconds(options.Value.BootPhaseTimeoutMs);
         _defaultImmunityKey = options.Value.DefaultImmunityKey;
         _defaultAssistKey = options.Value.DefaultAssistKey;
-        _masterClass = options.Value.MasterClass;
-        _ignoredClasses = new HashSet<CharacterClass>(options.Value.IgnoredClasses);
+        _masterTag = options.Value.MasterTag;
+        _ignoredTags = new HashSet<string>(options.Value.IgnoredTags, StringComparer.Ordinal);
         _logger = logger;
         _inbox = Channel.CreateUnbounded<AgentMessage>(new UnboundedChannelOptions
         {
             SingleReader = true,
         });
 
-        // Born unidentified — placeholder name unique per-hwnd so it doesn't clash with
-        // real characters. Class=Unknown until promoted by Identify().
-        Character = new Character
-        {
-            Name = $"Unknown (hwnd=0x{window.Handle.ToInt64():X})",
-            Class = CharacterClass.Unknown,
-        };
-
-        _machine = new StateMachine<AgentState, AgentTrigger>(AgentState.AwaitingIdentification);
-        _machine.OnTransitioned(t => LogStateTransition(t.Source, t.Destination, t.Trigger));
-        _machine.OnUnhandledTrigger((state, trigger) => LogUnhandledTrigger(trigger, state));
-
-        _machine.Configure(AgentState.AwaitingIdentification)
-            .Permit(AgentTrigger.Identified, AgentState.Idle);
-
-        _machine.Configure(AgentState.Idle)
-            .Ignore(AgentTrigger.Identified);
+        // Born tagless — placeholder name unique per-hwnd so it doesn't clash with
+        // identified windows until the first tag lands.
+        _placeholderName = $"Unknown (hwnd=0x{window.Handle.ToInt64():X})";
     }
 
-    public Character Character { get; private set; }
+    /// <summary>Display name — the window's first tag, or a per-hwnd placeholder until tagged.</summary>
+    public string Name => FirstTagOrNull() ?? _placeholderName;
 
-    public string Name => Character.Name;
-    public AgentState State => _machine.State;
-    public bool IsIdentified => _machine.State != AgentState.AwaitingIdentification;
+    /// <summary>
+    /// Coarse state string for UI binding, derived from <see cref="IsIdentified"/>.
+    /// Transitional — W0.3 rebuilds the UI around windows + tag chips.
+    /// </summary>
+    public string State => IsIdentified ? "Idle" : "AwaitingIdentification";
 
-    // Master = the class designated in AgentOptions.MasterClass (typically Лучник).
+    /// <summary>Identified = the registry holds at least one tag for this window.</summary>
+    public bool IsIdentified => _registry.GetTags(Handle).Count > 0;
+
+    // Master = the window carrying AgentOptions.MasterTag (typically Лучник).
     // The master is the one being /assist'd by everyone else, so it skips
     // TakeAssistMessage itself.
-    public bool IsMaster => IsIdentified && Character.Class == _masterClass;
+    public bool IsMaster => _registry.HasTag(Handle, _masterTag);
 
-    // Ignored = class is in AgentOptions.IgnoredClasses. Used for utility characters
-    // like a warehouse mule — they boot + identify normally but drop all broadcasts.
-    public bool IsIgnored => IsIdentified && _ignoredClasses.Contains(Character.Class);
+    // Ignored = the window carries any tag from AgentOptions.IgnoredTags. Used for
+    // utility characters like a warehouse mule — they boot + identify normally but
+    // drop all broadcasts.
+    public bool IsIgnored => _registry.GetTags(Handle).Overlaps(_ignoredTags);
     public ChannelWriter<AgentMessage> Inbox => _inbox.Writer;
     public Task? RunningTask { get; private set; }
 
@@ -152,13 +147,13 @@ public sealed partial class CharacterAgent
 
     /// <summary>
     /// Active capture of the current game window. Exposed for diagnostics (dump-captures
-    /// debug flow). Identification no longer needs UI-driven capture — class-based
-    /// matching happens server-side via the BroadcastIdentify hotkey path.
+    /// debug flow).
     /// </summary>
     public byte[] CaptureScreenshot() => _window.CaptureScreenshot();
 
     /// <summary>
-    /// Kicks off the main run loop on the thread pool and starts the identification loop.
+    /// Registers the window in <see cref="WindowRegistry"/>, kicks off the main run loop
+    /// on the thread pool, and fires the boot pipeline.
     /// Idempotency: throws if the agent is already running.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when called on an already-running agent.</exception>
@@ -169,18 +164,21 @@ public sealed partial class CharacterAgent
             throw new InvalidOperationException($"Agent '{Name}' is already started.");
         }
 
+        _registry.Register(Handle, _processName);
+
         _runCts = new CancellationTokenSource();
         RunningTask = Task.Run(() => RunLoopAsync(_runCts.Token));
 
         // Auto-kick the boot pipeline (vision-driven phase polls → click → identify).
-        // Fire-and-forget; on success it calls Identify() which fires the state-machine
-        // transition. The captured _runCts.Token cancels mid-flow if Stop() runs.
+        // Fire-and-forget; on success it calls Identify() which applies the tag via the
+        // registry. The captured _runCts.Token cancels mid-flow if Stop() runs.
         _ = EnterWorldAsync(_runCts.Token);
     }
 
     /// <summary>
-    /// Signals the run loop to stop. The loop exits, writes <see cref="AgentStoppingMessage"/>,
-    /// and the task completes via <see cref="RunningTask"/>.
+    /// Signals the run loop to stop. The loop exits, unregisters the window from
+    /// <see cref="WindowRegistry"/>, writes <see cref="AgentStoppingMessage"/>, and the
+    /// task completes via <see cref="RunningTask"/>.
     /// </summary>
     public void Stop()
     {
@@ -188,40 +186,38 @@ public sealed partial class CharacterAgent
     }
 
     /// <summary>
-    /// One-shot promotion from unidentified to identified. Called by the identification
-    /// loop after a successful auto-match or by the UI after the user labels an unknown
-    /// agent. Updates <see cref="Character"/>, fires the <c>Identified</c> trigger to
-    /// leave <see cref="AgentState.AwaitingIdentification"/> (cancelling the identification
-    /// loop via OnExit), applies the class icon, and notifies the orchestrator.
+    /// One-shot promotion from tagless to identified. Called by the identification flow
+    /// after a successful auto-match or by the UI after the user assigns a tag manually.
+    /// Applies the tag via <see cref="WindowRegistry.AddTag"/>, applies the taskbar icon,
+    /// and notifies the orchestrator.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown when the agent is already identified.</exception>
-    public void Identify(Character character)
+    /// <exception cref="InvalidOperationException">Thrown when the window already carries a tag.</exception>
+    public void Identify(string tag)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tag);
+
         string oldName;
-        lock (_stateLock)
+        lock (_identifyLock)
         {
-            if (_machine.State != AgentState.AwaitingIdentification)
+            if (IsIdentified)
             {
                 throw new InvalidOperationException($"Agent '{Name}' is already identified.");
             }
 
             oldName = Name;
-            Character = character;
-            _machine.Fire(AgentTrigger.Identified);
+            _registry.AddTag(Handle, tag);
         }
 
-        LogPromoted(oldName, character.Name);
-        _classIcons.TryApply(_window, character.Class);
+        LogPromoted(oldName, tag);
+        _classIcons.TryApply(_window, tag);
         _outbox.TryWrite(new AgentIdentifiedMessage(this, oldName));
     }
 
     // Main run loop — responsible only for window-death detection and inbox draining.
-    // State-specific work happens in per-state loops triggered by the state machine's
-    // OnEntry/OnExit hooks. The main loop wakes on inbox messages or window-aliveness
-    // ticks; per-state loops run on their own cadence.
+    // The main loop wakes on inbox messages or window-aliveness ticks.
     private async Task RunLoopAsync(CancellationToken cancellationToken)
     {
-        LogStarted(Name, _machine.State, _pollInterval);
+        LogStarted(Name, State, _pollInterval);
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -244,6 +240,9 @@ public sealed partial class CharacterAgent
         finally
         {
             LogStopped(Name);
+            // Window is gone (or we're shutting down) — the registry entry and its tags
+            // die with it. Raises WindowClosed for registry subscribers.
+            _registry.Unregister(Handle);
             _outbox.TryWrite(new AgentStoppingMessage(this));
             _runCts?.Dispose();
             _runCts = null;
@@ -371,10 +370,10 @@ public sealed partial class CharacterAgent
         return ready;
     }
 
-    // Single identify pass — opens stats, captures, matches class, closes stats. Does
+    // Single identify pass — opens stats, captures, matches the tag, closes stats. Does
     // NOT advance through boot screens; assumes the agent is already in-world. On a
-    // match, promotes via Identify() (state-machine transition); on miss, stays
-    // AwaitingIdentification. Triggered by EnterIdentifyMessage (BroadcastIdentify hotkey).
+    // match, promotes via Identify() (applies the tag through the registry); on miss,
+    // stays tagless. Triggered by EnterIdentifyMessage (BroadcastIdentify hotkey).
     //
     // Public entry path that acquires the shared single-flight lock. EnterWorldAsync
     // calls IdentifyAsync_NoLock directly because it already holds the lock.
@@ -437,10 +436,10 @@ public sealed partial class CharacterAgent
             return;
         }
 
-        Character? identified;
+        string? tag;
         try
         {
-            identified = _provider.Identify(screenshot);
+            tag = _provider.Identify(screenshot);
         }
         catch (Exception ex)
         {
@@ -448,13 +447,13 @@ public sealed partial class CharacterAgent
             return;
         }
 
-        if (identified is null)
+        if (tag is null)
         {
             LogIdentifyNoMatch(Name);
             return;
         }
 
-        Identify(identified);
+        Identify(tag);
     }
 
     // Wraps activation around a single click at the given client point. Failures are
@@ -467,8 +466,9 @@ public sealed partial class CharacterAgent
     }
 
     // Fire-and-forget macro run on RunMacroMessage. Lookup by name in MacroLibrary,
-    // iterate steps via _input.FireKeyAsync. Single-flight via _operationLock — if
-    // an identify or a previous macro is still running, this one no-ops.
+    // then pick the action list whose tag key is present in this window's tag set.
+    // Single-flight via _operationLock — if an identify or a previous macro is still
+    // running, this one no-ops.
     private async Task RunMacroAsync(string macroName, CancellationToken cancellationToken)
     {
         if (!await _operationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
@@ -486,11 +486,32 @@ public sealed partial class CharacterAgent
                 return;
             }
 
-            // Per-class lookup: each class can have its own action sequence (different
-            // cast times / rotations). Class absent from the macro → silent no-op.
-            if (!macro.ActionsByClass.TryGetValue(Character.Class, out var actions) || actions.Count == 0)
+            // Per-tag lookup: each tag can have its own action sequence (different cast
+            // times / rotations). First dictionary key contained in the window's tag set
+            // wins; multiple matches are logged. No matching key → silent no-op.
+            var tags = _registry.GetTags(Handle);
+            List<MacroAction>? actions = null;
+            string? matchedTag = null;
+            foreach (var (tag, tagActions) in macro.ActionsByTag)
             {
-                LogMacroNoStepsForClass(Name, macroName, Character.Class);
+                if (!tags.Contains(tag))
+                {
+                    continue;
+                }
+                if (matchedTag is null)
+                {
+                    matchedTag = tag;
+                    actions = tagActions;
+                }
+                else
+                {
+                    LogMacroMultipleTagMatches(Name, macroName, matchedTag, tag);
+                }
+            }
+
+            if (actions is null || actions.Count == 0)
+            {
+                LogMacroNoActionsForTags(Name, macroName, string.Join(", ", tags));
                 return;
             }
 
@@ -517,7 +538,7 @@ public sealed partial class CharacterAgent
         while (_inbox.Reader.TryRead(out var message))
         {
             // EnterIdentifyMessage is the one inbox message handled BEFORE the
-            // unidentified-guard: it's specifically meant for unidentified agents to
+            // unidentified-guard: it's specifically meant for tagless agents to
             // promote themselves. Already-identified agents drop it silently — no stat-
             // window flash, no log noise. Broadcast semantics stay simple (fan-out to
             // all agents); the filter lives here.
@@ -537,7 +558,7 @@ public sealed partial class CharacterAgent
                 continue;
             }
 
-            // Until the agent is labeled, swallow all other broadcast actions silently.
+            // Until the window is tagged, swallow all other broadcast actions silently.
             // We genuinely don't know whose window this is yet — sending immunity / clicks
             // could land in the wrong place (e.g. character-select screen, chat input,
             // the launcher).
@@ -546,12 +567,12 @@ public sealed partial class CharacterAgent
                 continue;
             }
 
-            // Ignored class (warehouse / utility character) — drop the broadcast.
+            // Ignored tag (warehouse / utility character) — drop the broadcast.
             // Boot + identify still happen so the agent makes it in-world, but it
             // doesn't act on party-wide commands.
             if (IsIgnored)
             {
-                LogBroadcastIgnored(message.GetType().Name, Name, Character.Class);
+                LogBroadcastIgnored(message.GetType().Name, Name, string.Join(", ", _registry.GetTags(Handle)));
                 continue;
             }
 
@@ -624,4 +645,12 @@ public sealed partial class CharacterAgent
         return true;
     }
 
+    private string? FirstTagOrNull()
+    {
+        foreach (var tag in _registry.GetTags(Handle))
+        {
+            return tag;
+        }
+        return null;
+    }
 }

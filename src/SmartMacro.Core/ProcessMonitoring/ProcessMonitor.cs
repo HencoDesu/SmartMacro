@@ -8,16 +8,17 @@ using SmartMacro.Config;
 namespace SmartMacro.ProcessMonitoring;
 
 // Polls Process.GetProcessesByName at a configurable interval and raises ProcessAppeared /
-// ProcessDisappeared events for every diff against the previous snapshot. Designed to be
-// cheap (one enumeration per tick) and tolerant of process crashes (a disappeared process
-// is normal, not an error).
+// ProcessDisappeared events for every diff against the previous snapshot. Watches the
+// UNION of all ProcessProfiles process names — one enumeration per profile name per tick.
+// Designed to be cheap and tolerant of process crashes (a disappeared process is normal,
+// not an error).
 //
 // The monitor is a passive observer — it doesn't know who listens to its events. The
 // orchestrator subscribes during construction. Other consumers (UI, diagnostics) can
 // subscribe too without the monitor caring.
 public sealed partial class ProcessMonitor : IHostedService, IDisposable
 {
-    private readonly string _processName;
+    private readonly IReadOnlyList<string> _processNames;
     private readonly TimeSpan _pollInterval;
     private readonly ILogger<ProcessMonitor> _logger;
 
@@ -36,7 +37,7 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
     private Task? _loop;
 
     /// <summary>
-    /// Raised when a new game-client process is detected with a valid main-window handle.
+    /// Raised when a new watched process is detected with a valid main-window handle.
     /// Late-bound: PW spawns its process before initialising the main window; the monitor
     /// keeps polling until <see cref="ProcessInfo.MainWindowHandle"/> is non-zero, then fires.
     /// </summary>
@@ -49,17 +50,12 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
     public event Action<int>? ProcessDisappeared;
 
     public ProcessMonitor(
-        IOptions<AgentOptions> options,
+        IOptions<AgentOptions> agentOptions,
+        IOptions<ProcessProfileOptions> profileOptions,
         ILogger<ProcessMonitor> logger)
     {
-        var values = options.Value;
-        if (string.IsNullOrWhiteSpace(values.GameProcessName))
-        {
-            throw new ArgumentException("AgentOptions.GameProcessName is required.", nameof(options));
-        }
-
-        _processName = values.GameProcessName;
-        _pollInterval = TimeSpan.FromSeconds(values.ProcessPollIntervalSeconds);
+        _processNames = profileOptions.Value.GetWatchedProcessNames();
+        _pollInterval = TimeSpan.FromSeconds(agentOptions.Value.ProcessPollIntervalSeconds);
         _logger = logger;
     }
 
@@ -70,9 +66,17 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
             throw new InvalidOperationException("Monitor already started.");
         }
 
+        if (_processNames.Count == 0)
+        {
+            // Legal but almost certainly a config mistake — no profiles means no windows
+            // will ever be tracked. Keep the loop running anyway so hot-added consumers
+            // see consistent (empty) behavior instead of a dead service.
+            LogNoProfiles();
+        }
+
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => LoopAsync(_cts.Token), _cts.Token);
-        LogStarted(_processName, _pollInterval);
+        LogStarted(string.Join(", ", _processNames), _pollInterval);
         return Task.CompletedTask;
     }
 
@@ -99,13 +103,13 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
             _cts.Dispose();
             _cts = null;
             _loop = null;
-            LogStopped(_processName);
+            LogStopped(string.Join(", ", _processNames));
         }
     }
 
     private void Poll()
     {
-        var current = SnapshotByName(_processName);
+        var current = SnapshotAll(_processNames);
 
         var currentPids = current
             .Select(x => x.Pid)
@@ -124,7 +128,7 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
             foreach (var pid in gone)
             {
                 _knownPids.Remove(pid);
-                LogProcessDisappeared(pid, _processName);
+                LogProcessDisappeared(pid);
                 ProcessDisappeared?.Invoke(pid);
             }
         }
@@ -156,6 +160,16 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
             LogProcessAppeared(info.Pid, info.ProcessName, info.MainWindowHandle.ToInt64());
             ProcessAppeared?.Invoke(info);
         }
+    }
+
+    private static List<ProcessInfo> SnapshotAll(IReadOnlyList<string> processNames)
+    {
+        var result = new List<ProcessInfo>();
+        foreach (var name in processNames)
+        {
+            result.AddRange(SnapshotByName(name));
+        }
+        return result;
     }
 
     private static List<ProcessInfo> SnapshotByName(string processName)
@@ -199,7 +213,7 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
             }
             catch (Exception ex)
             {
-                LogPollFailed(ex, _processName);
+                LogPollFailed(ex);
             }
 
             try
@@ -222,20 +236,23 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
 
     #region Logging
 
-    [LoggerMessage(LogLevel.Information, "ProcessMonitor started for '{ProcessName}' (interval {Interval})")]
-    partial void LogStarted(string processName, TimeSpan interval);
+    [LoggerMessage(LogLevel.Information, "ProcessMonitor started for [{ProcessNames}] (interval {Interval})")]
+    partial void LogStarted(string processNames, TimeSpan interval);
 
-    [LoggerMessage(LogLevel.Information, "ProcessMonitor stopped for '{ProcessName}'")]
-    partial void LogStopped(string processName);
+    [LoggerMessage(LogLevel.Information, "ProcessMonitor stopped for [{ProcessNames}]")]
+    partial void LogStopped(string processNames);
+
+    [LoggerMessage(LogLevel.Warning, "No ProcessProfiles configured — ProcessMonitor has nothing to watch; add entries to the \"ProcessProfiles\" section in appsettings.json")]
+    partial void LogNoProfiles();
 
     [LoggerMessage(LogLevel.Information, "Process appeared: pid={Pid} name='{ProcessName}' hwnd=0x{Hwnd:X}")]
     partial void LogProcessAppeared(int pid, string processName, long hwnd);
 
-    [LoggerMessage(LogLevel.Information, "Process disappeared: pid={Pid} name='{ProcessName}'")]
-    partial void LogProcessDisappeared(int pid, string processName);
+    [LoggerMessage(LogLevel.Information, "Process disappeared: pid={Pid}")]
+    partial void LogProcessDisappeared(int pid);
 
-    [LoggerMessage(LogLevel.Error, "Poll iteration failed for '{ProcessName}'; continuing loop")]
-    partial void LogPollFailed(Exception ex, string processName);
+    [LoggerMessage(LogLevel.Error, "Poll iteration failed; continuing loop")]
+    partial void LogPollFailed(Exception ex);
 
     [LoggerMessage(LogLevel.Information, "Process seen but main window not ready yet: pid={Pid} name='{ProcessName}' — will keep polling until hwnd appears")]
     partial void LogProcessWaitingForWindow(int pid, string processName);

@@ -32,25 +32,25 @@ public partial class MacrosDialog : Window
         vm.RunMacro(row);
     }
 
-    private void OnAddClassPanelClicked(object? sender, RoutedEventArgs e)
+    private void OnAddTagPanelClicked(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: MacroRowViewModel row })
         {
-            row.AddClassPanel();
+            row.AddTagPanel();
         }
     }
 
-    private void OnRemoveClassPanelClicked(object? sender, RoutedEventArgs e)
+    private void OnRemoveTagPanelClicked(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: MacroClassPanelViewModel panel } && panel.Parent is not null)
+        if (sender is Button { DataContext: MacroTagPanelViewModel panel } && panel.Parent is not null)
         {
-            panel.Parent.RemoveClassPanel(panel);
+            panel.Parent.RemoveTagPanel(panel);
         }
     }
 
     private void OnAddKeyPressClicked(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: MacroClassPanelViewModel panel })
+        if (sender is Button { DataContext: MacroTagPanelViewModel panel })
         {
             panel.AddKeyPress();
         }
@@ -58,7 +58,7 @@ public partial class MacrosDialog : Window
 
     private void OnAddDelayClicked(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: MacroClassPanelViewModel panel })
+        if (sender is Button { DataContext: MacroTagPanelViewModel panel })
         {
             panel.AddDelay();
         }
@@ -66,7 +66,7 @@ public partial class MacrosDialog : Window
 
     private void OnAddClickClicked(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: MacroClassPanelViewModel panel })
+        if (sender is Button { DataContext: MacroTagPanelViewModel panel })
         {
             panel.AddClick();
         }
@@ -96,19 +96,19 @@ public partial class MacrosDialog : Window
         }
     }
 
-    private void OnMoveClassPanelUpClicked(object? sender, RoutedEventArgs e)
+    private void OnMoveTagPanelUpClicked(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: MacroClassPanelViewModel panel } && panel.Parent is not null)
+        if (sender is Button { DataContext: MacroTagPanelViewModel panel } && panel.Parent is not null)
         {
-            panel.Parent.MoveClassPanelUp(panel);
+            panel.Parent.MoveTagPanelUp(panel);
         }
     }
 
-    private void OnMoveClassPanelDownClicked(object? sender, RoutedEventArgs e)
+    private void OnMoveTagPanelDownClicked(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { DataContext: MacroClassPanelViewModel panel } && panel.Parent is not null)
+        if (sender is Button { DataContext: MacroTagPanelViewModel panel } && panel.Parent is not null)
         {
-            panel.Parent.MoveClassPanelDown(panel);
+            panel.Parent.MoveTagPanelDown(panel);
         }
     }
 

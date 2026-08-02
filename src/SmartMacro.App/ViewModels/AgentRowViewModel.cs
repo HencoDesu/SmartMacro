@@ -1,7 +1,5 @@
-using Microsoft.Extensions.Logging;
 using SmartMacro.Agents;
 using SmartMacro.App.Mvvm;
-using SmartMacro.Models;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -10,17 +8,14 @@ namespace SmartMacro.App.ViewModels;
 // state mutations go through messages, not C# events), so Refresh() is called externally
 // when the orchestrator reports a relevant change (AgentIdentified).
 //
-// Also carries the operator's manual class-assignment path: SelectedClass +
-// AssignClass() bypass the ClassMatcher and force-promote an unidentified agent.
-// Useful when auto-id fails (missing template, weird UI state) or during initial
-// template setup where the operator knows what's on screen.
+// Also carries the operator's manual tag-assignment path: TagText + TryAssignTag()
+// bypass the ClassMatcher and tag an unidentified window by hand. Useful when auto-id
+// fails (missing template, weird UI state) or during initial template setup where the
+// operator knows what's on screen. Transitional UI — W0.3 replaces the row with a
+// windows+tag-chips view.
 public sealed class AgentRowViewModel : ObservableObject
 {
-    // All real classes (Unknown excluded — placeholder value with no assignment intent).
-    public static IReadOnlyList<CharacterClass> AvailableClasses { get; } =
-        Enum.GetValues<CharacterClass>().Where(c => c != CharacterClass.Unknown).ToArray();
-
-    private CharacterClass _selectedClass = AvailableClasses.Count > 0 ? AvailableClasses[0] : CharacterClass.Unknown;
+    private string _tagText = string.Empty;
 
     public CharacterAgent Agent { get; }
 
@@ -30,36 +25,34 @@ public sealed class AgentRowViewModel : ObservableObject
     }
 
     public string Name => Agent.Name;
-    public string State => Agent.State.ToString();
+    public string State => Agent.State;
     public bool IsIdentified => Agent.IsIdentified;
 
-    public CharacterClass SelectedClass
+    /// <summary>Free-form tag typed by the operator for manual assignment.</summary>
+    public string TagText
     {
-        get => _selectedClass;
-        set => SetField(ref _selectedClass, value);
+        get => _tagText;
+        set => SetField(ref _tagText, value);
     }
 
     /// <summary>
-    /// Manual class assignment for an unidentified agent. Builds a placeholder Character
-    /// with the picked class as identity + class-enum's string as display name, then
-    /// promotes via <see cref="CharacterAgent.Identify"/>. Returns <c>true</c> on
-    /// success; <c>false</c> if the agent is already identified or the pick is Unknown.
+    /// Manual tag assignment for an unidentified window. Promotes via
+    /// <see cref="CharacterAgent.Identify"/>, which applies the tag through
+    /// WindowRegistry, applies the taskbar icon, and notifies the orchestrator.
+    /// Returns <c>true</c> on success; <c>false</c> if the agent is already identified
+    /// or the tag is blank.
     /// </summary>
-    public bool TryAssignClass()
+    public bool TryAssignTag()
     {
-        if (Agent.IsIdentified || _selectedClass == CharacterClass.Unknown)
+        var tag = _tagText.Trim();
+        if (Agent.IsIdentified || tag.Length == 0)
         {
             return false;
         }
 
-        var character = new Character
-        {
-            Name = _selectedClass.ToString(),
-            Class = _selectedClass,
-        };
         try
         {
-            Agent.Identify(character);
+            Agent.Identify(tag);
         }
         catch (InvalidOperationException)
         {

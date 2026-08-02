@@ -36,14 +36,15 @@ public partial class MainWindow : Window
         base.OnClosing(e);
     }
 
-    // Manual class-assignment path: operator picks a class from the row's ComboBox and
+    // Manual tag-assignment path: operator types a tag into the row's TextBox and
     // clicks Assign. Bypasses ClassMatcher entirely — useful when auto-id fails or
-    // during initial template setup. Silent no-op if agent is already identified.
-    private void OnAssignClassClicked(object? sender, RoutedEventArgs e)
+    // during initial template setup. Silent no-op if agent is already identified or
+    // the tag is blank. Transitional UI — W0.3 replaces it with tag chips.
+    private void OnAssignTagClicked(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: AgentRowViewModel row })
         {
-            row.TryAssignClass();
+            row.TryAssignTag();
         }
     }
 

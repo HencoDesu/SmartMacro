@@ -1,18 +1,21 @@
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using SmartMacro.Native;
+using SmartMacro.Config;
 using SmartMacro.Native.Keyboard;
 using SmartMacro.Native.Mouse;
 using SmartMacro.ProcessMonitoring;
 
 namespace SmartMacro.GameWindows;
 
-// Default factory — wires input strategies into GameWindow. Activation (WM_ACTIVATEAPP
-// wake-up of frozen background PW clients) is the caller's responsibility via
-// IGameWindow.ActivateAsync/DeactivateAsync.
+// Default factory — wires input strategies into GameWindow and resolves the process's
+// activation profile. Activation (WM_ACTIVATEAPP wake-up of frozen background PW clients)
+// is the caller's responsibility via IGameWindow.ActivateAsync/DeactivateAsync; the
+// parameters for it come from the ProcessProfile matching the window's process name
+// (falling back to inert defaults — plain input, no wake-up dance — when no profile
+// is configured).
 //
-// Current mix (targeted experiment):
+// Current input mix (targeted experiment):
 //   * Keyboard → SendMessage. PW's WndProc appears to gate keyboard input on internal
 //     "active" state; synchronous delivery guarantees PW has finished processing the
 //     keypress before we move on. Observed problem with PostMessage variant: 1-2 of 11
@@ -26,26 +29,29 @@ namespace SmartMacro.GameWindows;
 [SupportedOSPlatform("windows")]
 public sealed class GameWindowFactory : IGameWindowFactory
 {
-    private readonly IOptions<ActivatingInputOptions> _activatingOptions;
+    private readonly IOptions<ProcessProfileOptions> _profileOptions;
     private readonly IOptions<WindowVisionOptions> _visionOptions;
     private readonly ILoggerFactory _loggerFactory;
 
     public GameWindowFactory(
-        IOptions<ActivatingInputOptions> activatingOptions,
+        IOptions<ProcessProfileOptions> profileOptions,
         IOptions<WindowVisionOptions> visionOptions,
         ILoggerFactory loggerFactory)
     {
-        _activatingOptions = activatingOptions;
+        _profileOptions = profileOptions;
         _visionOptions = visionOptions;
         _loggerFactory = loggerFactory;
     }
 
-    public IGameWindow Create(ProcessInfo info) =>
-        new GameWindow(
+    public IGameWindow Create(ProcessInfo info)
+    {
+        var profile = _profileOptions.Value.FindByProcessName(info.ProcessName) ?? ProcessProfile.Inert;
+        return new GameWindow(
             info,
+            profile,
             new SendMessageKeyboardInput(),
             new PostMessageMouseInput(),
-            _activatingOptions,
             _visionOptions,
             _loggerFactory.CreateLogger<GameWindow>());
+    }
 }

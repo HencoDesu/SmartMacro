@@ -1,10 +1,9 @@
 using Microsoft.Extensions.Logging;
-using SmartMacro.Models;
 using SmartMacro.Vision;
 
 namespace SmartMacro.Identification;
 
-// Default ICharacterProvider — composes IClassMatcher + ClassTemplateLoader. Stateless
+// Default ICharacterProvider — composes IClassMatcher + ClassTemplateLoader. No state
 // beyond the dependencies; safe as a singleton in DI.
 public sealed partial class CharacterProvider : ICharacterProvider
 {
@@ -22,7 +21,7 @@ public sealed partial class CharacterProvider : ICharacterProvider
         _logger = logger;
     }
 
-    public Character? Identify(byte[] screenshot)
+    public string? Identify(byte[] screenshot)
     {
         if (_templates.Templates.Count == 0)
         {
@@ -35,14 +34,10 @@ public sealed partial class CharacterProvider : ICharacterProvider
             return null;
         }
 
-        LogMatched(match.Class, match.Score);
-        return new Character
-        {
-            Name = match.Class.ToString(),
-            Class = match.Class,
-        };
+        LogMatched(match.Tag, match.Score);
+        return match.Tag;
     }
 
-    [LoggerMessage(LogLevel.Information, "Class identified: {Cls} (score {Score:F3})")]
-    partial void LogMatched(CharacterClass cls, double score);
+    [LoggerMessage(LogLevel.Information, "Tag identified: {Tag} (score {Score:F3})")]
+    partial void LogMatched(string tag, double score);
 }
