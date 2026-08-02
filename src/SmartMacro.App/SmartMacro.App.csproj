@@ -35,6 +35,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- TODO(Stage 3): reduce appsettings.json to the Serilog section once the engine leaves
+         this process. The authoritative engine configuration moved to SmartMacro.Daemon in
+         stage 2A; what's left here duplicates the Agent / ProcessProfiles / Vision sections
+         only because App's transitional composition root (Program.ConfigureServices) still
+         binds them. JSON has no comments, hence the note lives here. -->
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

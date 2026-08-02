@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- WinExe, not Exe: the daemon is windowless and must not flash a console window when
+         it starts (typically from the shell / a shortcut, not a terminal). Serilog's console
+         sink still works when it IS launched from one via `dotnet run`. -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>SmartMacro.Daemon</RootNamespace>
+    <AssemblyName>SmartMacro.Daemon</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SmartMacro.Contracts\SmartMacro.Contracts.csproj" />
+    <ProjectReference Include="..\SmartMacro.Core\SmartMacro.Core.csproj" />
+    <ProjectReference Include="..\SmartMacro.Native\SmartMacro.Native.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Authoritative engine configuration. Moved here from SmartMacro.App in stage 2A —
+         the daemon is the process that hosts the engine, so this is where its knobs live.
+         App keeps a stripped-down copy only for as long as its transitional composition
+         root survives (deleted in stage 3).
+         The File sink runs with "shared": true — a rejected second instance must be able to
+         append its "already running" line while the winner holds the same rolling file, and
+         that only works if every writer opens it in shared mode. -->
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="appsettings.local.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <DependentUpon>appsettings.json</DependentUpon>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Assets and tessdata still physically live under SmartMacro.App; they're linked in
+         here so the daemon's output directory is self-sufficient (vision templates, tag
+         icons, the tray .ico, the Tesseract language pack). Stage 3, which strips the engine
+         out of App, is the natural point to git-mv them across and delete these links. -->
+    <None Include="..\SmartMacro.App\tessdata\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>tessdata\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </None>
+    <!-- Tray icon, loaded from disk by Win32TrayIcon (LoadImage + LR_LOADFROMFILE). -->
+    <None Include="..\SmartMacro.App\Assets\icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Assets\icon.ico</Link>
+    </None>
+    <None Include="..\SmartMacro.App\Assets\ClassIcons\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Assets\ClassIcons\%(Filename)%(Extension)</Link>
+    </None>
+    <None Include="..\SmartMacro.App\Assets\GameClassNames\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Assets\GameClassNames\%(Filename)%(Extension)</Link>
+    </None>
+    <None Include="..\SmartMacro.App\Assets\GameUiElements\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Assets\GameUiElements\%(Filename)%(Extension)</Link>
+    </None>
+    <None Include="..\SmartMacro.App\Assets\templates\**\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Assets\templates\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
+</Project>

@@ -19,6 +19,11 @@
          constructors and marshal through IUiDispatcher, so nothing here needs an
          Avalonia application, a dispatcher loop, or a render surface. -->
     <ProjectReference Include="..\..\src\SmartMacro.App\SmartMacro.App.csproj" />
+    <!-- Stage 2A: the daemon's two pieces of real (non-Win32) logic — the single-instance
+         mutex and the UI-executable probe. Both App and Daemon ship an appsettings.json, so
+         the test output ends up with whichever one MSBuild copies last; nothing here reads
+         it, and neither exe is launched from the tests. -->
+    <ProjectReference Include="..\..\src\SmartMacro.Daemon\SmartMacro.Daemon.csproj" />
   </ItemGroup>
 
   <ItemGroup>

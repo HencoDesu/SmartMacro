@@ -78,3 +78,49 @@ internal struct MSLLHOOKSTRUCT
     public uint time;
     public UIntPtr dwExtraInfo;
 }
+
+// Window-class registration payload for RegisterClassExW. Deliberately blittable: the two
+// string members are held as raw IntPtr (Marshal.StringToHGlobalUni) and lpfnWndProc as a
+// function pointer, so the whole struct can travel through a LibraryImport-generated stub
+// without a custom marshaller.
+[StructLayout(LayoutKind.Sequential)]
+internal struct WNDCLASSEXW
+{
+    public uint cbSize;
+    public uint style;
+    public IntPtr lpfnWndProc;
+    public int cbClsExtra;
+    public int cbWndExtra;
+    public IntPtr hInstance;
+    public IntPtr hIcon;
+    public IntPtr hCursor;
+    public IntPtr hbrBackground;
+    public IntPtr lpszMenuName;
+    public IntPtr lpszClassName;
+    public IntPtr hIconSm;
+}
+
+// Shell_NotifyIconW payload. The three text members are inline WCHAR arrays in the native
+// declaration, so they're modelled as `fixed char` buffers rather than
+// [MarshalAs(ByValTStr)] strings — LibraryImport only accepts blittable types, and this
+// keeps the struct's size/layout identical to the native one (976 bytes on x64, which is
+// what cbSize must report on Vista+).
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct NOTIFYICONDATAW
+{
+    public uint cbSize;
+    public IntPtr hWnd;
+    public uint uID;
+    public uint uFlags;
+    public uint uCallbackMessage;
+    public IntPtr hIcon;
+    public fixed char szTip[128];
+    public uint dwState;
+    public uint dwStateMask;
+    public fixed char szInfo[256];
+    public uint uVersionOrTimeout;
+    public fixed char szInfoTitle[64];
+    public uint dwInfoFlags;
+    public Guid guidItem;
+    public IntPtr hBalloonIcon;
+}

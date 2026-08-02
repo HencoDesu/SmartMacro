@@ -1,49 +1,45 @@
-using Avalonia;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Serilog;
 using SmartMacro.Agents;
 using SmartMacro.Config;
 using SmartMacro.GameWindows;
 using SmartMacro.Hotkeys;
 using SmartMacro.Input;
+using SmartMacro.Macros.Execution;
+using SmartMacro.Macros.Storage;
 using SmartMacro.Native.Hotkey;
+using SmartMacro.Native.Tray;
 using SmartMacro.Orchestration;
 using SmartMacro.Presentation;
 using SmartMacro.ProcessMonitoring;
-using SmartMacro.App.Mvvm;
-using SmartMacro.App.Services;
-using SmartMacro.App.ViewModels;
-using SmartMacro.Macros.Execution;
-using SmartMacro.Macros.Storage;
 using SmartMacro.Vision;
 using SmartMacro.Windows;
-using Serilog;
 
-namespace SmartMacro.App;
+namespace SmartMacro.Daemon;
 
-// ⚠ STAGE 2A TRANSITIONAL HAZARD — DO NOT RUN THIS AND SmartMacro.Daemon AT THE SAME TIME.
+// The resident half of SmartMacro: a windowless WinExe that hosts the whole engine —
+// process monitoring, the macro library, hotkey registration, vision, input dispatch — plus
+// a Win32 tray icon. No Avalonia, no XAML, no render loop; the UI is a separate process the
+// tray launches on demand and the user can close again without stopping automation.
 //
-// Stage 2A gave the engine a second, headless home (SmartMacro.Daemon) but deliberately left
-// this composition root intact, because the view-models still call Core services
-// (WindowRegistry, MacroGraphStore, Orchestrator, HotkeyListener) directly and would break
-// the moment it went away. The result is two executables that can each host a full engine:
+// ⚠ STAGE 2A TRANSITIONAL HAZARD: SmartMacro.App still builds the same composition root in
+// its own process (see the note at the top of App/Program.cs). Running both executables at
+// once means two engines: duplicate RegisterHotKey (one silently loses), duplicate
+// ProcessMonitor polling, duplicate agents, duplicate input into the same game windows. Run
+// ONE of them until stage 3 strips App's composition. The tray's "Открыть панель" launch is
+// safe today only because the App's engine is idempotent-ish, not because it's correct.
 //
-//   * RegisterHotKey is process-global — whichever starts second silently fails to bind and
-//     its macros never fire, while the first keeps working. Confusing to debug.
-//   * WH_MOUSE_LL hooks stack: a mouse chord fires the macro in BOTH processes.
-//   * Two ProcessMonitors spawn two agents per game window, two boot macros race on the same
-//     client, and input gets dispatched twice.
-//
-// Stage 3 deletes everything below and replaces it with an IPC client. Until then: run the
-// daemon OR the app, never both.
+// No IPC yet — stage 2B adds the named-pipe server that lets the panel talk to this process.
 internal static class Program
 {
-    public static IServiceProvider? Services { get; private set; }
-
-    [STAThread]
     public static int Main(string[] args)
     {
+        // Claim single-instance BEFORE anything expensive: a second daemon would double every
+        // global side effect this process has (hotkeys, hooks, input).
+        using var instance = SingleInstanceGuard.TryAcquire(SingleInstanceGuard.DaemonMutexName);
+
         var bootstrapConfiguration = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
@@ -55,9 +51,18 @@ internal static class Program
             .ReadFrom.Configuration(bootstrapConfiguration)
             .CreateBootstrapLogger();
 
+        if (instance is null)
+        {
+            Log.Information(
+                "SmartMacro daemon already running (mutex {Mutex} held) — exiting",
+                SingleInstanceGuard.DaemonMutexName);
+            Log.CloseAndFlush();
+            return 0;
+        }
+
         try
         {
-            Log.Information("SmartMacro starting");
+            Log.Information("SmartMacro daemon starting");
 
             var builder = Host.CreateApplicationBuilder(args);
             builder.Configuration.AddConfiguration(bootstrapConfiguration);
@@ -70,24 +75,15 @@ internal static class Program
             ConfigureServices(builder.Services, builder.Configuration);
 
             using var host = builder.Build();
-            Services = host.Services;
 
-            Log.Information("Composition root built, starting hosted services");
-            host.StartAsync().GetAwaiter().GetResult();
-            try
-            {
-                BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
-            }
-            finally
-            {
-                Log.Information("Avalonia exited, stopping hosted services");
-                host.StopAsync().GetAwaiter().GetResult();
-            }
+            Log.Information("Composition root built, running host");
+            host.RunAsync().GetAwaiter().GetResult();
+            Log.Information("SmartMacro daemon stopped");
             return 0;
         }
         catch (Exception ex)
         {
-            Log.Fatal(ex, "SmartMacro terminated unexpectedly");
+            Log.Fatal(ex, "SmartMacro daemon terminated unexpectedly");
             return 1;
         }
         finally
@@ -107,13 +103,13 @@ internal static class Program
         services.Configure<WindowVisionOptions>(configuration.GetSection("Vision:Window"));
 
         // GameWindowFactory bakes in the input-strategy choice (PostMessage + WM_ACTIVATEAPP
-        // wake-up) so neither DI nor the orchestrator has to know about Native types. Swap
-        // the factory implementation once we know what the live client likes.
+        // wake-up) so neither DI nor the orchestrator has to know about Native types.
         // Win32NativeWindowSystem is a static class — no DI registration needed.
         services.AddSingleton<IGameWindowFactory, GameWindowFactory>();
 
         // Sole owner of window tags AND the hwnd → IGameWindow lookup — everything
-        // (agents, macro primitives, UI) reads window state from here.
+        // (agents, macro primitives, and from stage 2B the IPC layer) reads window state
+        // from here.
         services.AddSingleton<WindowRegistry>();
 
         services.AddSingleton<IClassMatcher, ClassMatcher>();
@@ -152,21 +148,10 @@ internal static class Program
         services.AddSingleton<Orchestrator>();
         services.AddHostedService(sp => sp.GetRequiredService<Orchestrator>());
 
-        // UI seams. The view-models take these as interfaces so they can be exercised
-        // headlessly (and so stage 3 can swap in IPC-backed implementations without
-        // touching a single VM): thread marshalling, "start this macro", and the hotkey
-        // suspend/resume the chord picker depends on.
-        services.AddSingleton<IUiDispatcher>(AvaloniaUiDispatcher.Instance);
-        services.AddSingleton<IMacroLauncher, OrchestratorMacroLauncher>();
-        services.AddSingleton<IHotkeySuspension, HotkeyListenerSuspension>();
-
-        services.AddSingleton<MainWindowViewModel>();
-        services.AddSingleton<MainWindow>();
+        // Tray last: hosted services stop in reverse registration order, so the icon is the
+        // first thing to disappear when the user picks "Выход" — no stale icon hanging around
+        // while agents and hotkeys drain.
+        services.AddSingleton<Win32TrayIcon>();
+        services.AddHostedService<TrayController>();
     }
-
-    // Used by the Avalonia previewer/designer; must be parameterless and named exactly this way.
-    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
-        .UsePlatformDetect()
-        .WithInterFont()
-        .LogToTrace();
 }
