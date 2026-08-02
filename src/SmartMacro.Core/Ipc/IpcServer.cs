@@ -46,15 +46,15 @@ namespace SmartMacro.Ipc;
 public sealed partial class IpcServer : IHostedService, IAsyncDisposable
 {
     /// <summary>
-    /// Pipe name, per the split plan. The full path is <c>\\.\pipe\smartmacro-control</c>.
-    /// The stage 3 client must use the same literal.
+    /// Pipe name — taken from <see cref="IpcPipe.Name"/> in Contracts, which is the only
+    /// place either end may define it. The UI shares no assembly with this one.
     /// </summary>
-    public const string PipeName = "smartmacro-control";
+    public const string PipeName = IpcPipe.Name;
 
     // The UI is normally a single client; the headroom is for a debug console attached
     // alongside it, and for the window between a UI crashing and Windows reclaiming its
     // handle. Beyond this the accept loop backs off and retries instead of failing.
-    private const int MaxServerInstances = 8;
+    private const int MaxServerInstances = IpcPipe.MaxServerInstances;
 
     // Events per connection before we give up on it. A UI that has not drained 256 events
     // is not slow, it is gone (or deadlocked), and the reconnect path handles both.

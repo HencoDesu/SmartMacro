@@ -1,8 +1,7 @@
 using System.Text;
 using System.Text.Json;
-using SmartMacro.Contracts.Ipc;
 
-namespace SmartMacro.Ipc;
+namespace SmartMacro.Contracts.Ipc;
 
 /// <summary>
 /// One JSON Lines conversation over a duplex byte stream: read a line → one envelope,
