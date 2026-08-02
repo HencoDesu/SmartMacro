@@ -16,15 +16,20 @@ namespace SmartMacro.App.Controls;
 // "Press a key..."; the next KeyDown / mouse-button press becomes the bound input.
 // Escape cancels, Delete / Backspace clears.
 //
+// PARKED: no XAML binds this control right now. W0.2b deleted the two dialogs that used
+// it (the settings hotkey editor and the legacy per-action macro editor); W0.3 brings it
+// back for editing a macro's KeyPressNode keys and its HotkeyTrigger chords. Kept rather
+// than deleted-and-rewritten because the capture semantics below are fiddly and tested by
+// hand against real input.
+//
 // The bound value (Key property) is a string matching VirtualKey enum names ("F1", "A",
-// "D5", ...) so it slots straight into the existing Character.{BurstBuffKey, DamageKey,
-// ImmunityKey} pipeline — Character.cs parses these strings via Enum.TryParse at send
-// time.
+// "D5", ...), which is what the node model round-trips through JSON — callers parse with
+// Enum.TryParse.
 //
 // Keys not present in VirtualKey are ignored (Tab, Caps, modifiers used alone, etc.) —
 // the picker stays in capture mode so the user can try another key.
 //
-// CaptureModifiers mode (Settings dialog only): when set, the picker ALSO tracks
+// CaptureModifiers mode (for binding a global hotkey chord): when set, the picker ALSO tracks
 // Ctrl/Shift/Alt/Win state and ALSO accepts mouse XButton1/2 (the "back"/"forward" thumb
 // buttons). Mouse capture is local-only — the cursor must be over the picker at the moment
 // the button is pressed, since we listen via PointerPressed and not a global hook.

@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using SmartMacro.Agents;
 using SmartMacro.App.Mvvm;
 using SmartMacro.Orchestration;
+using SmartMacro.Windows;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -10,7 +11,7 @@ namespace SmartMacro.App.ViewModels;
 //
 // Two reconcile mechanisms work together:
 //
-//   1. Event subscriptions (AgentStarted/Identified/Stopped) — low-latency UI updates
+//   1. Event subscriptions (AgentStarted/Stopped) — low-latency UI updates
 //      for the normal flow. Mutations are posted to Dispatcher.UIThread because the
 //      orchestrator fires events from arbitrary task threads.
 //
@@ -24,15 +25,16 @@ namespace SmartMacro.App.ViewModels;
 public sealed class MainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly Orchestrator _orchestrator;
+    private readonly WindowRegistry _registry;
     private readonly DispatcherTimer _reconcileTimer;
 
     public ObservableCollection<AgentRowViewModel> Agents { get; } = [];
 
-    public MainWindowViewModel(Orchestrator orchestrator)
+    public MainWindowViewModel(Orchestrator orchestrator, WindowRegistry registry)
     {
         _orchestrator = orchestrator;
+        _registry = registry;
         _orchestrator.AgentStarted += OnAgentStarted;
-        _orchestrator.AgentIdentified += OnAgentIdentified;
         _orchestrator.AgentStopped += OnAgentStopped;
 
         // Initial fill — covers agents that already exist by the time the VM is built
@@ -53,17 +55,8 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
         {
             if (FindRow(agent) is null)
             {
-                Agents.Add(new AgentRowViewModel(agent));
+                Agents.Add(new AgentRowViewModel(agent, _registry));
             }
-        });
-    }
-
-    private void OnAgentIdentified(CharacterAgent agent)
-    {
-        Dispatcher.UIThread.Post(() =>
-        {
-            var row = FindRow(agent);
-            row?.Refresh();
         });
     }
 
@@ -91,7 +84,7 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
             var row = FindRow(agent);
             if (row is null)
             {
-                Agents.Add(new AgentRowViewModel(agent));
+                Agents.Add(new AgentRowViewModel(agent, _registry));
             }
             else
             {
@@ -130,7 +123,6 @@ public sealed class MainWindowViewModel : ObservableObject, IDisposable
     {
         _reconcileTimer.Stop();
         _orchestrator.AgentStarted -= OnAgentStarted;
-        _orchestrator.AgentIdentified -= OnAgentIdentified;
         _orchestrator.AgentStopped -= OnAgentStopped;
     }
 }

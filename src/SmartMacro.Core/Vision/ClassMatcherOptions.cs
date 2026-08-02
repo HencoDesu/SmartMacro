@@ -14,10 +14,10 @@ namespace SmartMacro.Vision;
 // to their own resolution / UI scale without recompiling.
 public sealed class ClassMatcherOptions
 {
-    // Crop rect for the class-value text inside the stats window. Tune via appsettings.json
-    // after a first run — defaults are placeholders matching the screenshot the user shared
-    // at 2K res. Use the BroadcastDoubleClick trick (cursor → hotkey → log shows client
-    // coords) to find the exact top-left and bottom-right of the value text.
+    // Fallback crop rect, used only by the DebugBinarizeClassRegion diagnostic — the
+    // live path takes its region from the RecognizeTag node instead. Defaults match the
+    // author's 2K stats-window screenshot. To find coordinates at your resolution, hover
+    // the cursor in-game and fire a macro: CursorPositionProvider logs the client point.
     public ScreenRect Region { get; init; } = new(3200, 1060, 160, 35);
 
     // Luminance cutoff for binarisation — class text in the stats window is rendered in

@@ -11,7 +11,7 @@ namespace SmartMacro.Native;
 // that protocol (WM_MBUTTONDOWN identifies it via the message itself, not mouseData), so
 // we pick an arbitrary unique value that doesn't collide with the XButton ones.
 //
-// Enum is serialised as the name string in hotkeys.json (JsonStringEnumConverter), so
+// Enum is serialised as the name string in macro-graph JSON (JsonStringEnumConverter), so
 // these numeric values aren't part of the on-disk contract — feel free to renumber.
 public enum MouseButton : ushort
 {

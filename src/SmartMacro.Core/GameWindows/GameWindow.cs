@@ -146,11 +146,36 @@ public sealed partial class GameWindow : IGameWindow
 
     public bool SetIconFromFile(string imagePath) => _nativeWindow.SetIconFromFile(imagePath);
 
-    // Poll-based template matcher. Loop captures passively, crops to position (or
-    // fullscreen if position is empty), binarises both source and template at
-    // LuminanceThreshold, runs MatchTemplate (CCoeffNormed), returns true on the first
-    // tick whose max score crosses MatchThreshold. Returns false on timeout.
-    public async Task<bool> WaitForElementAt(byte[] elementTemplate, ScreenRect position, TimeSpan waitDuration, CancellationToken cancellationToken = default)
+    // One-shot sibling of WaitForElementAsync: a single fresh capture and a single match
+    // pass, no polling. FindElementNode branches on the outcome immediately, so a poll
+    // budget here would just be a hidden wait the graph author didn't ask for.
+    public async Task<ScreenPoint?> FindElementAsync(byte[] elementTemplate, ScreenRect position, CancellationToken cancellationToken = default)
+    {
+        byte[] capture;
+        try
+        {
+            capture = await CaptureFreshAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogCaptureFailed(ex);
+            return null;
+        }
+
+        if (TryMatchOnce(capture, elementTemplate, position, out var score, out var center))
+        {
+            LogMatchHit(position, score, _matchThreshold);
+            return center;
+        }
+        LogMatchMiss(position, score, _matchThreshold);
+        return null;
+    }
+
+    // Poll-based template matcher. Loop captures actively, crops to position (or
+    // fullscreen if position is empty), grayscales both source and template, runs
+    // MatchTemplate (CCoeffNormed), returns the match CENTER on the first tick whose max
+    // score crosses MatchThreshold. Returns null on timeout.
+    public async Task<ScreenPoint?> WaitForElementAsync(byte[] elementTemplate, ScreenRect position, TimeSpan waitDuration, CancellationToken cancellationToken = default)
     {
         var deadline = Environment.TickCount64 + (long)waitDuration.TotalMilliseconds;
         while (Environment.TickCount64 < deadline)
@@ -175,21 +200,21 @@ public sealed partial class GameWindow : IGameWindow
                 continue;
             }
 
-            if (TryMatchOnce(capture, elementTemplate, position, out var score))
+            if (TryMatchOnce(capture, elementTemplate, position, out var score, out var center))
             {
                 LogMatchHit(position, score, _matchThreshold);
-                return true;
+                return center;
             }
             LogMatchMiss(position, score, _matchThreshold);
 
             await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
         }
-        return false;
+        return null;
     }
 
     // Async sibling of CaptureScreenshot — wakes the window via WM_ACTIVATEAPP, waits
     // the settle delay, captures, then re-freezes (unless this window IS foreground,
-    // in which case it stays active naturally). Used by WaitForElementAt's poll-loop.
+    // in which case it stays active naturally). Used by the one-shot and poll-loop matchers.
     private async Task<byte[]> CaptureFreshAsync(CancellationToken cancellationToken)
     {
         if (_activationLParam is { } lParam)
@@ -208,9 +233,13 @@ public sealed partial class GameWindow : IGameWindow
         return png;
     }
 
-    private bool TryMatchOnce(byte[] sourcePng, byte[] templatePng, ScreenRect position, out double score)
+    // Single match pass. `center` is the CLIENT-space center of the best match — the crop
+    // origin is added back in so callers get a point they can hand straight to ClickAsync,
+    // which is the whole point of FoundPointVar ("find the button anywhere, then click it").
+    private bool TryMatchOnce(byte[] sourcePng, byte[] templatePng, ScreenRect position, out double score, out ScreenPoint center)
     {
         score = 0.0;
+        center = default;
         using var sourceFull = Cv2.ImDecode(sourcePng, ImreadModes.Color);
         if (sourceFull.Empty()) return false;
 
@@ -241,8 +270,13 @@ public sealed partial class GameWindow : IGameWindow
         // text on solid panel = clean separation).
         using var result = new Mat();
         Cv2.MatchTemplate(sourceGray, templateGray, result, TemplateMatchModes.CCoeffNormed);
-        Cv2.MinMaxLoc(result, out _, out var maxVal, out _, out _);
+        Cv2.MinMaxLoc(result, out _, out var maxVal, out _, out var maxLoc);
         score = maxVal;
+        // maxLoc is the template's top-left inside the CROP; shift by the crop origin to
+        // get client space, then by half the template to land on the center.
+        center = new ScreenPoint(
+            rect.X + maxLoc.X + (templateGray.Width / 2),
+            rect.Y + maxLoc.Y + (templateGray.Height / 2));
         return score >= _matchThreshold;
     }
 
@@ -262,15 +296,15 @@ public sealed partial class GameWindow : IGameWindow
         return new Rect(x, y, w, h);
     }
 
-    [LoggerMessage(LogLevel.Warning, "WaitForElementAt: template ({TplW}x{TplH}) is larger than search region ({SrcW}x{SrcH}) — shrink template or grow region")]
+    [LoggerMessage(LogLevel.Warning, "Template match: template ({TplW}x{TplH}) is larger than search region ({SrcW}x{SrcH}) — shrink template or grow region")]
     partial void LogTemplateLargerThanRegion(int tplW, int tplH, int srcW, int srcH);
 
-    [LoggerMessage(LogLevel.Debug, "WaitForElementAt: hit at {Region} score={Score:F3} >= {Threshold:F3}")]
+    [LoggerMessage(LogLevel.Debug, "Template match: hit at {Region} score={Score:F3} >= {Threshold:F3}")]
     partial void LogMatchHit(ScreenRect region, double score, double threshold);
 
-    [LoggerMessage(LogLevel.Debug, "WaitForElementAt: miss at {Region} score={Score:F3} < {Threshold:F3}")]
+    [LoggerMessage(LogLevel.Debug, "Template match: miss at {Region} score={Score:F3} < {Threshold:F3}")]
     partial void LogMatchMiss(ScreenRect region, double score, double threshold);
 
-    [LoggerMessage(LogLevel.Debug, "WaitForElementAt: capture failed (transient — minimised window, GPU stall)")]
+    [LoggerMessage(LogLevel.Debug, "Template match: capture failed (transient — minimised window, GPU stall)")]
     partial void LogCaptureFailed(Exception ex);
 }

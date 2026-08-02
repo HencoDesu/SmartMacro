@@ -3,11 +3,10 @@ using SmartMacro.ProcessMonitoring;
 
 namespace SmartMacro.Agents;
 
-// Creates a CharacterAgent bound to a game-client process. Always returns an agent — if
-// identification fails the agent comes back with a placeholder Character and IsIdentified
-// == false, ready to be promoted later via CharacterAgent.Identify(). Keeping the unknown
-// case as a "fully constructed but un-promoted" agent removes the parallel pending-unknown
-// state machine from the orchestrator.
+// Creates the CharacterAgent that owns a game-client window's lifetime. Agents are born
+// tagless: identification is a macro's job now, so there is no "pending unknown" state to
+// model here — the agent registers its window and the tags (if any) arrive later through
+// WindowRegistry.
 public interface ICharacterAgentFactory
 {
     /// <summary>

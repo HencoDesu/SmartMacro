@@ -1,22 +1,23 @@
+using SmartMacro.Native;
+
 namespace SmartMacro.Vision;
 
-// Identifies which tag template is displayed in the in-game stats window. The stats
-// window is opened by the user / agent (default hotkey C), screenshot captured, then this
-// matcher crops the fixed value-text region and template-matches against pre-rendered
-// class-name PNGs from Assets/GameClassNames/ (filename stem = tag).
+// Picks the best-matching template out of a SET, inside a caller-chosen region of a
+// window capture. Backs RecognizeTagNode: the winning template's key becomes the tag.
 //
-// Templates are keyed by free-form tag strings — the matched key becomes the window's
-// tag in WindowRegistry. The user provides templates by harvesting tight crops of the
-// "Класс: <name>" value from a sample stats-window screenshot per class.
+// Templates are keyed by free-form tag strings (filename stems of the set on disk). The
+// canonical PW use is the in-game stats window: open it (default hotkey C), capture, and
+// match the "Класс: <name>" value area against pre-rendered class-name PNGs.
 public interface IClassMatcher
 {
     /// <summary>
-    /// Matches the screenshot's stats-window class-value region against the given templates.
+    /// Matches <paramref name="region"/> of the screenshot against the given templates.
     /// </summary>
-    /// <param name="screenshot">Full client capture of a PW window with the stats panel open.</param>
-    /// <param name="templates">Tag → template-PNG-bytes map. Typically the full set ClassTemplateLoader provides.</param>
+    /// <param name="screenshot">Full client capture of the window.</param>
+    /// <param name="templates">Tag → template-PNG-bytes map, e.g. one template set from <c>TemplateSetProvider</c>.</param>
+    /// <param name="region">Client-space crop the set is matched against. Empty (Width or Height ≤ 0) = whole capture.</param>
     /// <returns>The matched tag above the configured threshold, or <c>null</c> on no match.</returns>
-    TagMatch? Match(byte[] screenshot, IReadOnlyDictionary<string, byte[]> templates);
+    TagMatch? Match(byte[] screenshot, IReadOnlyDictionary<string, byte[]> templates, ScreenRect region);
 
     /// <summary>
     /// Diagnostic — returns the binarised view of the class-value crop region. Used by

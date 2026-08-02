@@ -50,8 +50,9 @@
 
   <ItemGroup>
     <!-- Per-tag taskbar icons. Loaded from disk (not embedded) so the user can swap
-         them out without rebuilding. ClassIconService maps tag → filename via
-         TagIconNames; missing files just skip with a Debug log. -->
+         them out without rebuilding. A SetIconNode names the file (typically
+         "Assets/ClassIcons/{tag}.png"); WindowIconService resolves it and skips with a
+         Debug log when it's missing. -->
     <None Include="Assets\ClassIcons\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Assets\ClassIcons\%(Filename)%(Extension)</Link>
@@ -62,12 +63,17 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Assets\GameClassNames\%(Filename)%(Extension)</Link>
     </None>
-    <!-- UI-element templates for IGameWindow.WaitForElementAt (boot detection, future
-         combat / dialog detection). Loaded from disk so the user can add new templates
-         without rebuilding. -->
+    <!-- Single UI-element templates, referenced by file stem from Find/Wait nodes.
+         Loaded from disk so the user can add new templates without rebuilding. -->
     <None Include="Assets\GameUiElements\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>Assets\GameUiElements\%(Filename)%(Extension)</Link>
+    </None>
+    <!-- User-authored template SETS for RecognizeTag nodes: Assets/templates/{set}/{tag}.png.
+         Empty in the repo — the glob exists so a set dropped in here reaches the output on
+         the next build, the same way the shipped folders do. -->
+    <None Include="Assets\templates\**\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 

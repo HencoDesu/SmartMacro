@@ -3,9 +3,9 @@ namespace SmartMacro.Macros.Model;
 /// <summary>
 /// A macro as a directed graph of nodes: actions (single outgoing edge) and conditionals
 /// (one edge per outcome). Execution starts at <see cref="StartNodeId"/> and follows edges
-/// until a <c>null</c> edge ends the run. Named <c>MacroGraph</c> (not <c>Macro</c>) to
-/// avoid clashing with the legacy <c>SmartMacro.Macro.Macro</c> during the transition —
-/// once the old pipeline dies the name can be revisited.
+/// until a <c>null</c> edge ends the run. The name distinguishes the graph from the macro
+/// as a user-facing concept (a file in <c>macros/</c>); the legacy flat model it once had
+/// to avoid clashing with is gone.
 /// </summary>
 public sealed class MacroGraph
 {

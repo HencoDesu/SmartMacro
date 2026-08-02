@@ -107,14 +107,27 @@ public interface IGameWindow
     bool SetIconFromFile(string imagePath);
 
     /// <summary>
-    /// Polls the window's passive screenshot until <paramref name="elementTemplate"/>
-    /// matches inside <paramref name="position"/>, or until <paramref name="waitDuration"/>
-    /// elapses. Internal poll cadence and match threshold come from window options
-    /// (configurable via "Vision:Window" in appsettings.json).
+    /// Single capture + single template match. The one-shot sibling of
+    /// <see cref="WaitForElementAsync"/>, backing <c>FindElementNode</c>.
     /// </summary>
-    /// <param name="elementTemplate">PNG-encoded image of the UI element to find. Binarised under the same threshold as the source crop before template matching.</param>
-    /// <param name="position">Client-space crop region. Empty (Width=0 or Height=0) means search the whole screen.</param>
-    /// <param name="waitDuration">Overall budget — return <c>false</c> once exhausted.</param>
-    /// <returns><c>true</c> the first time the template matches above threshold; <c>false</c> on timeout or capture failure.</returns>
-    Task<bool> WaitForElementAt(byte[] elementTemplate, ScreenRect position, TimeSpan waitDuration, CancellationToken cancellationToken = default);
+    /// <param name="elementTemplate">PNG-encoded image of the UI element to find.</param>
+    /// <param name="position">Client-space crop region. Empty (Width=0 or Height=0) means search the whole client area.</param>
+    /// <returns>Client-space CENTER of the match, or <c>null</c> when nothing scored above threshold (or the capture failed).</returns>
+    Task<ScreenPoint?> FindElementAsync(byte[] elementTemplate, ScreenRect position, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Polls the window until <paramref name="elementTemplate"/> matches inside
+    /// <paramref name="position"/>, or until <paramref name="waitDuration"/> elapses.
+    /// Internal poll cadence and match threshold come from window options (configurable
+    /// via "Vision:Window" in appsettings.json).
+    /// </summary>
+    /// <param name="elementTemplate">PNG-encoded image of the UI element to find.</param>
+    /// <param name="position">Client-space crop region. Empty (Width=0 or Height=0) means search the whole client area.</param>
+    /// <param name="waitDuration">Overall budget — give up once exhausted.</param>
+    /// <returns>
+    /// Client-space CENTER of the match the first time it scores above threshold; <c>null</c>
+    /// on timeout. The center is what lets a macro "find the button anywhere, then click it"
+    /// via <c>FoundPointVar</c>.
+    /// </returns>
+    Task<ScreenPoint?> WaitForElementAsync(byte[] elementTemplate, ScreenRect position, TimeSpan waitDuration, CancellationToken cancellationToken = default);
 }

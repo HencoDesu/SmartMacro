@@ -65,7 +65,7 @@
             </ScrollViewer>
         </Border>
 
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto,Auto">
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto">
             <TextBlock Grid.Column="0"
                        Foreground="#666"
                        FontSize="11"
@@ -81,13 +81,7 @@
                     Content="Macros"
                     FontSize="11"
                     Padding="10,4"
-                    Margin="0,0,8,0"
                     Click="OnMacrosClicked" />
-            <Button Grid.Column="3"
-                    Content="Settings"
-                    FontSize="11"
-                    Padding="10,4"
-                    Click="OnSettingsClicked" />
         </Grid>
     </Grid>
 </Window>

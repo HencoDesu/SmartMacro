@@ -1,6 +1,6 @@
 namespace SmartMacro.GameWindows;
 
-// Tuning for IGameWindow.WaitForElementAt. Bound from "Vision:Window" in appsettings.json.
+// Tuning for IGameWindow.FindElementAsync/WaitForElementAsync. Bound from "Vision:Window" in appsettings.json.
 // Same OpenCV pipeline as the old BootDetector (binarize at LuminanceThreshold → MatchTemplate
 // CCoeffNormed → cmp to MatchThreshold) just inlined into GameWindow now.
 public sealed class WindowVisionOptions
@@ -13,7 +13,7 @@ public sealed class WindowVisionOptions
     // backgrounds; 200 keeps the bright cores and drops the background.
     public double LuminanceThreshold { get; init; } = 200.0;
 
-    // How often WaitForElementAt re-captures + re-matches. 500ms is the sweet spot:
+    // How often WaitForElementAsync re-captures + re-matches. 500ms is the sweet spot:
     // enough headroom for PrintWindow + OpenCV (~50ms total) without wasting CPU.
     public int PollIntervalMs { get; init; } = 500;
 }

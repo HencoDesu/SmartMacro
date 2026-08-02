@@ -61,6 +61,10 @@ public sealed partial class MacroRunRegistry : IDisposable
     private sealed class ActiveRun
     {
         public required MacroRunHandle Handle { get; init; }
+
+        /// <summary>Value <see cref="TryBegin"/> dedupes on; defaults to the macro name.</summary>
+        public required string SingleFlightKey { get; init; }
+
         public required CancellationTokenSource Cts { get; init; }
         public TaskCompletionSource Completed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -79,18 +83,26 @@ public sealed partial class MacroRunRegistry : IDisposable
     public event Action? RunsChanged;
 
     /// <summary>
-    /// Registers a new run of <paramref name="macroName"/>. Single-flight per name:
-    /// returns <c>null</c> (with a log entry) when a run of that macro is already tracked.
+    /// Registers a new run of <paramref name="macroName"/>. Single-flight: returns
+    /// <c>null</c> (with a log entry) when a run with the same key is already tracked.
     /// </summary>
-    public MacroRunHandle? TryBegin(string macroName)
+    /// <param name="macroName">Macro being run. Used for display and as the default single-flight key.</param>
+    /// <param name="singleFlightKey">
+    /// Overrides what concurrent runs are deduped on. The default (the macro name) is
+    /// right for hotkeys — hammering one is a no-op. Per-window runs (a boot macro fired
+    /// by process-appeared) pass a key that includes the window, so nine clients
+    /// launching at once each get their own run instead of eight being refused.
+    /// </param>
+    public MacroRunHandle? TryBegin(string macroName, string? singleFlightKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(macroName);
+        var key = string.IsNullOrWhiteSpace(singleFlightKey) ? macroName : singleFlightKey;
 
         MacroRunHandle handle;
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_runs.Values.Any(run => string.Equals(run.Handle.MacroName, macroName, StringComparison.Ordinal)))
+            if (_runs.Values.Any(run => string.Equals(run.SingleFlightKey, key, StringComparison.Ordinal)))
             {
                 LogAlreadyRunning(macroName);
                 return null;
@@ -98,7 +110,7 @@ public sealed partial class MacroRunRegistry : IDisposable
 
             var cts = new CancellationTokenSource();
             handle = new MacroRunHandle(Guid.NewGuid(), macroName, DateTime.UtcNow, cts.Token);
-            _runs.Add(handle.RunId, new ActiveRun { Handle = handle, Cts = cts });
+            _runs.Add(handle.RunId, new ActiveRun { Handle = handle, SingleFlightKey = key, Cts = cts });
         }
 
         LogRunStarted(macroName, handle.RunId);

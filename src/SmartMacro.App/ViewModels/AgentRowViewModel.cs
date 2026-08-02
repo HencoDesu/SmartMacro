@@ -1,5 +1,6 @@
 using SmartMacro.Agents;
 using SmartMacro.App.Mvvm;
+using SmartMacro.Windows;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -8,20 +9,22 @@ namespace SmartMacro.App.ViewModels;
 // state mutations go through messages, not C# events), so Refresh() is called externally
 // when the orchestrator reports a relevant change (AgentIdentified).
 //
-// Also carries the operator's manual tag-assignment path: TagText + TryAssignTag()
-// bypass the ClassMatcher and tag an unidentified window by hand. Useful when auto-id
+// Also carries the operator's manual tag-assignment path: TagText + TryAssignTag() tag a
+// window by hand, straight through WindowRegistry. Useful when the identification macro
 // fails (missing template, weird UI state) or during initial template setup where the
 // operator knows what's on screen. Transitional UI — W0.3 replaces the row with a
 // windows+tag-chips view.
 public sealed class AgentRowViewModel : ObservableObject
 {
+    private readonly WindowRegistry _registry;
     private string _tagText = string.Empty;
 
     public CharacterAgent Agent { get; }
 
-    public AgentRowViewModel(CharacterAgent agent)
+    public AgentRowViewModel(CharacterAgent agent, WindowRegistry registry)
     {
         Agent = agent;
+        _registry = registry;
     }
 
     public string Name => Agent.Name;
@@ -36,32 +39,22 @@ public sealed class AgentRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Manual tag assignment for an unidentified window. Promotes via
-    /// <see cref="CharacterAgent.Identify"/>, which applies the tag through
-    /// WindowRegistry, applies the taskbar icon, and notifies the orchestrator.
-    /// Returns <c>true</c> on success; <c>false</c> if the agent is already identified
-    /// or the tag is blank.
+    /// Manual tag assignment: adds the typed tag to the window through
+    /// <see cref="WindowRegistry"/>, the sole owner of tag state. No icon is applied —
+    /// that's a SetIconNode's job in whichever macro cares.
     /// </summary>
+    /// <returns><c>true</c> when a tag was added; <c>false</c> for a blank entry or a duplicate tag.</returns>
     public bool TryAssignTag()
     {
         var tag = _tagText.Trim();
-        if (Agent.IsIdentified || tag.Length == 0)
+        if (tag.Length == 0)
         {
             return false;
         }
 
-        try
-        {
-            Agent.Identify(tag);
-        }
-        catch (InvalidOperationException)
-        {
-            // Race with auto-identify — someone else got there first. Refresh state.
-            Refresh();
-            return false;
-        }
+        var added = _registry.AddTag(Agent.Handle, tag);
         Refresh();
-        return true;
+        return added;
     }
 
     public void Refresh()

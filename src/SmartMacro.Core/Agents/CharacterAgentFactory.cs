@@ -4,31 +4,20 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SmartMacro.Config;
 using SmartMacro.GameWindows;
-using SmartMacro.Identification;
-using SmartMacro.Input;
-using SmartMacro.Macro;
-using SmartMacro.Presentation;
 using SmartMacro.ProcessMonitoring;
-using SmartMacro.Vision;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Agents;
 
-// Default factory — composes IGameWindow + WindowRegistry + identification stack into a
-// fresh agent. The agent starts tagless; no identification work happens here (when
-// ProcessMonitor sees the game process, the user is still on the server-select screen
-// and the stats window isn't reachable yet). Holds no state; safe as a singleton in DI.
+// Default factory — composes IGameWindow + WindowRegistry into a fresh agent. The agent
+// starts tagless; nothing tries to identify it here (when ProcessMonitor first sees the
+// game process the user is still on the server-select screen). Identification is a macro
+// concern now. Holds no state; safe as a singleton in DI.
 [SupportedOSPlatform("windows")]
 public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
 {
     private readonly IGameWindowFactory _windowFactory;
     private readonly WindowRegistry _registry;
-    private readonly ICharacterProvider _provider;
-    private readonly ClassIconService _classIcons;
-    private readonly AgentInputDispatcher _input;
-    private readonly MacroLibrary _macros;
-    private readonly MacroRunner _macroRunner;
-    private readonly GameUiElementExample _uiTemplates;
     private readonly IOptions<AgentOptions> _options;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<CharacterAgentFactory> _logger;
@@ -36,23 +25,11 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
     public CharacterAgentFactory(
         IGameWindowFactory windowFactory,
         WindowRegistry registry,
-        ICharacterProvider provider,
-        ClassIconService classIcons,
-        AgentInputDispatcher input,
-        MacroLibrary macros,
-        MacroRunner macroRunner,
-        GameUiElementExample uiTemplates,
         IOptions<AgentOptions> options,
         ILoggerFactory loggerFactory)
     {
         _windowFactory = windowFactory;
         _registry = registry;
-        _provider = provider;
-        _classIcons = classIcons;
-        _input = input;
-        _macros = macros;
-        _macroRunner = macroRunner;
-        _uiTemplates = uiTemplates;
         _options = options;
         _loggerFactory = loggerFactory;
         _logger = _loggerFactory.CreateLogger<CharacterAgentFactory>();
@@ -68,7 +45,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
         // Filter out processes whose main window can't be captured — typically launcher
         // instances of elementclient.exe that don't have a real game client surface.
         // ProcessMonitor matches by process name so launchers slip through; we drop them
-        // here so the orchestrator and UI never see a doomed agent.
+        // here so the orchestrator, the macro registry, and the UI never see a doomed agent.
         var (w, h) = window.ClientSize;
         if (w <= 0 || h <= 0)
         {
@@ -83,12 +60,6 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
             info.ProcessName,
             _registry,
             outbox,
-            _provider,
-            _classIcons,
-            _input,
-            _macros,
-            _macroRunner,
-            _uiTemplates,
             _options,
             _loggerFactory.CreateLogger<CharacterAgent>());
         return Task.FromResult(agent);

@@ -1,29 +1,35 @@
+using System.Globalization;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SmartMacro.Agents;
 using SmartMacro.Hotkeys;
 using SmartMacro.Input;
-using SmartMacro.Models;
+using SmartMacro.Macros.Execution;
+using SmartMacro.Macros.Model;
+using SmartMacro.Macros.Storage;
 using SmartMacro.ProcessMonitoring;
 
 namespace SmartMacro.Orchestration;
 
-// Pure dispatcher in v1 — no mode state machine, no automation. Routes:
+// The one place a trigger turns into a macro run. Every path — hotkey, process-appeared,
+// UI Run — funnels through RunAsync:
 //
-// Inputs:
-//   * ProcessMonitor.ProcessAppeared → spawn an agent (CharacterAgent owns the rest).
-//   * HotkeyListener.HotkeyPressed → broadcast the corresponding AgentMessage to every
-//     live agent's inbox.
-//   * Agents → orchestrator messages (AgentIdentifiedMessage, AgentStoppingMessage)
-//     drained from a shared upstream inbox.
+//   trigger → MacroGraphStore.TryGet(name)
+//           → MacroRunRegistry.TryBegin(name, singleFlightKey)   [null = already running]
+//           → MacroExecutor.RunAsync(graph, context, handle.Token)
+//           → MacroRunRegistry.Complete(runId)                   [always, in finally]
 //
-// Outputs:
-//   * Lifecycle events for UI — AgentStarted on creation, AgentIdentified on promotion,
-//     AgentStopped when the agent's RunLoopAsync exits.
+// The two trigger sources differ only in what they put in the context:
+//   * hotkey           — no context window; the macro routes via tag selectors, and
+//                        single-flight is per macro NAME (hammering a hotkey is a no-op).
+//   * process-appeared — the new window IS the context, and single-flight is per
+//                        (macro, window) so nine clients launching at once each boot.
+// Both seed the `cursor` variable, because a macro can't know how it was started.
 //
-// Agents live in a single lock-protected HashSet; lookups (broadcast, shutdown,
-// foreground-is-agent check) are O(n) over ≤9 entries.
+// Beyond that the orchestrator only owns agent lifecycle: spawn one per appeared process,
+// track them for the UI, stop them all on shutdown. Agents no longer receive commands —
+// there is no inbox broadcast any more, just macro runs against window handles.
 public sealed partial class Orchestrator : IHostedService, IDisposable
 {
     private readonly ILogger<Orchestrator> _logger;
@@ -31,7 +37,10 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
     private readonly ProcessMonitor _processMonitor;
     private readonly HotkeyListener _hotkeyListener;
     private readonly ICharacterAgentFactory _agentFactory;
-    private readonly CursorClickResolver _cursorResolver;
+    private readonly MacroGraphStore _macros;
+    private readonly MacroExecutor _executor;
+    private readonly MacroRunRegistry _runs;
+    private readonly CursorPositionProvider _cursor;
 
     private readonly Lock _agentsLock = new();
     private readonly HashSet<CharacterAgent> _agents = [];
@@ -40,14 +49,43 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
     private Task? _dispatchLoop;
 
     public event Action<CharacterAgent>? AgentStarted;
-    public event Action<CharacterAgent>? AgentIdentified;
     public event Action<CharacterAgent>? AgentStopped;
 
+    public Orchestrator(
+        ProcessMonitor processMonitor,
+        HotkeyListener hotkeyListener,
+        ICharacterAgentFactory agentFactory,
+        MacroGraphStore macros,
+        MacroExecutor executor,
+        MacroRunRegistry runs,
+        CursorPositionProvider cursor,
+        ILogger<Orchestrator> logger)
+    {
+        _logger = logger;
+        _agentFactory = agentFactory;
+        _macros = macros;
+        _executor = executor;
+        _runs = runs;
+        _cursor = cursor;
+
+        _processMonitor = processMonitor;
+        _processMonitor.ProcessAppeared += OnProcessAppeared;
+        // No subscription to ProcessDisappeared — agents detect dead windows via
+        // IGameWindow.IsAlive themselves and self-terminate via AgentStoppingMessage.
+
+        _hotkeyListener = hotkeyListener;
+        _hotkeyListener.MacroTriggered += OnMacroTriggered;
+
+        _inbox = Channel.CreateUnbounded<AgentMessage>(new UnboundedChannelOptions
+        {
+            SingleReader = true,
+        });
+    }
+
     /// <summary>
-    /// Snapshot of currently-tracked agents. Used by late subscribers (e.g. UI VM that's
-    /// constructed after the orchestrator has already started spawning agents from the
-    /// first <see cref="ProcessMonitoring.ProcessMonitor"/> poll) to catch up on missed
-    /// <see cref="AgentStarted"/> events.
+    /// Snapshot of currently-tracked agents. Used by late subscribers (e.g. a UI VM built
+    /// after the first <see cref="ProcessMonitor"/> poll already spawned agents) to catch
+    /// up on missed <see cref="AgentStarted"/> events.
     /// </summary>
     public IReadOnlyCollection<CharacterAgent> SnapshotAgents()
     {
@@ -57,29 +95,69 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
         }
     }
 
-    public Orchestrator(
-        ProcessMonitor processMonitor,
-        HotkeyListener hotkeyListener,
-        ICharacterAgentFactory agentFactory,
-        CursorClickResolver cursorResolver,
-        ILogger<Orchestrator> logger)
+    /// <summary>
+    /// Starts a macro by name with no context window — the manual equivalent of pressing
+    /// its hotkey. Used by the UI's Run button. Fire-and-forget; failures are logged.
+    /// </summary>
+    public void RunMacro(string macroName)
     {
-        _logger = logger;
-        _agentFactory = agentFactory;
-        _cursorResolver = cursorResolver;
-        _processMonitor = processMonitor;
-        _processMonitor.ProcessAppeared += OnProcessAppeared;
-        // No subscription to ProcessDisappeared — agents detect dead windows via
-        // IGameWindow.IsAlive themselves and self-terminate via AgentStoppingMessage.
+        _ = RunAsync(macroName, contextWindow: null, singleFlightKey: null);
+    }
 
-        _hotkeyListener = hotkeyListener;
-        _hotkeyListener.HotkeyPressed += OnHotkeyPressed;
-        _hotkeyListener.MacroHotkeyPressed += OnMacroHotkeyPressed;
+    /// <summary>
+    /// Runs one macro to completion under the run registry.
+    /// </summary>
+    /// <param name="macroName">Graph to run; unknown names are a logged no-op.</param>
+    /// <param name="contextWindow">Window targetless nodes act on, or <c>null</c> for selector-only macros.</param>
+    /// <param name="singleFlightKey">Dedupe key; <c>null</c> = the macro name (see <see cref="MacroRunRegistry.TryBegin"/>).</param>
+    public async Task RunAsync(string macroName, IntPtr? contextWindow, string? singleFlightKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(macroName);
 
-        _inbox = Channel.CreateUnbounded<AgentMessage>(new UnboundedChannelOptions
+        var graph = _macros.TryGet(macroName);
+        if (graph is null)
         {
-            SingleReader = true,
-        });
+            LogMacroNotFound(macroName);
+            return;
+        }
+
+        var handle = _runs.TryBegin(macroName, singleFlightKey);
+        if (handle is null)
+        {
+            // Already running under this key — the registry logged it.
+            return;
+        }
+
+        try
+        {
+            var context = new MacroRunContext
+            {
+                ContextWindow = contextWindow,
+                Variables = MacroVariables.ForTrigger(_cursor.Current()),
+                OnNodeEntered = nodeId => handle.CurrentNodeId = nodeId,
+            };
+            var result = await _executor.RunAsync(graph, context, handle.Token).ConfigureAwait(false);
+            if (result.Status == MacroRunStatus.Aborted)
+            {
+                LogMacroAborted(macroName, result.Error ?? "(no details)");
+            }
+        }
+        catch (Exception ex)
+        {
+            // MacroExecutor converts run-level failures into results; anything reaching
+            // here is a bug, and must still not take the host down.
+            LogMacroFailed(ex, macroName);
+        }
+        finally
+        {
+            _runs.Complete(handle.RunId);
+        }
+    }
+
+    private void OnMacroTriggered(string macroName)
+    {
+        LogHotkeyTriggered(macroName);
+        _ = RunAsync(macroName, contextWindow: null, singleFlightKey: null);
     }
 
     private void OnProcessAppeared(ProcessInfo info)
@@ -90,82 +168,45 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
 
     private async Task HandleProcessAppearedAsync(ProcessInfo info)
     {
+        CharacterAgent agent;
         try
         {
-            var agent = await _agentFactory.CreateAsync(info, _inbox.Writer).ConfigureAwait(false);
+            agent = await _agentFactory.CreateAsync(info, _inbox.Writer).ConfigureAwait(false);
             lock (_agentsLock)
             {
                 _agents.Add(agent);
             }
+            // Start registers the window (and its drivable facade) in WindowRegistry — it
+            // must happen before any macro targets the handle.
             agent.Start();
             AgentStarted?.Invoke(agent);
         }
         catch (Exception ex)
         {
             LogAgentCreationFailed(ex, info.Pid);
-        }
-    }
-
-    private void OnHotkeyPressed(OrchestratorTrigger trigger)
-    {
-        switch (trigger)
-        {
-            case OrchestratorTrigger.BroadcastImmunity:
-                LogBroadcastImmunity();
-                _ = BroadcastAsync(new UseImmunityMessage());
-                return;
-
-            case OrchestratorTrigger.BroadcastAssist:
-                LogBroadcastAssist();
-                _ = BroadcastAsync(new TakeAssistMessage());
-                return;
-
-            case OrchestratorTrigger.BroadcastClick:
-                BroadcastCursorClick(doubleClick: false);
-                return;
-
-            case OrchestratorTrigger.BroadcastDoubleClick:
-                BroadcastCursorClick(doubleClick: true);
-                return;
-
-            case OrchestratorTrigger.BroadcastIdentify:
-                LogBroadcastIdentify();
-                _ = BroadcastAsync(new EnterIdentifyMessage());
-                return;
-        }
-    }
-
-    /// <summary>
-    /// Programmatic broadcast — UI (Macros dialog) calls this from its Run button to
-    /// fire a named macro on every live agent. Same broadcast pipeline as hotkey-fired
-    /// messages; agents do their own MacroLibrary lookup and single-flight guarding.
-    /// </summary>
-    public void BroadcastMacro(string macroName)
-    {
-        LogBroadcastMacro(macroName);
-        _ = BroadcastAsync(new RunMacroMessage(macroName));
-    }
-
-    // Delegates cursor / foreground / guard logic to CursorClickResolver. Just snapshots
-    // the agent handle set and broadcasts on a non-null result.
-    private void BroadcastCursorClick(bool doubleClick)
-    {
-        HashSet<IntPtr> handles;
-        lock (_agentsLock)
-        {
-            handles = new HashSet<IntPtr>(_agents.Count);
-            foreach (var agent in _agents)
-            {
-                handles.Add(agent.Handle);
-            }
-        }
-
-        var resolved = _cursorResolver.TryResolve(handles, doubleClick);
-        if (resolved is null)
-        {
             return;
         }
-        _ = BroadcastAsync(new ClickAtMessage(resolved.Value, doubleClick));
+
+        StartProcessAppearedMacros(info.ProcessName, agent.Handle);
+    }
+
+    // Every graph with a matching ProcessAppearedTrigger runs against the new window.
+    // Several may match — a boot macro plus, say, a window-positioning one — so they all
+    // start in parallel, each with its own run entry.
+    private void StartProcessAppearedMacros(string processName, IntPtr hwnd)
+    {
+        foreach (var graph in _macros.All)
+        {
+            if (!graph.Triggers.OfType<ProcessAppearedTrigger>()
+                    .Any(trigger => string.Equals(trigger.ProcessName, processName, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            LogProcessMacroStarting(graph.Name, processName, hwnd.ToInt64());
+            var key = string.Create(CultureInfo.InvariantCulture, $"{graph.Name}@0x{hwnd.ToInt64():X}");
+            _ = RunAsync(graph.Name, hwnd, key);
+        }
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -183,6 +224,16 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        // Cancel in-flight macro runs first: they drive windows the agents are about to
+        // tear down, and a run left mid-activation would keep a client woken up.
+        try
+        {
+            await _runs.StopAllAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+
         await StopAllAgentsAsync(cancellationToken).ConfigureAwait(false);
 
         if (_dispatchCts is null)
@@ -243,18 +294,10 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
     public void Dispose()
     {
         _processMonitor.ProcessAppeared -= OnProcessAppeared;
-        _hotkeyListener.HotkeyPressed -= OnHotkeyPressed;
-        _hotkeyListener.MacroHotkeyPressed -= OnMacroHotkeyPressed;
+        _hotkeyListener.MacroTriggered -= OnMacroTriggered;
         _dispatchCts?.Cancel();
         _dispatchCts?.Dispose();
         _dispatchCts = null;
-    }
-
-    // Macro hotkey fired from the global listener — broadcast the macro by name to
-    // every live agent. Identical broadcast path as the Macros-dialog Run button.
-    private void OnMacroHotkeyPressed(string macroName)
-    {
-        BroadcastMacro(macroName);
     }
 
     private async Task ProcessIncomingAsync()
@@ -276,11 +319,6 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
     {
         switch (message)
         {
-            case AgentIdentifiedMessage id:
-                LogAgentIdentified(id.OldName, id.Agent.Name);
-                AgentIdentified?.Invoke(id.Agent);
-                break;
-
             case AgentStoppingMessage stopping:
                 lock (_agentsLock)
                 {
@@ -309,38 +347,4 @@ public sealed partial class Orchestrator : IHostedService, IDisposable
         {
         }
     }
-
-    private async Task BroadcastAsync(AgentMessage message)
-    {
-        CharacterAgent[] snapshot;
-        lock (_agentsLock)
-        {
-            snapshot = _agents.ToArray();
-        }
-        if (snapshot.Length == 0)
-        {
-            LogBroadcastEmpty(message.GetType().Name);
-            return;
-        }
-
-        var recipients = string.Join(", ", snapshot.Select(a => a.Name));
-        LogBroadcastStarting(message.GetType().Name, snapshot.Length, recipients);
-
-        var delivered = 0;
-        foreach (var agent in snapshot)
-        {
-            try
-            {
-                await agent.Inbox.WriteAsync(message, CancellationToken.None).ConfigureAwait(false);
-                delivered++;
-            }
-            catch (ChannelClosedException)
-            {
-                // Agent stopped between snapshot and write — ignore.
-                LogBroadcastChannelClosed(message.GetType().Name, agent.Name);
-            }
-        }
-        LogBroadcastDelivered(message.GetType().Name, delivered, snapshot.Length);
-    }
-
 }

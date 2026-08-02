@@ -26,6 +26,9 @@
     <Compile Update="Agents\CharacterAgent.Logging.cs">
       <DependentUpon>CharacterAgent.cs</DependentUpon>
     </Compile>
+    <Compile Update="Macros\Storage\MacroGraphStore.Logging.cs">
+      <DependentUpon>MacroGraphStore.cs</DependentUpon>
+    </Compile>
     <Compile Update="Orchestration\Orchestrator.Logging.cs">
       <DependentUpon>Orchestrator.cs</DependentUpon>
     </Compile>

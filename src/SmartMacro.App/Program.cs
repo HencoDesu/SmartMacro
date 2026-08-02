@@ -6,15 +6,14 @@ using SmartMacro.Agents;
 using SmartMacro.Config;
 using SmartMacro.GameWindows;
 using SmartMacro.Hotkeys;
-using SmartMacro.Identification;
 using SmartMacro.Input;
-using SmartMacro.Native;
 using SmartMacro.Native.Hotkey;
 using SmartMacro.Orchestration;
 using SmartMacro.Presentation;
 using SmartMacro.ProcessMonitoring;
 using SmartMacro.App.ViewModels;
-using SmartMacro.Macro;
+using SmartMacro.Macros.Execution;
+using SmartMacro.Macros.Storage;
 using SmartMacro.Vision;
 using SmartMacro.Windows;
 using Serilog;
@@ -83,9 +82,6 @@ internal static class Program
     private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<AgentOptions>(configuration.GetSection("Agent"));
-        services.Configure<GameUiElementExamplesName>(configuration.GetSection("GameUiElementExamples"));
-        services.Configure<HotkeyOptions>(configuration.GetSection("Hotkeys"));
-        services.Configure<ActivatingInputOptions>(configuration.GetSection("Input:Activating"));
         // "ProcessProfiles" is a raw JSON array, so bind it into the wrapper's list.
         services.AddOptions<ProcessProfileOptions>()
             .Configure(options => configuration.GetSection(ProcessProfileOptions.SectionName).Bind(options.Profiles));
@@ -99,23 +95,29 @@ internal static class Program
         // Win32NativeWindowSystem is a static class — no DI registration needed.
         services.AddSingleton<IGameWindowFactory, GameWindowFactory>();
 
-        // Sole owner of window tags — everything (agents, macro routing, UI) reads
-        // identity from here.
+        // Sole owner of window tags AND the hwnd → IGameWindow lookup — everything
+        // (agents, macro primitives, UI) reads window state from here.
         services.AddSingleton<WindowRegistry>();
 
         services.AddSingleton<IClassMatcher, ClassMatcher>();
-        services.AddSingleton<ClassTemplateLoader>();
-        services.AddSingleton<GameUiElementExample>();
+        services.AddSingleton<TemplateSetProvider>();
         services.AddSingleton<ICoordinateReader, TesseractCoordinateReader>();
-        services.AddSingleton<ICharacterProvider, CharacterProvider>();
-        services.AddSingleton<ClassIconService>();
+        services.AddSingleton<WindowIconService>();
         services.AddSingleton<AgentInputDispatcher>();
-        services.AddSingleton<CursorClickResolver>();
-        services.AddSingleton<MacroLibrary>();
-        services.AddSingleton<MacroRunner>();
+        services.AddSingleton<CursorPositionProvider>();
         services.AddSingleton<ICharacterAgentFactory, CharacterAgentFactory>();
         services.AddSingleton<Win32HotkeyMonitor>();
         services.AddSingleton<Win32MouseHookMonitor>();
+
+        // Macro engine. The store is the library of record: it resolves sub-macros for
+        // RunMacroNode, supplies HotkeyListener's bindings, and tells the orchestrator
+        // which graphs a new process should boot. On first run it migrates a legacy
+        // macros.json and/or seeds the PW example set.
+        services.AddSingleton<MacroGraphStore>();
+        services.AddSingleton<IMacroGraphResolver>(sp => sp.GetRequiredService<MacroGraphStore>());
+        services.AddSingleton<IMacroPrimitives, MacroPrimitives>();
+        services.AddSingleton<MacroExecutor>();
+        services.AddSingleton<MacroRunRegistry>();
 
         // ProcessMonitor and HotkeyListener are registered first because Orchestrator
         // subscribes to their events during construction. DI resolves them before
@@ -124,11 +126,8 @@ internal static class Program
         services.AddSingleton<ProcessMonitor>();
         services.AddHostedService(sp => sp.GetRequiredService<ProcessMonitor>());
 
-        // HotkeyConfigStore is the runtime source of truth for hotkey bindings — seeded
-        // from HotkeyOptions defaults on first run (no hotkeys.json), persists user edits
-        // from SettingsDialog, raises BindingsChanged so HotkeyListener can re-register.
-        services.AddSingleton<HotkeyConfigStore>();
-
+        // Hotkey bindings come from the macro library itself (each graph's HotkeyTriggers),
+        // so the listener re-registers whenever the library changes. No hotkeys.json.
         services.AddSingleton<HotkeyListener>();
         services.AddHostedService(sp => sp.GetRequiredService<HotkeyListener>());
 

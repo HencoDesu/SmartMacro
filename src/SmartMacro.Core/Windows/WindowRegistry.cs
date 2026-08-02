@@ -1,11 +1,17 @@
 using Microsoft.Extensions.Logging;
+using SmartMacro.GameWindows;
 
 namespace SmartMacro.Windows;
 
-// The SOLE owner of window tags. Everything that wants to know "which windows exist and
-// what are they tagged with" — agents, macro routing, UI — asks the registry; nothing
-// else holds tag state. Tags are runtime-only (hwnds are ephemeral), case-sensitive,
-// free-form strings, applied by identification, macros, or manually from the UI.
+// The SOLE owner of window tags AND the lookup table hwnd → IGameWindow. Everything that
+// wants to know "which windows exist, what are they tagged with, and how do I drive one"
+// — agents, the macro primitives layer, UI — asks the registry; nothing else holds tag
+// state. Tags are runtime-only (hwnds are ephemeral), case-sensitive, free-form strings,
+// applied by macro nodes or manually from the UI.
+//
+// The IGameWindow handle is registered alongside the tags (W0.2b) because the macro
+// primitives layer only ever sees an hwnd — the graph model addresses windows by handle,
+// so the registry is the natural place to resolve one back into a drivable window.
 //
 // All mutations are atomic under one lock; events are raised OUTSIDE the lock (with a
 // snapshot computed inside) so subscribers can call back into the registry without
@@ -15,6 +21,9 @@ public sealed partial class WindowRegistry
     private sealed class Entry
     {
         public required string ProcessName { get; init; }
+
+        /// <summary>Drivable window facade; <c>null</c> for entries registered without one (tests, UI-only rows).</summary>
+        public IGameWindow? Window { get; init; }
 
         // Insertion-ordered so "first tag" (used as an agent's display name) is stable.
         // Tag counts per window are tiny, so List.Contains beats set overhead anyway.
@@ -44,8 +53,15 @@ public sealed partial class WindowRegistry
     /// <summary>
     /// Adds a window to the registry with an empty tag set and raises <see cref="WindowAppeared"/>.
     /// </summary>
+    /// <param name="hwnd">Native handle; identity key of the entry.</param>
+    /// <param name="processName">Owning process name, as reported by ProcessMonitor.</param>
+    /// <param name="window">
+    /// Drivable facade for the window, resolvable later via <see cref="TryGetWindow"/>.
+    /// Optional so tag-only tests and future UI-side registrations don't need one; macro
+    /// nodes targeting a window registered without a facade fail at execution time.
+    /// </param>
     /// <returns><c>true</c> when the window was added; <c>false</c> when the hwnd is already registered (no event).</returns>
-    public bool Register(IntPtr hwnd, string processName)
+    public bool Register(IntPtr hwnd, string processName, IGameWindow? window = null)
     {
         ArgumentNullException.ThrowIfNull(processName);
 
@@ -58,7 +74,7 @@ public sealed partial class WindowRegistry
                 return false;
             }
 
-            var entry = new Entry { ProcessName = processName };
+            var entry = new Entry { ProcessName = processName, Window = window };
             _windows.Add(hwnd, entry);
             snapshot = ToSnapshot(hwnd, entry);
         }
@@ -159,6 +175,19 @@ public sealed partial class WindowRegistry
             return _windows.TryGetValue(hwnd, out var entry)
                 ? new HashSet<string>(entry.Tags, StringComparer.Ordinal)
                 : EmptyTags;
+        }
+    }
+
+    /// <summary>
+    /// Resolves a handle back into the drivable window facade registered with it. The
+    /// macro primitives layer's only way from an hwnd to real input/vision.
+    /// </summary>
+    /// <returns>The facade, or <c>null</c> for an unknown hwnd or an entry registered without one.</returns>
+    public IGameWindow? TryGetWindow(IntPtr hwnd)
+    {
+        lock (_lock)
+        {
+            return _windows.TryGetValue(hwnd, out var entry) ? entry.Window : null;
         }
     }
 

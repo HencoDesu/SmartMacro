@@ -2,11 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Microsoft.Extensions.DependencyInjection;
-using SmartMacro.Agents;
 using SmartMacro.App.ViewModels;
-using SmartMacro.Hotkeys;
-using SmartMacro.Identification;
-using SmartMacro.Macro;
+using SmartMacro.Macros.Execution;
+using SmartMacro.Macros.Storage;
 using SmartMacro.Orchestration;
 using SmartMacro.Vision;
 
@@ -116,63 +114,23 @@ public partial class MainWindow : Window
         }
     }
 
-    // Opens the global-hotkey editor. Save in the dialog calls HotkeyConfigStore.ReplaceAsync,
-    // which persists hotkeys.json and raises BindingsChanged → HotkeyListener re-registers
-    // against Win32. No restart required.
-    //
-    // Suspend the hotkey listener for the duration of the dialog: otherwise Win32
-    // RegisterHotKey intercepts presses of already-bound combos (e.g. F21) and the
-    // dialog's KeyBindingPicker never sees the KeyDown event — making bound keys
-    // un-rebindable. Resume in finally re-registers from the current store state (which
-    // is either the saved-new set, or unchanged if cancelled).
-    private async void OnSettingsClicked(object? sender, RoutedEventArgs e)
+    // Opens the transitional macro list (Run/Stop + a pointer at the macros folder).
+    // W0.3 replaces it with a real node editor; the dialog resolves its dependencies from
+    // the container here because dialogs are transient while the store/registry are
+    // singletons.
+    private async void OnMacrosClicked(object? sender, RoutedEventArgs e)
     {
         if (Program.Services is not { } services)
         {
             return;
         }
 
-        HotkeyListener? listener = null;
         try
         {
-            var store = services.GetRequiredService<HotkeyConfigStore>();
-            var library = services.GetRequiredService<MacroLibrary>();
-            listener = services.GetRequiredService<HotkeyListener>();
-            await listener.SuspendAsync();
-
-            var dialogVm = new SettingsDialogViewModel(store, library);
-            var dialog = new SettingsDialog(dialogVm);
-            await dialog.ShowDialog(this);
-        }
-        catch (Exception ex)
-        {
-            Serilog.Log.Warning(ex, "Settings dialog failed to open");
-        }
-        finally
-        {
-            if (listener is not null)
-            {
-                try
-                {
-                    await listener.ResumeAsync();
-                }
-                catch (Exception ex)
-                {
-                    Serilog.Log.Error(ex, "Failed to resume hotkey listener after Settings dialog");
-                }
-            }
-        }
-    }
-
-    private async void OnMacrosClicked(object? sender, RoutedEventArgs e)
-    {
-        if (Program.Services is not { } services) return;
-
-        try
-        {
-            var library = services.GetRequiredService<MacroLibrary>();
-            var orchestrator = services.GetRequiredService<Orchestrator>();
-            var dialogVm = new MacrosDialogViewModel(library, orchestrator);
+            var dialogVm = new MacrosDialogViewModel(
+                services.GetRequiredService<MacroGraphStore>(),
+                services.GetRequiredService<MacroRunRegistry>(),
+                services.GetRequiredService<Orchestrator>());
             var dialog = new MacrosDialog(dialogVm);
             await dialog.ShowDialog(this);
         }

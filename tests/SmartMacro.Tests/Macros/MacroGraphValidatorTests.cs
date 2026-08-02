@@ -141,6 +141,45 @@ public class MacroGraphValidatorTests
         await Assert.That(Errors(issues).Any(i => i.NodeId == "k" && i.Message.Contains("context"))).IsTrue();
     }
 
+    // W0.2b relaxation: a graph with NO triggers can only be entered via RunMacroNode or
+    // a UI Run against a window, so its context always comes from the caller. Targetless
+    // nodes are the CORRECT shape for such a library routine — that's what makes it
+    // reusable per window — so the context rule must not fire.
+    [Test]
+    public async Task TriggerlessLibraryMacro_ConditionalAndTargetlessAction_AreLegal()
+    {
+        var graph = Graph("k", [],
+            new KeyPressNode { Id = "k", Key = VirtualKey.C, Next = "r" },
+            new RecognizeTagNode
+            {
+                Id = "r",
+                TemplateSet = "classes",
+                Region = new ScreenRect(0, 0, 10, 10),
+                Matched = "i",
+                NotMatched = null,
+            },
+            new SetIconNode { Id = "i", IconPath = "icons/{tag}.png", Next = null });
+
+        var issues = MacroGraphValidator.Validate(graph);
+
+        await Assert.That(issues).Count().IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task AddingAHotkeyToALibraryMacro_BringsTheContextErrorBack()
+    {
+        var nodes = new MacroNode[]
+        {
+            new KeyPressNode { Id = "k", Key = VirtualKey.C, Next = null },
+        };
+
+        var libraryOnly = Graph("k", [], nodes);
+        var triggered = Graph("k", [Hotkey], nodes);
+
+        await Assert.That(Errors(MacroGraphValidator.Validate(libraryOnly))).Count().IsEqualTo(0);
+        await Assert.That(Errors(MacroGraphValidator.Validate(triggered)).Any(i => i.Message.Contains("context"))).IsTrue();
+    }
+
     [Test]
     public async Task HotkeyOnlyMacro_UnreachableConditional_NoContextError_ButUnreachableWarning()
     {

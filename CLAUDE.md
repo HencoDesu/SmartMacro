@@ -4,13 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Windows-only desktop agent (C# / .NET 10 / Avalonia) that automates a party of ~10 Perfect World MMO characters, each running in its own `elementclient_64.exe` process. The app watches for game processes, drives each client's window through login (server-select → character-select → in-world), identifies which character class is in each window via OpenCV template matching, and broadcasts commands (immunity, assist, macros, clicks) to all windows via Win32 messages. UI text and commit messages are in Russian; class enum identifiers are Cyrillic (`CharacterClass.Лучник`).
+Windows-only desktop automation tool (C# / .NET 10 / Avalonia). Generic in design, Perfect World in practice: it watches for windows of configured processes, tags them (free-form strings, typically applied by OpenCV template matching), and runs user-authored **macro graphs** against them via Win32 messages — driving ~10 `elementclient_64.exe` clients through login and party-wide actions. UI text and commit messages are in Russian; tags are Cyrillic class names ("Лучник", "Жрец") because that's what the game renders.
 
-## ⚠️ Planned refactoring — read before large changes
+## ⚠️ In-flight refactoring — read before large changes
 
-`docs/refactoring-plan-split.md` is the approved roadmap: the project is about to be renamed to **SmartMacro** and rebuilt as a generic window-automation tool — macros become **node graphs** (actions + conditional nodes + variables) with triggers (hotkey / process-appeared), `CharacterClass`/roster concepts dissolve into free-form **window tags** with tag-selector routing, and the monolith splits into a background **Daemon** (tray, hooks, vision, IPC server) + on-demand Avalonia **App** (named-pipe client). Tests return via **TUnit + FakeItEasy**.
+`docs/refactoring-plan-split.md` is the approved roadmap and is being executed wave by wave: rename to **SmartMacro**, macros as **node graphs** (actions + conditional nodes + variables) with triggers (hotkey / process-appeared), `CharacterClass`/roster dissolved into free-form **window tags** with tag-selector routing, then a split into a background **Daemon** (tray, hooks, vision, IPC server) + on-demand Avalonia **App** (named-pipe client).
 
-Until that plan is executed, the sections below describe the CURRENT (pre-refactor) architecture. Consequences for work done today: don't invest in things the plan deletes — `OrchestratorTrigger` built-in hotkeys, `hotkeys.json`, `AgentMessage` broadcast records, `AgentState`/Stateless machine, hardcoded coordinates in `appsettings.json` are all slated for removal; new features should be weighed against the plan first.
+**Done so far:** W0.0 (rename to SmartMacro + `SmartMacro.Tests`), W0.1 (`WindowRegistry`/tags/`ProcessProfiles`, `CharacterClass` and Stateless removed), W0.2a (node-graph model, `MacroExecutor`, validator), W0.2b (primitives over real input/vision, `macros/` folder storage + migration + PW examples, triggers driven by the macro library, legacy pipeline deleted). The sections below describe the architecture as it stands after W0.2b.
+
+**Still ahead:** W0.3 rebuilds the UI (main window around windows+tag chips, a real node editor — the current macros dialog is a transitional Run/Stop list), W0.4 adds the canvas editor, then stages 1–4 split the app into Daemon + on-demand UI over IPC.
 
 ## Commands
 
@@ -18,9 +20,10 @@ Until that plan is executed, the sections below describe the CURRENT (pre-refact
 dotnet build SmartMacro.slnx                  # full solution
 dotnet run --project src/SmartMacro.App
 dotnet run --project tools/VisionSampleRunner # vision debugging harness (coord OCR over samples/)
-dotnet test                                   # test gate (TUnit on MTP; MTP-mode opt-in lives in global.json)
-dotnet run --project tests/SmartMacro.Tests   # equivalent single-project run, works without global.json
+dotnet run --project tests/SmartMacro.Tests   # TEST GATE — use this one
 ```
+
+`dotnet test` currently reports "zero tests ran" (exit 5) in this environment despite the MTP opt-in in `global.json`; the TUnit-generated entry point via `dotnet run` is the reliable gate.
 
 Build warnings NU1903 (Tmds.DBus.Protocol) are known noise.
 
@@ -34,35 +37,50 @@ Three projects, strict layering: `App` (Avalonia UI, DI composition root in `Pro
 
 ### Core pipeline
 
-- **ProcessMonitoring** polls for game processes → `Orchestrator` creates one `CharacterAgent` per process via `CharacterAgentFactory`.
-- **Orchestrator** (`Core/Orchestration`) is a pure dispatcher: global hotkeys (`HotkeyListener`) → broadcast `AgentMessage` records to every agent's inbox channel. Agent→orchestrator traffic (identified, stopping) flows through one shared upstream channel.
-- **CharacterAgent** (`Core/Agents`) owns a Stateless state machine (`AwaitingIdentification → Idle`), an inbox `Channel<AgentMessage>`, and a run loop. On Start it fire-and-forgets `EnterWorldAsync` (vision-driven boot: poll for server-select button template → click → poll character-select → click → poll in-world → identify). A `SemaphoreSlim _operationLock` makes boot/identify/macro-run single-flight per agent — concurrent triggers no-op via `WaitAsync(0)`.
-- **Identification**: agent opens the in-game stats window (hotkey C), captures, `ClassMatcher` template-matches the class-name text region against `Assets/GameClassNames/{Класс}.png`, closes stats. Class IS the identity (no roster, no per-character config — all clients share default keybinds from `AgentOptions`). `MasterClass` designates the master (skips assist); `IgnoredClasses` designates utility characters that drop all broadcasts.
-- **Macro** system: `Macro.ActionsByClass` maps `CharacterClass → List<MacroAction>` (polymorphic JSON: key press / delay / click) so each class runs its own rotation from one broadcast. `MacroRunner` executes; `MacroLibrary` persists to `macros.json` with FileSystemWatcher hot-reload (own writes suppressed via LastWriteTime tracking).
+Everything the app does is a macro run. There is exactly one path from trigger to effect:
+
+```
+hotkey / process-appeared / UI Run
+  → Orchestrator.RunAsync(name, contextWindow, singleFlightKey)
+  → MacroGraphStore.TryGet  →  MacroRunRegistry.TryBegin  →  MacroExecutor.RunAsync
+  → IMacroPrimitives (input / vision / icon)  +  WindowRegistry (tags)
+```
+
+- **ProcessMonitoring** polls for watched processes (union of `ProcessProfiles` names) → `Orchestrator` creates one `CharacterAgent` per process via `CharacterAgentFactory`.
+- **CharacterAgent** (`Core/Agents`) is now just a window-lifetime shell: `Start()` registers hwnd + process name + the `IGameWindow` facade in `WindowRegistry`, a poll loop notices the window dying and unregisters it. No state machine, no inbox commands, no boot flow — those are macro graphs.
+- **WindowRegistry** (`Core/Windows`) is the sole owner of window tags AND the `hwnd → IGameWindow` lookup. Tag selectors (`RequireTags`/`ExcludeTags`) route every fan-out; "identified" just means "has at least one tag".
+- **Orchestrator** (`Core/Orchestration`) turns triggers into runs. Hotkey runs have no context window (macros must route by selector) and are single-flight per macro NAME; process-appeared runs get the new window as context and are single-flight per (macro, window) so N clients launching at once each boot. Both seed the `cursor` variable via `CursorPositionProvider`.
+- **Macros** (`Core/Macros`) — `Model` (polymorphic `$type` nodes + triggers), `Execution` (`MacroExecutor` walker, `MacroPrimitives`, `MacroRunRegistry`, run variables), `Validation`, `Storage`. See `docs/refactoring-plan-split.md` §0.2–0.3 for the node catalogue and semantics.
+- **`MacroGraphStore`** (`Core/Macros/Storage`) is the library of record: one JSON file per graph under `macros/`, filename stem = macro name. It resolves sub-macros for `RunMacroNode`, supplies `HotkeyListener`'s bindings (re-registered on every change), and tells the orchestrator which graphs a new process should boot. On first run it migrates a legacy `macros.json` (+ `hotkeys.json` macro bindings → triggers) and, if the folder ends up empty, seeds the `pw-*` examples.
+- **Identification** is no longer built in: it's the `pw-identify` / `pw-boot` example macros — `KeyPress(C)` → `Delay` → `RecognizeTagNode` (template set `"classes"` → `Assets/GameClassNames/{tag}.png`) → `SetIconNode` → `KeyPress(C)`. Master/ignored characters are just tags in a selector (`ExcludeTags: ["Лучник", "Шаман"]`).
 
 ### Win32 input model (the hard-won part — do not "simplify" without re-testing in game)
 
-PW freezes background clients (input + rendering). Every input session is bracketed by `IGameWindow.ActivateAsync` (sends magic `WM_ACTIVATEAPP` with lParam from config) and `DeactivateAsync` (drain delay, then deactivate — unless window is foreground). `AgentInputDispatcher` wraps this lifecycle around every keypress/click/assist.
+PW freezes background clients (input + rendering). Every input session is bracketed by `IGameWindow.ActivateAsync` (sends magic `WM_ACTIVATEAPP` with lParam from the window's `ProcessProfile`) and `DeactivateAsync` (drain delay, then deactivate — unless window is foreground). `AgentInputDispatcher` wraps this lifecycle around every keypress/click, one cycle per node.
 
 - **Keyboard = SendMessage, mouse = PostMessage** (`GameWindowFactory` bakes this in). Post'd keys got dropped by the frozen pump; clicks were always reliable.
-- **Modifier chords (Shift+1) DO NOT WORK** via message injection: PW reads modifiers with `GetKeyState`, which cross-thread SendMessage never updates. That's why assist selects the master by *clicking* party-slot-1 (`ActivatingInputOptions.PartySlot1`) instead of Shift+1.
-- **WM_SETICON must be SendMessage** — Post'd icon updates sit unprocessed in frozen queues. `ClassIconService` also retries at +2s/+5s because PW's post-boot init can reset the icon.
+- **Modifier chords (Shift+1) DO NOT WORK** via message injection: PW reads modifiers with `GetKeyState`, which cross-thread SendMessage never updates. That's why the `pw-assist` example selects the master by *clicking* party-slot-1 instead of Shift+1.
+- **WM_SETICON must be SendMessage** — Post'd icon updates sit unprocessed in frozen queues. `WindowIconService` also retries at +2s/+5s because PW's post-boot init can reset the icon.
 - Both the game and this app run elevated (`requireAdministrator` in app.manifest) — UIPI blocks input/capture into elevated windows otherwise.
 
 ### Vision
 
-`IGameWindow.WaitForElementAt(template, region, timeout)` is the generic primitive: poll-loop of active capture (wake → PrintWindow with `PW_CLIENTONLY | PW_RENDERFULLCONTENT` → re-freeze) + grayscale `TM_CCOEFF_NORMED` matching. Grayscale, NOT binarized — game UI sits on semi-transparent backgrounds where binarization is unstable. `ClassMatcher` (stats-window text on solid panel) is the exception that still binarizes. Templates load from `Assets/GameUiElements/*.png` (keyed by filename stem, referenced by name in `AgentOptions`) and `Assets/GameClassNames/{enum}.png`. All coordinates/templates are currently pixel-exact for the author's 3840×2160 screen.
+`IGameWindow.FindElementAsync` (one shot) and `WaitForElementAsync` (poll until timeout) are the generic primitives; both return the CLIENT-SPACE CENTRE of the match, which is what `FoundPointVar` feeds to a later `ClickNode`. Each tick is an active capture (wake → PrintWindow with `PW_CLIENTONLY | PW_RENDERFULLCONTENT` → re-freeze) + grayscale `TM_CCOEFF_NORMED` matching. Grayscale, NOT binarized — game UI sits on semi-transparent backgrounds where binarization is unstable. `ClassMatcher` (stats-window text on solid panel) is the exception that still binarizes.
+
+`TemplateSetProvider` resolves the names nodes carry into bytes: single templates by stem from `Assets/GameUiElements`, and the set `"classes"` from `Assets/GameClassNames` (a compatibility alias — TODO W0.4 collapses both into one `templates/` tree). All coordinates/templates are pixel-exact for the author's 3840×2160 screen; they now live in macro nodes, not config.
 
 ### Runtime state files (next to the exe, gitignored)
 
-`hotkeys.json` (trigger + macro-name hotkey bindings, seeded from `HotkeyOptions` defaults), `macros.json`, `logs/`. Config stores follow one pattern (see `HotkeyConfigStore`): load on ctor → immutable snapshot → `ReplaceAsync` persists + raises changed-event → subscribers re-register live. Deserialization is two-stage (string-typed enums first) so stale entries from older versions skip-and-log instead of failing the file.
+`macros/*.json` (one graph per file) and `logs/`. `MacroGraphStore` follows the usual store pattern — load on ctor → immutable snapshot → CRUD persists + raises `MacrosChanged` → subscribers (`HotkeyListener`, UI) re-register live — plus a debounced `FileSystemWatcher` for external edits, with our own writes suppressed by comparing a folder signature of last-write timestamps. An unparseable file is skipped and logged, never fatal to the load.
+
+`hotkeys.json` and the single `macros.json` are GONE. Both are migrated once on first run and renamed to `*.migrated`; a hotkey is now a `HotkeyTrigger` inside the macro it starts. Legacy bindings for the deleted built-in broadcast actions have no destination and are reported as orphaned in the log — the equivalent behaviors are the `pw-*` example macros.
 
 ### Conventions
 
 - Logging via source-generated `[LoggerMessage]` partial methods, usually split into a sibling `*.Logging.cs` partial file.
-- Options classes bind from `appsettings.json` sections in `Program.cs` (`AgentOptions` ← `"Agent"`, `ActivatingInputOptions` ← `"Input:Activating"`, vision options ← `"Vision:*"`).
+- Options classes bind from `appsettings.json` sections in `Program.cs` (`AgentOptions` ← `"Agent"` — poll intervals only now, `ProcessProfileOptions` ← `"ProcessProfiles"`, vision options ← `"Vision:*"`). Coordinates, regions, templates, keys and timeouts belong in macro nodes, NOT in config.
 - `ScreenPoint` / `ScreenRect` record structs (in `Native`) for all pixel coordinates — bind from JSON as `{ "X": .., "Y": .. }` objects.
-- Coordinate discovery workflow: user hovers cursor in-game and presses the BroadcastClick/DoubleClick hotkey; `CursorClickResolver` logs the client-space point, which then goes into config.
+- Coordinate discovery workflow: user hovers cursor in-game and triggers a macro; `CursorPositionProvider` logs the client-space point it seeds the `cursor` variable with, which then goes into a node.
 - "Dump captures" button in the main window writes per-agent `debug/*-full.png` and `*-class-bin.png` for tuning vision regions.
 
-`docs/spec.md` (v0.4, Russian) is the up-to-date technical description — includes game-domain context, the full architecture, and a decision-history table explaining why earlier designs (FOLLOW/HOLD/COMBAT state machine, LLM integration, per-character roster, nameplate identification) were dropped. Keep it in sync with structural changes.
+`docs/spec.md` (v0.4, Russian) has the game-domain context and a decision-history table explaining why earlier designs (FOLLOW/HOLD/COMBAT state machine, LLM integration, per-character roster, nameplate identification) were dropped. Its architecture sections predate the node-graph waves — read them as history until the doc is refreshed.

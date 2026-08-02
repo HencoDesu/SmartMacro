@@ -2,6 +2,7 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenCvSharp;
+using SmartMacro.Native;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace SmartMacro.Vision;
@@ -32,14 +33,14 @@ public sealed partial class ClassMatcher : IClassMatcher
         LogConfigured(_region.X, _region.Y, _region.Width, _region.Height, _luminanceThreshold, _matchThreshold);
     }
 
-    public TagMatch? Match(byte[] screenshot, IReadOnlyDictionary<string, byte[]> templates)
+    public TagMatch? Match(byte[] screenshot, IReadOnlyDictionary<string, byte[]> templates, ScreenRect region)
     {
         if (templates.Count == 0)
         {
             return null;
         }
 
-        using var sourceCrop = DecodeAndCropAndBinarize(screenshot);
+        using var sourceCrop = DecodeAndCropAndBinarize(screenshot, region);
 
         var brightPixels = Cv2.CountNonZero(sourceCrop);
         var totalPixels = sourceCrop.Width * sourceCrop.Height;
@@ -84,12 +85,16 @@ public sealed partial class ClassMatcher : IClassMatcher
 
     public byte[] DebugBinarizeClassRegion(byte[] screenshot)
     {
-        using var binary = DecodeAndCropAndBinarize(screenshot);
+        // Diagnostic path keeps using the CONFIGURED region — it exists so the operator
+        // can eyeball whether "Vision:ClassMatcher:Region" is tuned for their resolution.
+        using var binary = DecodeAndCropAndBinarize(screenshot, default);
         Cv2.ImEncode(".png", binary, out var bytes);
         return bytes;
     }
 
-    private Mat DecodeAndCropAndBinarize(byte[] screenshot)
+    // Empty region falls back to the configured one, so the diagnostic path and any
+    // caller that hasn't got a region yet still behave as before.
+    private Mat DecodeAndCropAndBinarize(byte[] screenshot, ScreenRect region)
     {
         using var full = Cv2.ImDecode(screenshot, ImreadModes.Color);
         if (full.Empty())
@@ -97,7 +102,10 @@ public sealed partial class ClassMatcher : IClassMatcher
             throw new InvalidOperationException("Failed to decode screenshot bytes.");
         }
 
-        var clamped = ClampToImage(_region, full.Size());
+        var requested = region.Width > 0 && region.Height > 0
+            ? new Rect(region.X, region.Y, region.Width, region.Height)
+            : _region;
+        var clamped = ClampToImage(requested, full.Size());
         using var crop = new Mat(full, clamped);
         return Binarize(crop);
     }

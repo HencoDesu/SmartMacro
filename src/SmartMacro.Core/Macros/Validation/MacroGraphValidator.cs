@@ -8,10 +8,15 @@ namespace SmartMacro.Macros.Validation;
 ///
 /// Errors: unknown/blank StartNodeId; duplicate node ids; edges referencing unknown
 /// nodes; ClickNode with both or neither of Point/PointVar; and the context rule — a
-/// macro with no <see cref="ProcessAppearedTrigger"/> can be entered without a context
-/// window, so any REACHABLE conditional node or action node without a Target selector is
-/// an error (simplified rule per plan §0.2; RunMacro-with-Target sub-runs that would
-/// supply a context are deliberately not modeled).
+/// macro that can START ON ITS OWN without a context window (i.e. it has triggers, but no
+/// <see cref="ProcessAppearedTrigger"/>) may not contain a REACHABLE conditional node or
+/// a targetless action node (simplified rule per plan §0.2; RunMacro-with-Target sub-runs
+/// that would supply a context are deliberately not modeled).
+///
+/// A macro with NO triggers at all is exempt from the context rule: it is library-only,
+/// reachable solely through <see cref="RunMacroNode"/> or a UI Run against a window, and
+/// its context therefore always comes from the caller. Targetless nodes are in fact the
+/// CORRECT shape for such a macro — that is what makes it reusable per window.
 ///
 /// Warnings: unreachable nodes; cycles containing no <see cref="DelayNode"/> /
 /// <see cref="WaitForElementNode"/> (hot loops — detected per strongly connected
@@ -66,9 +71,11 @@ public static class MacroGraphValidator
 
         var reachable = ComputeReachable(macro, byId, startIsValid);
 
-        // Context rule.
+        // Context rule. Skipped entirely for trigger-less (library-only) graphs — the
+        // caller always supplies their context window.
+        var isLibraryOnly = macro.Triggers.Count == 0;
         var hasProcessTrigger = macro.Triggers.Any(trigger => trigger is ProcessAppearedTrigger);
-        if (!hasProcessTrigger)
+        if (!isLibraryOnly && !hasProcessTrigger)
         {
             foreach (var id in reachable)
             {
