@@ -27,6 +27,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SmartMacro.Contracts\SmartMacro.Contracts.csproj" />
+    <!-- Stage 1 keeps this: the App still calls WindowRegistry / MacroGraphStore /
+         MacroRunRegistry / Orchestrator / HotkeyListener directly. It goes away in
+         Stage 3, once the IPC client replaces those call sites. -->
     <ProjectReference Include="..\SmartMacro.Core\SmartMacro.Core.csproj" />
   </ItemGroup>
 

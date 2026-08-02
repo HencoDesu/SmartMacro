@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The shared vocabulary between the daemon (Core) and the UI (App): the macro graph
+    model, its pure validator, the wire DTOs and the IPC protocol types.
+
+    HARD RULE: the ONLY reference here is SmartMacro.Native. Nothing in this assembly may
+    drag OpenCV, Tesseract or file/registry IO into the UI process — if a type needs any
+    of that, it belongs in Core.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>SmartMacro.Contracts</RootNamespace>
+    <AssemblyName>SmartMacro.Contracts</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SmartMacro.Native\SmartMacro.Native.csproj" />
+  </ItemGroup>
+
+</Project>

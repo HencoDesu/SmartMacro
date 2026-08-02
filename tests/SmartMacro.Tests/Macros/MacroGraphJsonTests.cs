@@ -9,76 +9,8 @@ namespace SmartMacro.Tests.Macros;
 // fail with a clean JsonException (storage surfaces it as "file is broken", not a crash).
 public class MacroGraphJsonTests
 {
-    private static MacroGraph BuildFullGraph() => new()
-    {
-        Name = "полный",
-        Triggers =
-        [
-            new HotkeyTrigger(HotkeyModifiers.Control | HotkeyModifiers.Shift, VirtualKey.F5),
-            new HotkeyTrigger(HotkeyModifiers.None, default, MouseButton.XButton1),
-            new ProcessAppearedTrigger("elementclient"),
-        ],
-        StartNodeId = "key",
-        Nodes =
-        [
-            new KeyPressNode
-            {
-                Id = "key",
-                Key = VirtualKey.F8,
-                Target = new TargetSelector { RequireTags = ["перс"], ExcludeTags = ["МАСТЕР"] },
-                Next = "clickLiteral",
-                Editor = new NodeEditorInfo(10.5, -20.25),
-            },
-            new ClickNode { Id = "clickLiteral", Point = new ScreenPoint(100, 200), DoubleClick = true, Next = "clickVar" },
-            new ClickNode { Id = "clickVar", PointVar = "cursor", Next = "delay" },
-            new DelayNode { Id = "delay", Ms = 250, Next = "addTag" },
-            new AddTagNode { Id = "addTag", Tag = "класс-{tag}", Next = "removeTag" },
-            new RemoveTagNode
-            {
-                Id = "removeTag",
-                Tag = "боевой",
-                Target = new TargetSelector { RequireTags = ["перс"] },
-                Next = "icon",
-            },
-            new SetIconNode { Id = "icon", IconPath = "icons/{tag}.png", Next = "run" },
-            new RunMacroNode
-            {
-                Id = "run",
-                MacroName = "под-макрос",
-                Target = new TargetSelector { ExcludeTags = ["МАСТЕР"] },
-                Await = false,
-                Next = "find",
-            },
-            new FindElementNode
-            {
-                Id = "find",
-                Template = "кнопка",
-                Region = new ScreenRect(1, 2, 3, 4),
-                FoundPointVar = "btn",
-                Found = "wait",
-                NotFound = null,
-            },
-            new WaitForElementNode
-            {
-                Id = "wait",
-                Template = "мир",
-                TimeoutMs = 60000,
-                FoundPointVar = "pt",
-                Found = "recognize",
-                Timeout = null,
-            },
-            new RecognizeTagNode
-            {
-                Id = "recognize",
-                TemplateSet = "классы",
-                Region = new ScreenRect(5, 6, 7, 8),
-                ApplyTag = false,
-                ResultVar = "класс",
-                Matched = null,
-                NotMatched = null,
-            },
-        ],
-    };
+    // Shared with the IPC dialect tests — see FullMacroGraphFixture.
+    private static MacroGraph BuildFullGraph() => FullMacroGraphFixture.Build();
 
     [Test]
     public async Task RoundTrip_PreservesEveryNodeTriggerAndEditorCoordinate()

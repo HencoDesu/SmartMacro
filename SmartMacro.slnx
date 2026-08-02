@@ -5,6 +5,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/SmartMacro.App/SmartMacro.App.csproj" />
+    <Project Path="src/SmartMacro.Contracts/SmartMacro.Contracts.csproj" />
     <Project Path="src/SmartMacro.Core/SmartMacro.Core.csproj" />
     <Project Path="src/SmartMacro.Native/SmartMacro.Native.csproj" />
   </Folder>

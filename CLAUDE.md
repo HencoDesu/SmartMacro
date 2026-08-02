@@ -10,9 +10,9 @@ Windows-only desktop automation tool (C# / .NET 10 / Avalonia). Generic in desig
 
 `docs/refactoring-plan-split.md` is the approved roadmap and is being executed wave by wave: rename to **SmartMacro**, macros as **node graphs** (actions + conditional nodes + variables) with triggers (hotkey / process-appeared), `CharacterClass`/roster dissolved into free-form **window tags** with tag-selector routing, then a split into a background **Daemon** (tray, hooks, vision, IPC server) + on-demand Avalonia **App** (named-pipe client).
 
-**Done so far:** W0.0 (rename to SmartMacro + `SmartMacro.Tests`), W0.1 (`WindowRegistry`/tags/`ProcessProfiles`, `CharacterClass` and Stateless removed), W0.2a (node-graph model, `MacroExecutor`, validator), W0.2b (primitives over real input/vision, `macros/` folder storage + migration + PW examples, triggers driven by the macro library, legacy pipeline deleted). The sections below describe the architecture as it stands after W0.2b.
+**Done so far:** W0.0 (rename to SmartMacro + `SmartMacro.Tests`), W0.1 (`WindowRegistry`/tags/`ProcessProfiles`, `CharacterClass` and Stateless removed), W0.2a (node-graph model, `MacroExecutor`, validator), W0.2b (primitives over real input/vision, `macros/` folder storage + migration + PW examples, triggers driven by the macro library, legacy pipeline deleted), W0.3 (UI rebuilt on graphs), **stage 1** (`SmartMacro.Contracts`: graph model + validator moved out of Core, wire DTOs and IPC protocol types added).
 
-**Still ahead:** W0.3 rebuilds the UI (main window around windows+tag chips, a real node editor — the current macros dialog is a transitional Run/Stop list), W0.4 adds the canvas editor, then stages 1–4 split the app into Daemon + on-demand UI over IPC.
+**Still ahead:** W0.4 adds the canvas editor; stage 2 builds the Daemon (tray + IPC server), stage 3 slims the App onto an IPC client (that is when App finally drops its Core reference), stage 4 is memory tuning + docs.
 
 ## Commands
 
@@ -23,7 +23,7 @@ dotnet run --project tools/VisionSampleRunner # vision debugging harness (coord 
 dotnet run --project tests/SmartMacro.Tests   # TEST GATE — use this one
 ```
 
-`dotnet test` currently reports "zero tests ran" (exit 5) in this environment despite the MTP opt-in in `global.json`; the TUnit-generated entry point via `dotnet run` is the reliable gate.
+`dotnet test` (bare, from the repo root) also works now and reports the full count; note that passing the solution needs `dotnet test --solution SmartMacro.slnx`, not a positional path. `dotnet run` remains the gate of record.
 
 Build warnings NU1903 (Tmds.DBus.Protocol) are known noise.
 
@@ -33,7 +33,9 @@ Build warnings NU1903 (Tmds.DBus.Protocol) are known noise.
 
 ## Architecture
 
-Three projects, strict layering: `App` (Avalonia UI, DI composition root in `Program.cs`) → `Core` (all domain logic) → `Native` (Win32 P/Invoke via `LibraryImport`, no dependencies).
+Four projects: `App` (Avalonia UI, DI composition root in `Program.cs`) → `Core` (all domain logic) → `Contracts` (shared vocabulary) → `Native` (Win32 P/Invoke via `LibraryImport`, no dependencies). App also references Contracts directly, and — until stage 3 lands the IPC client — still references Core.
+
+**`SmartMacro.Contracts`** is what both processes will speak after the split: the macro graph model (`SmartMacro.Macros.Model`) and its pure validator (`SmartMacro.Macros.Validation`) — namespaces deliberately kept as they were when these lived in Core — plus `SmartMacro.Contracts.Dto` (`WindowDto`, `RunningMacroDto`, `ValidationIssueDto`) and `SmartMacro.Contracts.Ipc` (envelope, `IpcMessageTypes` catalog, `IpcJson`). **It references Native and nothing else** — that constraint is the whole point: it keeps OpenCV, Tesseract and file IO out of the UI process. Anything that needs them belongs in Core. Mappers from live Core types to DTOs therefore live in `Core/Ipc/DtoMappers.cs`, not in Contracts.
 
 ### Core pipeline
 
@@ -50,7 +52,7 @@ hotkey / process-appeared / UI Run
 - **CharacterAgent** (`Core/Agents`) is now just a window-lifetime shell: `Start()` registers hwnd + process name + the `IGameWindow` facade in `WindowRegistry`, a poll loop notices the window dying and unregisters it. No state machine, no inbox commands, no boot flow — those are macro graphs.
 - **WindowRegistry** (`Core/Windows`) is the sole owner of window tags AND the `hwnd → IGameWindow` lookup. Tag selectors (`RequireTags`/`ExcludeTags`) route every fan-out; "identified" just means "has at least one tag".
 - **Orchestrator** (`Core/Orchestration`) turns triggers into runs. Hotkey runs have no context window (macros must route by selector) and are single-flight per macro NAME; process-appeared runs get the new window as context and are single-flight per (macro, window) so N clients launching at once each boot. Both seed the `cursor` variable via `CursorPositionProvider`.
-- **Macros** (`Core/Macros`) — `Model` (polymorphic `$type` nodes + triggers), `Execution` (`MacroExecutor` walker, `MacroPrimitives`, `MacroRunRegistry`, run variables), `Validation`, `Storage`. See `docs/refactoring-plan-split.md` §0.2–0.3 for the node catalogue and semantics.
+- **Macros** — the model (polymorphic `$type` nodes + triggers) and its validator now live in `Contracts/Macros`; `Core/Macros` keeps the daemon-side halves: `Execution` (`MacroExecutor` walker, `MacroPrimitives`, `MacroRunRegistry`, run variables) and `Storage`. See `docs/refactoring-plan-split.md` §0.2–0.3 for the node catalogue and semantics.
 - **`MacroGraphStore`** (`Core/Macros/Storage`) is the library of record: one JSON file per graph under `macros/`, filename stem = macro name. It resolves sub-macros for `RunMacroNode`, supplies `HotkeyListener`'s bindings (re-registered on every change), and tells the orchestrator which graphs a new process should boot. On first run it migrates a legacy `macros.json` (+ `hotkeys.json` macro bindings → triggers) and, if the folder ends up empty, seeds the `pw-*` examples.
 - **Identification** is no longer built in: it's the `pw-identify` / `pw-boot` example macros — `KeyPress(C)` → `Delay` → `RecognizeTagNode` (template set `"classes"` → `Assets/GameClassNames/{tag}.png`) → `SetIconNode` → `KeyPress(C)`. Master/ignored characters are just tags in a selector (`ExcludeTags: ["Лучник", "Шаман"]`).
 

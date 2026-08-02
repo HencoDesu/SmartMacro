@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\SmartMacro.Contracts\SmartMacro.Contracts.csproj" />
     <ProjectReference Include="..\SmartMacro.Native\SmartMacro.Native.csproj" />
   </ItemGroup>
 
