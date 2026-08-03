@@ -6,7 +6,7 @@ using SmartMacro.Macros.Model;
 
 namespace SmartMacro.App.ViewModels.Nodes;
 
-/// <summary>One tag of a selector's require/exclude list, as a removable chip (mockup 1g).</summary>
+/// <summary>Один тег из списка require/exclude селектора, снимаемым чипом (макет 1g).</summary>
 public sealed class SelectorTagChipViewModel
 {
     private readonly Action<string> _remove;
@@ -17,42 +17,42 @@ public sealed class SelectorTagChipViewModel
         _remove = remove;
     }
 
-    /// <summary>The tag itself.</summary>
+    /// <summary>Сам тег.</summary>
     public string Text { get; }
 
-    /// <summary>Drops this tag from the list it belongs to.</summary>
+    /// <summary>Выбрасывает этот тег из списка, которому он принадлежит.</summary>
     public void Remove() => _remove(Text);
 }
 
-/// <summary>One window the badge names in its expanded form.</summary>
-/// <param name="Label">"0x1402F8 Лучник" — the handle plus whatever tags it carries.</param>
-/// <param name="IsExcluded">Rendered struck through: the selector deliberately skips it.</param>
+/// <summary>Одно окно, которое бейдж называет в развёрнутом виде.</summary>
+/// <param name="Label">«0x1402F8 Лучник» — хэндл плюс все теги, которые на нём висят.</param>
+/// <param name="IsExcluded">Рисуется перечёркнутым: селектор пропускает его намеренно.</param>
 public sealed record TargetWindowChip(string Label, bool IsExcluded);
 
 /// <summary>
-/// Editor for a node's <see cref="TargetSelector"/>: two comma-separated tag lists, plus
-/// (since D4) the live «8 окон · кроме Склад» badge over them.
+/// Редактор <see cref="TargetSelector"/> у ноды: два списка тегов через запятую плюс (с D4)
+/// живой бейдж «8 окон · кроме Склад» над ними.
 ///
-/// <see cref="UseSelector"/> is what distinguishes the two things a null-vs-empty selector
-/// means in the model, which the tag boxes alone cannot express:
-///   * off — <c>Target = null</c>: act on the run's CONTEXT window;
-///   * on with both boxes empty — <c>Target = new TargetSelector()</c>: fan out to EVERY
-///     registered window.
-/// Without the flag those two collapse into each other and a graph would not survive a
-/// load/save round-trip.
+/// <see cref="UseSelector"/> — это то, чем различаются две вещи, которые в модели значат
+/// «селектор null» и «селектор пустой» и которых одними полями тегов не выразить:
+///   * выключен — <c>Target = null</c>: действовать на КОНТЕКСТНОЕ окно прогона;
+///   * включён при обоих пустых полях — <c>Target = new TargetSelector()</c>: разойтись
+///     веером по КАЖДОМУ зарегистрированному окну.
+/// Без этого флага оба случая схлопываются в один, и граф не пережил бы round trip
+/// «загрузить — сохранить».
 ///
-/// <b>The badge is computed here, against the same rule the engine uses.</b>
-/// <see cref="TargetSelector.Matches"/> lives in Contracts precisely so this class and the
-/// daemon's <c>SelectorEvaluator</c> cannot answer "which windows does this hit" differently
-/// — a badge that disagrees with the executor would be worse than no badge, since saying
-/// what a run will hit is the entire point of it. The window list comes from
-/// <see cref="Windows"/>, the editor's live catalogue; with no catalogue attached (unit
-/// tests of the round-trip, a panel that has not seeded yet) the badge reports "нет окон"
-/// rather than inventing a number.
+/// <b>Бейдж считается здесь, по тому же правилу, каким пользуется движок.</b>
+/// <see cref="TargetSelector.Matches"/> живёт в Contracts именно для того, чтобы этот класс и
+/// демонский <c>SelectorEvaluator</c> не могли по-разному ответить на вопрос «по каким окнам
+/// это ударит»: бейдж, расходящийся с исполнителем, был бы хуже, чем полное его отсутствие,
+/// ведь сказать, куда попадёт прогон, — вся его цель. Список окон приходит из
+/// <see cref="Windows"/>, живого каталога редактора; когда каталог не подключён (модульные
+/// тесты round trip, панель, которая ещё не засеялась) бейдж честно говорит «нет окон», а не
+/// выдумывает число.
 /// </summary>
 public sealed class TargetSelectorViewModel : ObservableObject
 {
-    /// <summary>Windows named individually before the badge collapses the rest into "+N".</summary>
+    /// <summary>Сколько окон бейдж называет поимённо, прежде чем свернуть остаток в «+N».</summary>
     private const int MaxNamedWindows = 4;
 
     private bool _useSelector;
@@ -62,14 +62,14 @@ public sealed class TargetSelectorViewModel : ObservableObject
     private string _newExcludeTag = string.Empty;
     private WindowCatalog? _windows;
 
-    /// <summary><c>false</c> = act on the context window (<c>Target = null</c>).</summary>
+    /// <summary><c>false</c> = действовать на контекстное окно (<c>Target = null</c>).</summary>
     public bool UseSelector
     {
         get => _useSelector;
         set => SetField(ref _useSelector, value);
     }
 
-    /// <summary>Comma-separated tags a window must all carry.</summary>
+    /// <summary>Теги через запятую, которые окно обязано нести все до одного.</summary>
     public string RequireText
     {
         get => _requireText;
@@ -82,7 +82,7 @@ public sealed class TargetSelectorViewModel : ObservableObject
         }
     }
 
-    /// <summary>Comma-separated tags that disqualify a window.</summary>
+    /// <summary>Теги через запятую, любой из которых снимает окно с дистанции.</summary>
     public string ExcludeText
     {
         get => _excludeText;
@@ -96,9 +96,9 @@ public sealed class TargetSelectorViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The editor's live window snapshot, shared by every selector of the open graph.
-    /// Assigned by <c>MacroEditorViewModel</c> when it attaches a node row; <c>null</c> in
-    /// isolation, which the badge reports honestly.
+    /// Живой снимок окон у редактора, общий для всех селекторов открытого графа. Проставляет
+    /// его <c>MacroEditorViewModel</c>, когда подцепляет строку ноды; в изоляции он
+    /// <c>null</c>, и бейдж честно об этом говорит.
     /// </summary>
     public WindowCatalog? Windows
     {
@@ -109,24 +109,27 @@ public sealed class TargetSelectorViewModel : ObservableObject
             {
                 return;
             }
+
             if (_windows is not null)
             {
                 _windows.Changed -= OnWindowsChanged;
             }
+
             _windows = value;
             if (_windows is not null)
             {
                 _windows.Changed += OnWindowsChanged;
             }
+
             OnWindowsChanged();
         }
     }
 
-    // ---- selector text (what the node stores) -----------------------------------------
+    // ---- текст селектора (то, что хранит нода) -----------------------------------------
 
     /// <summary>
-    /// What the SELECTOR says, with no window count in it: «кроме Склад», «Лучник»,
-    /// «все окна». The badge puts the live count in front of this.
+    /// Что говорит САМ СЕЛЕКТОР, без числа окон: «кроме Склад», «Лучник», «все окна». Живое
+    /// число бейдж приписывает перед этим.
     /// </summary>
     public string Summary
     {
@@ -136,6 +139,7 @@ public sealed class TargetSelectorViewModel : ObservableObject
             {
                 return "контекст-окно";
             }
+
             var require = _requireText.Trim();
             var exclude = _excludeText.Trim();
             return (require.Length, exclude.Length) switch
@@ -148,11 +152,11 @@ public sealed class TargetSelectorViewModel : ObservableObject
         }
     }
 
-    // ---- badge (mockup 1g) --------------------------------------------------------------
+    // ---- бейдж (макет 1g) --------------------------------------------------------------
 
     /// <summary>
-    /// The collapsed badge: «8 окон · кроме Склад». The number leads because it is the
-    /// question the badge exists to answer — the tags are already in the inspector below it.
+    /// Свёрнутый бейдж: «8 окон · кроме Склад». Число идёт первым, потому что это и есть тот
+    /// вопрос, ради ответа на который бейдж существует, — теги и так лежат в инспекторе ниже.
     /// </summary>
     public string BadgeText
     {
@@ -162,10 +166,12 @@ public sealed class TargetSelectorViewModel : ObservableObject
             {
                 return "1 окно · контекст";
             }
+
             if (TotalCount == 0)
             {
                 return "нет окон";
             }
+
             var count = string.Create(CultureInfo.CurrentCulture, $"{MatchCount} {Plural(MatchCount)}");
             var require = _requireText.Trim();
             var exclude = _excludeText.Trim();
@@ -180,12 +186,13 @@ public sealed class TargetSelectorViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The badge with the tags stripped off: «7 окон», «контекст», «нет окон».
+    /// Тот же бейдж, с которого сняли теги: «7 окон», «контекст», «нет окон».
     ///
-    /// What the canvas box shows. A node box is 210px wide and already carries a type label
-    /// and a family glyph; the full «7 окон · кроме Лучник, Шаман» crowds the label out of
-    /// existence, and the label is what tells you what the node DOES. The count is the
-    /// headline the badge exists for, the rest is one hover (or one click on the box) away.
+    /// Это то, что показывает коробка на canvas. Коробка ноды шириной 210px и уже несёт
+    /// подпись типа и глиф семейства; полное «7 окон · кроме Лучник, Шаман» вытесняет подпись
+    /// из существования, а подпись — это то, что говорит, ЧТО нода делает. Число и есть тот
+    /// заголовок, ради которого бейдж заведён, остальное — в одном наведении (или в одном
+    /// клике по коробке) отсюда.
     /// </summary>
     public string BadgeCountText
     {
@@ -195,99 +202,102 @@ public sealed class TargetSelectorViewModel : ObservableObject
             {
                 return "контекст";
             }
+
             if (TotalCount == 0)
             {
                 return "нет окон";
             }
+
             return string.Create(CultureInfo.CurrentCulture, $"{MatchCount} {Plural(MatchCount)}");
         }
     }
 
-    /// <summary>Windows the selector hits right now. Meaningless while <see cref="UseSelector"/> is off.</summary>
+    /// <summary>Сколько окон селектор задевает прямо сейчас. Пока <see cref="UseSelector"/> выключен — величина бессмысленная.</summary>
     public int MatchCount { get; private set; }
 
-    /// <summary>Windows the daemon is tracking at all.</summary>
+    /// <summary>Сколько окон демон отслеживает вообще.</summary>
     public int TotalCount => _windows?.Count ?? 0;
 
     /// <summary>
-    /// Accent badge: the selector routes by tags and hits something. Both this and
-    /// <see cref="BadgeIsDanger"/> are false for the context-window case, which is the
-    /// neutral pill.
+    /// Акцентный бейдж: селектор маршрутизирует по тегам и во что-то попадает. И это, и
+    /// <see cref="BadgeIsDanger"/> ложны для случая контекстного окна — там нейтральная
+    /// пилюля.
     /// </summary>
     public bool BadgeIsAccent => _useSelector && TotalCount > 0 && MatchCount > 0;
 
     /// <summary>
-    /// Zero matches, rendered as an error — the mockup is explicit that «0 окон» must not
-    /// read as a neutral number.
+    /// Ноль совпадений, нарисованный ошибкой: макет прямо говорит, что «0 окон» не должно
+    /// читаться нейтральным числом.
     ///
-    /// It requires windows to exist. With the game closed EVERY selector matches nothing,
-    /// and painting every node of every macro red because nothing is running would train the
-    /// user to ignore the colour that is supposed to mean "this selector is wrong". That
-    /// case gets its own quiet «нет окон» instead.
+    /// Для этого нужно, чтобы окна вообще были. При закрытой игре НИ ОДИН селектор ни во что не
+    /// попадает, и красить каждую ноду каждого макроса в красный оттого, что ничего не
+    /// запущено, — значит выучить пользователя не замечать цвет, который должен означать «этот
+    /// селектор неверен». Такому случаю достаётся своё тихое «нет окон».
     /// </summary>
     public bool BadgeIsDanger => _useSelector && TotalCount > 0 && MatchCount == 0;
 
-    /// <summary>The four share bars. <c>true</c> = filled; a non-zero share always fills at least one.</summary>
+    /// <summary>Четыре полоски доли. <c>true</c> = закрашена; ненулевая доля всегда закрашивает хотя бы одну.</summary>
     public IReadOnlyList<bool> Bars { get; private set; } = [false, false, false, false];
 
-    /// <summary>Bars are drawn only when there is a share to show — see <see cref="ShowsHollowDot"/>.</summary>
+    /// <summary>Полоски рисуются только тогда, когда есть что показывать, — см. <see cref="ShowsHollowDot"/>.</summary>
     public bool ShowsBars => _useSelector && TotalCount > 0 && MatchCount > 0;
 
-    /// <summary>The zero-match marker: a filled danger dot where the share bars would be.</summary>
+    /// <summary>Отметка «ноль совпадений»: залитая тревожная точка там, где были бы полоски доли.</summary>
     public bool ShowsDangerDot => BadgeIsDanger;
 
     /// <summary>
-    /// The quiet marker: an outline ring. Context-window routing and "the daemon is tracking
-    /// nothing" both land here — neither is an error, and neither has a share to draw.
+    /// Тихая отметка: контурное колечко. Сюда попадают и маршрутизация по контекстному окну, и
+    /// «демон не отслеживает ничего» — ни то ни другое не ошибка, и ни у того ни у другого нет
+    /// доли, которую можно нарисовать.
     /// </summary>
     public bool ShowsHollowDot => !ShowsBars && !BadgeIsDanger;
 
-    /// <summary>«8 из 11» in the expanded popup's footer.</summary>
+    /// <summary>«8 из 11» в подвале развёрнутого popup.</summary>
     public string HitText => TotalCount == 0
         ? "нет окон под управлением"
         : string.Create(CultureInfo.CurrentCulture, $"{MatchCount} из {TotalCount}");
 
-    /// <summary>Up to <see cref="MaxNamedWindows"/> windows the run will hit, by handle and tags.</summary>
+    /// <summary>До <see cref="MaxNamedWindows"/> окон, по которым ударит прогон, — хэндлом и тегами.</summary>
     public ObservableCollection<TargetWindowChip> HitWindows { get; } = [];
 
-    /// <summary>Tagged windows the selector skips, struck through in the popup.</summary>
+    /// <summary>Помеченные окна, которые селектор пропускает; в popup они перечёркнуты.</summary>
     public ObservableCollection<TargetWindowChip> MissedWindows { get; } = [];
 
-    /// <summary>«+4» when more windows match than the popup names. Empty otherwise.</summary>
+    /// <summary>«+4», когда совпало больше окон, чем popup называет поимённо. Иначе пусто.</summary>
     public string MoreText { get; private set; } = string.Empty;
 
-    /// <summary><c>true</c> when <see cref="MoreText"/> has something to show.</summary>
+    /// <summary><c>true</c>, когда <see cref="MoreText"/> есть что показать.</summary>
     public bool HasMore => MoreText.Length > 0;
 
-    /// <summary>«2 без тегов» — untagged windows the selector cannot reach. Empty when there are none.</summary>
+    /// <summary>«2 без тегов» — окна без тегов, до которых селектору не дотянуться. Пусто, когда таких нет.</summary>
     public string UntaggedText { get; private set; } = string.Empty;
 
-    /// <summary><c>true</c> when <see cref="UntaggedText"/> has something to show.</summary>
+    /// <summary><c>true</c>, когда <see cref="UntaggedText"/> есть что показать.</summary>
     public bool HasUntagged => UntaggedText.Length > 0;
 
-    // ---- tag chips (the popup's editor) -------------------------------------------------
+    // ---- чипы тегов (редактор внутри popup) ---------------------------------------------
 
-    /// <summary>Required tags as removable chips. Mirrors <see cref="RequireText"/>.</summary>
+    /// <summary>Обязательные теги снимаемыми чипами. Зеркалит <see cref="RequireText"/>.</summary>
     public ObservableCollection<SelectorTagChipViewModel> RequireChips { get; } = [];
 
-    /// <summary>Excluded tags as removable chips. Mirrors <see cref="ExcludeText"/>.</summary>
+    /// <summary>Исключающие теги снимаемыми чипами. Зеркалит <see cref="ExcludeText"/>.</summary>
     public ObservableCollection<SelectorTagChipViewModel> ExcludeChips { get; } = [];
 
-    /// <summary>Text of the popup's "+ тег" box for the require list.</summary>
+    /// <summary>Текст поля «+ тег» в popup для списка обязательных.</summary>
     public string NewRequireTag
     {
         get => _newRequireTag;
         set => SetField(ref _newRequireTag, value ?? string.Empty);
     }
 
-    /// <summary>Text of the popup's "+ тег" box for the exclude list.</summary>
+    /// <summary>Текст поля «+ тег» в popup для списка исключений.</summary>
     public string NewExcludeTag
     {
         get => _newExcludeTag;
         set => SetField(ref _newExcludeTag, value ?? string.Empty);
     }
 
-    /// <summary>Commits <see cref="NewRequireTag"/> (the box's Enter key). Duplicates and blanks are ignored.</summary>
+    /// <summary>Фиксирует <see cref="NewRequireTag"/> (Enter в поле). Дубликаты и пустые строки игнорируются.</summary>
     public void CommitRequireTag()
     {
         if (AddTag(ref _requireText, _newRequireTag))
@@ -298,7 +308,7 @@ public sealed class TargetSelectorViewModel : ObservableObject
         }
     }
 
-    /// <summary>Commits <see cref="NewExcludeTag"/> (the box's Enter key).</summary>
+    /// <summary>Фиксирует <see cref="NewExcludeTag"/> (Enter в поле).</summary>
     public void CommitExcludeTag()
     {
         if (AddTag(ref _excludeText, _newExcludeTag))
@@ -309,9 +319,9 @@ public sealed class TargetSelectorViewModel : ObservableObject
         }
     }
 
-    // ---- model round trip ----------------------------------------------------------------
+    // ---- round trip через модель -----------------------------------------------------------
 
-    /// <summary>Builds the model selector, or <c>null</c> when targeting the context window.</summary>
+    /// <summary>Собирает селектор модели либо <c>null</c>, когда целью служит контекстное окно.</summary>
     public TargetSelector? ToSelector() => _useSelector
         ? new TargetSelector
         {
@@ -320,7 +330,7 @@ public sealed class TargetSelectorViewModel : ObservableObject
         }
         : null;
 
-    /// <summary>Loads a model selector (<c>null</c> = context window).</summary>
+    /// <summary>Загружает селектор модели (<c>null</c> = контекстное окно).</summary>
     public static TargetSelectorViewModel FromSelector(TargetSelector? selector)
     {
         var vm = new TargetSelectorViewModel
@@ -336,13 +346,14 @@ public sealed class TargetSelectorViewModel : ObservableObject
     protected override void OnPropertyChanged(string? propertyName = null)
     {
         base.OnPropertyChanged(propertyName);
-        // Every field of this object feeds the summary and the badge, so rather than
-        // hand-raising in each setter (and forgetting one), anything that is not itself a
-        // derived property re-raises the derived set.
+        // Сводку и бейдж кормит каждое поле этого объекта, поэтому вместо того чтобы поднимать
+        // уведомления руками в каждом сеттере (и однажды забыть), всё, что само не является
+        // производным свойством, переподнимает весь производный набор.
         if (propertyName is null || IsDerived(propertyName))
         {
             return;
         }
+
         base.OnPropertyChanged(nameof(Summary));
         Recompute();
     }
@@ -359,9 +370,9 @@ public sealed class TargetSelectorViewModel : ObservableObject
     private void OnWindowsChanged() => Recompute();
 
     /// <summary>
-    /// Re-evaluates the selector against the catalogue. Cheap by construction — ten windows
-    /// and a handful of tags — so it runs on every keystroke in the tag boxes rather than
-    /// being debounced, which is what makes the count feel attached to what is being typed.
+    /// Пересчитывает селектор по каталогу. Дёшево по построению — десяток окон и горстка
+    /// тегов, — поэтому запускается на каждое нажатие клавиши в полях тегов, а не через
+    /// задержку: именно от этого число кажется приклеенным к тому, что набирают.
     /// </summary>
     private void Recompute()
     {
@@ -419,9 +430,9 @@ public sealed class TargetSelectorViewModel : ObservableObject
         base.OnPropertyChanged(nameof(HasUntagged));
     }
 
-    // Four bars, mockup-exact: 8 of 11 fills three, 1 of 11 fills one. Rounding alone would
-    // leave a single match showing an empty strip, which reads as "nothing" — so any
-    // non-zero share is worth at least one bar.
+    // Четыре полоски, точно по макету: 8 из 11 закрашивают три, 1 из 11 — одну. От одного лишь
+    // округления единственное совпадение показывало бы пустую полосу, а она читается как
+    // «ничего», — поэтому любая ненулевая доля стоит хотя бы одной полоски.
     private static IReadOnlyList<bool> BuildBars(int matched, int total)
     {
         var filled = total <= 0 || matched <= 0
@@ -442,12 +453,14 @@ public sealed class TargetSelectorViewModel : ObservableObject
 
     private void RemoveRequireTag(string tag)
     {
-        RequireText = string.Join(", ", SplitTags(_requireText).Where(t => !string.Equals(t, tag, StringComparison.Ordinal)));
+        RequireText = string.Join(", ",
+            SplitTags(_requireText).Where(t => !string.Equals(t, tag, StringComparison.Ordinal)));
     }
 
     private void RemoveExcludeTag(string tag)
     {
-        ExcludeText = string.Join(", ", SplitTags(_excludeText).Where(t => !string.Equals(t, tag, StringComparison.Ordinal)));
+        ExcludeText = string.Join(", ",
+            SplitTags(_excludeText).Where(t => !string.Equals(t, tag, StringComparison.Ordinal)));
     }
 
     private static bool AddTag(ref string list, string candidate)
@@ -457,11 +470,13 @@ public sealed class TargetSelectorViewModel : ObservableObject
         {
             return false;
         }
+
         var tags = SplitTags(list);
         if (tags.Contains(tag, StringComparer.Ordinal))
         {
             return false;
         }
+
         tags.Add(tag);
         list = string.Join(", ", tags);
         return true;
@@ -488,8 +503,8 @@ public sealed class TargetSelectorViewModel : ObservableObject
         }
     }
 
-    // Tags containing a comma cannot be expressed here. They are class names and other
-    // short labels in practice, so the trade-off buys a one-line editor for the common case.
+    // Тег с запятой внутри здесь выразить нельзя. На практике это имена классов и прочие
+    // короткие ярлыки, так что размен покупает однострочный редактор для обычного случая.
     private static List<string> SplitTags(string text) =>
     [
         .. text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -498,8 +513,8 @@ public sealed class TargetSelectorViewModel : ObservableObject
     private static string JoinTags(IReadOnlyList<string>? tags) =>
         tags is null || tags.Count == 0 ? string.Empty : string.Join(", ", tags);
 
-    // окно / окна / окон. Written out rather than pulled from a pluralisation library
-    // because it is one word and the UI is Russian-only.
+    // окно / окна / окон. Расписано руками, а не взято из библиотеки склонений, потому что
+    // слово одно, а UI всё равно только русский.
     private static string Plural(int count)
     {
         var mod100 = count % 100;
@@ -507,6 +522,7 @@ public sealed class TargetSelectorViewModel : ObservableObject
         {
             return "окон";
         }
+
         return (count % 10) switch
         {
             1 => "окно",

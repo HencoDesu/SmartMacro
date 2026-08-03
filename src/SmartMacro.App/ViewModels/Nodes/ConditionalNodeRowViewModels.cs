@@ -3,9 +3,9 @@ using SmartMacro.Macros.Model;
 namespace SmartMacro.App.ViewModels.Nodes;
 
 /// <summary>
-/// Common shape of the three conditional nodes: two outcome edges and NO target selector —
-/// they capture and match against the run's context window by design (plan §0.2), which is
-/// why a hotkey macro has to reach them through a <c>RunMacroNode</c> fan-out.
+/// Общая форма трёх условных нод: два ребра-исхода и НИКАКОГО селектора целей — они по замыслу
+/// снимают и сопоставляют контекстное окно прогона (план §0.2), и именно поэтому макрос по
+/// хоткею обязан добираться до них через веер <c>RunMacroNode</c>.
 /// </summary>
 public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
 {
@@ -21,16 +21,16 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
     {
     }
 
-    /// <summary>Edge taken when the check succeeds (Found / Matched).</summary>
+    /// <summary>Ребро, по которому уходят при удачной проверке (Found / Matched).</summary>
     public NodeEdgeViewModel PositiveEdge => Edges[0];
 
-    /// <summary>Edge taken when it does not (NotFound / Timeout / NotMatched).</summary>
+    /// <summary>Ребро на случай неудачи (NotFound / Timeout / NotMatched).</summary>
     public NodeEdgeViewModel NegativeEdge => Edges[1];
 
     /// <summary>
-    /// Wires a region editor's changes into <see cref="NodeRowViewModel.Summary"/>. The
-    /// region lives in its own view-model, so its four fields do not travel up the row's
-    /// own change notifications and the box's "160×35" would otherwise never update.
+    /// Заводит изменения редактора области в <see cref="NodeRowViewModel.Summary"/>. Область
+    /// живёт в отдельной view-model, поэтому её четыре поля не поднимаются наверх с
+    /// уведомлениями самой строки — и «160×35» на коробке иначе не обновлялось бы никогда.
     /// </summary>
     protected void TrackRegion(RegionEditorViewModel region)
     {
@@ -38,7 +38,7 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
         region.PropertyChanged += (_, _) => OnPropertyChanged(nameof(Summary));
     }
 
-    /// <summary>"160×35", or "всё окно" for a degenerate rectangle.</summary>
+    /// <summary>«160×35» либо «всё окно» для вырожденного прямоугольника.</summary>
     protected static string DescribeRegion(RegionEditorViewModel region)
     {
         var rect = region.ToRect();
@@ -48,7 +48,7 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
     }
 }
 
-/// <summary>Editor for <see cref="FindElementNode"/>: one-shot template search.</summary>
+/// <summary>Редактор <see cref="FindElementNode"/>: поиск шаблона в один заход.</summary>
 public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
 {
     private string _template;
@@ -67,17 +67,17 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
 
     public override string Summary => Join(_template, DescribeRegion(Region));
 
-    /// <summary>Template file stem, resolved by the primitives layer.</summary>
+    /// <summary>Основа имени файла шаблона; разрешает её слой примитивов.</summary>
     public string Template
     {
         get => _template;
         set => SetField(ref _template, value ?? string.Empty);
     }
 
-    /// <summary>Client-space crop; a zero width/height means "search the whole window".</summary>
+    /// <summary>Вырезка в клиентских координатах; нулевая ширина или высота значит «искать по всему окну».</summary>
     public RegionEditorViewModel Region { get; }
 
-    /// <summary>Optional run variable the match centre is written to. Blank = don't record it.</summary>
+    /// <summary>Необязательная переменная прогона, куда пишется центр совпадения. Пусто — не записывать.</summary>
     public string FoundPointVar
     {
         get => _foundPointVar;
@@ -101,6 +101,7 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
         {
             yield return $"[{NodeId}] шаблон не задан.";
         }
+
         foreach (var error in Region.GetInputErrors(NodeId))
         {
             yield return error;
@@ -108,7 +109,7 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
     }
 }
 
-/// <summary>Editor for <see cref="WaitForElementNode"/>: poll until the template appears or the budget runs out.</summary>
+/// <summary>Редактор <see cref="WaitForElementNode"/>: опрос, пока шаблон не появится или не кончится отведённое время.</summary>
 public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
 {
     private string _template;
@@ -119,8 +120,9 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
         : base(node.Id, "Найдено", node.Found, "Таймаут", node.Timeout)
     {
         _template = node.Template;
-        // Milliseconds, not seconds: a wait budget is a technical timeout (PW loading can
-        // take ~60000) rather than a game-facing cast time, and the plan spells it as ms.
+        // Миллисекунды, а не секунды: отведённое на ожидание время — это технический таймаут
+        // (загрузка PW способна занять ~60000), а не игровое время каста, и в плане оно
+        // записано именно в мс.
         _timeoutMsText = NodeInput.FormatInt(node.TimeoutMs);
         _foundPointVar = node.FoundPointVar ?? string.Empty;
         Region = RegionEditorViewModel.FromRect(node.Region);
@@ -140,7 +142,7 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
 
     public RegionEditorViewModel Region { get; }
 
-    /// <summary>Overall wait budget in milliseconds.</summary>
+    /// <summary>Сколько всего миллисекунд отведено на ожидание.</summary>
     public string TimeoutMsText
     {
         get => _timeoutMsText;
@@ -171,10 +173,12 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
         {
             yield return $"[{NodeId}] шаблон не задан.";
         }
+
         if (NodeInput.ParseInt(_timeoutMsText) is null)
         {
             yield return $"[{NodeId}] таймаут: «{_timeoutMsText}» — не целое число миллисекунд.";
         }
+
         foreach (var error in Region.GetInputErrors(NodeId))
         {
             yield return error;
@@ -183,9 +187,9 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
 }
 
 /// <summary>
-/// Editor for <see cref="RecognizeTagNode"/>: best match of a template SET over a region.
-/// The region is mandatory here (unlike Find/Wait) — matching a whole set against a whole
-/// window is both slow and ambiguous.
+/// Редактор <see cref="RecognizeTagNode"/>: лучшее совпадение НАБОРА шаблонов по области.
+/// Область здесь обязательна (в отличие от Find/Wait) — сопоставлять целый набор с целым окном
+/// и медленно, и неоднозначно.
 /// </summary>
 public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
 {
@@ -208,20 +212,24 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
     public override string Summary =>
         Join(_templateSet.Length > 0 ? $"набор {_templateSet}" : null, DescribeRegion(Region));
 
-    /// <summary>Template set name; each file's stem in the set is a candidate tag.</summary>
+    /// <summary>Имя набора шаблонов; основа имени каждого файла в наборе — кандидат в теги.</summary>
     public string TemplateSet
     {
         get => _templateSet;
         set => SetField(ref _templateSet, value ?? string.Empty);
     }
 
-    /// <summary>Mandatory client-space crop the set is matched against.</summary>
+    /// <summary>Обязательная вырезка в клиентских координатах, по которой сопоставляется набор.</summary>
     public RegionEditorViewModel Region { get; }
 
-    /// <summary>Tag the context window with the winning template's name.</summary>
-    public bool ApplyTag { get => _applyTag; set => SetField(ref _applyTag, value); }
+    /// <summary>Повесить на контекстное окно тег с именем победившего шаблона.</summary>
+    public bool ApplyTag
+    {
+        get => _applyTag;
+        set => SetField(ref _applyTag, value);
+    }
 
-    /// <summary>Run variable the winning name is written to (model default: <c>"tag"</c>).</summary>
+    /// <summary>Переменная прогона, куда пишется победившее имя (умолчание модели — <c>"tag"</c>).</summary>
     public string ResultVar
     {
         get => _resultVar;
@@ -246,10 +254,12 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
         {
             yield return $"[{NodeId}] набор шаблонов не задан.";
         }
+
         if (string.IsNullOrWhiteSpace(_resultVar))
         {
             yield return $"[{NodeId}] имя переменной результата не задано.";
         }
+
         foreach (var error in Region.GetInputErrors(NodeId))
         {
             yield return error;

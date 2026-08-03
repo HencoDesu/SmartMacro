@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Specialized;
-using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -9,45 +8,47 @@ using SmartMacro.App.ViewModels.Canvas;
 namespace SmartMacro.App.Controls;
 
 /// <summary>
-/// Draws every edge of the graph in one pass.
+/// Рисует все рёбра графа за один проход.
 ///
-/// One control rather than a <c>Path</c> per edge on purpose: dragging a node re-routes
-/// every line it touches, and rebuilding a visual tree at pointer-move rate is exactly the
-/// kind of thing that makes a canvas feel heavy. Here a drag is one <c>InvalidateVisual</c>.
+/// Один control, а не <c>Path</c> на ребро, — и это намеренно: перетаскивание ноды
+/// перекладывает маршрут каждой линии, которой она касается, а пересборка визуального дерева с
+/// частотой движения указателя — ровно то, от чего canvas начинает казаться тяжёлым. Здесь
+/// перетаскивание — это один <c>InvalidateVisual</c>.
 ///
-/// Geometry comes from <see cref="CanvasEdgeViewModel"/> — the router is a view-model so it
-/// can be tested without a rendering platform, and this class only turns waypoints into
-/// strokes. It is never hit-testable: clicks belong to the boxes underneath.
+/// Геометрия приходит из <see cref="CanvasEdgeViewModel"/> — маршрутизатор сделан view-model'ю,
+/// чтобы его можно было тестировать без платформы отрисовки, а этот класс лишь превращает
+/// путевые точки в штрихи. Hit-test по нему не проходит никогда: клики принадлежат коробкам
+/// под ним.
 /// </summary>
 public sealed class EdgeLayer : Control
 {
-    /// <summary>Corner radius where a routed path turns.</summary>
+    /// <summary>Радиус скругления там, где проложенный маршрут поворачивает.</summary>
     private const double CornerRadius = 10;
 
-    /// <summary>Half-length of the arrow head at an edge's tip.</summary>
+    /// <summary>Половина длины наконечника стрелки на острие ребра.</summary>
     private const double ArrowLength = 7;
 
-    /// <summary>Half-width of the arrow head.</summary>
+    /// <summary>Половина ширины наконечника стрелки.</summary>
     private const double ArrowHalfWidth = 3.5;
 
-    /// <summary>How much of the horizontal gap a direct hop's bezier handles take up.</summary>
+    /// <summary>Какую долю горизонтального зазора занимают рычаги безье у прямого перехода.</summary>
     private const double DirectCurveTension = 0.45;
 
-    /// <summary>Dash pattern of a variable link, in stroke widths.</summary>
+    /// <summary>Штриховка связи по переменной, в толщинах штриха.</summary>
     private static readonly DashStyle VariableDash = new([4, 4], 0);
 
     public static readonly StyledProperty<IEnumerable?> EdgesProperty =
         AvaloniaProperty.Register<EdgeLayer, IEnumerable?>(nameof(Edges));
 
-    /// <summary>Dashed writer → reader hints (D5), drawn while a variable card is hovered.</summary>
+    /// <summary>Пунктирные подсказки «кто пишет → кто читает» (D5), рисуются при наведении на карточку переменной.</summary>
     public static readonly StyledProperty<IEnumerable?> LinksProperty =
         AvaloniaProperty.Register<EdgeLayer, IEnumerable?>(nameof(Links));
 
-    /// <summary>Start of the link being dragged out of a port, in canvas space.</summary>
+    /// <summary>Начало связи, которую тянут из порта, в пространстве canvas.</summary>
     public static readonly StyledProperty<Point?> PendingStartProperty =
         AvaloniaProperty.Register<EdgeLayer, Point?>(nameof(PendingStart));
 
-    /// <summary>Current pointer position while a link is being dragged, in canvas space.</summary>
+    /// <summary>Текущее положение указателя, пока связь тянут, в пространстве canvas.</summary>
     public static readonly StyledProperty<Point?> PendingEndProperty =
         AvaloniaProperty.Register<EdgeLayer, Point?>(nameof(PendingEnd));
 
@@ -60,14 +61,14 @@ public sealed class EdgeLayer : Control
         ClipToBounds = false;
     }
 
-    /// <summary>The routed edges to draw.</summary>
+    /// <summary>Проложенные рёбра, которые надо нарисовать.</summary>
     public IEnumerable? Edges
     {
         get => GetValue(EdgesProperty);
         set => SetValue(EdgesProperty, value);
     }
 
-    /// <summary><see cref="CanvasLinkViewModel"/>s — dashed, straight, no arrow.</summary>
+    /// <summary><see cref="CanvasLinkViewModel"/> — пунктиром, по прямой, без стрелки.</summary>
     public IEnumerable? Links
     {
         get => GetValue(LinksProperty);
@@ -123,9 +124,9 @@ public sealed class EdgeLayer : Control
             }
         }
 
-        // Variable links last, so a dashed hint sits ON TOP of the control flow it annotates
-        // rather than being hidden under it. Straight and arrow-less on purpose — see
-        // CanvasLinkViewModel for why it must not look like an edge.
+        // Связи по переменным — последними, чтобы пунктирная подсказка легла ПОВЕРХ потока
+        // управления, который она комментирует, а не спряталась под ним. Прямая и без стрелки
+        // намеренно — почему она не должна выглядеть ребром, написано в CanvasLinkViewModel.
         if (Links is { } links)
         {
             var pen = new Pen(Brush("NocturneVariableBrush", 0xFFDBB277), 1.2, VariableDash);
@@ -140,8 +141,8 @@ public sealed class EdgeLayer : Control
 
         if (PendingStart is { } start && PendingEnd is { } end)
         {
-            // The link being dragged: dashed accent, so it reads as a proposal rather than
-            // as a wire that already exists.
+            // Связь, которую тянут прямо сейчас: акцентный пунктир, чтобы читалась как
+            // предложение, а не как уже существующий провод.
             var pen = new Pen(active, 1.6, new DashStyle([4, 3], 0));
             context.DrawLine(pen, start, end);
             context.DrawEllipse(active, null, end, 3, 3);
@@ -159,14 +160,15 @@ public sealed class EdgeLayer : Control
         var geometry = edge.IsDirect
             ? DirectGeometry(points[0], points[^1])
             : RoutedGeometry(points);
-        context.DrawGeometry(null, new Pen(brush, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round), geometry);
+        context.DrawGeometry(null, new Pen(brush, thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round),
+            geometry);
 
         var tip = ToPoint(points[^1]);
         var previous = ToPoint(points[^2]);
         DrawArrow(context, brush, previous, tip);
     }
 
-    // A short S between two boxes on the same row, matching the mockup's cubic.
+    // Короткая «эска» между двумя коробками одного ряда — та самая кубическая кривая из макета.
     private static StreamGeometry DirectGeometry(CanvasPoint from, CanvasPoint to)
     {
         var geometry = new StreamGeometry();
@@ -181,8 +183,8 @@ public sealed class EdgeLayer : Control
         return geometry;
     }
 
-    // Right out of the box, along the gutter above the target row, down into its top edge.
-    // Corners are rounded with a quadratic so the path reads as one move, not four.
+    // Вправо из коробки, по жёлобу над целевым рядом, вниз в его верхнюю кромку. Углы скруглены
+    // квадратичной кривой, чтобы путь читался одним движением, а не четырьмя.
     private static StreamGeometry RoutedGeometry(IReadOnlyList<CanvasPoint> points)
     {
         var geometry = new StreamGeometry();
@@ -221,6 +223,7 @@ public sealed class EdgeLayer : Control
         {
             return;
         }
+
         var ux = dx / length;
         var uy = dy / length;
         var baseX = tip.X - (ux * ArrowLength);
@@ -234,6 +237,7 @@ public sealed class EdgeLayer : Control
             sink.LineTo(new Point(baseX + (uy * ArrowHalfWidth), baseY - (ux * ArrowHalfWidth)));
             sink.EndFigure(true);
         }
+
         context.DrawGeometry(brush, null, geometry);
     }
 
@@ -243,10 +247,12 @@ public sealed class EdgeLayer : Control
         {
             current.CollectionChanged -= OnCollectionChanged;
         }
+
         if (source is not INotifyCollectionChanged notifier)
         {
             return null;
         }
+
         notifier.CollectionChanged += OnCollectionChanged;
         return notifier;
     }
@@ -256,7 +262,7 @@ public sealed class EdgeLayer : Control
     private IBrush Brush(string key, uint fallback) =>
         this.TryFindResource(key, out var value) && value is IBrush brush
             ? brush
-            // Only reachable in the designer, where the token dictionary is not merged yet.
+            // Достижимо только в дизайнере, где словарь токенов ещё не подмешан.
             : new SolidColorBrush(Color.FromUInt32(fallback));
 
     private static Point ToPoint(CanvasPoint point) => new(point.X, point.Y);
@@ -264,7 +270,7 @@ public sealed class EdgeLayer : Control
     private static double Distance(Point a, Point b) =>
         Math.Sqrt(((a.X - b.X) * (a.X - b.X)) + ((a.Y - b.Y) * (a.Y - b.Y)));
 
-    // A point `distance` along the segment from `origin` towards `target`.
+    // Точка на отрезке из `origin` в сторону `target`, отстоящая от начала на `distance`.
     private static Point Towards(Point origin, Point target, double distance)
     {
         var dx = target.X - origin.X;

@@ -5,9 +5,9 @@ using SmartMacro.Native;
 namespace SmartMacro.App.ViewModels.Nodes;
 
 /// <summary>
-/// Common shape of the seven action nodes: exactly one outgoing edge (<c>Next</c>). The
-/// edge object is created here so subclasses (and the XAML) can reach it by name instead
-/// of by index.
+/// Общая форма семи нод-действий: ровно одно исходящее ребро (<c>Next</c>). Объект ребра
+/// создаётся здесь, чтобы наследники (и XAML) могли добраться до него по имени, а не по
+/// индексу.
 /// </summary>
 public abstract class ActionNodeRowViewModel : NodeRowViewModel
 {
@@ -16,11 +16,11 @@ public abstract class ActionNodeRowViewModel : NodeRowViewModel
     {
     }
 
-    /// <summary>The single outgoing edge.</summary>
+    /// <summary>Единственное исходящее ребро.</summary>
     public NodeEdgeViewModel Next => Edges[0];
 }
 
-/// <summary>Editor for <see cref="KeyPressNode"/>: one key, picked with the game-style capture control.</summary>
+/// <summary>Редактор <see cref="KeyPressNode"/>: одна клавиша, выбранная ловушкой в игровом духе.</summary>
 public sealed class KeyPressNodeRowViewModel : ActionNodeRowViewModel
 {
     private string _keyName;
@@ -35,13 +35,13 @@ public sealed class KeyPressNodeRowViewModel : ActionNodeRowViewModel
 
     public override string Summary => _keyName;
 
-    /// <summary>The box renders the key as a keycap rather than as a mono line.</summary>
+    /// <summary>Коробка рисует клавишу кейкапом, а не моноширинной строкой.</summary>
     public override string? Keycap => _keyName.Length > 0 ? _keyName : null;
 
     /// <summary>
-    /// <see cref="VirtualKey"/> member name — the string form
-    /// <c>Controls.KeyBindingPicker</c> binds to (it captures Avalonia key names, which
-    /// the enum deliberately mirrors).
+    /// Имя члена <see cref="VirtualKey"/> — та строковая форма, к которой привязывается
+    /// <c>Controls.KeyBindingPicker</c> (он ловит имена клавиш Avalonia, а перечисление их
+    /// намеренно повторяет).
     /// </summary>
     public string KeyName
     {
@@ -71,9 +71,9 @@ public sealed class KeyPressNodeRowViewModel : ActionNodeRowViewModel
 }
 
 /// <summary>
-/// Editor for <see cref="ClickNode"/>. The model requires EXACTLY one of Point / PointVar,
-/// so the two are presented as a toggle rather than as two independently fillable fields —
-/// there is no way to leave both set or both empty from here.
+/// Редактор <see cref="ClickNode"/>. Модель требует РОВНО одного из Point / PointVar, поэтому
+/// оба поданы переключателем, а не двумя независимо заполняемыми полями, — отсюда невозможно
+/// оставить заполненными оба или пустыми оба.
 /// </summary>
 public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
 {
@@ -99,7 +99,7 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
     public override string Summary =>
         (_useVariable ? $"{{{_pointVar}}}" : $"{_xText}, {_yText}") + (_doubleClick ? " ×2" : string.Empty);
 
-    /// <summary><c>true</c> = take the point from a run variable instead of the literal X/Y.</summary>
+    /// <summary><c>true</c> = брать точку из переменной прогона, а не из буквальных X/Y.</summary>
     public bool UseVariable
     {
         get => _useVariable;
@@ -112,21 +112,33 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
         }
     }
 
-    /// <summary>Inverse of <see cref="UseVariable"/>, for the X/Y block's visibility.</summary>
+    /// <summary>Обратное к <see cref="UseVariable"/> — для видимости блока X/Y.</summary>
     public bool UseLiteralPoint => !_useVariable;
 
-    public string XText { get => _xText; set => SetField(ref _xText, value); }
+    public string XText
+    {
+        get => _xText;
+        set => SetField(ref _xText, value);
+    }
 
-    public string YText { get => _yText; set => SetField(ref _yText, value); }
+    public string YText
+    {
+        get => _yText;
+        set => SetField(ref _yText, value);
+    }
 
-    /// <summary>Run variable holding the click point — <c>"cursor"</c> is the one the trigger always seeds.</summary>
+    /// <summary>Переменная прогона с точкой клика — <c>"cursor"</c> триггер засевает всегда.</summary>
     public string PointVar
     {
         get => _pointVar;
         set => SetField(ref _pointVar, value ?? string.Empty);
     }
 
-    public bool DoubleClick { get => _doubleClick; set => SetField(ref _doubleClick, value); }
+    public bool DoubleClick
+    {
+        get => _doubleClick;
+        set => SetField(ref _doubleClick, value);
+    }
 
     public override MacroNode ToNode() => new ClickNode
     {
@@ -147,6 +159,7 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
             {
                 yield return $"[{NodeId}] имя переменной не задано.";
             }
+
             yield break;
         }
 
@@ -154,6 +167,7 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
         {
             yield return $"[{NodeId}] X: «{_xText}» — не целое число.";
         }
+
         if (NodeInput.ParseInt(_yText) is null)
         {
             yield return $"[{NodeId}] Y: «{_yText}» — не целое число.";
@@ -162,10 +176,10 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
 }
 
 /// <summary>
-/// Editor for <see cref="DelayNode"/>. Entered in SECONDS with decimals (1.5 → 1500 ms) —
-/// the unit the game states cast times in, and the same convention the pre-graph editor
-/// used, so existing muscle memory carries over. No target selector: a pause is global to
-/// the run, not per-window.
+/// Редактор <see cref="DelayNode"/>. Вводится в СЕКУНДАХ с дробной частью (1.5 → 1500 мс) —
+/// в этих единицах игра называет время каста, и того же соглашения держался редактор до
+/// графов, так что наработанная моторика переносится. Селектора целей нет: пауза общая на
+/// прогон, а не на каждое окно.
 /// </summary>
 public sealed class DelayNodeRowViewModel : ActionNodeRowViewModel
 {
@@ -181,7 +195,7 @@ public sealed class DelayNodeRowViewModel : ActionNodeRowViewModel
 
     public override string Summary => $"{_secondsText} с";
 
-    /// <summary>Delay in seconds as typed; converted to milliseconds on save.</summary>
+    /// <summary>Задержка в секундах, как её набрали; при сохранении переводится в миллисекунды.</summary>
     public string SecondsText
     {
         get => _secondsText;
@@ -205,7 +219,7 @@ public sealed class DelayNodeRowViewModel : ActionNodeRowViewModel
     }
 }
 
-/// <summary>Shared editor body for the two tag nodes — they differ only in direction.</summary>
+/// <summary>Общее тело редактора для двух нод тегов — различаются они только направлением.</summary>
 public abstract class TagNodeRowViewModel : ActionNodeRowViewModel
 {
     private string _tag;
@@ -216,7 +230,7 @@ public abstract class TagNodeRowViewModel : ActionNodeRowViewModel
         _tag = tag;
     }
 
-    /// <summary>Tag text; supports <c>{var}</c> interpolation from run variables.</summary>
+    /// <summary>Текст тега; поддерживает подстановку <c>{var}</c> из переменных прогона.</summary>
     public string Tag
     {
         get => _tag;
@@ -274,7 +288,7 @@ public sealed class RemoveTagNodeRowViewModel : TagNodeRowViewModel
     };
 }
 
-/// <summary>Editor for <see cref="SetIconNode"/>: a file path, typically with a <c>{tag}</c> placeholder.</summary>
+/// <summary>Редактор <see cref="SetIconNode"/>: путь к файлу, обычно с подстановкой <c>{tag}</c>.</summary>
 public sealed class SetIconNodeRowViewModel : ActionNodeRowViewModel
 {
     private string _iconPath;
@@ -289,7 +303,7 @@ public sealed class SetIconNodeRowViewModel : ActionNodeRowViewModel
 
     public override string Summary => _iconPath;
 
-    /// <summary>Path to the image; supports <c>{var}</c> interpolation.</summary>
+    /// <summary>Путь к картинке; поддерживает подстановку <c>{var}</c>.</summary>
     public string IconPath
     {
         get => _iconPath;
@@ -314,7 +328,7 @@ public sealed class SetIconNodeRowViewModel : ActionNodeRowViewModel
     }
 }
 
-/// <summary>Editor for <see cref="RunMacroNode"/>: a macro from the library plus the await flag.</summary>
+/// <summary>Редактор <see cref="RunMacroNode"/>: макрос из библиотеки плюс флаг ожидания.</summary>
 public sealed class RunMacroNodeRowViewModel : ActionNodeRowViewModel
 {
     private string _macroName;
@@ -333,9 +347,9 @@ public sealed class RunMacroNodeRowViewModel : ActionNodeRowViewModel
     public override string Summary => Join(_macroName, _await ? "ждать" : null);
 
     /// <summary>
-    /// Name of the sub-macro. The setter ignores null/blank because a <c>ComboBox</c>
-    /// pushes null whenever its ItemsSource is rebuilt, which would otherwise wipe a
-    /// perfectly good reference every time the macro list refreshes.
+    /// Имя вложенного макроса. Сеттер игнорирует null и пустую строку, потому что
+    /// <c>ComboBox</c> проталкивает null каждый раз, когда пересобирается его ItemsSource, —
+    /// иначе вполне живая ссылка стиралась бы при каждом обновлении списка макросов.
     /// </summary>
     public string MacroName
     {
@@ -349,10 +363,14 @@ public sealed class RunMacroNodeRowViewModel : ActionNodeRowViewModel
         }
     }
 
-    /// <summary>Wait for the sub-run(s) before following <c>Next</c>.</summary>
-    public bool Await { get => _await; set => SetField(ref _await, value); }
+    /// <summary>Дождаться вложенных прогонов, прежде чем уходить по <c>Next</c>.</summary>
+    public bool Await
+    {
+        get => _await;
+        set => SetField(ref _await, value);
+    }
 
-    /// <summary>Library names offered by the drop-down; assigned by the editor.</summary>
+    /// <summary>Имена из библиотеки, которые предлагает выпадающий список; проставляет их редактор.</summary>
     public ObservableCollection<string> MacroChoices
     {
         get => _macroChoices;

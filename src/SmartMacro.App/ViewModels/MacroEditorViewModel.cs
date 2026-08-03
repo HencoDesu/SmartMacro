@@ -17,7 +17,7 @@ using SmartMacro.Native;
 
 namespace SmartMacro.App.ViewModels;
 
-/// <summary>One macro in the editor's left-hand library list.</summary>
+/// <summary>Один макрос в левом списке библиотеки редактора.</summary>
 public sealed class MacroListItemViewModel : ObservableObject
 {
     private bool _isRunning;
@@ -32,24 +32,24 @@ public sealed class MacroListItemViewModel : ObservableObject
         TriggerBadge = Badge(macro);
     }
 
-    /// <summary>Macro name = file stem = identity.</summary>
+    /// <summary>Имя макроса = основа имени файла = его личность.</summary>
     public string Name { get; }
 
-    /// <summary>Triggers and node count — the tooltip text.</summary>
+    /// <summary>Триггеры и число нод — текст подсказки.</summary>
     public string Summary { get; }
 
     /// <summary>
-    /// The one-token chip beside the name: a chord (<c>F23</c>), <c>процесс</c>, or
-    /// <c>null</c> when the macro has no trigger at all. Only the FIRST trigger is shown —
-    /// the row is 28px and a macro with three triggers is rare enough to leave to the
-    /// inspector.
+    /// Односложный чип рядом с именем: сочетание (<c>F23</c>), <c>процесс</c> либо
+    /// <c>null</c>, когда триггера у макроса нет вовсе. Показывается только ПЕРВЫЙ триггер —
+    /// строка высотой 28px, а макрос с тремя триггерами достаточно редок, чтобы оставить его
+    /// инспектору.
     /// </summary>
     public string? TriggerBadge { get; }
 
-    /// <summary><c>true</c> when there is a badge to render.</summary>
+    /// <summary><c>true</c>, когда есть бейдж, который надо нарисовать.</summary>
     public bool HasTriggerBadge => TriggerBadge is not null;
 
-    /// <summary>Drives the Run/Stop button states.</summary>
+    /// <summary>Управляет состояниями кнопок «Запустить» и «Стоп».</summary>
     public bool IsRunning
     {
         get => _isRunning;
@@ -65,9 +65,9 @@ public sealed class MacroListItemViewModel : ObservableObject
     public bool IsNotRunning => !_isRunning;
 
     /// <summary>
-    /// This is the macro open in the editor. The library is a tree of groups rather than
-    /// one flat <c>ListBox</c>, so selection cannot ride on <c>ListBoxItem</c>'s
-    /// <c>:selected</c> and is carried here instead.
+    /// Это тот макрос, что открыт в редакторе. Библиотека — дерево групп, а не один плоский
+    /// <c>ListBox</c>, поэтому выделение не может ехать на <c>:selected</c> у
+    /// <c>ListBoxItem</c> и переносится сюда.
     /// </summary>
     public bool IsCurrent
     {
@@ -76,11 +76,11 @@ public sealed class MacroListItemViewModel : ObservableObject
     }
 
     /// <summary>
-    /// «Ctrl+F1 не зарегистрирован — занят другим приложением», or <c>null</c>.
+    /// «Ctrl+F1 не зарегистрирован — занят другим приложением» либо <c>null</c>.
     ///
-    /// The library row is the only place a silently dead hotkey can be noticed WITHOUT
-    /// opening the macro, which matters because the usual way this happens is at daemon
-    /// startup, to a macro nobody is editing.
+    /// Строка библиотеки — единственное место, где тихо умерший хоткей можно заметить, НЕ
+    /// открывая макрос, а это важно, потому что случается такое обычно при старте демона, с
+    /// макросом, который никто не правит.
     /// </summary>
     public string? HotkeyProblem
     {
@@ -94,7 +94,7 @@ public sealed class MacroListItemViewModel : ObservableObject
         }
     }
 
-    /// <summary><c>true</c> when the row should carry its warning marker.</summary>
+    /// <summary><c>true</c>, когда строке следует нести свою предупреждающую отметку.</summary>
     public bool HasHotkeyProblem => _hotkeyProblem is not null;
 
     private static string Describe(MacroGraph macro)
@@ -130,7 +130,7 @@ public sealed class MacroListItemViewModel : ObservableObject
         string.Equals(modifiers, "None", StringComparison.Ordinal) ? key : $"{modifiers}+{key}";
 }
 
-/// <summary>One line of the validation panel.</summary>
+/// <summary>Одна строка панели валидации.</summary>
 public sealed class ValidationIssueViewModel
 {
     public ValidationIssueViewModel(ValidationIssue issue)
@@ -143,58 +143,58 @@ public sealed class ValidationIssueViewModel
             : $"[{issue.NodeId}] {issue.Message}";
     }
 
-    /// <summary>Free-form message (used for the input-level errors the validator never sees).</summary>
+    /// <summary>Произвольное сообщение (для ошибок ввода, которых валидатор не видит никогда).</summary>
     public ValidationIssueViewModel(string message, bool isError)
     {
         IsError = isError;
         Display = message;
     }
 
-    /// <summary>Errors block the save; warnings do not.</summary>
+    /// <summary>Ошибки блокируют сохранение; предупреждения — нет.</summary>
     public bool IsError { get; }
 
-    /// <summary>Node the issue belongs to, when the validator named one.</summary>
+    /// <summary>Нода, к которой относится замечание, если валидатор её назвал.</summary>
     public string? NodeId { get; }
 
-    /// <summary>Rendered text.</summary>
+    /// <summary>Нарисованный текст.</summary>
     public string Display { get; }
 }
 
 /// <summary>
-/// The macro editor: library on the left, the selected graph on the canvas, the run log
-/// below it and the inspector on the right.
+/// Редактор макросов: библиотека слева, выбранный граф на canvas, лог прогона под ним и
+/// инспектор справа.
 ///
-/// <b>It backs the canvas (wave D3a), not the rows editor that used to live here.</b> The
-/// rows editor was rejected on design review and deleted, not kept alongside — so a node's
-/// outgoing edges are drawn as links rather than picked from drop-downs of node ids. What
-/// survived the swap is this class's shape: the graph↔VM mapping, the save protocol and the
-/// library handling below are the same ones the rows editor used, which is why the canvas
-/// could be built without touching them.
+/// <b>За ним стоит canvas (волна D3a), а не тот строчный редактор, что жил здесь раньше.</b>
+/// Строчный редактор завернули на разборе дизайна и удалили, а не оставили рядом, — поэтому
+/// исходящие рёбра ноды рисуются связями, а не выбираются из выпадающих списков id нод. Что
+/// пережило подмену, так это форма самого класса: отображение «граф ↔ VM», протокол
+/// сохранения и обращение с библиотекой ниже — те же самые, какими пользовался строчный
+/// редактор, и потому canvas удалось построить, не трогая их.
 ///
-/// <b>Stage 3: the library is remote.</b> Where this VM used to hold a <c>MacroGraphStore</c>
-/// it now holds a snapshot fetched over IPC, refreshed on <c>MacrosChanged</c> and on every
-/// reconnect. Three consequences worth knowing before editing this class:
+/// <b>Стадия 3: библиотека удалённая.</b> Там, где эта VM держала <c>MacroGraphStore</c>, она
+/// теперь держит снимок, полученный по IPC и обновляемый на <c>MacrosChanged</c> и на каждом
+/// переподключении. Три следствия, которые стоит знать, прежде чем править этот класс:
 ///
-///   * <b>The daemon is the validator of record.</b> <c>SaveMacro</c> answers with the issue
-///     list; an empty one means the graph was written. Warnings on a SUCCESSFUL save are not
-///     returned (the protocol gives that field one meaning — rejection reasons), so they are
-///     re-derived locally with the same <see cref="MacroGraphValidator"/>.
-///   * <b>The save's own echo can arrive before its reply.</b> The daemon broadcasts
-///     <c>MacrosChanged</c> from inside its save, on a different write path than the
-///     response — so the "is this an external edit?" baselines are set BEFORE the request
-///     goes out, and rolled back if it is refused.
-///   * <b>A successful write is merged into the local library immediately</b> rather than
-///     waiting for the push, so the list and the selection settle synchronously.
+///   * <b>Валидатор по документам — демон.</b> <c>SaveMacro</c> отвечает списком замечаний;
+///     пустой означает, что граф записан. Предупреждения при УДАЧНОМ сохранении не
+///     возвращаются (протокол даёт этому полю ровно один смысл — причины отказа), поэтому их
+///     заново выводят на месте тем же <see cref="MacroGraphValidator"/>.
+///   * <b>Эхо собственного сохранения может прийти раньше ответа на него.</b> Демон
+///     рассылает <c>MacrosChanged</c> изнутри своего сохранения, другим путём записи, нежели
+///     ответ, — поэтому опорные значения для вопроса «а не внешняя ли это правка?»
+///     выставляются ДО того, как запрос уйдёт, и откатываются, если его отвергли.
+///   * <b>Удачная запись сливается в локальную библиотеку сразу</b>, не дожидаясь пуша, —
+///     так список и выделение устаканиваются синхронно.
 ///
-/// Everything Avalonia-shaped is kept out on purpose, so the whole class is exercisable
-/// headlessly against a fake <see cref="IIpcClient"/> — which matters because the graph↔VM
-/// mapping is where a silent data-loss bug would live.
+/// Всё, что имеет форму Avalonia, держится снаружи намеренно, чтобы класс целиком можно было
+/// гонять headless против поддельного <see cref="IIpcClient"/>, — а это важно, потому что
+/// отображение «граф ↔ VM» и есть то место, где завелась бы тихая потеря данных.
 /// </summary>
 public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 {
     private const string DraftName = "новый-макрос";
 
-    /// <summary>Folder the daemon keeps its macro files in, relative to its own directory.</summary>
+    /// <summary>Папка, в которой демон держит файлы макросов, относительно его собственного каталога.</summary>
     private const string MacroFolderName = "macros";
 
     private readonly IIpcClient _client;
@@ -210,13 +210,18 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private NodeRowViewModel? _selectedNode;
     private bool _suppressSelectionReload;
 
-    // Name of the macro currently open, as it exists in the library. null = unsaved draft.
+    // Имя открытого сейчас макроса в том виде, в каком оно есть в библиотеке. null = черновик,
+    // который ещё не сохраняли.
     private string? _loadedName;
-    // Serialised form of the editor state as of the last load/save — the dirty baseline.
+
+    // Сериализованное состояние редактора на момент последней загрузки или сохранения — опора
+    // для «есть ли несохранённые правки».
     private string _loadedJson = string.Empty;
-    // Serialised form of what we believe the daemon has — the external-change baseline. Kept
-    // separately from _loadedJson because loading normalises (a degenerate region becomes
-    // null, say), and normalisation must not read as "the file changed under us".
+
+    // Сериализованная форма того, что, по нашему мнению, лежит у демона, — опора для «изменили
+    // ли снаружи». Хранится отдельно от _loadedJson, потому что загрузка нормализует
+    // (вырожденная область, скажем, становится null), а нормализация не должна читаться как
+    // «файл изменился у нас под руками».
     private string _diskJson = string.Empty;
 
     private string _macroName = string.Empty;
@@ -235,20 +240,22 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private string? _executingNodeId;
     private MacroRunViewModel? _selectedRun;
     private bool _wantsRunEvents;
+
     private int _droppedRunEvents;
-    // Edge geometry is rebuilt from the nodes; while a batch of structural edits is in
-    // flight (a load, a delete that repoints edges) the rebuild is deferred to the end so
-    // the canvas is not routed against a half-updated graph.
+
+    // Геометрия рёбер пересобирается по нодам; пока в полёте пачка структурных правок
+    // (загрузка, удаление, перенацеливающее рёбра), пересборка откладывается до конца, чтобы
+    // canvas не прокладывали по наполовину обновлённому графу.
     private int _edgeRebuildSuspended;
 
-    /// <param name="client">Connection to the daemon — the library, the runs and the writes.</param>
-    /// <param name="launcher">Manual "Run" seam; <c>null</c> disables the button.</param>
-    /// <param name="hotkeys">Suspend/resume around the chord picker; <c>null</c> is a no-op.</param>
-    /// <param name="dispatcher">UI-thread marshalling for daemon pushes.</param>
+    /// <param name="client">Соединение с демоном — библиотека, прогоны и записи.</param>
+    /// <param name="launcher">Шов для ручного «Запустить»; <c>null</c> гасит кнопку.</param>
+    /// <param name="hotkeys">Приостановка и возобновление вокруг ловушки сочетаний; <c>null</c> ничего не делает.</param>
+    /// <param name="dispatcher">Перекладывание пушей демона в поток UI.</param>
     /// <param name="macroFolderPath">
-    /// Absolute path behind the "open folder" button. Supplied by the host because only IT
-    /// knows where the daemon lives; defaults to <c>macros/</c> next to this executable,
-    /// which is correct for the deployed side-by-side layout.
+    /// Абсолютный путь, стоящий за кнопкой «открыть папку». Его подаёт хост, потому что только
+    /// ОН знает, где живёт демон; по умолчанию это <c>macros/</c> рядом с этим исполняемым
+    /// файлом, что верно для развёрнутой раскладки «бок о бок».
     /// </param>
     public MacroEditorViewModel(
         IIpcClient client,
@@ -265,10 +272,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         _client.Connected += OnConnected;
         _client.EventReceived += OnEventReceived;
-        // One subscription for the whole trigger list rather than a hook in each of
-        // AddTrigger / RemoveTrigger / LoadGraph / CloseEditor: those are four places that
-        // would all have to remember, and forgetting one leaves a picker whose conflict
-        // state never updates.
+        // Одна подписка на весь список триггеров, а не крючок в каждом из
+        // AddTrigger / RemoveTrigger / LoadGraph / CloseEditor: это четыре места, каждое из
+        // которых должно было бы помнить, а забытое оставляет ловушку, чьё состояние конфликта
+        // не обновляется никогда.
         Triggers.CollectionChanged += OnTriggersCollectionChanged;
 
         if (_client.IsConnected)
@@ -277,15 +284,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    // ---- library (left pane) --------------------------------------------------------
+    // ---- библиотека (левая панель) ----------------------------------------------------
 
-    /// <summary>Macros in the library, ordered as the daemon returns them (by name).</summary>
+    /// <summary>Макросы библиотеки в том порядке, в каком их отдаёт демон (по имени).</summary>
     public ObservableCollection<MacroListItemViewModel> Macros { get; } = [];
 
     /// <summary>
-    /// Selected library entry. Assigning it loads that graph into the editor; unsaved
-    /// edits to the previously open graph are discarded (with a message — there is no
-    /// modal confirmation in this pass).
+    /// Выбранная запись библиотеки. Присвоение загружает этот граф в редактор; несохранённые
+    /// правки открытого до того графа отбрасываются (с сообщением — модального подтверждения в
+    /// этом заходе нет).
     /// </summary>
     public MacroListItemViewModel? SelectedMacro
     {
@@ -296,10 +303,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 return;
             }
+
             if (value is null)
             {
                 return;
             }
+
             if (TryGet(value.Name) is { } graph)
             {
                 var discarded = _hasOpenMacro && IsDirty() ? _loadedName ?? _macroName : null;
@@ -312,13 +321,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// The library as the panel draws it: sections headed <c>pw · 6</c> / <c>прочее · 11</c>.
-    /// Derived from <see cref="Macros"/> and <see cref="LibrarySearch"/>; the rule lives in
-    /// <see cref="MacroLibraryGrouping"/>.
+    /// Библиотека в том виде, в каком её рисует панель: разделы с заголовками <c>pw · 6</c> и
+    /// <c>прочее · 11</c>. Выводится из <see cref="Macros"/> и <see cref="LibrarySearch"/>; само
+    /// правило живёт в <see cref="MacroLibraryGrouping"/>.
     /// </summary>
     public ObservableCollection<MacroLibraryGroupViewModel> MacroGroups { get; } = [];
 
-    /// <summary>Library filter box. Case-insensitive substring over the macro name.</summary>
+    /// <summary>Поле фильтра библиотеки. Подстрока в имени макроса, без учёта регистра.</summary>
     public string LibrarySearch
     {
         get => _librarySearch;
@@ -331,22 +340,22 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Absolute path of the daemon's macro folder — the "open folder" affordance.</summary>
+    /// <summary>Абсолютный путь к папке макросов демона — то, что стоит за кнопкой «открыть папку».</summary>
     public string FolderPath { get; }
 
     /// <summary>
-    /// The editor's live window snapshot, behind every node's targets badge (D4). Seeded by
-    /// <see cref="RefreshAsync"/> and kept current by the daemon's window pushes, exactly
-    /// like the library is kept current by <c>MacrosChanged</c>.
+    /// Живой снимок окон у редактора, стоящий за бейджем целей каждой ноды (D4). Засевается
+    /// <see cref="RefreshAsync"/> и держится свежим оконными пушами демона — ровно так же, как
+    /// библиотеку держит свежей <c>MacrosChanged</c>.
     ///
-    /// Public because the tests drive it and because the inspector's badge reads its count;
-    /// nothing outside this class mutates it.
+    /// Публичный, потому что им управляют тесты и потому что бейдж инспектора читает его
+    /// количество; никто снаружи этого класса его не меняет.
     /// </summary>
     public WindowCatalog Windows { get; } = new();
 
-    // ---- open graph (right pane) ----------------------------------------------------
+    // ---- открытый граф (правая панель) ------------------------------------------------
 
-    /// <summary><c>true</c> when a graph (saved or draft) is open in the right pane.</summary>
+    /// <summary><c>true</c>, когда в правой панели открыт граф — сохранённый или черновик.</summary>
     public bool HasOpenMacro
     {
         get => _hasOpenMacro;
@@ -354,9 +363,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Editable name of the open graph. Saving under a different name renames the macro:
-    /// the daemon keys on the file stem, so a rename is "write the new file, delete the
-    /// old one" — which this VM does, because the protocol has no rename operation.
+    /// Правимое имя открытого графа. Сохранение под другим именем переименовывает макрос: демон
+    /// ключуется по основе имени файла, поэтому переименование — это «записать новый файл,
+    /// удалить старый», чем эта VM и занимается, ведь операции переименования в протоколе нет.
     /// </summary>
     public string MacroName
     {
@@ -364,33 +373,33 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         set => SetField(ref _macroName, value ?? string.Empty);
     }
 
-    /// <summary>Trigger rows of the open graph.</summary>
+    /// <summary>Строки триггеров открытого графа.</summary>
     public ObservableCollection<TriggerRowViewModel> Triggers { get; } = [];
 
-    /// <summary>Node rows of the open graph, in persisted list order.</summary>
+    /// <summary>Строки нод открытого графа, в том порядке, в каком они сохранены в списке.</summary>
     public ObservableCollection<NodeRowViewModel> Nodes { get; } = [];
 
     /// <summary>
-    /// Selectable edge targets: the empty string (= end of run) followed by every node id.
-    /// One shared instance bound by every edge drop-down, so a rename or a new node shows
-    /// up everywhere at once.
+    /// Выбираемые цели рёбер: пустая строка (= конец прогона), а за ней все id нод. Один общий
+    /// экземпляр, к которому привязан каждый выпадающий список ребра, — так переименование или
+    /// новая нода появляются везде разом.
     /// </summary>
     public ObservableCollection<string> NodeIdChoices { get; } = [];
 
-    /// <summary>Node ids for the start-node picker. Same list without the empty entry — a start node is required.</summary>
+    /// <summary>Id нод для выбора стартовой. Тот же список без пустой записи — стартовая нода обязательна.</summary>
     public ObservableCollection<string> StartNodeChoices { get; } = [];
 
-    /// <summary>Library names offered by <c>RunMacroNode</c> drop-downs.</summary>
+    /// <summary>Имена из библиотеки, которые предлагают выпадающие списки <c>RunMacroNode</c>.</summary>
     public ObservableCollection<string> MacroChoices { get; } = [];
 
-    /// <summary>Where execution begins. Must name one of <see cref="Nodes"/>.</summary>
+    /// <summary>С чего начинается исполнение. Должна называть одну из <see cref="Nodes"/>.</summary>
     public string StartNodeId
     {
         get => _startNodeId;
         set
         {
-            // A ComboBox pushes null while its ItemsSource churns; ignoring that keeps a
-            // valid start node from being wiped by an unrelated list rebuild.
+            // ComboBox проталкивает null, пока перетряхивается его ItemsSource; игнорируя это,
+            // мы не даём посторонней пересборке списка стереть вполне живую стартовую ноду.
             if (!string.IsNullOrEmpty(value))
             {
                 SetField(ref _startNodeId, value);
@@ -398,10 +407,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Node kinds for the "add node" flyout.</summary>
+    /// <summary>Виды нод для всплывающего меню «добавить ноду».</summary>
     public IReadOnlyList<MacroNodeKindOption> NodeKinds => NodeRowViewModel.Kinds;
 
-    /// <summary>Row highlighted by clicking a validation issue.</summary>
+    /// <summary>Строка, подсвеченная кликом по замечанию валидатора.</summary>
     public NodeRowViewModel? SelectedNode
     {
         get => _selectedNode;
@@ -412,50 +421,53 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 return;
             }
+
             if (previous is not null)
             {
                 previous.IsSelected = false;
             }
+
             if (value is not null)
             {
                 value.IsSelected = true;
             }
+
             OnPropertyChanged(nameof(HasSelectedNode));
             OnPropertyChanged(nameof(InspectorTitle));
-            // ▷| До курсора aims at whatever is selected, so it goes live and dead with it.
+            // «До курсора» целится в то, что выделено, а значит, оживает и гаснет вместе с ним.
             OnPropertyChanged(nameof(CanRunToCursor));
         }
     }
 
-    /// <summary>Drives the inspector's two states: a node, or the macro itself.</summary>
+    /// <summary>Управляет двумя состояниями инспектора: нода либо сам макрос.</summary>
     public bool HasSelectedNode => _selectedNode is not null;
 
-    /// <summary>Inspector heading — the selected node's type, or «Макрос».</summary>
+    /// <summary>Заголовок инспектора — тип выделенной ноды либо «Макрос».</summary>
     public string InspectorTitle => _selectedNode?.TypeLabel ?? "Макрос";
 
     // ---- canvas ---------------------------------------------------------------------
 
     /// <summary>
-    /// Every drawn edge of the open graph, rebuilt whenever the graph's shape or a node's
-    /// position changes. An outcome with no target contributes nothing — see
+    /// Все нарисованные рёбра открытого графа; пересобираются всякий раз, когда меняется форма
+    /// графа или положение ноды. Исход без цели не даёт ничего — см.
     /// <see cref="CanvasEdgeRouter"/>.
     /// </summary>
     public ObservableCollection<CanvasEdgeViewModel> CanvasEdges { get; } = [];
 
-    /// <summary>Smallest zoom the canvas allows.</summary>
+    /// <summary>Наименьший масштаб, который допускает canvas.</summary>
     public const double MinZoom = 0.35;
 
-    /// <summary>Largest zoom the canvas allows.</summary>
+    /// <summary>Наибольший масштаб, который допускает canvas.</summary>
     public const double MaxZoom = 2.0;
 
-    // The surface is pinned this far inside the viewport at rest, so the top-left box is
-    // not flush against the panel edge. Small on purpose: three columns of the wrapping
-    // layout are 780px and the canvas pane is ~810 at the default window size, so a
-    // generous margin is the difference between "the graph fits at 100%" and "the third
-    // column is clipped until you pan".
+    // В покое поверхность приколота настолько внутрь области просмотра, чтобы левая верхняя
+    // коробка не упиралась в кромку панели. Мало намеренно: три колонки переносимой раскладки —
+    // это 780px, а панель canvas при размере окна по умолчанию около 810, так что щедрое поле
+    // отделяет «граф помещается на 100%» от «третью колонку обрезает, пока не подвинешь
+    // панораму».
     private const double MinPan = 12;
 
-    /// <summary>Canvas scale. Clamped — a graph zoomed to nothing is a lost graph.</summary>
+    /// <summary>Масштаб canvas. С ограничением: граф, ужатый в ничто, — потерянный граф.</summary>
     public double Zoom
     {
         get => _zoom;
@@ -468,24 +480,24 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Zoom as the chip renders it: "100%".</summary>
+    /// <summary>Масштаб в том виде, в каком его рисует чип: «100%».</summary>
     public string ZoomText => string.Create(CultureInfo.InvariantCulture, $"{Math.Round(_zoom * 100)}%");
 
-    /// <summary>Horizontal pan of the surface, in screen pixels.</summary>
+    /// <summary>Горизонтальная панорама поверхности, в экранных пикселях.</summary>
     public double PanX
     {
         get => _panX;
         set => SetField(ref _panX, value);
     }
 
-    /// <summary>Vertical pan of the surface, in screen pixels.</summary>
+    /// <summary>Вертикальная панорама поверхности, в экранных пикселях.</summary>
     public double PanY
     {
         get => _panY;
         set => SetField(ref _panY, value);
     }
 
-    /// <summary>Back to 100% at the origin.</summary>
+    /// <summary>Обратно на 100% и в начало координат.</summary>
     public void ResetView()
     {
         Zoom = 1;
@@ -494,12 +506,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Node the executor is standing on, or <c>null</c>. Follows <see cref="SelectedRun"/>,
-    /// which is the whole reason there is a run picker: a graph can be walked by ten windows
-    /// at once and only one of them may light a box.
+    /// Нода, на которой стоит исполнитель, либо <c>null</c>. Следует за
+    /// <see cref="SelectedRun"/> — ради этого переключатель прогонов и заведён: по графу могут
+    /// идти десять окон разом, а зажечь коробку позволено лишь одному из них.
     ///
-    /// Settable from outside because the canvas tests drive it directly; in the live panel
-    /// only <see cref="SyncExecutingNode"/> writes it.
+    /// Присваивается извне, потому что тесты canvas управляют этим напрямую; в живой панели
+    /// пишет сюда только <see cref="SyncExecutingNode"/>.
     /// </summary>
     public string? ExecutingNodeId
     {
@@ -510,52 +522,53 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 return;
             }
+
             foreach (var node in Nodes)
             {
                 node.IsExecuting = value is not null
-                    && string.Equals(node.NodeId, value, StringComparison.Ordinal);
+                                   && string.Equals(node.NodeId, value, StringComparison.Ordinal);
             }
-            // Edges read their liveness off their source node, and the layer repaints on a
-            // collection change rather than on a property change of one edge — so the
-            // highlight would otherwise lag a frame behind the box.
+
+            // Рёбра берут свою «живость» у ноды-источника, а слой перерисовывается по изменению
+            // коллекции, а не по изменению свойства одного ребра, — иначе подсветка отставала бы
+            // от коробки на кадр.
             RebuildEdges();
         }
     }
 
-    // ---- run log --------------------------------------------------------------------
+    // ---- лог прогона ------------------------------------------------------------------
 
     /// <summary>
-    /// The run-log strip under the canvas: the rows of <see cref="SelectedRun"/>.
+    /// Полоса лога прогона под canvas: строки <see cref="SelectedRun"/>.
     ///
-    /// A projection, not a store — every walk keeps its own rows in
-    /// <see cref="MacroRunViewModel.Log"/>, so switching the picker (or opening another
-    /// macro and coming back) shows that walk's history rather than a log that was thrown
-    /// away.
+    /// Это проекция, а не хранилище — свои строки каждый обход держит в
+    /// <see cref="MacroRunViewModel.Log"/>, поэтому переключение чипа (или уход в другой макрос
+    /// и возврат) показывает историю того обхода, а не выброшенный лог.
     /// </summary>
     public ObservableCollection<RunLogRowViewModel> RunLog { get; } = [];
 
-    /// <summary><c>true</c> once there is anything to show in the strip.</summary>
+    /// <summary><c>true</c>, как только в полосе появляется что показывать.</summary>
     public bool HasRunLog => RunLog.Count > 0;
 
     /// <summary>
-    /// What the strip says when it has no rows. Distinguishes "nothing has run" from
-    /// "nothing is being recorded", because those call for different reactions from the user.
+    /// Что говорит полоса, когда строк в ней нет. Различает «ничего не запускалось» и «ничего
+    /// не пишется», потому что реакции пользователя на это разные.
     /// </summary>
     public string RunLogEmptyText => _wantsRunEvents
         ? "прогонов ещё не было"
         : "лог пишется, пока открыт режим «Макросы»";
 
     /// <summary>
-    /// Walks of the OPEN macro, oldest first — what the run chip pages through. Empty
-    /// whenever the open graph has never been run while the panel was watching.
+    /// Обходы ОТКРЫТОГО макроса, старые первыми, — то, что перелистывает чип прогона. Пусто
+    /// всякий раз, когда открытый граф ни разу не прогоняли при смотрящей панели.
     /// </summary>
     public ObservableCollection<MacroRunViewModel> Runs { get; } = [];
 
-    /// <summary><c>true</c> when there is a run chip to draw at all.</summary>
+    /// <summary><c>true</c>, когда есть чип прогона, который вообще стоит рисовать.</summary>
     public bool HasRuns => Runs.Count > 0;
 
     /// <summary>
-    /// The walk the canvas and the log strip follow. Assigning it re-points both.
+    /// Обход, за которым следуют canvas и полоса лога. Присвоение перенацеливает оба.
     /// </summary>
     public MacroRunViewModel? SelectedRun
     {
@@ -566,6 +579,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 return;
             }
+
             _selectedRun = value;
             OnPropertyChanged(nameof(SelectedRun));
             OnPropertyChanged(nameof(RunChipText));
@@ -576,13 +590,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>The walk the debugger toolbar acts on. Same one the canvas follows, by construction.</summary>
+    /// <summary>Обход, над которым работает панель отладчика. По построению тот же, за которым следует canvas.</summary>
     public MacroRunViewModel? DebugTarget => _selectedRun;
 
-    /// <summary>Chip label: the context window as <c>0x140804</c>, or the macro name when there is none.</summary>
+    /// <summary>Подпись чипа: контекстное окно как <c>0x140804</c> либо имя макроса, когда окна нет.</summary>
     public string RunChipText => _selectedRun?.Label ?? string.Empty;
 
-    /// <summary>"2 / 10" while a fan-out is in flight; empty when there is only one walk.</summary>
+    /// <summary>«2 / 10», пока в полёте веер; пусто, когда обход всего один.</summary>
     public string RunPositionText
     {
         get
@@ -591,20 +605,21 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 return string.Empty;
             }
+
             return string.Create(CultureInfo.InvariantCulture, $"{Runs.IndexOf(_selectedRun) + 1} / {Runs.Count}");
         }
     }
 
-    /// <summary>Drives the live dot beside the chip.</summary>
+    /// <summary>Управляет живой точкой рядом с чипом.</summary>
     public bool SelectedRunIsLive => _selectedRun?.IsLive == true;
 
     /// <summary>
-    /// Why the strip may not be telling the whole truth: the panel joined mid-run, or the
-    /// daemon had to discard events. <c>null</c> when the log is complete.
+    /// Почему полоса, возможно, говорит не всю правду: панель подключилась посреди прогона либо
+    /// демону пришлось выбросить события. <c>null</c>, когда лог полон.
     ///
-    /// This exists because the alternative — rendering a partial log exactly like a full one
-    /// — turns "the click never happened" and "you weren't watching when it did" into the
-    /// same picture.
+    /// Это существует потому, что альтернатива — рисовать неполный лог ровно так же, как
+    /// полный, — превращает «клика не было» и «вы не смотрели, когда он был» в одну и ту же
+    /// картинку.
     /// </summary>
     public string? RunLogNotice
     {
@@ -615,63 +630,64 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 parts.Add("начало прогона не записано");
             }
+
             if (_droppedRunEvents > 0)
             {
                 parts.Add(string.Create(CultureInfo.CurrentCulture, $"пропущено событий: {_droppedRunEvents}"));
             }
+
             return parts.Count == 0 ? null : string.Join(" · ", parts);
         }
     }
 
-    /// <summary><c>true</c> when <see cref="RunLogNotice"/> has something to say.</summary>
+    /// <summary><c>true</c>, когда <see cref="RunLogNotice"/> есть что сказать.</summary>
     public bool HasRunLogNotice => RunLogNotice is not null;
 
-    // ---- debugger (D5) --------------------------------------------------------------
+    // ---- отладчик (D5) ----------------------------------------------------------------
 
     /// <summary>
-    /// The debugger toolbar exists at all. Only once a walk of this graph is on record —
-    /// there is nothing to pause otherwise, and four permanently dead buttons is how a
-    /// toolbar stops being read.
+    /// Панель отладчика вообще существует. Только когда обход этого графа уже зафиксирован —
+    /// иначе паузу ставить нечему, а четыре навсегда мёртвые кнопки — верный способ добиться,
+    /// чтобы панель инструментов перестали читать.
     /// </summary>
     public bool HasDebugTarget => _selectedRun is not null;
 
-    /// <summary>⏸ is available: the walk is running and not already parked.</summary>
+    /// <summary>«Пауза» доступна: обход идёт и ещё не припаркован.</summary>
     public bool CanPause => _selectedRun is { IsLive: true, IsPaused: false, PauseRequested: false };
 
-    /// <summary>▶ / ⤼ / ▷| are available: the walk is parked and can be released.</summary>
+    /// <summary>«Дальше», «Шаг» и «До курсора» доступны: обход припаркован и его можно отпустить.</summary>
     public bool CanResume => _selectedRun is { IsLive: true, IsPaused: true };
 
-    /// <summary>▷| additionally needs a node to aim at — the one selected on the canvas.</summary>
+    /// <summary>«До курсора» вдобавок нужна нода, в которую целиться, — выделенная на canvas.</summary>
     public bool CanRunToCursor => CanResume && _selectedNode is not null;
 
-    /// <summary>■ is available whenever anything of this walk's run is still going.</summary>
+    /// <summary>«Стоп» доступен, пока в прогоне этого обхода хоть что-то ещё идёт.</summary>
     public bool CanStop => _selectedRun is { IsLive: true };
 
-    /// <summary>The selected walk is parked right now.</summary>
+    /// <summary>Выбранный обход припаркован прямо сейчас.</summary>
     public bool SelectedRunIsPaused => _selectedRun?.IsPaused == true;
 
-    /// <summary>Parked by a breakpoint — the red tint of the log strip's pill.</summary>
+    /// <summary>Припаркован точкой останова — красный оттенок пилюли в полосе лога.</summary>
     public bool SelectedRunAtBreakpoint => _selectedRun?.PausedAtBreakpoint == true;
 
     /// <summary>
-    /// The pill in the log strip has something to say: the walk is parked, OR a pause has
-    /// been asked for and has not landed yet.
+    /// Пилюле в полосе лога есть что сказать: обход припаркован ЛИБО паузу запросили, а она ещё
+    /// не сработала.
     ///
-    /// The second half is not cosmetic. ⏸ is honoured at the next node boundary, so pressing
-    /// it during a 60-second <c>WaitForElement</c> greys the button out and then apparently
-    /// nothing happens — which is indistinguishable from a broken button. Looking at it is
-    /// how that was found.
+    /// Вторая половина — не косметика. «Пауза» исполняется на ближайшей границе нод, поэтому
+    /// нажатие во время шестидесятисекундного <c>WaitForElement</c> гасит кнопку, а дальше
+    /// внешне не происходит ничего, — и это неотличимо от сломанной кнопки. Нашли это, посмотрев
+    /// на живое приложение.
     /// </summary>
     public bool SelectedRunPauseVisible => _selectedRun is { IsPaused: true } or { PauseRequested: true };
 
     /// <summary>
-    /// «брейкпоинт: recognize-class» for the log strip's pill — «шаг: step-4» and
-    /// «пауза: step-4» for the other reasons, and «пауза запрошена — ждём конца ноды» while
-    /// the request is still in flight.
+    /// «брейкпоинт: recognize-class» для пилюли в полосе лога — «шаг: step-4» и «пауза: step-4»
+    /// для остальных причин, а пока запрос ещё в полёте — «пауза запрошена — ждём конца ноды».
     ///
-    /// The one place that names BOTH the state and the node it is parked at. The toolbar
-    /// deliberately does not repeat it: two copies cost 260px of a 1520px bar and pushed
-    /// «Сохранить» off the right edge.
+    /// Единственное место, называющее И состояние, И ноду, на которой обход припаркован. Панель
+    /// инструментов этого намеренно не повторяет: две копии стоили 260px из 1520px полосы и
+    /// вытолкнули «Сохранить» за правый край.
     /// </summary>
     public string PauseNotice => _selectedRun switch
     {
@@ -681,11 +697,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     };
 
     /// <summary>
-    /// What the walk is doing, in one word for the toolbar.
+    /// Чем занят обход, одним словом для панели инструментов.
     ///
-    /// «пауза…» is the state that has to exist: ⏸ is a request honoured at the next node
-    /// boundary, and a <c>WaitForElement</c> can hold it off for a minute. A button that went
-    /// straight from «выполняется» to «на паузе» would be lying for that minute.
+    /// «пауза…» — то состояние, без которого не обойтись: «Пауза» — это просьба, исполняемая на
+    /// ближайшей границе нод, а <c>WaitForElement</c> способен продержать её минуту. Кнопка,
+    /// прыгающая из «выполняется» сразу в «на паузе», всю эту минуту врала бы.
     /// </summary>
     public string DebugStateText => _selectedRun switch
     {
@@ -696,14 +712,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _ => "выполняется",
     };
 
-    /// <summary>«3 / 11» — nodes this walk has entered, over the size of the graph.</summary>
+    /// <summary>«3 / 11» — во сколько нод этот обход вошёл, из скольких состоит граф.</summary>
     public string RunProgressText => _selectedRun is { } run && Nodes.Count > 0
         ? string.Create(CultureInfo.InvariantCulture, $"{run.NodesEntered} / {Nodes.Count}")
         : string.Empty;
 
     /// <summary>
-    /// «0:12.4» — wall time since the walk began. Extrapolated from the last event while the
-    /// walk is live, so it keeps ticking through a 60-second wait; frozen once it ends.
+    /// «0:12.4» — сколько времени прошло с начала обхода. Пока обход жив, экстраполируется от
+    /// последнего события, так что часы идут и сквозь шестидесятисекундное ожидание; когда обход
+    /// заканчивается, они замирают.
     /// </summary>
     public string RunElapsedText
     {
@@ -713,45 +730,48 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 return string.Empty;
             }
+
             var extra = run.IsLive ? (int)(DateTimeOffset.UtcNow - run.ElapsedAtUtc).TotalMilliseconds : 0;
             return RunLogRowViewModel.FormatElapsed(run.ElapsedMs + Math.Max(extra, 0));
         }
     }
 
     /// <summary>
-    /// «■ Стоп» or «■ Стоп ×3».
+    /// «■ Стоп» либо «■ Стоп ×3».
     ///
-    /// <b>Stop stops the RUN, not the walk</b>, and the count is how the button admits it. A
-    /// fan-out is N walks sharing one run id and one cancellation token; nobody hitting stop
-    /// while ten clients are being driven means "stop one of them", and there is no per-walk
-    /// cancellation to offer them even if they did. Pause and step stay per-walk — that is
-    /// what the walk picker is for — so the asymmetry is real and has to be visible.
+    /// <b>Стоп останавливает ПРОГОН, а не обход</b>, и счётчик — это то, чем кнопка в этом
+    /// признаётся. Веер — это N обходов, делящих один id прогона и один токен отмены; никто,
+    /// нажимая стоп, пока ведут десять клиентов, не имеет в виду «останови один из них», да и
+    /// отмены на отдельный обход предложить всё равно нечего. Пауза и шаг остаются на обход —
+    /// ради этого переключатель обходов и существует, — так что асимметрия настоящая и её надо
+    /// показывать.
     /// </summary>
     public string StopLabel => LiveSiblingCount() is > 1 and var n
         ? string.Create(CultureInfo.InvariantCulture, $"■ Стоп ×{n}")
         : "■ Стоп";
 
-    /// <summary>Spells out what ■ will actually cancel.</summary>
+    /// <summary>Проговаривает, что именно ■ отменит на самом деле.</summary>
     public string StopTooltip => LiveSiblingCount() is > 1 and var n
         ? string.Create(CultureInfo.InvariantCulture, $"Остановить весь прогон целиком — все {n} обхода")
         : "Остановить прогон";
 
-    /// <summary>Asks the daemon to park the selected walk at its next node.</summary>
+    /// <summary>Просит демон припарковать выбранный обход на его следующей ноде.</summary>
     public Task PauseAsync() => DebugAsync(DebugCommand.Pause);
 
-    /// <summary>Releases the selected walk.</summary>
+    /// <summary>Отпускает выбранный обход.</summary>
     public Task ResumeAsync() => DebugAsync(DebugCommand.Resume);
 
-    /// <summary>Releases the selected walk and parks it again at the very next node.</summary>
+    /// <summary>Отпускает выбранный обход и тут же паркует его на самой следующей ноде.</summary>
     public Task StepAsync() => DebugAsync(DebugCommand.Step);
 
-    /// <summary>Runs the selected walk to the node selected on the canvas.</summary>
+    /// <summary>Гонит выбранный обход до ноды, выделенной на canvas.</summary>
     public Task RunToCursorAsync() => _selectedNode is { } node
         ? DebugAsync(DebugCommand.RunToNode, node.NodeId)
         : Task.CompletedTask;
 
     /// <summary>
-    /// Cancels the whole run the selected walk belongs to — see <see cref="StopLabel"/>.
+    /// Отменяет целиком тот прогон, которому принадлежит выбранный обход, — см.
+    /// <see cref="StopLabel"/>.
     /// </summary>
     public async Task StopSelectedRunAsync()
     {
@@ -759,6 +779,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
         try
         {
             await _client
@@ -772,8 +793,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Re-reads the elapsed clock. Called on a timer by the view — the view-model owns no
-    /// dispatcher timer of its own so it stays exercisable headlessly.
+    /// Перечитывает часы прошедшего времени. Вызывается видом по таймеру — своего
+    /// dispatcher-таймера view-model не держит, чтобы оставаться пригодной для headless-прогона.
     /// </summary>
     public void TickElapsed()
     {
@@ -809,22 +830,25 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
         if (!ack.Accepted)
         {
-            // The walk ended between the button press and the request. Say so rather than
-            // leaving a dead Pause lit — the WalkFinished event settles the rest.
+            // Обход закончился между нажатием кнопки и запросом. Скажем об этом, а не оставим
+            // гореть мёртвую «Паузу», — остальное уляжется событием WalkFinished.
             StatusMessage = "Обход уже завершился.";
             RefreshDebugState();
             return;
         }
-        // The optimistic half: a pause that has not landed yet is «пауза…» on the toolbar
-        // until the daemon's Paused event confirms it.
+
+        // Оптимистичная половина: пауза, которая ещё не сработала, — это «пауза…» на панели
+        // инструментов, пока её не подтвердит событие Paused от демона.
         run.PauseRequested = ack is { Paused: false, PauseRequested: true };
         RefreshDebugState();
     }
 
-    // Every derived toolbar property in one place: there are eight of them and they all
-    // change together, so raising them individually at each call site is how one gets missed.
+    // Все производные свойства панели инструментов в одном месте: их восемь, меняются они
+    // всегда вместе, и поднимать их поодиночке в каждой точке вызова — верный способ однажды
+    // одно пропустить.
     private void RefreshDebugState()
     {
         OnPropertyChanged(nameof(HasDebugTarget));
@@ -843,26 +867,27 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(StopTooltip));
     }
 
-    // Walks of the same RUN that are still going — what ■ Стоп is about to cancel.
+    // Обходы того же ПРОГОНА, которые ещё идут, — то, что вот-вот отменит «■ Стоп».
     private int LiveSiblingCount()
     {
         if (_selectedRun is not { } run)
         {
             return 0;
         }
+
         return _runs.All.Count(other => other.Walk.RunId == run.Walk.RunId && other.IsLive);
     }
 
-    /// <summary>Selects the previous walk of this macro (the chip's ◂).</summary>
+    /// <summary>Выбирает предыдущий обход этого макроса (◂ на чипе).</summary>
     public void SelectPreviousRun() => StepRun(-1);
 
-    /// <summary>Selects the next walk of this macro (the chip's ▸).</summary>
+    /// <summary>Выбирает следующий обход этого макроса (▸ на чипе).</summary>
     public void SelectNextRun() => StepRun(+1);
 
     /// <summary>
-    /// Drops every recorded walk (the strip's «очистить»). Live walks reappear as soon as
-    /// they report their next node, because the daemon keeps sending — this clears the
-    /// PANEL's history, it does not stop anything.
+    /// Выбрасывает все записанные обходы («очистить» в полосе). Живые появятся снова, как
+    /// только сообщат о своей следующей ноде, — демон-то шлёт по-прежнему: это чистит историю
+    /// ПАНЕЛИ, а не останавливает что-либо.
     /// </summary>
     public void ClearRunLog()
     {
@@ -874,18 +899,19 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasRunLogNotice));
     }
 
-    /// <summary>Re-places every node on the grid (the «Авто-раскладка» button).</summary>
+    /// <summary>Заново расставляет все ноды по сетке (кнопка «Авто-раскладка»).</summary>
     public void AutoLayout()
     {
         if (!HasOpenMacro)
         {
             return;
         }
+
         MacroGraphLayout.Apply(Nodes, _startNodeId);
         RebuildEdges();
     }
 
-    /// <summary>Moves one box. Called continuously while a node is dragged.</summary>
+    /// <summary>Двигает одну коробку. Вызывается непрерывно, пока ноду тащат.</summary>
     public void MoveNode(NodeRowViewModel row, double x, double y)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -894,47 +920,50 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Re-points an outcome, which is what dropping a dragged link does.
-    /// <paramref name="targetId"/> of <c>null</c> or <c>""</c> means "end of run" — the
-    /// legitimate unwired state, not a deletion of the outcome.
+    /// Перенацеливает исход — именно это и делает брошенная связь. <c>null</c> либо <c>""</c> в
+    /// <paramref name="targetId"/> значит «конец прогона»: законное неподключённое состояние, а
+    /// не удаление исхода.
     /// </summary>
     public void RewireEdge(NodeEdgeViewModel edge, string? targetId)
     {
         ArgumentNullException.ThrowIfNull(edge);
-        // A node cannot be reached from its own outcome without an infinite loop that the
-        // canvas would draw as a knot; the validator has no rule against it, so the editor
-        // simply refuses to create one by drag.
+        // До ноды не добраться из её же исхода иначе как бесконечным циклом, который canvas
+        // нарисовал бы узлом; правила против этого у валидатора нет, поэтому редактор просто
+        // отказывается создавать такое перетаскиванием.
         var owner = Nodes.FirstOrDefault(node => node.Edges.Contains(edge));
         if (owner is not null && string.Equals(owner.NodeId, targetId, StringComparison.Ordinal))
         {
             return;
         }
+
         edge.TargetId = targetId ?? string.Empty;
     }
 
-    /// <summary>Opens one box as an editor of itself (1e) and closes any other.</summary>
+    /// <summary>Раскрывает одну коробку редактором самой себя (1e) и закрывает все прочие.</summary>
     public void ExpandNode(NodeRowViewModel? row)
     {
         foreach (var node in Nodes)
         {
             node.IsExpanded = ReferenceEquals(node, row);
         }
+
         if (row is not null)
         {
             SelectedNode = row;
         }
     }
 
-    /// <summary>Collapses whatever box is expanded (Esc).</summary>
+    /// <summary>Складывает ту коробку, что развёрнута (Esc).</summary>
     public void CollapseNodes() => ExpandNode(null);
 
-    // ---- breakpoints ----------------------------------------------------------------
+    // ---- точки останова ----------------------------------------------------------------
 
     /// <summary>
-    /// Flips the red dot on a node and tells the daemon.
+    /// Переключает красную точку на ноде и сообщает об этом демону.
     ///
-    /// The set is re-derived from the ROWS on every change and sent whole, so a node rename
-    /// carries its breakpoint for free and there is no add/remove ordering to get wrong.
+    /// Набор при каждом изменении заново выводится из СТРОК и уходит целиком, поэтому
+    /// переименование ноды бесплатно переносит её точку останова, а порядка добавлений и
+    /// удалений, который можно перепутать, тут попросту нет.
     /// </summary>
     public void ToggleBreakpoint(NodeRowViewModel row)
     {
@@ -942,14 +971,14 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         row.HasBreakpoint = !row.HasBreakpoint;
     }
 
-    /// <summary>Node ids of the open graph that currently carry a breakpoint, in row order.</summary>
+    /// <summary>Id тех нод открытого графа, на которых сейчас стоит точка останова, в порядке строк.</summary>
     public IReadOnlyList<string> BreakpointNodeIds =>
         [.. Nodes.Where(node => node.HasBreakpoint).Select(node => node.NodeId)];
 
-    /// <summary><c>true</c> when the open graph has at least one — drives the «снять все» affordance.</summary>
+    /// <summary><c>true</c>, когда у открытого графа есть хоть одна, — этим включается «снять все».</summary>
     public bool HasBreakpoints => Nodes.Any(node => node.HasBreakpoint);
 
-    /// <summary>Clears every breakpoint of the open graph.</summary>
+    /// <summary>Снимает все точки останова открытого графа.</summary>
     public void ClearBreakpoints()
     {
         foreach (var node in Nodes)
@@ -958,30 +987,31 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    // ---- variables panel --------------------------------------------------------------
+    // ---- панель переменных --------------------------------------------------------------
 
     /// <summary>
-    /// The inspector's «переменные макроса» cards: static structure from the graph, live
-    /// values from the selected walk.
+    /// Карточки «переменные макроса» в инспекторе: статическая структура из графа, живые
+    /// значения из выбранного обхода.
     /// </summary>
     public ObservableCollection<MacroVariableRowViewModel> Variables { get; } = [];
 
-    /// <summary><c>true</c> when there is anything to list (there always is — <c>cursor</c>).</summary>
+    /// <summary><c>true</c>, когда есть что перечислять (а есть всегда — <c>cursor</c>).</summary>
     public bool HasVariables => Variables.Count > 0;
 
-    /// <summary>Count badge beside the section heading.</summary>
+    /// <summary>Бейдж с числом рядом с заголовком раздела.</summary>
     public string VariableCountText => Variables.Count.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Dashed writer → reader links drawn on the canvas while a variable card is hovered.
-    /// Empty the rest of the time: they are a hover affordance, not part of the graph, and
-    /// leaving them on would compete with the real edges for the reader's attention.
+    /// Пунктирные связи «кто пишет → кто читает», которые рисуются на canvas при наведении на
+    /// карточку переменной. Всё остальное время пусты: это подсказка на наведение, а не часть
+    /// графа, и оставленные включёнными они спорили бы за внимание читателя с настоящими
+    /// рёбрами.
     /// </summary>
     public ObservableCollection<CanvasLinkViewModel> VariableLinks { get; } = [];
 
     /// <summary>
-    /// Lights the writer and the readers of one variable on the canvas, or clears the
-    /// highlight when <paramref name="row"/> is <c>null</c>.
+    /// Зажигает на canvas того, кто пишет переменную, и тех, кто её читает, либо снимает
+    /// подсветку, когда <paramref name="row"/> равен <c>null</c>.
     /// </summary>
     public void HighlightVariable(MacroVariableRowViewModel? row)
     {
@@ -1008,6 +1038,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
         var byId = Nodes.ToDictionary(node => node.NodeId, StringComparer.Ordinal);
         foreach (var write in row.Info.Writes)
         {
@@ -1015,6 +1046,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 continue;
             }
+
             foreach (var read in row.Info.Reads)
             {
                 if (byId.TryGetValue(read.NodeId, out var to) && !ReferenceEquals(from, to))
@@ -1025,16 +1057,16 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Findings of the last save attempt (errors and warnings).</summary>
+    /// <summary>Что нашлось при последней попытке сохранения (ошибки и предупреждения).</summary>
     public ObservableCollection<ValidationIssueViewModel> Issues { get; } = [];
 
-    /// <summary><c>true</c> when the panel has anything to show.</summary>
+    /// <summary><c>true</c>, когда панели есть что показать.</summary>
     public bool HasIssues => Issues.Count > 0;
 
     /// <summary>
-    /// The open graph was modified on disk while it had unsaved edits here. The editor
-    /// refuses to clobber either side and shows a hint instead; a clean editor just
-    /// reloads silently.
+    /// Открытый граф изменили на диске, пока здесь были несохранённые правки. Редактор
+    /// отказывается затирать любую из сторон и вместо этого показывает подсказку; чистый
+    /// редактор просто молча перечитывает.
     /// </summary>
     public bool ChangedOnDisk
     {
@@ -1042,36 +1074,40 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         private set => SetField(ref _changedOnDisk, value);
     }
 
-    /// <summary>Blocking problem (failed save, bad name). Red.</summary>
+    /// <summary>Блокирующая беда (провалившееся сохранение, плохое имя). Красным.</summary>
     public string? ErrorMessage
     {
         get => _errorMessage;
         set => SetField(ref _errorMessage, value);
     }
 
-    /// <summary>Non-blocking feedback ("сохранено"). Muted.</summary>
+    /// <summary>Неблокирующая обратная связь («сохранено»). Приглушённо.</summary>
     public string? StatusMessage
     {
         get => _statusMessage;
         set => SetField(ref _statusMessage, value);
     }
 
-    // ---- library commands -----------------------------------------------------------
+    // ---- команды библиотеки -----------------------------------------------------------
 
-    /// <summary>Re-seeds the library and the run state from the daemon.</summary>
+    /// <summary>Пересевает библиотеку и состояние прогонов от демона.</summary>
     public async Task RefreshAsync()
     {
         try
         {
             var macros = await _client.RequestAsync<MacroGraph[]>(IpcMessageTypes.GetMacros).ConfigureAwait(false);
-            var runs = await _client.RequestAsync<RunningMacroDto[]>(IpcMessageTypes.GetRunningMacros).ConfigureAwait(false);
-            // The targets badge needs the window list, and this VM keeps its own rather than
-            // reaching into «Окна» — see WindowCatalog.
+            var runs = await _client.RequestAsync<RunningMacroDto[]>(IpcMessageTypes.GetRunningMacros)
+                .ConfigureAwait(false);
+            // Бейджу целей нужен список окон, и эта VM держит собственный, а не лезет в
+            // «Окна», — см. WindowCatalog.
             var windows = await _client.RequestAsync<WindowDto[]>(IpcMessageTypes.GetWindows).ConfigureAwait(false);
-            var failures = await _client.RequestAsync<HotkeyFailureDto[]>(IpcMessageTypes.GetHotkeyFailures).ConfigureAwait(false);
-            // The daemon outlives the panel, so this is how a breakpoint set before the panel
-            // was closed comes back — the whole ergonomic case for session-scoped storage.
-            var breakpoints = await _client.RequestAsync<BreakpointSetDto[]>(IpcMessageTypes.GetBreakpoints).ConfigureAwait(false);
+            var failures = await _client.RequestAsync<HotkeyFailureDto[]>(IpcMessageTypes.GetHotkeyFailures)
+                .ConfigureAwait(false);
+            // Демон переживает панель, поэтому именно так возвращается точка останова,
+            // поставленная до её закрытия, — в этом вся эргономическая правота хранения,
+            // привязанного к сеансу.
+            var breakpoints = await _client.RequestAsync<BreakpointSetDto[]>(IpcMessageTypes.GetBreakpoints)
+                .ConfigureAwait(false);
             _dispatcher.Post(() =>
             {
                 _runningMacros = runs ?? [];
@@ -1082,6 +1118,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 {
                     _breakpoints[set.MacroName] = set.NodeIds;
                 }
+
                 ApplyLibrary(macros ?? []);
                 ApplyBreakpointsToRows();
             });
@@ -1093,9 +1130,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Opens a fresh draft: one Delay node, so the graph is immediately valid and
-    /// saveable rather than starting out failing the "start node must exist" rule.
-    /// Nothing is written until <see cref="SaveAsync"/>.
+    /// Открывает свежий черновик: одна нода Delay, чтобы граф сразу был валиден и сохраняем, а
+    /// не начинал жизнь с нарушения правила «стартовая нода должна существовать». До
+    /// <see cref="SaveAsync"/> на диск не пишется ничего.
     /// </summary>
     public void NewMacro()
     {
@@ -1106,8 +1143,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             Nodes = [new DelayNode { Id = "n1", Ms = 1000 }],
         });
 
-        // A draft has no file yet: clear the disk identity so hot-reload leaves it alone
-        // and Save creates rather than renames.
+        // У черновика ещё нет файла: сбрасываем дисковую личность, чтобы горячая перезагрузка
+        // его не трогала, а «Сохранить» создавало, а не переименовывало.
         _loadedName = null;
         _diskJson = string.Empty;
         _suppressSelectionReload = true;
@@ -1116,7 +1153,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         StatusMessage = "Черновик — не сохранён.";
     }
 
-    /// <summary>Deletes a macro from the library (and closes it if it was open).</summary>
+    /// <summary>Удаляет макрос из библиотеки (и закрывает его, если он был открыт).</summary>
     public async Task<bool> DeleteMacroAsync(MacroListItemViewModel item)
     {
         ArgumentNullException.ThrowIfNull(item);
@@ -1124,8 +1161,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         try
         {
-            // Deleting a macro that isn't there is a no-op by protocol, so the only failure
-            // that reaches here is a transport or IO problem.
+            // Удаление несуществующего макроса по протоколу — пустая операция, так что сюда
+            // доходит только беда транспорта или файлового ввода-вывода.
             await _client
                 .RequestAsync(IpcMessageTypes.DeleteMacro, new DeleteMacroRequest(item.Name))
                 .ConfigureAwait(true);
@@ -1141,14 +1178,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             CloseEditor();
         }
-        // Applied locally rather than waiting for the MacrosChanged push, so the list is
-        // settled by the time this returns.
+
+        // Применяем на месте, не дожидаясь пуша MacrosChanged, — так к моменту возврата отсюда
+        // список уже устаканился.
         SetLibrary([.. _library.Where(macro => !string.Equals(macro.Name, item.Name, StringComparison.Ordinal))]);
         StatusMessage = $"Макрос «{item.Name}» удалён.";
         return true;
     }
 
-    /// <summary>Starts a macro with no context window — the manual equivalent of its hotkey.</summary>
+    /// <summary>Запускает макрос без контекстного окна — ручной эквивалент его хоткея.</summary>
     public void Run(MacroListItemViewModel item)
     {
         ArgumentNullException.ThrowIfNull(item);
@@ -1158,10 +1196,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             ErrorMessage = "Запуск недоступен.";
             return;
         }
+
         _launcher.RunMacro(item.Name);
     }
 
-    /// <summary>Cancels every tracked run of this macro (normally at most one).</summary>
+    /// <summary>Отменяет все отслеживаемые прогоны этого макроса (обычно их не больше одного).</summary>
     public async Task StopAsync(MacroListItemViewModel item)
     {
         ArgumentNullException.ThrowIfNull(item);
@@ -1187,9 +1226,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    // ---- editing commands -----------------------------------------------------------
+    // ---- команды правки ---------------------------------------------------------------
 
-    /// <summary>Appends a trigger row of the given kind.</summary>
+    /// <summary>Дописывает строку триггера заданного вида.</summary>
     public TriggerRowViewModel AddTrigger(MacroTriggerKind kind)
     {
         var row = TriggerRowViewModel.Create(kind);
@@ -1197,21 +1236,22 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         return row;
     }
 
-    /// <summary>Removes a trigger row.</summary>
+    /// <summary>Убирает строку триггера.</summary>
     public void RemoveTrigger(TriggerRowViewModel row) => Triggers.Remove(row);
 
-    /// <summary>Appends a node of the given kind with a freshly generated id.</summary>
+    /// <summary>Дописывает ноду заданного вида со свежесгенерированным id.</summary>
     public NodeRowViewModel AddNode(MacroNodeKind kind)
     {
         var row = NodeRowViewModel.Create(kind, NextNodeId());
-        // Placed before it joins the list, so the free-slot scan does not see itself.
+        // Размещаем до того, как она попадёт в список, — так поиск свободного места не увидит
+        // саму себя.
         var (x, y) = MacroGraphLayout.NextFreeSlot(Nodes);
         row.SetPosition(x, y);
         AttachNode(row);
         Nodes.Add(row);
 
-        // First node of an empty graph becomes the start node — otherwise the very first
-        // thing the user sees after adding one is a validation error about a missing start.
+        // Первая нода пустого графа становится стартовой — иначе самое первое, что пользователь
+        // увидит после её добавления, будет ошибка валидации об отсутствующем старте.
         if (Nodes.Count == 1)
         {
             _startNodeId = row.NodeId;
@@ -1226,9 +1266,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Removes a node and repairs the graph around it: every edge that pointed at it
-    /// becomes "end of run", and a start node that pointed at it moves to whatever node
-    /// is left (nothing, if the graph is now empty).
+    /// Убирает ноду и чинит граф вокруг неё: каждое ребро, указывавшее на неё, становится
+    /// «концом прогона», а стартовая нода, если она указывала туда же, переезжает на любую
+    /// оставшуюся (ни на какую, если граф теперь пуст).
     /// </summary>
     public void DeleteNode(NodeRowViewModel row)
     {
@@ -1237,6 +1277,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
         DetachNode(row);
 
         using (SuspendEdgeRebuild())
@@ -1249,6 +1290,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                     edge.TargetId = string.Empty;
                 }
             }
+
             if (string.Equals(_startNodeId, removedId, StringComparison.Ordinal))
             {
                 _startNodeId = Nodes.Count > 0 ? Nodes[0].NodeId : string.Empty;
@@ -1258,15 +1300,18 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 SelectedNode = null;
             }
+
             RebuildChoices();
         }
+
         OnPropertyChanged(nameof(StartNodeId));
-        // The deleted node may have carried a breakpoint or been a variable's only writer.
+        // На удалённой ноде могла стоять точка останова, а могла она быть единственным местом,
+        // где переменную записывают.
         PushBreakpoints();
         RebuildVariables();
     }
 
-    /// <summary>Highlights the node an issue refers to.</summary>
+    /// <summary>Подсвечивает ноду, о которой говорит замечание.</summary>
     public void SelectIssue(ValidationIssueViewModel issue)
     {
         ArgumentNullException.ThrowIfNull(issue);
@@ -1274,12 +1319,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
         SelectedNode = Nodes.FirstOrDefault(node => string.Equals(node.NodeId, issue.NodeId, StringComparison.Ordinal));
     }
 
-    // ---- save -----------------------------------------------------------------------
+    // ---- сохранение ---------------------------------------------------------------------
 
-    /// <summary>Builds the model graph from the current editor state. Lenient — never throws on bad input.</summary>
+    /// <summary>Собирает граф модели из текущего состояния редактора. Снисходителен — на плохом вводе не бросает никогда.</summary>
     public MacroGraph BuildGraph() => new()
     {
         Name = _macroName.Trim(),
@@ -1288,19 +1334,20 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         Nodes = [.. Nodes.Select(row => row.ToNode())],
     };
 
-    /// <summary><c>true</c> when the editor state differs from what was last loaded or saved.</summary>
+    /// <summary><c>true</c>, когда состояние редактора отличается от последнего загруженного или сохранённого.</summary>
     public bool IsDirty() =>
         HasOpenMacro && !string.Equals(_loadedJson, SerializeCurrent(), StringComparison.Ordinal);
 
     /// <summary>
-    /// Validates and persists the open graph.
+    /// Проверяет открытый граф и сохраняет его.
     ///
-    /// Two gates, in order: every row's own fields must parse (checked here — the daemon
-    /// never sees a half-typed number, only the graph it produces), and then the daemon's
-    /// <c>SaveMacro</c> must come back with an empty issue list. A non-empty one means
-    /// nothing was written and carries the reasons, including the file-name check.
+    /// Два заслона, по порядку: сперва должны разобраться собственные поля каждой строки (это
+    /// проверяется здесь — демон недонабранного числа не видит никогда, только получившийся из
+    /// него граф), а затем демонский <c>SaveMacro</c> должен вернуться с пустым списком
+    /// замечаний. Непустой означает, что не записали ничего, и несёт причины, включая проверку
+    /// имени файла.
     /// </summary>
-    /// <returns><c>false</c> when nothing was written; <see cref="Issues"/> explains why.</returns>
+    /// <returns><c>false</c>, когда ничего не записано; почему — объясняет <see cref="Issues"/>.</returns>
     public async Task<bool> SaveAsync(CancellationToken cancellationToken = default)
     {
         ClearIssues();
@@ -1319,6 +1366,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             AddIssue(new ValidationIssueViewModel(error, isError: true));
         }
+
         if (inputErrors.Count > 0)
         {
             ErrorMessage = "Сохранение отменено: исправьте ошибки.";
@@ -1328,9 +1376,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         var graph = BuildGraph();
         var name = graph.Name;
 
-        // Baselines move BEFORE the request: the daemon broadcasts MacrosChanged from inside
-        // its save, on the event pump rather than the response path, so the echo can reach
-        // us first — and the hot-reload handler has to recognise it as ours.
+        // Опорные значения сдвигаются ДО запроса: демон рассылает MacrosChanged изнутри своего
+        // сохранения, по насосу событий, а не по пути ответа, — так что эхо способно дойти до
+        // нас первым, и обработчик горячей перезагрузки обязан опознать его как наше.
         var previousName = _loadedName;
         var previousLoadedJson = _loadedJson;
         var previousDiskJson = _diskJson;
@@ -1360,7 +1408,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         if (rejected is { Length: > 0 })
         {
-            // Refused — nothing was written, so the editor stays exactly as dirty as it was.
+            // Отказали — записано ничего не было, так что несохранённых правок в редакторе
+            // остаётся ровно столько же, сколько и было.
             _loadedName = previousName;
             _loadedJson = previousLoadedJson;
             _diskJson = previousDiskJson;
@@ -1368,19 +1417,21 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 AddIssue(new ValidationIssueViewModel(issue.ToIssue()));
             }
+
             ErrorMessage = "Сохранение отменено: исправьте ошибки.";
             return false;
         }
 
         if (previousName is not null && !string.Equals(previousName, name, StringComparison.Ordinal))
         {
-            // Rename: the name IS the file stem, so the old file has to go. Order matters —
-            // write first, delete second, so a failure in between leaves two copies rather
-            // than none.
+            // Переименование: имя И ЕСТЬ основа имени файла, поэтому старый файл должен уйти.
+            // Порядок важен — сперва записать, потом удалить, чтобы сбой между этими шагами
+            // оставил две копии, а не ноль.
             try
             {
                 await _client
-                    .RequestAsync(IpcMessageTypes.DeleteMacro, new DeleteMacroRequest(previousName), cancellationToken: cancellationToken)
+                    .RequestAsync(IpcMessageTypes.DeleteMacro, new DeleteMacroRequest(previousName),
+                        cancellationToken: cancellationToken)
                     .ConfigureAwait(true);
             }
             catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
@@ -1389,9 +1440,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             }
         }
 
-        // A successful save returns an EMPTY list by protocol, warnings included — so they
-        // are re-derived here with the same validator the daemon ran. Errors cannot appear:
-        // the daemon would have refused the write.
+        // Удачное сохранение по протоколу возвращает ПУСТОЙ список, предупреждения в том числе,
+        // — поэтому их выводят здесь заново тем же валидатором, который гонял демон. Ошибок тут
+        // появиться не может: демон бы отказал в записи.
         foreach (var issue in MacroGraphValidator.Validate(graph))
         {
             if (issue.Severity != ValidationSeverity.Error)
@@ -1409,18 +1460,19 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         return true;
     }
 
-    /// <summary>Discards local edits and re-reads the open macro from the library snapshot.</summary>
+    /// <summary>Отбрасывает локальные правки и перечитывает открытый макрос из снимка библиотеки.</summary>
     public void ReloadFromDisk()
     {
         if (_loadedName is null || TryGet(_loadedName) is not { } graph)
         {
             return;
         }
+
         LoadGraph(graph);
         StatusMessage = "Перезагружено с диска.";
     }
 
-    /// <summary>Loads a graph into the right pane.</summary>
+    /// <summary>Загружает граф в правую панель.</summary>
     public void LoadGraph(MacroGraph graph)
     {
         ArgumentNullException.ThrowIfNull(graph);
@@ -1429,6 +1481,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             DetachNode(row);
         }
+
         Nodes.Clear();
         Triggers.Clear();
         ClearIssues();
@@ -1439,6 +1492,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             Triggers.Add(TriggerRowViewModel.FromTrigger(trigger));
         }
+
         using (SuspendEdgeRebuild())
         {
             foreach (var node in graph.Nodes)
@@ -1452,17 +1506,19 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             HasOpenMacro = true;
             RebuildChoices();
 
-            // Graphs written before the canvas existed carry no coordinates. Laying them
-            // out HERE rather than on first paint means the baseline below is taken with
-            // the positions already in it, so opening an old macro does not read as an
-            // unsaved edit — but saving it for any other reason does persist the layout.
+            // Графы, написанные до появления canvas, координат не несут. Раскладывая их ЗДЕСЬ,
+            // а не при первой отрисовке, мы берём опорное значение ниже уже вместе с
+            // положениями, — поэтому открытие старого макроса не читается как несохранённая
+            // правка, но сохранение его по любому другому поводу раскладку записывает.
             MacroGraphLayout.EnsurePositions(Nodes, _startNodeId);
         }
+
         OnPropertyChanged(nameof(StartNodeId));
         ResetView();
 
-        // Baseline for "dirty" is the editor's own round-trip, not the file: loading
-        // normalises a few shapes, and that normalisation is not a user edit.
+        // Опора для «есть несохранённые правки» — собственный round trip редактора, а не файл:
+        // загрузка нормализует пару-тройку форм, и эта нормализация правкой пользователя не
+        // является.
         _loadedJson = SerializeCurrent();
         _diskJson = MacroGraphJson.Serialize(graph);
         ChangedOnDisk = false;
@@ -1471,28 +1527,30 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         StatusMessage = null;
         SyncCurrentFlags();
 
-        // Dots first, so the boxes are already marked when the picker below lights one.
+        // Сперва точки — чтобы к моменту, когда переключатель ниже зажжёт коробку, она уже была
+        // помечена.
         ApplyBreakpointsToRows();
         RebuildVariables();
 
-        // Last, because it can light a box: the picker is re-derived for THIS graph, and if
-        // it is being walked right now the canvas picks the run up mid-flight.
+        // Последним, потому что он способен зажечь коробку: переключатель пересобирается для
+        // ЭТОГО графа, и если по нему прямо сейчас идут, canvas подхватит прогон на лету.
         RebuildRuns();
     }
 
-    // ---- hotkey suspension ----------------------------------------------------------
+    // ---- приостановка хоткеев -----------------------------------------------------------
 
     /// <summary>
-    /// Switches the daemon's global hotkeys off. Must be called before the hotkey picker can
-    /// work at all — see <see cref="IHotkeySuspension"/>. WHEN it is called is the shell's
-    /// decision (D2 scopes it to the «Макросы» mode being on screen); this VM only forwards.
+    /// Выключает глобальные хоткеи демона. Без этого вызова ловушка хоткея не работает вовсе —
+    /// см. <see cref="IHotkeySuspension"/>. КОГДА его делать, решает оболочка (D2 привязала это
+    /// к тому, что режим «Макросы» на экране); эта VM лишь пробрасывает.
     /// </summary>
     public Task SuspendHotkeysAsync() => _hotkeys?.SuspendAsync() ?? Task.CompletedTask;
 
     /// <summary>
-    /// Restores global hotkeys from the (possibly just-edited) library, then asks which of
-    /// them Windows refused. The order matters: <c>ResumeHotkeys</c> only answers once every
-    /// <c>RegisterHotKey</c> has been attempted, so the failure list is settled by then.
+    /// Возвращает глобальные хоткеи из (возможно, только что отредактированной) библиотеки, а
+    /// затем спрашивает, в каких из них Windows отказала. Порядок важен:
+    /// <c>ResumeHotkeys</c> отвечает лишь после того, как испробован каждый
+    /// <c>RegisterHotKey</c>, — так что к этому моменту список отказов уже устоялся.
     /// </summary>
     public async Task ResumeHotkeysAsync()
     {
@@ -1500,29 +1558,30 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
         await _hotkeys.ResumeAsync().ConfigureAwait(false);
         await RefreshHotkeyFailuresAsync().ConfigureAwait(false);
     }
 
-    // ---- run-event subscription -----------------------------------------------------
+    // ---- подписка на события прогона -----------------------------------------------------
 
     /// <summary>
-    /// Asks the daemon to start (or stop) streaming run events to this connection.
+    /// Просит демон начать (или прекратить) слать события прогона в это соединение.
     ///
-    /// Scoped by the shell to the «Макросы» mode being on screen, exactly like hotkey
-    /// suspension: the stream is the only high-rate thing in the protocol, and the daemon
-    /// produces nothing at all while nobody is subscribed. A panel sitting in «Окна» must
-    /// not make the engine format a detail string for every node of every macro.
+    /// Оболочка привязывает это к тому, что режим «Макросы» на экране, — ровно как и
+    /// приостановку хоткеев: поток здесь единственное частое в протоколе, а пока никто не
+    /// подписан, демон не производит вообще ничего. Панель, стоящая в «Окнах», не должна
+    /// заставлять движок форматировать строку подробностей для каждой ноды каждого макроса.
     ///
-    /// The reply is the set of walks ALREADY in flight. They are adopted with
-    /// <c>FromStart = false</c>, which is what puts «начало прогона не записано» on the
-    /// strip instead of quietly showing a beheaded log.
+    /// В ответ приходит набор обходов, УЖЕ идущих в полёте. Их принимают с
+    /// <c>FromStart = false</c>, и именно это выводит на полосу «начало прогона не записано»,
+    /// вместо того чтобы молча показать обезглавленный лог.
     /// </summary>
     public async Task SetRunEventSubscriptionAsync(bool enabled, CancellationToken cancellationToken = default)
     {
         _wantsRunEvents = enabled;
-        // Marshalled: the reconnect path calls this from the client's thread-pool thread,
-        // and a property raise from there reaches a binding off the UI thread.
+        // Перекладываем в поток UI: путь переподключения зовёт это из потока пула у клиента, а
+        // поднятое оттуда уведомление доходит до привязки мимо потока UI.
         _dispatcher.Post(() => OnPropertyChanged(nameof(RunLogEmptyText)));
 
         try
@@ -1538,8 +1597,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
         {
-            // A canvas without a live highlight is still a usable editor, so this is a
-            // warning rather than a visible failure.
+            // Canvas без живой подсветки — всё ещё пригодный редактор, поэтому здесь
+            // предупреждение, а не видимый пользователю отказ.
             Log.Warning(ex, "Не удалось {Action} поток событий прогона", enabled ? "включить" : "выключить");
         }
     }
@@ -1553,6 +1612,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             row.PropertyChanged -= OnTriggerRowChanged;
         }
+
         _watchedTriggers.Clear();
         foreach (var row in Nodes)
         {
@@ -1560,12 +1620,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    // ---- hotkey conflicts (mockup 1f, fourth state) -----------------------------------
+    // ---- конфликты хоткеев (макет 1f, четвёртое состояние) ------------------------------
 
     private readonly HashSet<HotkeyTriggerRowViewModel> _watchedTriggers = [];
 
-    // Reconciled rather than driven off the event's Old/NewItems: Clear() raises a Reset
-    // with neither, and LoadGraph clears before it refills.
+    // Сверяем целиком, а не пляшем от Old/NewItems события: Clear() поднимает Reset без того и
+    // другого, а LoadGraph очищает список перед тем, как заново его наполнить.
     private void OnTriggersCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         var current = Triggers.OfType<HotkeyTriggerRowViewModel>().ToHashSet();
@@ -1574,39 +1634,42 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             row.PropertyChanged -= OnTriggerRowChanged;
             _watchedTriggers.Remove(row);
         }
+
         foreach (var row in current.Except(_watchedTriggers).ToList())
         {
             row.PropertyChanged += OnTriggerRowChanged;
             _watchedTriggers.Add(row);
         }
+
         RefreshHotkeyConflicts();
     }
 
     private void OnTriggerRowChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // Conflict/HasConflict are what this method WRITES; reacting to them would be a
-        // (terminating, but pointless) loop through the whole library on every assignment.
+        // Conflict и HasConflict — это то, что данный метод ПИШЕТ; реагировать на них значило бы
+        // на каждое присваивание уходить в (конечный, но бессмысленный) круг по всей библиотеке.
         if (e.PropertyName is nameof(HotkeyTriggerRowViewModel.Conflict)
             or nameof(HotkeyTriggerRowViewModel.HasConflict))
         {
             return;
         }
+
         RefreshHotkeyConflicts();
     }
 
     /// <summary>
-    /// Recomputes both halves of "this hotkey will not work": the library clash the panel
-    /// can see on its own, and the registration Windows refused.
+    /// Пересчитывает обе половины «этот хоткей не сработает»: столкновение внутри библиотеки,
+    /// которое панель видит сама, и регистрацию, в которой отказала Windows.
     ///
-    /// Order is deliberate. A chord claimed by another macro is reported as that, even when
-    /// the daemon ALSO failed to register it — the two are the same event (the daemon
-    /// registers the first claimant and Windows rejects the second), and «уже занят
-    /// pw-immunity» names the thing the user can actually fix.
+    /// Порядок намеренный. Сочетание, забранное другим макросом, так и объявляется — даже когда
+    /// демону ТАКЖЕ не удалось его зарегистрировать: это одно и то же событие (демон
+    /// регистрирует первого претендента, а второго Windows отвергает), и «уже занят
+    /// pw-immunity» называет ровно то, что пользователь в силах исправить.
     /// </summary>
     private void RefreshHotkeyConflicts()
     {
-        // Who else in the library owns a chord. The open macro is skipped: its triggers are
-        // the ROWS, which may already differ from what is on disk.
+        // Кто ещё в библиотеке владеет сочетанием. Открытый макрос пропускаем: его триггеры —
+        // это СТРОКИ, которые могут уже отличаться от того, что лежит на диске.
         var owners = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var macro in _library)
         {
@@ -1614,6 +1677,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 continue;
             }
+
             foreach (var trigger in macro.Triggers.OfType<HotkeyTrigger>())
             {
                 if (HotkeyTriggerRowViewModel.ChordKey(trigger) is { } key)
@@ -1623,10 +1687,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             }
         }
 
-        // Registration failures that belong to the macro being edited. Matching on the macro
-        // NAME as well as the chord matters: when two macros share a chord the daemon
-        // registers one and rejects the other, and the winner must not be told its own key
-        // is taken.
+        // Отказы регистрации, относящиеся к правимому сейчас макросу. Сопоставление по ИМЕНИ
+        // макроса, а не только по сочетанию, тут важно: когда сочетание делят два макроса,
+        // демон регистрирует один и отвергает другой, и победителю нельзя говорить, что его
+        // собственная клавиша занята.
         var refusedHere = new HashSet<string>(StringComparer.Ordinal);
         foreach (var failure in _hotkeyFailures)
         {
@@ -1642,7 +1706,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             var key = row.ChordKey();
             if (key is null)
             {
-                // Nothing bound yet — an empty picker clashes with nothing.
+                // Пока ничего не привязано — пустая ловушка ни с чем не сталкивается.
                 row.Conflict = null;
             }
             else if (owners.TryGetValue(key, out var other))
@@ -1662,8 +1726,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         RefreshLibraryHotkeyProblems();
     }
 
-    // The library rows carry the same news for macros nobody has opened — the case where a
-    // hotkey died at daemon startup and there is otherwise nothing on screen to say so.
+    // Строки библиотеки несут ту же новость для макросов, которых никто не открывал, — на тот
+    // случай, когда хоткей умер при старте демона и сказать об этом на экране больше нечему.
     private void RefreshLibraryHotkeyProblems()
     {
         var byMacro = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -1681,7 +1745,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    // ---- internals ------------------------------------------------------------------
+    // ---- внутренности --------------------------------------------------------------------
 
     private MacroGraph? TryGet(string name) =>
         _library.FirstOrDefault(macro => string.Equals(macro.Name, name, StringComparison.Ordinal));
@@ -1690,9 +1754,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     {
         _ = RefreshAsync();
 
-        // Subscriptions do NOT survive a reconnect — the daemon forgets a connection's flag
-        // with the connection — and whatever ran during the gap is unrecoverable. So the
-        // history goes, and the subscription is re-sent.
+        // Подписки переподключение НЕ переживают — флаг соединения демон забывает вместе с самим
+        // соединением, — а то, что успело отработать за время разрыва, не восстановить. Поэтому
+        // историю выбрасываем, а подписку отправляем заново.
         _dispatcher.Post(ClearRunLog);
         if (_wantsRunEvents)
         {
@@ -1706,20 +1770,20 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             case IpcMessageTypes.RunEvents:
             {
-                // Read off the reader thread, applied on the UI thread: the payload is a
-                // batch precisely so this happens a handful of times per run rather than
-                // hundreds.
+                // Читаем в потоке чтения, применяем в потоке UI: нагрузка потому и приходит
+                // пачкой, чтобы это случалось несколько раз за прогон, а не сотни.
                 var batch = IpcJson.Read<RunEventBatch>(evt.Payload);
                 if (batch is not null)
                 {
                     _dispatcher.Post(() => ApplyRunEvents(batch));
                 }
+
                 break;
             }
 
             case IpcMessageTypes.MacrosChanged:
-                // Payloadless by protocol — the library can be large, so the daemon says
-                // "something changed" and we go and get it.
+                // По протоколу без нагрузки — библиотека бывает большой, поэтому демон говорит
+                // «что-то изменилось», а мы идём и забираем.
                 _ = ReloadLibraryAsync();
                 break;
 
@@ -1732,13 +1796,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 });
                 break;
 
-            // Both carry the window's FULL new state, so one upsert serves both.
+            // Оба несут ПОЛНОЕ новое состояние окна, так что одна вставка-обновление годится для
+            // обоих.
             case IpcMessageTypes.WindowAppeared:
             case IpcMessageTypes.WindowTagsChanged:
                 if (IpcJson.Read<WindowDto>(evt.Payload) is { } window)
                 {
                     _dispatcher.Post(() => Windows.Upsert(window));
                 }
+
                 break;
 
             case IpcMessageTypes.WindowClosed:
@@ -1746,6 +1812,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 {
                     _dispatcher.Post(() => Windows.Remove(closed.Hwnd));
                 }
+
                 break;
 
             default:
@@ -1753,11 +1820,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    // ---- run events -----------------------------------------------------------------
+    // ---- события прогона ------------------------------------------------------------------
 
     /// <summary>
-    /// Applies one batch. Everything here runs on the UI thread and touches only walks —
-    /// the graph itself is never modified by a run.
+    /// Применяет одну пачку. Всё здесь исполняется в потоке UI и трогает только обходы — сам
+    /// граф прогон не меняет никогда.
     /// </summary>
     private void ApplyRunEvents(RunEventBatch batch)
     {
@@ -1774,14 +1841,16 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             var run = _runs.Apply(evt);
             if (run is null || !IsOpenMacro(run.MacroName))
             {
-                // A walk of some OTHER graph — tracked (so opening that graph shows its log)
-                // but nothing on screen changes.
+                // Обход ДРУГОГО графа — его отслеживают (чтобы при открытии того графа его лог
+                // был на месте), но на экране не меняется ничего.
                 continue;
             }
+
             if (evt.Kind == RunEventKind.WalkStarted)
             {
                 listChanged = true;
             }
+
             if (ReferenceEquals(run, _selectedRun))
             {
                 SyncSelectedRunState(evt);
@@ -1794,7 +1863,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    // The selected walk moved: mirror its log into the strip and its position onto the canvas.
+    // Выбранный обход сдвинулся: отражаем его лог в полосу, а его положение — на canvas.
     private void SyncSelectedRunState(RunEventDto evt)
     {
         switch (evt.Kind)
@@ -1804,8 +1873,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 SyncExecutingNode();
                 break;
             case RunEventKind.NodeExited:
-                // The row object is mutated in place, so the strip already shows it — but the
-                // BOX now has a tick and a time, which lives on the node row.
+                // Объект строки меняется на месте, поэтому полоса это уже показывает, — но у
+                // КОРОБКИ теперь галочка и время, а они живут на строке ноды.
                 SyncNodeRunState();
                 RefreshDebugState();
                 break;
@@ -1827,9 +1896,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Takes over the walks that were already running when we subscribed. They are the
-    /// daemon's answer to <c>SubscribeRunEvents</c> and carry no log at all, which is
-    /// exactly what <c>FromStart = false</c> is there to admit.
+    /// Принимает под опеку обходы, которые шли уже на момент подписки. Это ответ демона на
+    /// <c>SubscribeRunEvents</c>, и лога они не несут вовсе, — ровно в этом и признаётся
+    /// <c>FromStart = false</c>.
     /// </summary>
     private void AdoptLiveWalks(IReadOnlyList<RunWalkDto> live)
     {
@@ -1837,16 +1906,18 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
         foreach (var walk in live)
         {
             _runs.Add(walk);
         }
+
         RebuildRuns();
     }
 
     /// <summary>
-    /// Re-derives the picker for the open macro and re-applies the selection rule. Called
-    /// whenever the set of walks changes or a different graph is opened.
+    /// Пересобирает переключатель для открытого макроса и заново применяет правило выбора.
+    /// Вызывается всякий раз, когда меняется набор обходов или открывают другой граф.
     /// </summary>
     private void RebuildRuns()
     {
@@ -1857,14 +1928,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             Runs.Add(run);
         }
+
         OnPropertyChanged(nameof(HasRuns));
 
-        // Keep the selection when it is still valid; otherwise follow whatever is alive —
-        // and never steal the selection off a walk that is still running.
+        // Сохраняем выбор, пока он ещё в силе; иначе следуем за тем, что живо, — и никогда не
+        // отбираем выбор у обхода, который ещё идёт.
         if (_selectedRun is not null && Runs.Contains(_selectedRun) && _selectedRun.IsLive)
         {
             OnPropertyChanged(nameof(RunPositionText));
-            // A sibling of the same run may have started or ended, and ■ Стоп ×N counts them.
+            // Собрат по тому же прогону мог начаться или закончиться, а «■ Стоп ×N» их считает.
             RefreshDebugState();
             return;
         }
@@ -1875,6 +1947,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             SelectedRun = newest;
             return;
         }
+
         OnPropertyChanged(nameof(RunPositionText));
         RefreshDebugState();
     }
@@ -1889,6 +1962,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 RunLog.Add(row);
             }
         }
+
         OnPropertyChanged(nameof(HasRunLog));
         OnPropertyChanged(nameof(RunLogNotice));
         OnPropertyChanged(nameof(HasRunLogNotice));
@@ -1902,12 +1976,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Mirrors the selected walk onto the boxes: dimmed-with-a-tick for what it has been
-    /// through, "parked" for where it is standing.
+    /// Отражает выбранный обход на коробки: притушено с галочкой — там, где он прошёл,
+    /// «припаркован» — там, где стоит.
     ///
-    /// Wholesale rather than incrementally, because the source of truth is one walk and the
-    /// selection can change under it — an incremental update would leave the previous walk's
-    /// ticks on the graph when the picker moves.
+    /// Целиком, а не по частям, потому что источник истины — один обход, а выбор способен
+    /// смениться под ним: пошаговое обновление оставило бы на графе галочки предыдущего обхода,
+    /// когда переключатель уедет.
     /// </summary>
     private void SyncNodeRunState()
     {
@@ -1927,18 +2001,19 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 node.PassedOutcome = null;
             }
         }
+
         SyncVariableValues();
     }
 
-    // ---- variables ------------------------------------------------------------------
+    // ---- переменные ---------------------------------------------------------------------
 
     /// <summary>
-    /// Re-runs the static analysis over the open graph and re-attaches whatever live values
-    /// the selected walk has reported.
+    /// Заново прогоняет статический анализ по открытому графу и подцепляет обратно те живые
+    /// значения, о которых сообщил выбранный обход.
     ///
-    /// Called whenever the graph's SHAPE or a node's parameters change — typing <c>{tag}</c>
-    /// into an icon path adds a reader, and the panel has to show it before the macro has
-    /// ever been run. Cheap: a macro is tens of nodes.
+    /// Вызывается всякий раз, когда меняется ФОРМА графа или параметры ноды: набранный в пути к
+    /// иконке <c>{tag}</c> добавляет читателя, и панель обязана показать его ещё до того, как
+    /// макрос хоть раз запускали. Дёшево: в макросе десятки нод.
     /// </summary>
     private void RebuildVariables()
     {
@@ -1952,12 +2027,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 Variables.Add(new MacroVariableRowViewModel(info));
             }
         }
+
         OnPropertyChanged(nameof(HasVariables));
         OnPropertyChanged(nameof(VariableCountText));
         SyncVariableValues();
 
-        // A rebuild triggered by a keystroke must not drop a highlight the pointer is still
-        // sitting on; re-derive it against the new cards instead.
+        // Пересборка, запущенная нажатием клавиши, не имеет права уронить подсветку, на которой
+        // указатель всё ещё стоит; вместо этого выводим её заново по новым карточкам.
         HighlightVariable(hovered is null
             ? null
             : Variables.FirstOrDefault(row => string.Equals(row.RawName, hovered, StringComparison.Ordinal)));
@@ -1973,39 +2049,21 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    // ---- breakpoints ----------------------------------------------------------------
+    // ---- точки останова ------------------------------------------------------------------
 
-    // What the daemon holds, by macro. Kept so opening a graph can restore its dots without
-    // a round trip, and so a rename does not lose the other macros' sets.
+    // Что держит у себя демон, по макросам. Хранится, чтобы открытие графа возвращало его точки
+    // без round trip и чтобы переименование не теряло наборы остальных макросов.
     private readonly Dictionary<string, IReadOnlyList<string>> _breakpoints = new(StringComparer.Ordinal);
 
-    // Set while the daemon's answer is being written onto the rows, so applying it does not
-    // bounce straight back out as a SetBreakpoints.
+    // Поднят, пока ответ демона переносится на строки, — чтобы его применение не отскочило тут
+    // же обратно в виде SetBreakpoints.
     private bool _applyingBreakpoints;
 
-    private async Task RefreshBreakpointsAsync()
-    {
-        try
-        {
-            var sets = await _client
-                .RequestAsync<BreakpointSetDto[]>(IpcMessageTypes.GetBreakpoints)
-                .ConfigureAwait(false);
-            _dispatcher.Post(() =>
-            {
-                _breakpoints.Clear();
-                foreach (var set in sets ?? [])
-                {
-                    _breakpoints[set.MacroName] = set.NodeIds;
-                }
-                ApplyBreakpointsToRows();
-            });
-        }
-        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
-        {
-            Log.Warning(ex, "Не удалось получить брейкпоинты");
-        }
-    }
-
+    // Отдельного «перечитать точки останова» здесь нет намеренно, хотя от D5 такой метод
+    // оставался. Точки живут в сеансе демона, но ставит их только панель, так что её копия и
+    // есть источник правды всё время, пока соединение живо; единственный момент, когда она
+    // может разойтись с демоном, — переподключение, и его закрывает RefreshAsync, читающий
+    // GetBreakpoints вместе с остальным снимком.
     private void ApplyBreakpointsToRows()
     {
         var wanted = _loadedName is not null && _breakpoints.TryGetValue(_loadedName, out var ids)
@@ -2024,6 +2082,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             _applyingBreakpoints = false;
         }
+
         OnPropertyChanged(nameof(HasBreakpoints));
     }
 
@@ -2031,10 +2090,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     {
         if (_applyingBreakpoints || _loadedName is null)
         {
-            // A draft has no name to key on yet. Its dots stay local until it is saved, at
-            // which point LoadGraph's push sends them.
+            // У черновика ещё нет имени, по которому можно ключеваться. Его точки остаются
+            // местными до сохранения, а тогда их отправит пуш из LoadGraph.
             return;
         }
+
         var ids = BreakpointNodeIds;
         _breakpoints[_loadedName] = ids;
         OnPropertyChanged(nameof(HasBreakpoints));
@@ -2061,13 +2121,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
         var index = Runs.IndexOf(_selectedRun);
         if (index < 0)
         {
             return;
         }
-        // Wraps: with ten walks in a fan-out, paging off one end and having to turn around
-        // is the wrong feel for a two-arrow chip.
+
+        // По кругу: когда в веере десять обходов, упереться в край и разворачиваться обратно —
+        // не то ощущение, которого ждёшь от чипа с двумя стрелками.
         SelectedRun = Runs[((index + delta) % Runs.Count + Runs.Count) % Runs.Count];
     }
 
@@ -2085,17 +2147,18 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             Log.Warning(ex, "Не удалось перечитать библиотеку макросов");
         }
+
         await RefreshHotkeyFailuresAsync().ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Re-reads which chords the daemon failed to register.
+    /// Перечитывает, какие сочетания демону не удалось зарегистрировать.
     ///
-    /// A pull, and these are its three moments: a reconnect, a library change, and the
-    /// return of <see cref="ResumeHotkeysAsync"/>. The last one is the load-bearing one —
-    /// while the «Макросы» mode is open the daemon holds every chord unregistered, so a
-    /// hotkey bound in the editor is only ever tried when the user leaves the mode, and the
-    /// verdict lands the moment <c>ResumeHotkeys</c> answers.
+    /// Это запрос по требованию, и моментов у него три: переподключение, изменение библиотеки и
+    /// возврат из <see cref="ResumeHotkeysAsync"/>. Последний — несущий: пока открыт режим
+    /// «Макросы», демон держит все сочетания незарегистрированными, так что хоткей, привязанный
+    /// в редакторе, пробуют только на выходе из режима, и приговор приходит ровно в тот миг,
+    /// когда отвечает <c>ResumeHotkeys</c>.
     /// </summary>
     private async Task RefreshHotkeyFailuresAsync()
     {
@@ -2122,7 +2185,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         if (!HasOpenMacro || _loadedName is null)
         {
-            return; // nothing open, or an unsaved draft with no file to track
+            return; // ничего не открыто либо это несохранённый черновик, за файлом которого следить нечего
         }
 
         var onDisk = macros.FirstOrDefault(m => string.Equals(m.Name, _loadedName, StringComparison.Ordinal));
@@ -2136,12 +2199,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         var json = MacroGraphJson.Serialize(onDisk);
         if (string.Equals(json, _diskJson, StringComparison.Ordinal))
         {
-            return; // our own write echoing back, or an unrelated file changed
+            return; // это отзвук нашей же записи либо изменился посторонний файл
         }
 
         if (IsDirty())
         {
-            // Never clobber unsaved work — flag it and let the user pick a side.
+            // Несохранённую работу не затираем никогда — поднимаем флаг и даём пользователю
+            // выбрать сторону.
             _diskJson = json;
             ChangedOnDisk = true;
             return;
@@ -2156,18 +2220,21 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _library = macros;
         RebuildLibrary(macros);
         RefreshRunState();
-        // A macro that just took (or gave up) a chord changes what every open picker is
-        // clashing with, and RebuildLibrary made new row objects that need their markers.
+        // Макрос, только что занявший (или отпустивший) сочетание, меняет то, с чем сталкивается
+        // каждая открытая ловушка, а RebuildLibrary наделала новых объектов строк, которым нужны
+        // их отметки.
         RefreshHotkeyConflicts();
     }
 
-    // The written graph replaces (or joins) the snapshot immediately, and a rename drops the
-    // old entry, so the list and the selection are correct before MacrosChanged arrives.
+    // Записанный граф сразу же заменяет запись в снимке (или добавляется к ним), а
+    // переименование выбрасывает старую, — поэтому список и выделение верны ещё до прихода
+    // MacrosChanged.
     private IReadOnlyList<MacroGraph> MergeSaved(MacroGraph graph, string? renamedFrom)
     {
         var next = _library
             .Where(macro => !string.Equals(macro.Name, graph.Name, StringComparison.Ordinal)
-                            && (renamedFrom is null || !string.Equals(macro.Name, renamedFrom, StringComparison.Ordinal)))
+                            && (renamedFrom is null ||
+                                !string.Equals(macro.Name, renamedFrom, StringComparison.Ordinal)))
             .Append(graph)
             .OrderBy(macro => macro.Name, StringComparer.Ordinal)
             .ToList();
@@ -2176,9 +2243,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     private void RebuildLibrary(IReadOnlyList<MacroGraph> macros)
     {
-        // Prefer the OPEN macro over the currently highlighted row: after saving a new
-        // macro the list is rebuilt from a posted event, and keying on the old selection
-        // would drop the highlight off the very macro the user is editing.
+        // ОТКРЫТЫЙ макрос предпочтительнее подсвеченной сейчас строки: после сохранения нового
+        // макроса список пересобирается из отложенного события, и опора на прежнее выделение
+        // сняла бы подсветку ровно с того макроса, который пользователь правит.
         var previous = _loadedName ?? _selectedMacro?.Name;
         _suppressSelectionReload = true;
         try
@@ -2188,6 +2255,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 Macros.Add(new MacroListItemViewModel(macro));
             }
+
             SelectedMacro = previous is null
                 ? null
                 : Macros.FirstOrDefault(item => string.Equals(item.Name, previous, StringComparison.Ordinal));
@@ -2205,8 +2273,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private void RebuildMacroChoices(IReadOnlyList<MacroGraph> macros)
     {
         var names = macros.Select(m => m.Name).ToList();
-        // Keep a reference to a macro that no longer exists selectable, so opening a graph
-        // whose sub-macro was deleted doesn't silently blank the reference.
+        // Ссылку на несуществующий больше макрос оставляем выбираемой, чтобы открытие графа,
+        // чей вложенный макрос удалили, не обнуляло эту ссылку молча.
         foreach (var row in Nodes.OfType<RunMacroNodeRowViewModel>())
         {
             if (row.MacroName.Length > 0 && !names.Contains(row.MacroName, StringComparer.Ordinal))
@@ -2214,6 +2282,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 names.Add(row.MacroName);
             }
         }
+
         Replace(MacroChoices, names);
     }
 
@@ -2247,6 +2316,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             DetachNode(row);
         }
+
         Nodes.Clear();
         Triggers.Clear();
         CanvasEdges.Clear();
@@ -2263,8 +2333,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         RebuildChoices();
         SyncCurrentFlags();
         RebuildVariables();
-        // No graph open ⇒ no walk to follow. The walks themselves stay tracked, so
-        // re-opening the macro brings its log back.
+        // Граф не открыт ⇒ следовать не за чем. Сами обходы остаются отслеживаемыми, так что
+        // повторное открытие макроса возвращает его лог.
         RebuildRuns();
     }
 
@@ -2275,16 +2345,18 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         foreach (var edge in row.Edges)
         {
             edge.Choices = NodeIdChoices;
-            // Re-pointing an outcome moves a line on the canvas, whether it was done in
-            // the inspector's drop-down or by dragging the port.
+            // Перенацеливание исхода двигает линию на canvas — сделали ли это выпадающим
+            // списком в инспекторе или перетаскиванием порта.
             edge.PropertyChanged += OnEdgeChanged;
         }
+
         if (row is RunMacroNodeRowViewModel runMacro)
         {
             runMacro.MacroChoices = MacroChoices;
         }
-        // Same shared-instance pattern as the choice lists: one catalogue, every badge on
-        // the canvas recomputes when a window appears or is tagged.
+
+        // Тот же приём с общим экземпляром, что и у списков выбора: каталог один, и каждый бейдж
+        // на canvas пересчитывается, когда окно появляется или получает тег.
         if (row.Target is { } target)
         {
             target.Windows = Windows;
@@ -2299,10 +2371,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             edge.PropertyChanged -= OnEdgeChanged;
         }
+
         if (row.Target is { } target)
         {
-            // Drops the selector's subscription to the catalogue — a closed graph's rows
-            // must not keep recomputing badges nobody is looking at.
+            // Снимает подписку селектора на каталог: строки закрытого графа не должны и дальше
+            // пересчитывать бейджи, на которые никто не смотрит.
             target.Windows = null;
         }
     }
@@ -2316,13 +2389,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// A node's own state changed. Two things follow from it, and both are cheap enough to do
-    /// on every keystroke over a graph of tens of nodes.
+    /// Изменилось собственное состояние ноды. Отсюда следуют две вещи, и обе достаточно дёшевы,
+    /// чтобы делать их на каждое нажатие клавиши в графе из десятков нод.
     ///
-    /// <c>Summary</c> is used as the "a parameter changed" signal rather than listening for
-    /// each of the ~25 parameter properties by name: the base class already re-raises it for
-    /// exactly that set and excludes the presentation-only ones, so this cannot drift as node
-    /// types are added.
+    /// Сигналом «изменился параметр» служит <c>Summary</c>, а не прослушивание каждого из ~25
+    /// свойств-параметров по имени: базовый класс уже переподнимает его ровно для этого набора
+    /// и исключает чисто оформительские, — так что расходиться по мере добавления новых типов
+    /// нод здесь нечему.
     /// </summary>
     private void OnNodeRowChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -2332,8 +2405,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 PushBreakpoints();
                 break;
             case nameof(NodeRowViewModel.Summary):
-                // Typing {tag} into an icon path adds a reader — the panel must show it
-                // before the macro has ever been run.
+                // Набранный в пути к иконке {tag} добавляет читателя — панель обязана показать
+                // его ещё до того, как макрос хоть раз запускали.
                 RebuildVariables();
                 break;
             default:
@@ -2342,8 +2415,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Recomputes every edge path. Cheap (a macro is tens of nodes, not thousands) and
-    /// called on every frame of a node drag, which is what keeps the lines glued to the box.
+    /// Пересчитывает маршрут каждого ребра. Дёшево (в макросе десятки нод, а не тысячи) и
+    /// вызывается на каждом кадре перетаскивания ноды — именно это и держит линии приклеенными
+    /// к коробке.
     /// </summary>
     private void RebuildEdges()
     {
@@ -2351,6 +2425,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
         CanvasEdges.Clear();
         foreach (var edge in CanvasEdgeRouter.BuildAll(Nodes))
         {
@@ -2358,8 +2433,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Batches a structural edit so the canvas is routed once, at the end, against a
-    // consistent graph.
+    // Собирает структурную правку в пачку, чтобы canvas проложили один раз, в конце и по
+    // согласованному графу.
     private IDisposable SuspendEdgeRebuild()
     {
         _edgeRebuildSuspended++;
@@ -2376,21 +2451,22 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 return;
             }
+
             _done = true;
             owner._edgeRebuildSuspended--;
             owner.RebuildEdges();
         }
     }
 
-    // The library is a tree of groups, so "which row is highlighted" is a flag on the row
-    // rather than a ListBox selection.
+    // Библиотека — дерево групп, поэтому «какая строка подсвечена» — это флаг на самой строке, а
+    // не выделение в ListBox.
     private void SyncCurrentFlags()
     {
         var current = _loadedName ?? _selectedMacro?.Name;
         foreach (var item in Macros)
         {
             item.IsCurrent = current is not null
-                && string.Equals(item.Name, current, StringComparison.Ordinal);
+                             && string.Equals(item.Name, current, StringComparison.Ordinal);
         }
     }
 
@@ -2398,7 +2474,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     {
         var visible = _librarySearch.Trim().Length == 0
             ? Macros.AsEnumerable()
-            : Macros.Where(item => item.Name.Contains(_librarySearch.Trim(), StringComparison.CurrentCultureIgnoreCase));
+            : Macros.Where(item =>
+                item.Name.Contains(_librarySearch.Trim(), StringComparison.CurrentCultureIgnoreCase));
 
         MacroGroups.Clear();
         foreach (var group in MacroLibraryGrouping.Build(visible))
@@ -2407,8 +2484,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Renaming a node has to carry its inbound edges with it, or the rename would silently
-    // sever every link into the node.
+    // Переименование ноды обязано утащить за собой входящие в неё рёбра, иначе оно молча
+    // перерубит каждую ведущую в неё связь.
     private void OnNodeIdChanged(NodeRowViewModel row, string previousId)
     {
         foreach (var edge in AllEdges())
@@ -2418,26 +2495,28 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 edge.TargetId = row.NodeId;
             }
         }
+
         if (string.Equals(_startNodeId, previousId, StringComparison.Ordinal))
         {
             _startNodeId = row.NodeId;
         }
+
         RebuildChoices();
         RebuildEdges();
         OnPropertyChanged(nameof(StartNodeId));
-        // The breakpoint set is keyed by node id, so a rename has to be re-sent — the dot
-        // stays on the row, which is exactly why the set is derived from rows rather than
-        // tracked separately.
+        // Набор точек останова ключуется по id ноды, поэтому переименование надо отправить
+        // заново, — точка при этом остаётся на строке, и именно ради этого набор выводится из
+        // строк, а не отслеживается отдельно.
         PushBreakpoints();
         RebuildVariables();
     }
 
     private IEnumerable<NodeEdgeViewModel> AllEdges() => Nodes.SelectMany(node => node.Edges);
 
-    // Rebuilding the shared choice lists makes every bound ComboBox re-evaluate its
-    // selection, and a SelectedItem that momentarily leaves the ItemsSource comes back as
-    // null. Snapshotting the intended values around the rebuild — rather than diffing the
-    // lists — keeps that transient from silently rewriting the graph's edges.
+    // Пересборка общих списков выбора заставляет каждый привязанный ComboBox переоценить своё
+    // выделение, а SelectedItem, на миг выпавший из ItemsSource, возвращается как null. Снимок
+    // задуманных значений вокруг пересборки — а не сравнение списков по разнице — не даёт этой
+    // мимолётности молча переписать рёбра графа.
     private void RebuildChoices()
     {
         var edges = AllEdges().ToList();
@@ -2448,9 +2527,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         var edgeChoices = new List<string>(ids.Count + 2) { string.Empty };
         edgeChoices.AddRange(ids);
-        // A hand-edited file can point an edge at a node that isn't there. Keep the value
-        // selectable so the editor shows the truth and the validator can complain about it,
-        // instead of quietly rewriting it to "end of run".
+        // Правленный руками файл способен направить ребро на несуществующую ноду. Оставляем это
+        // значение выбираемым, чтобы редактор показывал правду, а валидатор мог на неё
+        // пожаловаться, — вместо того чтобы тихо переписать её в «конец прогона».
         foreach (var target in targets)
         {
             if (target.Length > 0 && !edgeChoices.Contains(target, StringComparer.Ordinal))
@@ -2472,6 +2551,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             edges[i].TargetId = targets[i];
         }
+
         _startNodeId = start;
         OnPropertyChanged(nameof(StartNodeId));
     }
@@ -2479,7 +2559,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private string NextNodeId()
     {
         var used = Nodes.Select(node => node.NodeId).ToHashSet(StringComparer.Ordinal);
-        for (var i = 1; ; i++)
+        for (var i = 1;; i++)
         {
             var candidate = string.Create(CultureInfo.InvariantCulture, $"n{i}");
             if (used.Add(candidate))
@@ -2496,7 +2576,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             return DraftName;
         }
-        for (var i = 2; ; i++)
+
+        for (var i = 2;; i++)
         {
             var candidate = string.Create(CultureInfo.InvariantCulture, $"{DraftName}-{i}");
             if (!used.Contains(candidate))
@@ -2514,8 +2595,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
-            // Only reachable if a row produces something unserialisable; treat it as
-            // "different from anything" so the state reads as dirty rather than clean.
+            // Достижимо, только если строка выдала нечто несериализуемое; считаем это «отличным
+            // от чего угодно», чтобы состояние читалось как «есть несохранённые правки», а не
+            // как чистое.
             return Guid.NewGuid().ToString();
         }
     }
@@ -2533,13 +2615,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Reconciles a choice list IN PLACE.
+    /// Сверяет список выбора НА МЕСТЕ.
     ///
-    /// Not <c>Clear()</c> + re-add, which is what this used to be. A clear raises a Reset,
-    /// and every <c>ComboBox</c> bound to the list answers a Reset by dropping its
-    /// <c>SelectedItem</c> — so re-opening a macro that was already open (the «Перечитать»
-    /// path, where the ids are IDENTICAL before and after) left the start-node picker
-    /// blank. Rebuilding in place means the common case raises nothing at all.
+    /// Не <c>Clear()</c> с последующим наполнением, каким это было раньше. Очистка поднимает
+    /// Reset, а каждый привязанный к списку <c>ComboBox</c> отвечает на Reset сбросом своего
+    /// <c>SelectedItem</c>, — из-за чего повторное открытие и без того открытого макроса (путь
+    /// «Перечитать», где id до и после ОДИНАКОВЫ) оставляло выбор стартовой ноды пустым.
+    /// Пересборка на месте означает, что в обычном случае не поднимается вообще ничего.
     /// </summary>
     private static void Replace(ObservableCollection<string> target, IReadOnlyList<string> values)
     {
@@ -2554,6 +2636,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 target[i] = values[i];
             }
         }
+
         while (target.Count > values.Count)
         {
             target.RemoveAt(target.Count - 1);

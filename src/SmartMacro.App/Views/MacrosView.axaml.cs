@@ -11,27 +11,27 @@ using SmartMacro.App.ViewModels.Nodes;
 namespace SmartMacro.App.Views;
 
 /// <summary>
-/// «Макросы» — the canvas editor's interaction layer.
+/// «Макросы» — слой взаимодействия у редактора на canvas.
 ///
-/// Everything the user can DO to the graph directly lives here: pan, zoom, drag a box, drag
-/// a link out of a port. Everything that changes the graph goes straight back into
-/// <see cref="MacroEditorViewModel"/> — this class owns no model state, only the transient
-/// "what is currently under the pointer" of a gesture in flight.
+/// Всё, что пользователь может СДЕЛАТЬ с графом напрямую, живёт здесь: панорама, масштаб,
+/// перетаскивание коробки, вытягивание связи из порта. Всё, что меняет граф, уходит прямиком
+/// обратно в <see cref="MacroEditorViewModel"/> — этот класс не владеет никаким состоянием
+/// модели, только мимолётным «что сейчас под указателем» у жеста в полёте.
 ///
-/// Coordinates: the surface is a <see cref="Canvas"/> under a scale+translate render
-/// transform. Screen → canvas is <c>(screen - pan) / zoom</c> and back, done in one place
-/// (<see cref="ToCanvas"/> / <see cref="ToScreen"/>) so the pointer and the boxes cannot
-/// drift apart.
+/// Координаты: поверхность — это <see cref="Canvas"/> под render transform из масштаба и
+/// сдвига. Экран → canvas считается как <c>(экран - панорама) / масштаб</c>, и делается это в
+/// одном месте (<see cref="ToCanvas"/>), чтобы указатель и коробки не могли разъехаться;
+/// обратный ход нужен только <see cref="ApplyTransform"/>, который и есть сам transform.
 /// </summary>
 public partial class MacrosView : UserControl
 {
-    /// <summary>Wheel notch → zoom factor.</summary>
+    /// <summary>Щелчок колеса → множитель масштаба.</summary>
     private const double ZoomStep = 1.12;
 
-    /// <summary>Button click → zoom factor. Coarser than the wheel, on purpose.</summary>
+    /// <summary>Клик по кнопке → множитель масштаба. Грубее колеса, и это намеренно.</summary>
     private const double ZoomButtonStep = 1.25;
 
-    /// <summary>Size of the surface, and therefore how far a box may be dragged.</summary>
+    /// <summary>Размер поверхности, а значит, и то, как далеко можно утащить коробку.</summary>
     private const double SurfaceExtent = 4000;
 
     private enum Gesture
@@ -52,29 +52,30 @@ public partial class MacrosView : UserControl
     private MacroEditorViewModel? _watched;
 
     /// <summary>
-    /// Drives the debugger's «0:12.4».
+    /// Подгоняет «0:12.4» у отладчика.
     ///
-    /// The clock lives HERE rather than in the view-model because a <c>DispatcherTimer</c> is
-    /// an Avalonia type and every view-model in this assembly is exercised headlessly. The
-    /// view-model exposes <c>TickElapsed()</c>, which a test can call directly; the tick rate
-    /// is a rendering decision and belongs on this side of the line.
+    /// Часы живут ЗДЕСЬ, а не во view-model, потому что <c>DispatcherTimer</c> — тип Avalonia, а
+    /// каждую view-model этой сборки гоняют headless. View-model выставляет наружу
+    /// <c>TickElapsed()</c>, который тест может вызвать напрямую; частота тика — решение об
+    /// отрисовке и лежит по эту сторону границы.
     ///
-    /// 100 ms because the display has one decimal of a second. It raises nothing at all
-    /// unless a live walk is selected, so an idle panel costs one no-op call per tick.
+    /// 100 мс — потому что на экране один знак после запятой в секундах. Пока не выбран живой
+    /// обход, он не поднимает вообще ничего, так что простаивающая панель платит один пустой
+    /// вызов на тик.
     /// </summary>
     private readonly DispatcherTimer _elapsedTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
 
     /// <summary>
-    /// <b>InitializeComponent, NOT AvaloniaXamlLoader.Load.</b> The two look equivalent and
-    /// are not: Avalonia's name generator puts the <c>x:Name</c> field assignments INSIDE the
-    /// generated <c>InitializeComponent</c>, so calling the loader on its own loads the XAML
-    /// and leaves every named field null. This view was the first one to touch a named
-    /// control, and the failure is vicious — the first null dereference lands in
-    /// <c>OnDataContextChanged</c>, whose exception aborts DataContext propagation to the
-    /// children, so the whole panel renders with every binding silently empty and every
-    /// <c>IsVisible</c> back at its default. Every sibling view was switched over too: they
-    /// have no named controls today, so the bare loader worked, but it was a trap armed for
-    /// whoever added the first <c>x:Name</c>.
+    /// <b>InitializeComponent, а НЕ AvaloniaXamlLoader.Load.</b> Выглядят они равнозначно, но
+    /// равнозначны не являются: генератор имён Avalonia кладёт присваивания полей <c>x:Name</c>
+    /// ВНУТРЬ сгенерированного <c>InitializeComponent</c>, так что вызов одного лишь загрузчика
+    /// поднимает XAML и оставляет каждое именованное поле нулевым. Этот вид первым тронул
+    /// именованный контрол, и отказ тут злой: первое разыменование null попадает в
+    /// <c>OnDataContextChanged</c>, а исключение оттуда обрывает распространение DataContext по
+    /// детям, — и вся панель рисуется с молча пустыми привязками и каждым <c>IsVisible</c>,
+    /// вернувшимся к умолчанию. Соседние виды перевели тоже: именованных контролов у них сегодня
+    /// нет, поэтому голый загрузчик работал, — но это была ловушка, взведённая на того, кто
+    /// добавит первый <c>x:Name</c>.
     /// </summary>
     public MacrosView()
     {
@@ -84,14 +85,14 @@ public partial class MacrosView : UserControl
 
     private MacroEditorViewModel? Vm => DataContext as MacroEditorViewModel;
 
-    // ---- library ---------------------------------------------------------------------
+    // ---- библиотека ---------------------------------------------------------------------
 
     private void OnNewMacroClicked(object? sender, RoutedEventArgs e) => Vm?.NewMacro();
 
     /// <summary>
-    /// Library rows are not <c>ListBoxItem</c>s (the list is a tree of groups), so opening
-    /// a macro is a plain press on the row. The per-row buttons mark their own press as
-    /// handled, so «Запустить» does not also open the macro.
+    /// Строки библиотеки — не <c>ListBoxItem</c> (список представляет собой дерево групп),
+    /// поэтому открытие макроса — это обычное нажатие по строке. Кнопки внутри строки помечают
+    /// своё нажатие обработанным, так что «Запустить» заодно не открывает макрос.
     /// </summary>
     private void OnMacroRowPressed(object? sender, PointerPressedEventArgs e)
     {
@@ -125,7 +126,7 @@ public partial class MacrosView : UserControl
         }
     }
 
-    // ---- triggers --------------------------------------------------------------------
+    // ---- триггеры --------------------------------------------------------------------
 
     private void OnAddHotkeyTriggerClicked(object? sender, RoutedEventArgs e) =>
         Vm?.AddTrigger(MacroTriggerKind.Hotkey);
@@ -141,12 +142,12 @@ public partial class MacrosView : UserControl
         }
     }
 
-    // ---- targets badge (1g) ------------------------------------------------------------
+    // ---- бейдж целей (1g) ----------------------------------------------------------------
 
     /// <summary>
-    /// «контекст-окно» in the badge popup. Turning the selector OFF is not the same as
-    /// clearing the tag boxes — see <see cref="TargetSelectorViewModel.UseSelector"/> — so
-    /// the tags are left alone and come back if the user flips it again.
+    /// «контекст-окно» во всплывающем окне бейджа. ВЫКЛЮЧИТЬ селектор — не то же самое, что
+    /// очистить поля тегов (см. <see cref="TargetSelectorViewModel.UseSelector"/>), поэтому теги
+    /// оставляют в покое, и они возвращаются, если пользователь переключит обратно.
     /// </summary>
     private void OnTargetContextClicked(object? sender, RoutedEventArgs e)
     {
@@ -173,8 +174,8 @@ public partial class MacrosView : UserControl
     }
 
     /// <summary>
-    /// Enter commits the "+ тег" box. The comma-separated text underneath stays the model,
-    /// so a tag added here is indistinguishable from one typed into the inspector's box.
+    /// Enter фиксирует поле «+ тег». Моделью под ним остаётся тот же текст через запятую, так
+    /// что добавленный здесь тег неотличим от набранного в поле инспектора.
     /// </summary>
     private void OnRequireTagKeyDown(object? sender, KeyEventArgs e)
     {
@@ -194,7 +195,7 @@ public partial class MacrosView : UserControl
         }
     }
 
-    // ---- nodes -----------------------------------------------------------------------
+    // ---- ноды -----------------------------------------------------------------------
 
     private void OnAddNodeClicked(object? sender, RoutedEventArgs e)
     {
@@ -221,7 +222,7 @@ public partial class MacrosView : UserControl
         }
     }
 
-    // ---- editor actions --------------------------------------------------------------
+    // ---- действия редактора --------------------------------------------------------------
 
     private async void OnSaveClicked(object? sender, RoutedEventArgs e)
     {
@@ -235,7 +236,7 @@ public partial class MacrosView : UserControl
 
     private void OnAutoLayoutClicked(object? sender, RoutedEventArgs e) => Vm?.AutoLayout();
 
-    // ---- run picker ---------------------------------------------------------------------
+    // ---- переключатель прогонов -------------------------------------------------------------
 
     private void OnPreviousRunClicked(object? sender, RoutedEventArgs e) => Vm?.SelectPreviousRun();
 
@@ -243,7 +244,7 @@ public partial class MacrosView : UserControl
 
     private void OnClearRunLogClicked(object? sender, RoutedEventArgs e) => Vm?.ClearRunLog();
 
-    // ---- debugger (D5) -------------------------------------------------------------------
+    // ---- отладчик (D5) --------------------------------------------------------------------
 
     private async void OnDebugPauseClicked(object? sender, RoutedEventArgs e)
     {
@@ -285,7 +286,7 @@ public partial class MacrosView : UserControl
         }
     }
 
-    // ---- variables panel -----------------------------------------------------------------
+    // ---- панель переменных -----------------------------------------------------------------
 
     private void OnVariableHovered(object? sender, PointerEventArgs e)
     {
@@ -318,7 +319,7 @@ public partial class MacrosView : UserControl
         }
     }
 
-    // ---- zoom --------------------------------------------------------------------------
+    // ---- масштаб --------------------------------------------------------------------------
 
     private void OnZoomInClicked(object? sender, RoutedEventArgs e) => ZoomAboutCentre(ZoomButtonStep);
 
@@ -336,6 +337,7 @@ public partial class MacrosView : UserControl
         {
             return;
         }
+
         var factor = e.Delta.Y > 0 ? ZoomStep : 1 / ZoomStep;
         ZoomAbout(e.GetPosition(Viewport), factor);
         e.Handled = true;
@@ -344,13 +346,14 @@ public partial class MacrosView : UserControl
     private void ZoomAboutCentre(double factor) =>
         ZoomAbout(new Point(Viewport.Bounds.Width / 2, Viewport.Bounds.Height / 2), factor);
 
-    /// <summary>Zooms while keeping the canvas point under <paramref name="pivot"/> still.</summary>
+    /// <summary>Масштабирует так, чтобы точка canvas под <paramref name="pivot"/> осталась на месте.</summary>
     private void ZoomAbout(Point pivot, double factor)
     {
         if (Vm is not { } vm)
         {
             return;
         }
+
         var anchor = ToCanvas(pivot);
         vm.Zoom *= factor;
         vm.PanX = pivot.X - (anchor.X * vm.Zoom);
@@ -358,12 +361,12 @@ public partial class MacrosView : UserControl
         ApplyTransform();
     }
 
-    // ---- canvas gestures -----------------------------------------------------------------
+    // ---- жесты на canvas -------------------------------------------------------------------
 
     /// <summary>
-    /// A press that reached the viewport itself: the pointer is over empty canvas (a box
-    /// or a control inside one would have handled it first). Left or middle both pan;
-    /// left also clears the selection, which is how one gets back to the macro inspector.
+    /// Нажатие, дошедшее до самой области просмотра: указатель над пустым canvas (коробка или
+    /// контрол внутри неё обработали бы его раньше). И левая, и средняя двигают панораму; левая
+    /// вдобавок снимает выделение — именно так возвращаются к инспектору макроса.
     /// </summary>
     private void OnViewportPressed(object? sender, PointerPressedEventArgs e)
     {
@@ -371,6 +374,7 @@ public partial class MacrosView : UserControl
         {
             return;
         }
+
         Viewport.Focus();
 
         var point = e.GetCurrentPoint(Viewport);
@@ -390,9 +394,9 @@ public partial class MacrosView : UserControl
     }
 
     /// <summary>
-    /// A press on a box. Selects it and starts a move; presses on the fields of an
-    /// EXPANDED box never get here, because every input control marks its own press
-    /// handled.
+    /// Нажатие по коробке. Выделяет её и начинает перемещение; нажатия по полям РАЗВЁРНУТОЙ
+    /// коробки сюда не доходят никогда, потому что каждый контрол ввода помечает своё нажатие
+    /// обработанным.
     /// </summary>
     private void OnNodePressed(object? sender, PointerPressedEventArgs e)
     {
@@ -400,6 +404,7 @@ public partial class MacrosView : UserControl
         {
             return;
         }
+
         Viewport.Focus();
         vm.SelectedNode = row;
 
@@ -423,18 +428,20 @@ public partial class MacrosView : UserControl
         {
             return;
         }
-        // A second double click folds it back, so the same gesture is the toggle.
+
+        // Второй двойной клик складывает её обратно, так что переключателем служит тот же жест.
         vm.ExpandNode(row.IsExpanded ? null : row);
         e.Handled = true;
     }
 
-    /// <summary>Starts dragging a link out of an outcome port.</summary>
+    /// <summary>Начинает вытягивать связь из порта исхода.</summary>
     private void OnPortPressed(object? sender, PointerPressedEventArgs e)
     {
         if (Vm is not { } vm || sender is not Control { DataContext: NodeEdgeViewModel edge })
         {
             return;
         }
+
         if (!e.GetCurrentPoint(Viewport).Properties.IsLeftButtonPressed)
         {
             return;
@@ -502,9 +509,9 @@ public partial class MacrosView : UserControl
     {
         if (Vm is { } vm && _gesture == Gesture.DragLink && _draggedEdge is not null)
         {
-            // Dropped on a box → wire to it. Dropped anywhere else → "end of run", which
-            // is a real answer and not a cancelled gesture: it is how an outcome is
-            // UNwired, and the mockup insists it must not spawn a terminal node.
+            // Бросили на коробку → подключаем к ней. Бросили в любое другое место → «конец
+            // прогона», и это полноправный ответ, а не отменённый жест: именно так исход
+            // ОТключают, и макет настаивает, что терминальной ноды при этом появляться не должно.
             var target = NodeAt(ToCanvas(e.GetPosition(Viewport)));
             vm.RewireEdge(_draggedEdge, target?.NodeId);
         }
@@ -523,6 +530,7 @@ public partial class MacrosView : UserControl
         {
             return;
         }
+
         switch (e.Key)
         {
             case Key.Escape:
@@ -548,14 +556,15 @@ public partial class MacrosView : UserControl
         _panOriginY = vm.PanY;
     }
 
-    /// <summary>Topmost box covering a canvas point, or <c>null</c> for empty canvas.</summary>
+    /// <summary>Самая верхняя коробка, накрывающая точку canvas, либо <c>null</c> для пустого места.</summary>
     private NodeRowViewModel? NodeAt(Point canvasPoint)
     {
         if (Vm is not { } vm)
         {
             return null;
         }
-        // Reverse order: later nodes draw on top, so they win a hit.
+
+        // В обратном порядке: более поздние ноды рисуются поверх, поэтому попадание за ними.
         for (var i = vm.Nodes.Count - 1; i >= 0; i--)
         {
             var node = vm.Nodes[i];
@@ -567,6 +576,7 @@ public partial class MacrosView : UserControl
                 return node;
             }
         }
+
         return null;
     }
 
@@ -580,21 +590,22 @@ public partial class MacrosView : UserControl
     }
 
     /// <summary>
-    /// Pushes zoom/pan onto the surface.
+    /// Проталкивает масштаб и панораму на поверхность.
     ///
-    /// Done in code rather than by binding a <c>TransformGroup</c> in XAML because the
-    /// order matters (scale, THEN translate, so the pan stays in screen pixels) and a
-    /// bound group is one refactor away from silently swapping them.
+    /// Делается кодом, а не привязкой <c>TransformGroup</c> в XAML, потому что порядок здесь
+    /// важен (сначала масштаб, ПОТОМ сдвиг, чтобы панорама оставалась в экранных пикселях), а
+    /// привязанную группу от тихой перестановки местами отделяет один рефакторинг.
     /// </summary>
     private void ApplyTransform()
     {
-        // The Surface null-check is not paranoia: this runs from OnDataContextChanged, and
-        // an exception there stops the DataContext from reaching the children — a failure
-        // that looks like "none of the bindings work" rather than like a crash.
+        // Проверка Surface на null — не паранойя: этот метод вызывается из
+        // OnDataContextChanged, а исключение оттуда не даёт DataContext дойти до детей, и отказ
+        // выглядит как «не работает ни одна привязка», а вовсе не как падение.
         if (Vm is not { } vm || Surface is null)
         {
             return;
         }
+
         Surface.RenderTransform = new TransformGroup
         {
             Children =
@@ -606,9 +617,9 @@ public partial class MacrosView : UserControl
     }
 
     /// <summary>
-    /// The transform follows the view-model rather than only the gestures, because the
-    /// view-model also moves it: opening a macro resets the view, and without this the
-    /// canvas would keep the previous graph's pan.
+    /// Transform следует за view-model, а не только за жестами, потому что двигает его и сама
+    /// view-model: открытие макроса сбрасывает вид, и без этого canvas сохранил бы панораму
+    /// предыдущего графа.
     /// </summary>
     protected override void OnDataContextChanged(EventArgs e)
     {
@@ -617,11 +628,13 @@ public partial class MacrosView : UserControl
         {
             _watched.PropertyChanged -= OnViewModelPropertyChanged;
         }
+
         _watched = Vm;
         if (_watched is not null)
         {
             _watched.PropertyChanged += OnViewModelPropertyChanged;
         }
+
         ApplyTransform();
     }
 

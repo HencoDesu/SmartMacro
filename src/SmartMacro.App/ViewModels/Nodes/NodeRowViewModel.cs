@@ -98,12 +98,13 @@ public sealed class NodeEdgeViewModel : ObservableObject
 }
 
 /// <summary>
-/// Editor for a client-space rectangle (X / Y / W / H as free text).
+/// Редактор прямоугольника в клиентских координатах (X / Y / W / H свободным текстом).
 ///
-/// For the optional regions of Find/Wait nodes, a zero (or negative) width or height maps
-/// back to <c>null</c> — the same "empty rect = search the whole client area" convention
-/// the vision layer already uses, so the two representations mean the same thing and the
-/// round-trip is lossless for every rect a user can usefully author.
+/// Для необязательных областей нод Find и Wait нулевая (или отрицательная) ширина либо высота
+/// отображается обратно в <c>null</c> — то же соглашение «пустой прямоугольник = искать по всей
+/// клиентской области», которым слой зрения и так пользуется, так что оба представления значат
+/// одно и то же, а round trip не теряет ничего ни для одного прямоугольника, который
+/// пользователь способен осмысленно задать.
 /// </summary>
 public sealed class RegionEditorViewModel : ObservableObject
 {
@@ -148,14 +149,14 @@ public sealed class RegionEditorViewModel : ObservableObject
         };
     }
 
-    /// <summary>Always-a-value form, for nodes whose region is mandatory (RecognizeTag).</summary>
+    /// <summary>Форма «значение есть всегда» — для нод, у которых область обязательна (RecognizeTag).</summary>
     public ScreenRect ToRect() => new(
         NodeInput.ParseInt(_xText) ?? 0,
         NodeInput.ParseInt(_yText) ?? 0,
         NodeInput.ParseInt(_widthText) ?? 0,
         NodeInput.ParseInt(_heightText) ?? 0);
 
-    /// <summary>Optional form: a degenerate rect means "whole window" and is stored as <c>null</c>.</summary>
+    /// <summary>Необязательная форма: вырожденный прямоугольник значит «всё окно» и хранится как <c>null</c>.</summary>
     public ScreenRect? ToOptionalRect()
     {
         var rect = ToRect();
@@ -174,12 +175,12 @@ public sealed class RegionEditorViewModel : ObservableObject
     }
 }
 
-/// <summary>Shared text↔number parsing for the node editors. Invariant, comma tolerated as a decimal point.</summary>
+/// <summary>Общий разбор «текст ↔ число» для редакторов нод. Инвариантный, запятая допускается как десятичная точка.</summary>
 internal static class NodeInput
 {
     public static string FormatInt(int value) => value.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>Blank counts as 0; anything unparseable is <c>null</c> so the caller can report it.</summary>
+    /// <summary>Пустая строка идёт за 0; всё неразбираемое — <c>null</c>, чтобы вызывающий мог о нём сообщить.</summary>
     public static int? ParseInt(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -193,16 +194,16 @@ internal static class NodeInput
     }
 
     /// <summary>
-    /// Milliseconds rendered as seconds, matching the pre-graph editor: <c>"0.##"</c>
-    /// invariant (1500 → "1.5", 2000 → "2"). Seconds are the unit PW itself uses for cast
-    /// and cooldown times, so an author reading a skill tooltip can type what they see.
+    /// Миллисекунды, показанные секундами, как в редакторе до графов: инвариантный
+    /// <c>"0.##"</c> (1500 → «1.5», 2000 → «2»). В секундах сам PW называет время каста и
+    /// отката, так что автор, читающий подсказку умения, набирает то, что видит.
     /// </summary>
     public static string FormatSeconds(int ms) => (ms / 1000.0).ToString("0.##", CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Seconds text back to milliseconds. Accepts a comma as the decimal separator (a
-    /// Russian keyboard's numpad produces one) by normalising it first — parsing "1,5"
-    /// with invariant <see cref="NumberStyles.Any"/> would otherwise silently yield 15.
+    /// Текст в секундах обратно в миллисекунды. Запятая как десятичный разделитель принимается
+    /// (её выдаёт цифровой блок русской раскладки) за счёт предварительной нормализации: разбор
+    /// «1,5» инвариантным <see cref="NumberStyles.Any"/> иначе тихо дал бы 15.
     /// </summary>
     public static int? ParseSecondsToMs(string? text)
     {
@@ -223,19 +224,20 @@ internal static class NodeInput
 }
 
 /// <summary>
-/// Base for the boxes of the node editor — one per node of the open graph.
+/// Основа для коробок редактора нод — по одной на ноду открытого графа.
 ///
-/// The hierarchy is polymorphic on purpose: each concrete row owns exactly the parameters
-/// its node type has, renders through an implicit <c>DataTemplate</c> matched on its own
-/// type, and maps to/from the model in one place (<see cref="ToNode"/> /
-/// <see cref="FromNode"/>). That pair is the contract the whole editor rests on and is
-/// what the round-trip test pins down.
+/// Иерархия сделана полиморфной намеренно: каждая конкретная строка владеет ровно теми
+/// параметрами, что есть у её типа ноды, рисуется через неявный <c>DataTemplate</c>,
+/// подобранный по её собственному типу, и перекладывается в модель и обратно в одном месте
+/// (<see cref="ToNode"/> / <see cref="FromNode"/>). Эта пара — контракт, на котором держится
+/// весь редактор, и её же прибивает тест round trip.
 ///
-/// Since D3a the same object is also the canvas box: it carries its own position
-/// (<see cref="X"/>/<see cref="Y"/>, persisted as the model's <c>NodeEditorInfo</c>), the
-/// collapsed/expanded state of the in-place editor, and the one-line
-/// <see cref="Summary"/> the box shows. Keeping that on the row rather than in a parallel
-/// "canvas node" hierarchy means there is exactly one object per node and no syncing.
+/// С D3a тот же объект служит и коробкой на canvas: он несёт своё положение
+/// (<see cref="X"/>/<see cref="Y"/>, сохраняемое как <c>NodeEditorInfo</c> в модели),
+/// свёрнутость либо развёрнутость встроенного редактора и однострочную
+/// <see cref="Summary"/>, которую коробка показывает. То, что это лежит на строке, а не в
+/// параллельной иерархии «нода на canvas», означает ровно один объект на ноду и никакой
+/// синхронизации.
 /// </summary>
 public abstract class NodeRowViewModel : ObservableObject
 {
@@ -260,21 +262,21 @@ public abstract class NodeRowViewModel : ObservableObject
         Edges = edges;
         if (target is not null)
         {
-            // Whether the box shows a targets chip at all follows the selector's own mode,
-            // which is edited through its own view-model — so the change has to be
-            // forwarded, or turning "цели по тегам" on leaves the box looking unchanged.
-            // The chip's CONTENT needs no forwarding: it binds straight to the selector.
+            // Показывает ли коробка чип целей вообще — следствие режима самого селектора, а
+            // правят его через отдельную view-model, так что изменение приходится
+            // пробрасывать, иначе включение «целей по тегам» оставит коробку на вид прежней.
+            // СОДЕРЖИМОЕ чипа пробрасывать не нужно: оно привязано прямо к селектору.
             target.PropertyChanged += (_, _) => OnPropertyChanged(nameof(ShowsTargetChip));
         }
     }
 
     /// <summary>
-    /// Raised after <see cref="NodeId"/> changes, carrying the PREVIOUS id. The editor
-    /// listens so it can re-point every edge (and the start node) at the new id.
+    /// Поднимается после изменения <see cref="NodeId"/> и несёт ПРЕЖНИЙ id. Редактор слушает
+    /// это, чтобы перенацелить каждое ребро (и стартовую ноду) на новый id.
     /// </summary>
     public event Action<NodeRowViewModel, string>? IdChanged;
 
-    /// <summary>Unique id within the graph. Edges reference nodes by this.</summary>
+    /// <summary>Уникальный внутри графа id. Именно по нему рёбра ссылаются на ноды.</summary>
     public string NodeId
     {
         get => _nodeId;
@@ -283,7 +285,7 @@ public abstract class NodeRowViewModel : ObservableObject
             var trimmed = (value ?? string.Empty).Trim();
             if (trimmed.Length == 0 || string.Equals(trimmed, _nodeId, StringComparison.Ordinal))
             {
-                // Reject a blank id outright: it would orphan every edge pointing here.
+                // Пустой id отвергаем сразу: он осиротил бы каждое ребро, указывающее сюда.
                 OnPropertyChanged();
                 return;
             }
@@ -296,9 +298,9 @@ public abstract class NodeRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Canvas placement, in the model's own shape. <c>null</c> means "never placed" — a
-    /// graph authored before the canvas existed — and the editor lays those out on load
-    /// rather than piling them at the origin.
+    /// Размещение на canvas, в форме самой модели. <c>null</c> значит «никогда не размещали» —
+    /// граф, написанный до появления canvas, — и такие редактор раскладывает при загрузке, а не
+    /// сваливает в начало координат.
     /// </summary>
     public NodeEditorInfo? Editor
     {
@@ -324,7 +326,7 @@ public abstract class NodeRowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Canvas X of the box's top-left corner.</summary>
+    /// <summary>X левого верхнего угла коробки в пространстве canvas.</summary>
     public double X
     {
         get => _x;
@@ -335,7 +337,7 @@ public abstract class NodeRowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Canvas Y of the box's top-left corner.</summary>
+    /// <summary>Y левого верхнего угла коробки в пространстве canvas.</summary>
     public double Y
     {
         get => _y;
@@ -346,10 +348,10 @@ public abstract class NodeRowViewModel : ObservableObject
         }
     }
 
-    /// <summary><c>false</c> until the node has been placed (by hand, by load, or by auto-layout).</summary>
+    /// <summary><c>false</c>, пока ноду не разместили — руками, загрузкой или авторазметкой.</summary>
     public bool HasPosition => _hasPosition;
 
-    /// <summary>Moves the box. One call so a drag raises two changes, not four.</summary>
+    /// <summary>Двигает коробку. Один вызов — чтобы перетаскивание поднимало два изменения, а не четыре.</summary>
     public void SetPosition(double x, double y)
     {
         X = x;
@@ -357,26 +359,27 @@ public abstract class NodeRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Height the ROUTER uses. Always the collapsed height, even while the box is expanded:
-    /// an expanded node is a transient editing state that deliberately overlaps its
-    /// neighbours, and re-routing every edge around it would make the graph jump.
+    /// Высота, которой пользуется МАРШРУТИЗАТОР. Всегда свёрнутая, даже пока коробка
+    /// развёрнута: развёрнутая нода — это мимолётное состояние правки, намеренно
+    /// перекрывающее соседей, и перекладка каждого ребра в обход неё заставила бы граф
+    /// прыгать.
     /// </summary>
     public double LayoutHeight => IsConditional
         ? CanvasMetrics.ConditionalNodeHeight
         : CanvasMetrics.ActionNodeHeight;
 
-    /// <summary>Rendered height: the collapsed height, or auto (<c>NaN</c>) while expanded.</summary>
+    /// <summary>Нарисованная высота: свёрнутая либо авто (<c>NaN</c>), пока коробка развёрнута.</summary>
     public double BoxHeight => _isExpanded ? double.NaN : LayoutHeight;
 
-    /// <summary>Rendered width — wider while expanded, to fit the parameter fields.</summary>
+    /// <summary>Нарисованная ширина — шире, пока развёрнуто, чтобы вместились поля параметров.</summary>
     public double BoxWidth => _isExpanded ? CanvasMetrics.ExpandedNodeWidth : CanvasMetrics.NodeWidth;
 
-    /// <summary>Two outcomes rather than one — drives the box's height and its header glyph.</summary>
+    /// <summary>Два исхода вместо одного — от этого зависят высота коробки и глиф в её шапке.</summary>
     public bool IsConditional => Edges.Count > 1;
 
     /// <summary>
-    /// The box is an editor of itself (mockup 1e). Double click opens it, Esc closes it;
-    /// the inspector on the right stays in sync because both edit the same object.
+    /// Коробка сама себе редактор (макет 1e). Двойной клик её открывает, Esc закрывает;
+    /// инспектор справа при этом не расходится, потому что оба правят один и тот же объект.
     /// </summary>
     public bool IsExpanded
     {
@@ -392,8 +395,8 @@ public abstract class NodeRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The executor is standing on this node. Set from the run-event stream (D3b) for the
-    /// SELECTED walk only — a ten-window fan-out must light one box, not ten.
+    /// Исполнитель стоит на этой ноде. Проставляется из потока событий прогона (D3b) только для
+    /// ВЫБРАННОГО обхода — веер на десять окон обязан зажечь одну коробку, а не десять.
     /// </summary>
     public bool IsExecuting
     {
@@ -408,24 +411,24 @@ public abstract class NodeRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The walk is standing here AND is not parked — the only state that pulses.
+    /// Обход стоит здесь И при этом не припаркован — единственное состояние, которое пульсирует.
     ///
-    /// A parked node is also "current" (the walker entered it before the gate), so binding
-    /// the pulse to <see cref="IsExecuting"/> alone would animate a walk that is stopped.
-    /// Those two states are one keypress apart in consequence and must not share a look.
+    /// Припаркованная нода тоже «текущая» (walker вошёл в неё раньше затвора), поэтому привязка
+    /// пульсации к одному лишь <see cref="IsExecuting"/> анимировала бы остановленный обход. По
+    /// последствиям эти два состояния разделяет одно нажатие клавиши, и выглядеть одинаково они
+    /// не имеют права.
     /// </summary>
     public bool IsRunningLive => _isExecuting && !_isPaused;
 
-    // ---- debugger (D5) ---------------------------------------------------------------
+    // ---- отладчик (D5) ------------------------------------------------------------------
 
     /// <summary>
-    /// A red dot on the box's corner and a ticked checkbox in the inspector: the walker stops
-    /// BEFORE this node.
+    /// Красная точка в углу коробки и отмеченная галочка в инспекторе: walker останавливается
+    /// ПЕРЕД этой нодой.
     ///
-    /// Kept on the row, so the daemon's set is re-derived from the rows on every change and a
-    /// node rename carries its breakpoint automatically. It is NOT part of
-    /// <see cref="ToNode"/> — a breakpoint is a debugging session, not something that belongs
-    /// in the macro file or in a diff.
+    /// Держится на строке, поэтому набор у демона пересобирается из строк при каждом изменении,
+    /// а переименование ноды переносит её точку останова само. В <see cref="ToNode"/> её НЕТ —
+    /// точка останова принадлежит сеансу отладки, а не файлу макроса и не диффу.
     /// </summary>
     public bool HasBreakpoint
     {
@@ -433,7 +436,7 @@ public abstract class NodeRowViewModel : ObservableObject
         set => SetField(ref _hasBreakpoint, value);
     }
 
-    /// <summary>The selected walk is parked here right now. Distinct from <see cref="IsExecuting"/>: the node has NOT started.</summary>
+    /// <summary>Выбранный обход припаркован здесь прямо сейчас. В отличие от <see cref="IsExecuting"/>, нода ещё НЕ началась.</summary>
     public bool IsPaused
     {
         get => _isPaused;
@@ -448,8 +451,9 @@ public abstract class NodeRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// How long this node took on the selected walk, formatted («1.2 с»), or <c>null</c> if it
-    /// has not run. Drives the ✓ and the dimming the mockup uses for "already passed".
+    /// Сколько эта нода заняла на выбранном обходе, уже отформатированное («1.2 с»), либо
+    /// <c>null</c>, если она не отрабатывала. От этого зависят ✓ и то притушение, которым макет
+    /// обозначает «уже пройдено».
     /// </summary>
     public string? PassedTime
     {
@@ -464,32 +468,32 @@ public abstract class NodeRowViewModel : ObservableObject
         }
     }
 
-    // The header's right-hand slot is shared, so whichever of the two changes has to tell
-    // the other one to get out of the way.
+    // Правый слот шапки один на двоих, поэтому тот из двух, кто изменился, обязан велеть
+    // другому посторониться.
     private void RaiseRunStamp()
     {
         OnPropertyChanged(nameof(ShowsRunStamp));
         OnPropertyChanged(nameof(ShowsTargetChip));
     }
 
-    /// <summary>Which way it went, in Russian — the tooltip on a passed box.</summary>
+    /// <summary>Куда ушли, по-русски, — подсказка на пройденной коробке.</summary>
     public string? PassedOutcome
     {
         get => _passedOutcome;
         set => SetField(ref _passedOutcome, value);
     }
 
-    /// <summary><c>true</c> once the selected walk has been through this node.</summary>
+    /// <summary><c>true</c>, как только выбранный обход прошёл через эту ноду.</summary>
     public bool IsPassed => _passedTime is not null;
 
-    /// <summary>The hovered variable is WRITTEN here. Lights the box and one end of the dashed link.</summary>
+    /// <summary>Переменная под курсором ЗАПИСЫВАЕТСЯ здесь. Зажигает коробку и один конец пунктирной связи.</summary>
     public bool IsVariableSource
     {
         get => _isVariableSource;
         set => SetField(ref _isVariableSource, value);
     }
 
-    /// <summary>The hovered variable is READ here.</summary>
+    /// <summary>Переменная под курсором ЧИТАЕТСЯ здесь.</summary>
     public bool IsVariableConsumer
     {
         get => _isVariableConsumer;
@@ -497,8 +501,8 @@ public abstract class NodeRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Highlighted on the canvas and shown in the inspector. Set by clicking a box or a
-    /// validation issue.
+    /// Подсвечена на canvas и показана в инспекторе. Проставляется кликом по коробке либо по
+    /// замечанию валидатора.
     /// </summary>
     public bool IsSelected
     {
@@ -506,77 +510,77 @@ public abstract class NodeRowViewModel : ObservableObject
         set => SetField(ref _isSelected, value);
     }
 
-    /// <summary>Russian type label shown in the box header.</summary>
+    /// <summary>Русская подпись типа, показываемая в шапке коробки.</summary>
     public abstract string TypeLabel { get; }
 
     /// <summary>
-    /// The one mono line under the id: whatever identifies this node's job at a glance
-    /// (the key, the point, the template, the delay). Recomputed on any property change —
-    /// see <see cref="OnPropertyChanged"/>.
+    /// Единственная моноширинная строка под id: то, по чему работа этой ноды опознаётся с
+    /// одного взгляда (клавиша, точка, шаблон, задержка). Пересчитывается на любое изменение
+    /// свойства — см. <see cref="OnPropertyChanged"/>.
     /// </summary>
     public abstract string Summary { get; }
 
     /// <summary>
-    /// <c>false</c> when the box should not print the summary line: either there is nothing
-    /// to say, or the node renders a <see cref="Keycap"/> instead and printing both would
-    /// show the same key twice.
+    /// <c>false</c>, когда коробке не следует печатать строку сводки: либо сказать нечего, либо
+    /// нода вместо неё рисует <see cref="Keycap"/>, и напечатать оба значило бы показать одну и
+    /// ту же клавишу дважды.
     /// </summary>
     public bool HasSummary => Summary.Length > 0 && Keycap is null;
 
     /// <summary>
-    /// Whether the box prints the targets chip at all. Only when the node routes by TAGS:
-    /// a 210px header cannot carry both a type label and a chip, and "acts on the context
-    /// window" is the default every second node has — it is the departure from it that is
-    /// worth a word.
+    /// Печатает ли коробка чип целей вообще. Только когда нода маршрутизирует по ТЕГАМ: шапка
+    /// в 210px не унесёт разом и подпись типа, и чип, а «действует на контекстное окно» — это
+    /// умолчание, которое есть у каждой второй ноды; слова стоит именно отступление от него.
     ///
-    /// Suppressed while a run stamp is showing. The two share the header's one right-hand
-    /// slot, and without this they OVERPRINT each other — «✓ 2 мс» over «нет окон» was
-    /// legible as neither.
+    /// Подавляется, пока показывается штамп прогона. Оба делят единственный правый слот шапки,
+    /// и без этого они НАПЕЧАТАЛИСЬ БЫ ДРУГ ПОВЕРХ ДРУГА — «✓ 2 мс» поверх «нет окон» не
+    /// читалось ни как то, ни как другое.
     /// </summary>
     public bool ShowsTargetChip => Target?.UseSelector == true && !ShowsRunStamp;
 
     /// <summary>
-    /// The header's right slot is showing run state (a ✓ with a time, or the parked marker)
-    /// rather than the targets chip.
+    /// В правом слоте шапки показано состояние прогона (✓ со временем либо отметка о парковке),
+    /// а не чип целей.
     /// </summary>
     public bool ShowsRunStamp => _passedTime is not null || _isPaused;
 
     /// <summary>
-    /// Non-null only for <see cref="KeyPressNodeRowViewModel"/>: the box draws a keycap
-    /// instead of a line of text, because a key is a thing you press and reads as one.
+    /// Не <c>null</c> только у <see cref="KeyPressNodeRowViewModel"/>: коробка рисует кейкап
+    /// вместо строки текста, потому что клавиша — это то, на что нажимают, и читается она
+    /// именно так.
     /// </summary>
     public virtual string? Keycap => null;
 
-    /// <summary>Outgoing edges, in display order.</summary>
+    /// <summary>Исходящие рёбра, в порядке показа.</summary>
     public IReadOnlyList<NodeEdgeViewModel> Edges { get; }
 
     /// <summary>
-    /// Target-selector editor, or <c>null</c> for nodes that have no <c>Target</c> in the
-    /// model — the conditionals (context-window only by design) and <c>DelayNode</c>
-    /// (a pause is global to the run).
+    /// Редактор селектора целей либо <c>null</c> у нод, у которых в модели нет <c>Target</c>, —
+    /// у условных (по замыслу только контекстное окно) и у <c>DelayNode</c> (пауза общая на
+    /// прогон).
     /// </summary>
     public TargetSelectorViewModel? Target { get; }
 
-    /// <summary>Drives the visibility of the selector block.</summary>
+    /// <summary>Управляет видимостью блока селектора.</summary>
     public bool HasTarget => Target is not null;
 
     /// <summary>
-    /// Joins the parts of a box summary with the middle dot, skipping blanks. A node whose
-    /// template has not been typed in yet must read <c>всё окно</c>, not <c>· всё окно</c>.
+    /// Склеивает части сводки коробки средней точкой, пропуская пустые. Нода, у которой шаблон
+    /// ещё не набрали, обязана читаться как <c>всё окно</c>, а не <c>· всё окно</c>.
     /// </summary>
     protected static string Join(params string?[] parts) =>
         string.Join(" · ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
 
-    /// <summary>Builds the model node from the current editor state.</summary>
+    /// <summary>Собирает ноду модели из текущего состояния редактора.</summary>
     public abstract MacroNode ToNode();
 
     /// <summary>
-    /// Every change re-raises <see cref="Summary"/>.
+    /// Любое изменение переподнимает <see cref="Summary"/>.
     ///
-    /// The alternative is a hand-written raise in each of the ~25 parameter setters across
-    /// ten row types, and the failure mode of forgetting one is a box that quietly shows
-    /// stale text — the kind of bug that survives a full test suite. The pure-presentation
-    /// properties are excluded so dragging a box does not churn its text.
+    /// Альтернатива — руками написанное поднятие в каждом из ~25 сеттеров параметров по десяти
+    /// типам строк, и цена забытого сеттера — коробка, которая тихо показывает устаревший
+    /// текст; такая ошибка переживает полный прогон тестов. Чисто оформительские свойства
+    /// исключены, чтобы перетаскивание коробки не трепало её текст.
     /// </summary>
     protected override void OnPropertyChanged(string? propertyName = null)
     {
@@ -596,8 +600,9 @@ public abstract class NodeRowViewModel : ObservableObject
             case nameof(IsRunningLive):
             case nameof(BoxWidth):
             case nameof(BoxHeight):
-            // Run and debugger state, all of it presentation: a breakpoint or a passed-time
-            // stamp must not make the box re-render its parameter summary.
+            // Состояние прогона и отладчика — всё это оформление: ни точка останова, ни штамп с
+            // прошедшим временем не имеют права заставлять коробку перерисовывать сводку по
+            // параметрам.
             case nameof(HasBreakpoint):
             case nameof(IsPaused):
             case nameof(IsPassed):
@@ -615,14 +620,14 @@ public abstract class NodeRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Field-level complaints ("X is not a number") in Russian, empty when the row is
-    /// clean. Checked before the graph validator runs, because <see cref="ToNode"/> is
-    /// lenient (unparseable numbers become 0) and would otherwise quietly persist a zero.
+    /// Претензии по полям («X — не число»), по-русски; пусто, когда строка чиста. Проверяются
+    /// до того, как отработает валидатор графа, потому что <see cref="ToNode"/> снисходителен
+    /// (неразбираемое число становится нулём) и иначе тихо сохранил бы этот ноль.
     /// </summary>
     public virtual IEnumerable<string> GetInputErrors() => [];
 
-    /// <summary>Loads a model node into the matching row type.</summary>
-    /// <exception cref="NotSupportedException">The node type has no editor (should be unreachable).</exception>
+    /// <summary>Загружает ноду модели в строку подходящего типа.</summary>
+    /// <exception cref="NotSupportedException">У этого типа ноды нет редактора (сюда попадать не должно).</exception>
     public static NodeRowViewModel FromNode(MacroNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -644,7 +649,7 @@ public abstract class NodeRowViewModel : ObservableObject
         return row;
     }
 
-    /// <summary>Creates an empty row of the requested kind with sensible defaults.</summary>
+    /// <summary>Создаёт пустую строку запрошенного вида с разумными умолчаниями.</summary>
     public static NodeRowViewModel Create(MacroNodeKind kind, string nodeId) => kind switch
     {
         MacroNodeKind.KeyPress => new KeyPressNodeRowViewModel(new KeyPressNode { Id = nodeId, Key = VirtualKey.F1 }),
@@ -665,7 +670,7 @@ public abstract class NodeRowViewModel : ObservableObject
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown node kind."),
     };
 
-    /// <summary>Menu entries for the "add node" flyout, in catalogue order.</summary>
+    /// <summary>Пункты меню «добавить ноду» во всплывающем списке, в порядке каталога.</summary>
     public static IReadOnlyList<MacroNodeKindOption> Kinds { get; } =
     [
         new(MacroNodeKind.KeyPress, "Нажать клавишу"),

@@ -7,7 +7,7 @@ using SmartMacro.App.Services;
 
 namespace SmartMacro.App.ViewModels;
 
-/// <summary>The five things the panel can be showing. Order is the sidebar's order.</summary>
+/// <summary>Пять вещей, которые панель способна показывать. Порядок — тот же, что в боковой полосе.</summary>
 public enum ShellMode
 {
     Windows,
@@ -18,11 +18,11 @@ public enum ShellMode
 }
 
 /// <summary>
-/// One row of the mode sidebar: a name and a counter.
+/// Одна строка полосы режимов: имя и счётчик.
 ///
-/// The counter is <see cref="int"/>? on purpose. «Шаблоны» and «Лог» have no IPC behind them
-/// yet, and a made-up number is worse than no number — so their counter is <c>null</c> and
-/// the row simply renders without one.
+/// Счётчик — <see cref="int"/>? намеренно. За «Шаблонами» и «Логом» пока нет никакого IPC, а
+/// выдуманное число хуже, чем никакого, — поэтому их счётчик <c>null</c>, и строка попросту
+/// рисуется без него.
 /// </summary>
 public sealed class ShellModeViewModel : ObservableObject
 {
@@ -36,19 +36,19 @@ public sealed class ShellModeViewModel : ObservableObject
         Title = title;
     }
 
-    /// <summary>Which mode this row selects.</summary>
+    /// <summary>Какой режим выбирает эта строка.</summary>
     public ShellMode Mode { get; }
 
-    /// <summary>Sidebar label (Russian, as everywhere in the UI).</summary>
+    /// <summary>Подпись в полосе (по-русски, как и везде в UI).</summary>
     public string Title { get; }
 
-    /// <summary>Rendered counter, or <c>null</c> when there is nothing honest to show.</summary>
+    /// <summary>Нарисованный счётчик либо <c>null</c>, когда честно показывать нечего.</summary>
     public string? CounterText => _count?.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary><c>true</c> when the row has a counter to render at all.</summary>
+    /// <summary><c>true</c>, когда у строки вообще есть счётчик, который стоит рисовать.</summary>
     public bool HasCounter => _count is not null;
 
-    /// <summary>The small accent dot beside the «Прогоны» counter while something is running.</summary>
+    /// <summary>Маленькая акцентная точка рядом со счётчиком «Прогоны», пока что-то идёт.</summary>
     public bool ShowsActivityDot
     {
         get => _showsActivityDot;
@@ -61,7 +61,7 @@ public sealed class ShellModeViewModel : ObservableObject
         }
     }
 
-    /// <summary>Drives the 2px accent rule and the 12% wash (the <c>ListBoxItem</c> theme does both).</summary>
+    /// <summary>Управляет акцентной линейкой 2px и 12%-заливкой (и то и другое делает тема <c>ListBoxItem</c>).</summary>
     public bool IsSelected
     {
         get => _isSelected;
@@ -75,9 +75,9 @@ public sealed class ShellModeViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Accent counter for the selected row and for anything live; faint for the rest.
-    /// That is exactly the mockup's rule — «Прогоны» keeps its accent number while it has
-    /// runs even when another mode is open.
+    /// Акцентный счётчик у выбранной строки и у всего живого; у остальных — приглушённый.
+    /// Ровно то правило, что в макете: «Прогоны» держат акцентное число, пока прогоны есть, —
+    /// даже когда открыт другой режим.
     /// </summary>
     public bool CounterIsAccent => _isSelected || _showsActivityDot;
 
@@ -89,11 +89,12 @@ public sealed class ShellModeViewModel : ObservableObject
             OnPropertyChanged(nameof(CounterText));
             OnPropertyChanged(nameof(HasCounter));
         }
+
         ShowsActivityDot = activityDot;
     }
 }
 
-/// <summary>One chip of the sidebar's tag summary: the tag and how many windows carry it.</summary>
+/// <summary>Один чип сводки по тегам в полосе: сам тег и сколько окон его несут.</summary>
 public sealed class TagSummaryItemViewModel
 {
     internal TagSummaryItemViewModel(string tag, int count)
@@ -103,40 +104,41 @@ public sealed class TagSummaryItemViewModel
         CountText = count.ToString(CultureInfo.InvariantCulture);
     }
 
-    /// <summary>The tag itself.</summary>
+    /// <summary>Сам тег.</summary>
     public string Tag { get; }
 
-    /// <summary>How many live windows carry it.</summary>
+    /// <summary>Сколько живых окон его несут.</summary>
     public int Count { get; }
 
-    /// <summary>Rendered count — the dim number inside the chip.</summary>
+    /// <summary>Нарисованное число — приглушённая цифра внутри чипа.</summary>
     public string CountText { get; }
 }
 
 /// <summary>
-/// The 1b shell: one window, modes in a left rail, a run bar pinned at the bottom.
+/// Оболочка 1b: одно окно, режимы в левой полосе, полоса прогонов, приколоченная снизу.
 ///
-/// It owns nothing the daemon knows about. Both mode view-models — <see cref="Workspace"/>
-/// (windows + runs) and <see cref="Editor"/> (the macro library) — keep their own IPC
-/// subscriptions exactly as they had them when they were a window and a dialog; this class
-/// only composes them, derives the sidebar's counters and tag summary from what they already
-/// hold, and decides which one is on screen.
+/// Ничем из того, что знает демон, она не владеет. Обе view-model режимов —
+/// <see cref="Workspace"/> (окна и прогоны) и <see cref="Editor"/> (библиотека макросов) —
+/// держат собственные подписки IPC ровно так же, как держали, когда были окном и диалогом;
+/// этот класс лишь собирает их вместе, выводит счётчики полосы и сводку по тегам из того, что у
+/// них уже есть, и решает, кто из них на экране.
 ///
-/// <b>Derived, not fetched.</b> Every number in the sidebar comes from a collection that is
-/// already in memory. The tag summary in particular is recomputed from
-/// <see cref="WorkspaceViewModel.WindowsChanged"/>, which fires on a <c>WindowTagsChanged</c>
-/// push — so tagging a window updates the roster instantly with no round trip.
+/// <b>Выведено, а не запрошено.</b> Каждое число в полосе берётся из коллекции, которая и так
+/// в памяти. Сводка по тегам в особенности пересчитывается по
+/// <see cref="WorkspaceViewModel.WindowsChanged"/>, а он срабатывает на пуш
+/// <c>WindowTagsChanged</c>, — так что повешенный тег обновляет состав мгновенно, без round
+/// trip.
 ///
-/// <b>Hotkey suspension and the run-event stream are scoped to the «Макросы» mode.</b>
-/// See <see cref="ApplyMacrosModeScope"/>.
+/// <b>Приостановка хоткеев и поток событий прогона привязаны к режиму «Макросы».</b>
+/// См. <see cref="ApplyMacrosModeScope"/>.
 /// </summary>
 public sealed class ShellViewModel : ObservableObject, IDisposable
 {
     /// <summary>
-    /// The library macro behind "Опознать все". Identification stopped being a built-in in
-    /// W0.2b — it is the <c>pw-identify</c> example graph, so the button runs that and is
-    /// disabled when the library has no such macro rather than firing a request the daemon
-    /// would reject.
+    /// Тот макрос из библиотеки, что стоит за кнопкой «Опознать все». Опознание перестало быть
+    /// встроенным ещё в W0.2b — это граф-пример <c>pw-identify</c>, поэтому кнопка запускает
+    /// именно его, а когда такого макроса в библиотеке нет, она гаснет, вместо того чтобы
+    /// слать запрос, который демон отвергнет.
     /// </summary>
     public const string IdentifyMacroName = "pw-identify";
 
@@ -175,32 +177,32 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         RefreshMacroState();
     }
 
-    /// <summary>Windows and runs — the body of «Окна» and «Прогоны», and the run bar.</summary>
+    /// <summary>Окна и прогоны — тело «Окон» и «Прогонов», а заодно полоса прогонов.</summary>
     public WorkspaceViewModel Workspace { get; }
 
-    /// <summary>The macro library and the canvas editor — the body of «Макросы».</summary>
+    /// <summary>Библиотека макросов и редактор на canvas — тело «Макросов».</summary>
     public MacroEditorViewModel Editor { get; }
 
-    /// <summary>The sidebar's rows, in display order.</summary>
+    /// <summary>Строки боковой полосы, в порядке показа.</summary>
     public IReadOnlyList<ShellModeViewModel> Modes { get; }
 
-    /// <summary>Tag → window count, busiest first. The only place the whole roster is visible at once.</summary>
+    /// <summary>Тег → сколько окон, самые многочисленные первыми. Единственное место, где весь состав виден сразу.</summary>
     public ObservableCollection<TagSummaryItemViewModel> TagSummary { get; } = [];
 
-    /// <summary><c>true</c> while any window carries a tag — otherwise the summary shows its empty line.</summary>
+    /// <summary><c>true</c>, пока хоть одно окно несёт тег; иначе сводка показывает свою пустую строку.</summary>
     public bool HasTagSummary => TagSummary.Count > 0;
 
     /// <summary>
-    /// Selected sidebar row. Bound two-way from the <c>ListBox</c>; assigning it is the only
-    /// way the visible mode changes.
+    /// Выбранная строка боковой полосы. Привязана двусторонне от <c>ListBox</c>; присвоение —
+    /// единственный способ сменить видимый режим.
     /// </summary>
     public ShellModeViewModel SelectedMode
     {
         get => _selectedMode;
         set
         {
-            // A ListBox pushes null while its ItemsSource churns, and a shell with no mode
-            // would render as a blank work area.
+            // ListBox проталкивает null, пока перетряхивается его ItemsSource, а оболочка без
+            // режима нарисовалась бы пустой рабочей областью.
             if (value is null || ReferenceEquals(value, _selectedMode))
             {
                 return;
@@ -221,10 +223,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Which mode is on screen.</summary>
+    /// <summary>Какой режим на экране.</summary>
     public ShellMode CurrentMode => _selectedMode.Mode;
 
-    /// <summary>Switches modes by identity rather than by row — what code-behind and tests want.</summary>
+    /// <summary>Переключает режим по личности, а не по строке, — так удобнее code-behind и тестам.</summary>
     public void SelectMode(ShellMode mode) => SelectedMode = Mode(mode);
 
     public bool IsWindowsMode => CurrentMode == ShellMode.Windows;
@@ -237,55 +239,56 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     public bool IsLogMode => CurrentMode == ShellMode.Log;
 
-    // ---- run bar ----------------------------------------------------------------------
+    // ---- полоса прогонов ----------------------------------------------------------------
 
     /// <summary>
-    /// The run the bar names. First of the list rather than "most recent": the list is
-    /// normally one entry, and a stable choice keeps the bar from flickering between two
-    /// concurrent runs.
+    /// Тот прогон, который называет полоса. Первый в списке, а не «самый свежий»: список обычно
+    /// в одну запись, а устойчивый выбор не даёт полосе мигать между двумя одновременными
+    /// прогонами.
     /// </summary>
     public RunningMacroRowViewModel? PrimaryRun =>
         Workspace.Runs.Count > 0 ? Workspace.Runs[0] : null;
 
-    /// <summary><c>true</c> while anything is running — the bar's live/idle switch.</summary>
+    /// <summary><c>true</c>, пока хоть что-то идёт, — переключатель полосы между «живо» и «пусто».</summary>
     public bool HasRuns => Workspace.Runs.Count > 0;
 
-    /// <summary>What the bar says when nothing is running. The bar never collapses.</summary>
+    /// <summary>Что говорит полоса, когда ничего не идёт. Схлопываться она не умеет.</summary>
     public string IdleText => "нет активных прогонов";
 
-    /// <summary>"+2" when more runs are in flight than the bar can name; empty otherwise.</summary>
+    /// <summary>«+2», когда прогонов в полёте больше, чем полоса способна назвать; иначе пусто.</summary>
     public string OtherRunsText => Workspace.Runs.Count > 1
         ? string.Create(CultureInfo.CurrentCulture, $"+{Workspace.Runs.Count - 1}")
         : string.Empty;
 
-    /// <summary><c>true</c> when <see cref="OtherRunsText"/> has something to show.</summary>
+    /// <summary><c>true</c>, когда <see cref="OtherRunsText"/> есть что показать.</summary>
     public bool HasOtherRuns => Workspace.Runs.Count > 1;
 
-    // ---- «Окна» header actions ----------------------------------------------------------
+    // ---- действия в шапке «Окна» ----------------------------------------------------------
 
-    /// <summary><c>true</c> when the library actually contains <see cref="IdentifyMacroName"/>.</summary>
+    /// <summary><c>true</c>, когда в библиотеке действительно есть <see cref="IdentifyMacroName"/>.</summary>
     public bool CanIdentifyAll { get; private set; }
 
-    /// <summary>Runs the identification macro across every window its selectors match.</summary>
+    /// <summary>Запускает макрос опознания по всем окнам, в которые попадают его селекторы.</summary>
     public void IdentifyAll()
     {
         if (!CanIdentifyAll || _launcher is null)
         {
             return;
         }
+
         _launcher.RunMacro(IdentifyMacroName);
     }
 
-    // ---- hotkeys ------------------------------------------------------------------------
+    // ---- хоткеи ---------------------------------------------------------------------------
 
-    /// <summary><c>true</c> while the daemon's global hotkeys are switched off on our behalf.</summary>
+    /// <summary><c>true</c>, пока глобальные хоткеи демона выключены по нашей просьбе.</summary>
     public bool HotkeysSuspended => _hotkeysSuspended;
 
     /// <summary>
-    /// Restores the daemon's hotkeys if this shell suspended them. Called on the way out of
-    /// «Макросы» and again when the window closes — the daemon does NOT re-register on its
-    /// own when a client disconnects, so a missed resume leaves every global hotkey dead
-    /// until the daemon restarts.
+    /// Возвращает хоткеи демона на место, если эта оболочка их приостанавливала. Вызывается на
+    /// выходе из «Макросов» и ещё раз при закрытии окна: демон НЕ перерегистрирует их сам,
+    /// когда клиент отваливается, так что пропущенное возобновление оставляет каждый
+    /// глобальный хоткей мёртвым до перезапуска демона.
     /// </summary>
     public async Task ResumeHotkeysIfSuspendedAsync()
     {
@@ -293,12 +296,13 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         {
             return;
         }
+
         _hotkeysSuspended = false;
         OnPropertyChanged(nameof(HotkeysSuspended));
         await SafeAsync(Editor.ResumeHotkeysAsync(), "resume").ConfigureAwait(false);
     }
 
-    /// <summary>Ticks the run bar and the «Прогоны» list. Driven by the window's 1s timer.</summary>
+    /// <summary>Подгоняет полосу прогонов и список «Прогоны». Её тикает односекундный таймер окна.</summary>
     public void RefreshElapsed() => Workspace.RefreshElapsed();
 
     public void Dispose()
@@ -310,33 +314,33 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Editor.Dispose();
     }
 
-    // ---- internals ------------------------------------------------------------------------
+    // ---- внутренности -----------------------------------------------------------------------
 
     /// <summary>
-    /// Two things are bracketed by «Макросы» being on screen: global hotkeys go down, and
-    /// the run-event stream comes up.
+    /// В скобки «„Макросы“ на экране» взяты две вещи: глобальные хоткеи ложатся, а поток
+    /// событий прогона поднимается.
     ///
-    /// <b>Hotkeys.</b> Win32 <c>RegisterHotKey</c> swallows presses of a chord it already
-    /// owns, so a chord currently bound to a macro would never reach the picker — precisely
-    /// the chord a user is most likely to be re-binding. Before D2 the bracket was the
-    /// dialog's lifetime; with the editor becoming a mode, the mode's activation is the
-    /// nearest equivalent. It is deliberately NOT scoped to "a picker is armed": arming
-    /// happens on a click and the suspend is a round trip, so the very first keypress could
-    /// still race the daemon.
+    /// <b>Хоткеи.</b> Win32 <c>RegisterHotKey</c> проглатывает нажатия сочетания, которым уже
+    /// владеет, поэтому сочетание, привязанное сейчас к макросу, до ловушки не дошло бы
+    /// никогда — а это ровно то сочетание, которое пользователь скорее всего и перебивает. До
+    /// D2 скобками служило время жизни диалога; когда редактор стал режимом, ближайший
+    /// эквивалент — активация режима. Привязывать это к «ловушка взведена» намеренно НЕ стали:
+    /// взведение происходит по клику, а приостановка — это round trip, так что самое первое
+    /// нажатие всё равно могло бы обогнать демон.
     ///
-    /// <b>Run events (D3b).</b> Same bracket for a different reason: the canvas is the only
-    /// thing that renders them, the stream is the only high-rate message in the protocol,
-    /// and the daemon produces nothing while nobody is subscribed. Leaving it on for the
-    /// whole life of the panel would mean the engine formats a log line for every node of
-    /// every macro while the user is looking at a list of windows.
+    /// <b>События прогона (D3b).</b> Те же скобки по другой причине: рисует их только canvas,
+    /// поток — единственное частое сообщение в протоколе, а пока никто не подписан, демон не
+    /// производит ничего. Держать его включённым всю жизнь панели значило бы, что движок
+    /// форматирует строку лога на каждую ноду каждого макроса, пока пользователь смотрит на
+    /// список окон.
     /// </summary>
     private void ApplyMacrosModeScope()
     {
         var inMacros = CurrentMode == ShellMode.Macros;
 
-        // Two independent latches, deliberately not one: the hotkey one is released early by
-        // ResumeHotkeysIfSuspendedAsync on the way out of the process, and sharing a flag
-        // would make that release swallow the unsubscribe of a later mode switch.
+        // Две независимые защёлки, намеренно не одна: хоткейную досрочно отпускает
+        // ResumeHotkeysIfSuspendedAsync на выходе из процесса, и общий флаг привёл бы к тому,
+        // что это освобождение проглотило бы отписку при более поздней смене режима.
         if (inMacros != _runEventsSubscribed)
         {
             _runEventsSubscribed = inMacros;
@@ -393,8 +397,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     {
         Mode(ShellMode.Macros).SetCount(Editor.Macros.Count);
 
-        var canIdentify = Editor.Macros.Any(
-            item => string.Equals(item.Name, IdentifyMacroName, StringComparison.Ordinal));
+        var canIdentify =
+            Editor.Macros.Any(item => string.Equals(item.Name, IdentifyMacroName, StringComparison.Ordinal));
         if (canIdentify != CanIdentifyAll)
         {
             CanIdentifyAll = canIdentify;
@@ -402,8 +406,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Busiest tag first, then alphabetical — a stable order that puts the party's actual
-    // composition at the top of the rail.
+    // Самый многочисленный тег первым, дальше по алфавиту — устойчивый порядок, поднимающий
+    // наверх полосы реальный состав пати.
     private void RebuildTagSummary()
     {
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -426,6 +430,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         {
             TagSummary.Add(item);
         }
+
         OnPropertyChanged(nameof(HasTagSummary));
     }
 

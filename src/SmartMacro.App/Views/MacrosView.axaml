@@ -1,24 +1,25 @@
 ﻿<!--
-  «Макросы» — the canvas node editor (wave D3a).
-  Source of truth: docs/design/opt-1d.html (canvas + inspector) and opt-1e.html (a box
-  expanded into an editor of itself). The rows editor this replaces is gone.
+  «Макросы» — редактор нод на canvas (волна D3a).
+  Источник истины: docs/design/opt-1d.html (canvas и инспектор) и opt-1e.html (коробка,
+  развёрнутая в редактор самой себя). Строчного редактора, который это заменило, больше нет.
 
-  Four columns of the 1d layout, left to right:
+  Четыре колонки раскладки 1d, слева направо:
 
-    · the LIBRARY, grouped by name prefix. The rule is MacroLibraryGrouping's, not this
-      file's; the panel only renders headings it is handed.
-    · the CANVAS. Boxes are laid out "rows with wrapping" and edges run in the gutters
-      BETWEEN rows — never diagonally across a box. A conditional carries both outcomes as
-      labelled rows along its own bottom edge, which is what makes «в конец» readable
-      without a terminal node: an unwired outcome says "→ конец" in its own row and draws
-      no line at all.
-    · the RUN LOG (D3b), fed by the daemon's RunEvents stream. Its header carries the run
-      picker — one graph can be walked by ten windows at once, and both the strip and the
-      canvas highlight follow exactly one of them.
-    · the INSPECTOR. Single click on a box fills it; double click expands the box in place
-      (1e) and both edit the same view-model, so they can never disagree.
+    · БИБЛИОТЕКА, сгруппированная по приставке в имени. Правило принадлежит
+      MacroLibraryGrouping, а не этому файлу; панель лишь рисует те заголовки, которые ей
+      подали.
+    · CANVAS. Коробки разложены «рядами с переносом», а рёбра идут по жёлобам МЕЖДУ рядами —
+      никогда наискось через коробку. Условная нода несёт оба исхода подписанными рядами
+      вдоль своей нижней кромки, и именно это делает «в конец» читаемым без терминальной
+      ноды: неподключённый исход говорит «→ конец» в собственном ряду и не рисует линии
+      вовсе.
+    · ЛОГ ПРОГОНА (D3b), который кормит поток RunEvents от демона. В его шапке живёт
+      переключатель прогонов — по одному графу могут идти десять окон разом, и полоса вместе
+      с подсветкой на canvas следуют ровно за одним из них.
+    · ИНСПЕКТОР. Одиночный клик по коробке наполняет его; двойной разворачивает коробку на
+      месте (1e), и оба правят одну и ту же view-model, так что разойтись они не могут.
 
-  Everything is drawn from Themes/Tokens.axaml. No literal colour belongs in this file.
+  Всё рисуется из Themes/Tokens.axaml. Буквальному цвету в этом файле места нет.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -32,8 +33,8 @@
              x:DataType="vm:MacroEditorViewModel">
 
     <UserControl.Styles>
-        <!-- The parameter blocks are a wall of "label: field" pairs; naming the recurring
-             roles once keeps token references out of every row. -->
+        <!-- Блоки параметров — сплошная стена пар «подпись: поле»; один раз назвав повторяющиеся
+             роли, мы избавляем каждую строку от ссылок на токены. -->
         <Style Selector="TextBlock.label">
             <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeMicro}" />
             <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral600Brush}" />
@@ -59,7 +60,7 @@
             <Setter Property="Padding" Value="2.8,2.8" />
         </Style>
 
-        <!-- ============================ library rows ============================ -->
+        <!-- ========================= строки библиотеки ========================= -->
         <Style Selector="Border.libRow">
             <Setter Property="Height" Value="28" />
             <Setter Property="Padding" Value="12,0,8,0" />
@@ -76,7 +77,7 @@
             <Setter Property="Padding" Value="10,0,8,0" />
         </Style>
 
-        <!-- ============================== node boxes ============================== -->
+        <!-- ============================ коробки нод ============================ -->
         <Style Selector="Border.node">
             <Setter Property="Background" Value="{DynamicResource NocturneNodeSurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneNodeBorderBrush}" />
@@ -92,10 +93,10 @@
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
             <Setter Property="BoxShadow" Value="{DynamicResource NocturneShadowNodeSelected}" />
         </Style>
-        <!-- Passed BEFORE running/paused, so a box that is both (a loop back onto a node
-             the walk has already crossed) reads as live. Order is the whole rule here:
-             equal-specificity selectors in Avalonia are won by the LAST one, which is the
-             trap D1 hit with .accent losing to :disabled. -->
+        <!-- «Пройдено» ПЕРЕД «идёт» и «на паузе», чтобы коробка, которая и то и другое (цикл
+             обратно на ноду, где обход уже был), читалась как живая. Порядок тут и есть всё
+             правило: среди селекторов одинаковой специфичности в Avalonia побеждает ПОСЛЕДНИЙ —
+             та самая ловушка, на которую D1 напоролась, когда .accent проиграл :disabled. -->
         <Style Selector="Border.node.passed">
             <Setter Property="Background" Value="{DynamicResource NocturneNodePassedBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneNodePassedBorderBrush}" />
@@ -106,28 +107,31 @@
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
             <Setter Property="Opacity" Value="1" />
         </Style>
-        <!-- Parked: the accent surface of a live node, edged in danger. "Stopped here" must
-             never look like "running here" — they are one keypress apart in consequence. -->
+        <!-- Припаркована: акцентная поверхность живой ноды, окантованная тревожным. «Остановлено
+             здесь» не имеет права выглядеть как «идёт здесь» — по последствиям их разделяет одно
+             нажатие клавиши. -->
         <Style Selector="Border.node.paused">
             <Setter Property="Background" Value="{DynamicResource NocturneNodeRunningBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneNodePausedBorderBrush}" />
             <Setter Property="Opacity" Value="1" />
         </Style>
-        <!-- Ends of a hovered variable link. An outline, not a fill: the box may also be
-             passed or live, and this must sit on top of either without hiding it. -->
+        <!-- Концы связи по переменной, на которую навели. Контур, а не заливка: коробка может
+             быть заодно пройденной или живой, и это должно лечь поверх любого из двух, не
+             спрятав его. -->
         <Style Selector="Border.node.varSource, Border.node.varConsumer">
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneVariableBrush}" />
             <Setter Property="Opacity" Value="1" />
         </Style>
 
-        <!-- The breakpoint marker.
-             The mockup draws it as a dot hanging half off the box's top-left corner. That
-             does not survive here: something above the item container clips at the box's
-             bounds — setting ClipToBounds="False" on the generated ContentPresenter changed
-             nothing — so a node at canvas x=0 lost the outer half of its dot and rendered a
-             red sliver. Rather than ship a marker whose visibility depends on where the node
-             happens to sit, it became a gutter bar down the box's inside edge: the shape
-             every IDE uses for the same meaning, unclippable at any position or zoom. -->
+        <!-- Отметка точки останова.
+             Макет рисует её точкой, свисающей наполовину с левого верхнего угла коробки. Здесь
+             это не выживает: что-то выше контейнера элемента режет по границам коробки —
+             выставление ClipToBounds="False" на сгенерированном ContentPresenter не изменило
+             ничего, — и нода на canvas при x=0 теряла внешнюю половину точки, отрисовываясь
+             красной щепкой. Вместо того чтобы выпускать отметку, чью видимость решает случайное
+             положение ноды, она стала полосой в жёлобе по внутренней кромке коробки: та самая
+             форма, которой любая IDE обозначает то же самое, и её не срежет ни при каком
+             положении и масштабе. -->
         <Style Selector="Border.breakpointBar">
             <Setter Property="Width" Value="4" />
             <Setter Property="HorizontalAlignment" Value="Left" />
@@ -136,11 +140,11 @@
             <Setter Property="Background" Value="{DynamicResource NocturneDangerBrush}" />
         </Style>
 
-        <!-- The mockup's pulsing current node. A separate ring rather than animating the box:
-             fading the Border itself would fade its text with it, and the whole point is that
-             the live node stays the most readable one. Invisible and INERT until the class is
-             on — Avalonia runs a style's animation only while its selector matches, so an
-             idle canvas has no timers at all. -->
+        <!-- Пульсирующая текущая нода из макета. Отдельное кольцо, а не анимация самой коробки:
+             угасание Border утащило бы за собой и его текст, а вся суть в том, чтобы живая нода
+             оставалась самой читаемой. Невидимо и НЕПОДВИЖНО, пока класс не навешен, — Avalonia
+             крутит анимацию стиля только пока его селектор подходит, так что у простаивающего
+             canvas нет вообще никаких таймеров. -->
         <Style Selector="Border.pulseRing">
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="BorderThickness" Value="1.5" />
@@ -178,8 +182,8 @@
             <Setter Property="Background" Value="{DynamicResource NocturneNodeRunningHeaderBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneNodeRunningHeaderBorderBrush}" />
         </Style>
-        <!-- The port dot. Its CENTRE sits exactly on the box's right edge, which is where
-             CanvasEdgeRouter starts the line — the negative margin is load-bearing. -->
+        <!-- Точка порта. Её ЦЕНТР лежит ровно на правой кромке коробки — там же CanvasEdgeRouter
+             начинает линию, так что отрицательный отступ здесь несущий. -->
         <Style Selector="Border.port">
             <Setter Property="Width" Value="7" />
             <Setter Property="Height" Value="7" />
@@ -190,8 +194,8 @@
             <Setter Property="Background" Value="{DynamicResource NocturneTextFaintBrush}" />
             <Setter Property="BorderThickness" Value="0" />
         </Style>
-        <!-- Unwired: a hollow ring, so "this outcome ends the run" is visible from across
-             the canvas and never reads as a missing connection. -->
+        <!-- Неподключённый: пустое колечко, чтобы «этот исход завершает прогон» было видно через
+             весь canvas и никогда не читалось как потерянное соединение. -->
         <Style Selector="Border.port.loose">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="1" />
@@ -211,15 +215,15 @@
             <Setter Property="HorizontalAlignment" Value="Left" />
         </Style>
 
-        <!-- ============================ targets badge (1g) ============================
-             Three tones, and the difference between them is the whole widget: neutral for
-             "the context window", accent for "it hits something", danger for "it hits
-             nothing". «0 окон» must never look like an ordinary number — but see
-             TargetSelectorViewModel.BadgeIsDanger for why "the daemon has no windows at
-             all" is deliberately NOT the danger case. -->
-        <!-- No fixed height: the same pill has to sit inside a 19px node header and in the
-             inspector, and a hard 22px (the mockup's standalone card) would burst the
-             header. Padding gives it ~18px, which reads the same in both places. -->
+        <!-- ============================ бейдж целей (1g) ============================
+             Три тона, и разница между ними — это и есть весь виджет: нейтральный для
+             «контекстного окна», акцентный для «во что-то попадает», тревожный для «не
+             попадает ни во что». «0 окон» не имеет права выглядеть обычным числом — но см.
+             TargetSelectorViewModel.BadgeIsDanger о том, почему «у демона вообще нет окон»
+             намеренно НЕ считается тревожным случаем. -->
+        <!-- Без фиксированной высоты: одна и та же пилюля должна помещаться и в 19-пиксельную
+             шапку ноды, и в инспектор, а жёсткие 22px (отдельная карточка из макета) шапку бы
+             разорвали. Отступы дают ей ~18px, и читается она одинаково в обоих местах. -->
         <Style Selector="Border.targetBadge">
             <Setter Property="MinHeight" Value="18" />
             <Setter Property="Padding" Value="8,1" />
@@ -250,9 +254,9 @@
             <Setter Property="Foreground" Value="{DynamicResource NocturneDangerBrush}" />
         </Style>
 
-        <!-- One window named in the expanded badge. `.missed` is a window the selector
-             deliberately skips — struck through rather than hidden, because "who fell out"
-             is half of what the expansion is for. -->
+        <!-- Одно окно, названное в развёрнутом бейдже. `.missed` — окно, которое селектор
+             пропускает намеренно: перечёркнуто, а не спрятано, потому что «кто выпал» — это
+             половина того, ради чего бейдж разворачивают. -->
         <Style Selector="Border.windowChip">
             <Setter Property="Height" Value="19" />
             <Setter Property="Padding" Value="7,0" />
@@ -269,11 +273,11 @@
 
     <UserControl.Resources>
 
-        <!-- ==== targets badge, collapsed (mockup 1g) ====
-             «8 окон · кроме Склад». The number leads: what the tags are is already in the
-             inspector, what this answers is how many windows the action will reach. The
-             four bars are the share at a glance; a non-zero share always fills at least
-             one, so "1 из 11" never renders as an empty strip. -->
+        <!-- ==== бейдж целей, свёрнутый (макет 1g) ====
+             «8 окон · кроме Склад». Число идёт первым: какие там теги, и так видно в
+             инспекторе, а отвечает бейдж на вопрос, до скольких окон действие дотянется.
+             Четыре полоски — это доля с одного взгляда; ненулевая доля всегда закрашивает
+             хотя бы одну, так что «1 из 11» не отрисовывается пустой полосой никогда. -->
         <DataTemplate x:Key="TargetBadgeTemplate" x:DataType="nodes:TargetSelectorViewModel">
             <Border Classes="targetBadge"
                     Classes.accent="{Binding BadgeIsAccent}"
@@ -308,12 +312,12 @@
             </Border>
         </DataTemplate>
 
-        <!-- ==== targets badge, compact ====
-             The canvas variant. Same pill, same tones, count only: a 210px box already
-             carries a family glyph and a type label, and the full «7 окон · кроме Лучник,
-             Шаман» pushes the label out of the header entirely — which costs more than it
-             buys, since the label is what says what the node DOES. The tags are in the
-             tooltip, and in the inspector's badge one click away. -->
+        <!-- ==== бейдж целей, компактный ====
+             Вариант для canvas. Та же пилюля, те же тона, только число: коробка в 210px и так
+             несёт глиф семейства и подпись типа, а полное «7 окон · кроме Лучник, Шаман»
+             вытесняет подпись из шапки целиком — а это обходится дороже, чем даёт, ведь именно
+             подпись говорит, ЧТО нода делает. Теги — в подсказке и в бейдже инспектора, в одном
+             клике отсюда. -->
         <DataTemplate x:Key="TargetBadgeCompactTemplate" x:DataType="nodes:TargetSelectorViewModel">
             <Border Classes="targetBadge"
                     Classes.accent="{Binding BadgeIsAccent}"
@@ -350,9 +354,9 @@
             </Border>
         </DataTemplate>
 
-        <!-- one require/exclude tag, removable. Declared BEFORE the popup that uses it:
-             StaticResource inside a ResourceDictionary resolves against what is already
-             above it. -->
+        <!-- один тег require/exclude, снимаемый. Объявлен РАНЬШЕ popup, который его использует:
+             StaticResource внутри ResourceDictionary разрешается по тому, что уже объявлено
+             выше. -->
         <DataTemplate x:Key="SelectorTagChipTemplate" x:DataType="nodes:SelectorTagChipViewModel">
             <Border Height="18"
                     Margin="0,0,4,2"
@@ -377,7 +381,7 @@
             </Border>
         </DataTemplate>
 
-        <!-- one window in the expanded badge -->
+        <!-- одно окно в развёрнутом бейдже -->
         <DataTemplate x:Key="TargetWindowChipTemplate" x:DataType="nodes:TargetWindowChip">
             <Border Classes="windowChip"
                     Classes.missed="{Binding IsExcluded}"
@@ -391,32 +395,34 @@
             </Border>
         </DataTemplate>
 
-        <!-- ==== targets badge, expanded ====
-             A click opens the popup: the same selector as an editor of tag CHIPS (the
-             comma-separated boxes are still the model, this is a friendlier face on them),
-             and under it the live roster — who is hit, who is struck out, how many windows
-             have no tags at all to route by. -->
+        <!-- ==== бейдж целей, развёрнутый ====
+             Клик открывает popup: тот же селектор, но как редактор ЧИПОВ тегов (моделью
+             по-прежнему остаются поля с запятыми, а это лишь приветливое их лицо), а под ним —
+             живой состав: кого задело, кто вычеркнут, у скольких окон вообще нет тегов, по
+             которым можно было бы маршрутизировать. -->
         <DataTemplate x:Key="TargetBadgeButtonTemplate" x:DataType="nodes:TargetSelectorViewModel">
             <Button Classes="ghost"
                     Padding="0"
                     HorizontalAlignment="Left"
                     ToolTip.Tip="Кто попадёт под этот селектор прямо сейчас">
                 <Button.Flyout>
-                    <!-- Right-aligned, not centred: the badge sits at the right edge of a
-                         308px inspector, and a Bottom-placed 322px popup is simply cut off
-                         there — Avalonia hosts this one as an in-window overlay, so it does
-                         not spill onto the desktop the way a platform popup would. -->
+                    <!-- Выровнено по правому краю, а не по центру: бейдж стоит у правой кромки
+                         308-пиксельного инспектора, и popup шириной 322px, размещённый снизу,
+                         там попросту обрезается — Avalonia держит именно этот как наложение
+                         внутри окна, так что на рабочий стол он, в отличие от платформенного
+                         popup, не вылезет. -->
                     <Flyout Placement="BottomEdgeAlignedRight">
                         <StackPanel Width="322">
 
-                            <!-- context vs tags: the two things a null-vs-empty selector
-                                 means, which no pair of tag boxes can express. -->
+                            <!-- контекст против тегов: те две вещи, которые значат «селектор
+                                 null» и «селектор пустой» и которых никакая пара полей тегов
+                                 не выразит. -->
                             <StackPanel Margin="10,8" Spacing="7">
                                 <Grid ColumnDefinitions="*,*">
-                                    <!-- Padding, not a fixed Height: the Button theme's
-                                         11.2px vertical inset plus a 24px box leaves less
-                                         room than an 11px line needs, and the descenders
-                                         get shaved off. -->
+                                    <!-- Отступы, а не фиксированная Height: вертикальная
+                                         вставка 11.2px из темы Button плюс коробка в 24px
+                                         оставляют меньше места, чем нужно строке в 11px, и у
+                                         букв сбривает выносные элементы. -->
                                     <Button Grid.Column="0"
                                             Content="контекст-окно"
                                             Padding="8,3"
@@ -501,10 +507,10 @@
                                            Text="Селектор пуст — действие уйдёт в окно, из которого запущен макрос." />
                             </StackPanel>
 
-                            <!-- The roster. Tag-routing only: in context mode the selector
-                                 targets exactly one window — whichever the run came from —
-                                 and a list of eight struck-out names under «0 из 8» would
-                                 say the opposite of what actually happens. -->
+                            <!-- Состав. Только при маршрутизации по тегам: в режиме контекста
+                                 селектор целится ровно в одно окно — то, из которого пришёл
+                                 прогон, — и список из восьми перечёркнутых имён под «0 из 8»
+                                 говорил бы прямо обратное тому, что происходит на деле. -->
                             <Border BorderThickness="0,1,0,0"
                                     BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
                                     Background="{DynamicResource NocturneBgBrush}"
@@ -560,7 +566,7 @@
             </Button>
         </DataTemplate>
 
-        <!-- ==== one outcome row on a COLLAPSED box: caption + port dot ==== -->
+        <!-- ==== одна строка исхода на СВЁРНУТОЙ коробке: подпись + точка порта ==== -->
         <DataTemplate x:Key="OutcomePortTemplate" x:DataType="nodes:NodeEdgeViewModel">
             <Grid ColumnDefinitions="*,Auto" Height="15">
                 <TextBlock Grid.Column="0"
@@ -578,10 +584,10 @@
             </Grid>
         </DataTemplate>
 
-        <!-- ==== one outcome as an EDITOR: caption + drop-down of node ids ==== -->
+        <!-- ==== один исход как РЕДАКТОР: подпись + выпадающий список id нод ==== -->
         <DataTemplate x:Key="EdgeEditorTemplate" x:DataType="nodes:NodeEdgeViewModel">
-            <!-- 82px, not the 64 of the parameter rows: "не распознано" is the longest
-                 outcome name in the catalogue and a trimmed one reads as a different word. -->
+            <!-- 82px, а не 64, как у строк параметров: «не распознано» — самое длинное имя
+                 исхода в каталоге, а урезанное читается уже другим словом. -->
             <Grid ColumnDefinitions="82,*" Margin="0,0,0,5.6">
                 <TextBlock Grid.Column="0" Classes="label" Text="{Binding ShortLabel}" />
                 <ComboBox Grid.Column="1"
@@ -597,7 +603,7 @@
             </Grid>
         </DataTemplate>
 
-        <!-- ==== the node box ==== -->
+        <!-- ==== коробка ноды ==== -->
         <DataTemplate x:Key="NodeBoxTemplate" x:DataType="nodes:NodeRowViewModel">
             <Border Classes="node"
                     Classes.selected="{Binding IsSelected}"
@@ -612,7 +618,7 @@
                     DoubleTapped="OnNodeDoubleTapped">
                 <Grid RowDefinitions="Auto,*,Auto">
 
-                    <!-- header: family glyph, type, targets chip -->
+                    <!-- шапка: глиф семейства, тип, чип целей -->
                     <Border Grid.Row="0"
                             Classes="nodeHeader"
                             Classes.conditional="{Binding IsConditional}"
@@ -640,22 +646,23 @@
                                        TextTrimming="CharacterEllipsis"
                                        Foreground="{Binding IsConditional, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneChipTextSoftBrush|NocturneNeutral300Brush}"
                                        Text="{Binding TypeLabel}" />
-                            <!-- The live targets badge (1g), compact. Only for nodes that
-                                 route by TAGS: "acts on the context window" is the default
-                                 every second node has — the departure from it is what earns
-                                 a word. Display-only here; the clickable, expanding copy is
-                                 in the inspector, which is not inside the canvas's
-                                 scale+translate transform (a Popup over one lands where the
-                                 transform is not). -->
+                            <!-- Живой бейдж целей (1g), компактный. Только для нод, которые
+                                 маршрутизируют по ТЕГАМ: «действует на контекстное окно» —
+                                 умолчание, которое есть у каждой второй ноды, и слова
+                                 заслуживает отступление от него. Здесь он только показывает;
+                                 кликабельная разворачивающаяся копия — в инспекторе, который
+                                 не лежит внутри canvas'ного transform из масштаба и сдвига
+                                 (Popup над таким приземляется туда, где transform уже не
+                                 действует). -->
                             <ContentControl Grid.Column="2"
                                             Margin="6,0,0,0"
                                             IsVisible="{Binding ShowsTargetChip}"
                                             Content="{Binding Target}"
                                             ContentTemplate="{StaticResource TargetBadgeCompactTemplate}" />
-                            <!-- The run stamp replaces the targets chip while a walk is being
-                                 watched: ✓ with the time for a passed node, ▸ for the live
-                                 one. Same slot on purpose — the header is 210px wide and the
-                                 type label is what must never be squeezed out. -->
+                            <!-- Пока за обходом следят, штамп прогона занимает место чипа
+                                 целей: ✓ со временем у пройденной ноды, ▸ у живой. Слот тот же
+                                 намеренно — шапка шириной 210px, и вытеснять из неё нельзя
+                                 именно подпись типа. -->
                             <TextBlock Grid.Column="2"
                                        Margin="6,0,0,0"
                                        FontSize="10"
@@ -675,7 +682,7 @@
                         </Grid>
                     </Border>
 
-                    <!-- collapsed body: id + the one line that says what this node does -->
+                    <!-- свёрнутое тело: id и та единственная строка, что говорит, чем нода занята -->
                     <StackPanel Grid.Row="1" Margin="7,3,7,0" IsVisible="{Binding !IsExpanded}">
                         <TextBlock FontSize="9.5"
                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
@@ -700,7 +707,7 @@
                         </Border>
                     </StackPanel>
 
-                    <!-- expanded body (1e): the box becomes an editor of itself -->
+                    <!-- развёрнутое тело (1e): коробка становится редактором самой себя -->
                     <StackPanel Grid.Row="1" Margin="9,8,9,4" Spacing="5.6" IsVisible="{Binding IsExpanded}">
                         <Grid ColumnDefinitions="64,*">
                             <TextBlock Grid.Column="0" Classes="label" Text="id" />
@@ -712,7 +719,7 @@
                         <ContentControl Content="{Binding Target}" IsVisible="{Binding HasTarget}" />
                     </StackPanel>
 
-                    <!-- outcomes: port rows when collapsed, drop-downs when expanded -->
+                    <!-- исходы: строки портов в свёрнутом виде, выпадающие списки в развёрнутом -->
                     <ItemsControl Grid.Row="2"
                                   Margin="0,0,0,4"
                                   IsVisible="{Binding !IsExpanded}"
@@ -728,16 +735,16 @@
                                       ItemTemplate="{StaticResource EdgeEditorTemplate}" />
                     </Border>
 
-                    <!-- Spans every row so the bar runs the full height of the box. Last in
-                         the Grid, so it paints over the header's background. -->
+                    <!-- Тянется на все строки, чтобы полоса шла во всю высоту коробки. В Grid
+                         идёт последней, поэтому закрашивает и фон шапки. -->
                     <Border Grid.Row="0" Grid.RowSpan="3"
                             Classes="breakpointBar"
                             IsVisible="{Binding HasBreakpoint}"
                             ToolTip.Tip="Брейкпоинт: прогон встанет ПЕРЕД этой нодой" />
 
-                    <!-- Only while the walk is actually running this node: a PARKED walk gets
-                         the static danger edge instead, because "stopped here" and "running
-                         here" must not share an animation. -->
+                    <!-- Только пока обход действительно исполняет эту ноду: ПРИПАРКОВАННОМУ
+                         достаётся вместо этого статичная тревожная кромка, потому что
+                         «остановлено здесь» и «идёт здесь» не имеют права делить анимацию. -->
                     <Border Grid.Row="0" Grid.RowSpan="3"
                             Classes="pulseRing"
                             Classes.pulsing="{Binding IsRunningLive}" />
@@ -748,7 +755,7 @@
 
     <UserControl.DataTemplates>
 
-        <!-- ==== shared editors, used by BOTH the inspector and an expanded box ==== -->
+        <!-- ==== общие редакторы: их используют И инспектор, И развёрнутая коробка ==== -->
 
         <DataTemplate DataType="{x:Type nodes:TargetSelectorViewModel}" x:DataType="nodes:TargetSelectorViewModel">
             <StackPanel Spacing="2.8">
@@ -787,7 +794,7 @@
             </StackPanel>
         </DataTemplate>
 
-        <!-- ==== node parameter blocks (one per node type) ==== -->
+        <!-- ==== блоки параметров нод (по одному на тип ноды) ==== -->
 
         <DataTemplate DataType="{x:Type nodes:KeyPressNodeRowViewModel}" x:DataType="nodes:KeyPressNodeRowViewModel">
             <Grid ColumnDefinitions="64,*">
@@ -913,13 +920,12 @@
             </StackPanel>
         </DataTemplate>
 
-        <!-- ==== trigger rows ==== -->
+        <!-- ==== строки триггеров ==== -->
 
-        <!-- The hotkey trap, mockup 1f. The picker itself carries the four states; what
-             belongs OUTSIDE it is the two lines of guidance under the armed state — how to
-             get out of capture, and the fact that the daemon's global hotkeys are down
-             while this mode is open. Both are bound to the picker's own IsCapturing, so
-             they appear exactly while they are true. -->
+        <!-- Ловушка хоткея, макет 1f. Четыре состояния несёт сама ловушка; СНАРУЖИ ей место
+             только двум строкам подсказки под взведённым состоянием — как выйти из ловли и то,
+             что глобальные хоткеи демона лежат, пока открыт этот режим. Обе привязаны к
+             собственному IsCapturing ловушки, поэтому появляются ровно тогда, когда верны. -->
         <DataTemplate DataType="{x:Type nodes:HotkeyTriggerRowViewModel}" x:DataType="nodes:HotkeyTriggerRowViewModel">
             <StackPanel Margin="0,0,0,5.6">
                 <Grid ColumnDefinitions="*,Auto">
@@ -946,14 +952,14 @@
                     <TextBlock Classes="hint"
                                TextWrapping="Wrap"
                                Text="Esc — отмена · Del — очистить · ловятся и боковые кнопки мыши" />
-                    <!-- A Grid, not a horizontal StackPanel: a StackPanel measures its
-                         children with infinite width, so TextWrapping never fires and the
-                         line is simply cut off at the panel edge. -->
+                    <!-- Grid, а не горизонтальный StackPanel: StackPanel меряет детей с
+                         бесконечной шириной, поэтому TextWrapping не срабатывает никогда, и
+                         строка просто обрезается по краю панели. -->
                     <Grid ColumnDefinitions="Auto,*">
-                        <!-- U+25B2, NOT U+26A0 ⚠: the warning sign has an emoji
-                             presentation, so Windows serves it from Segoe UI Emoji as a
-                             full-colour pictogram that ignores Foreground entirely — the
-                             same trap D1 hit with U+25B6. -->
+                        <!-- U+25B2, а НЕ U+26A0 ⚠: у знака предупреждения есть
+                             эмодзи-представление, поэтому Windows подаёт его из Segoe UI Emoji
+                             полноцветной картинкой, начисто игнорирующей Foreground, — та же
+                             ловушка, на которую D1 напоролась с U+25B6. -->
                         <TextBlock Grid.Column="0"
                                    FontSize="9"
                                    Margin="0,0,6,0"
@@ -986,7 +992,7 @@
             </Grid>
         </DataTemplate>
 
-        <!-- ==== validation issue ==== -->
+        <!-- ==== замечание валидатора ==== -->
 
         <DataTemplate DataType="{x:Type vm:ValidationIssueViewModel}" x:DataType="vm:ValidationIssueViewModel">
             <Button Classes="ghost"
@@ -1004,7 +1010,7 @@
 
     <Grid RowDefinitions="Auto,*">
 
-        <!-- =============================== toolbar =============================== -->
+        <!-- ======================= панель инструментов ======================= -->
         <Border Grid.Row="0"
                 Background="{DynamicResource NocturneSurfaceRaisedBrush}"
                 BorderBrush="{DynamicResource NocturneDividerBrush}"
@@ -1055,12 +1061,13 @@
                     </Button.Flyout>
                 </Button>
 
-                <!-- ==== debugger (D5) ====
-                     Present only once a walk of this graph is on record: four permanently
-                     dead buttons is how a toolbar stops being read. The mockup puts the
-                     progress counter inside the run chip; here it sits with the controls it
-                     is about, and the WALK PICKER stays in the log strip below with the
-                     ◂ ▸ arrows — two different numbers, each next to what it counts. -->
+                <!-- ==== отладчик (D5) ====
+                     Появляется, только когда обход этого графа уже зафиксирован: четыре
+                     навсегда мёртвые кнопки — верный способ добиться, чтобы панель инструментов
+                     перестали читать. Макет кладёт счётчик прогресса внутрь чипа прогона; здесь
+                     он стоит рядом с теми кнопками, к которым относится, а ПЕРЕКЛЮЧАТЕЛЬ
+                     ОБХОДОВ остаётся в полосе лога ниже, со стрелками ◂ ▸, — два разных числа,
+                     каждое рядом с тем, что считает. -->
                 <StackPanel Grid.Column="5"
                             Orientation="Horizontal"
                             Spacing="4"
@@ -1070,12 +1077,13 @@
                     <Border Width="1" Height="18" Margin="0,0,6,0"
                             Background="{DynamicResource NocturneDividerStrongBrush}" />
 
-                    <!-- Pause and Resume share a slot: they are mutually exclusive states of
-                         one walk, and a 1520px toolbar has no room for a permanently dead
-                         twin. The mockup's ⏸ / ⤼ / ▷| glyphs are NOT used — U+23F8 carries
-                         Emoji_Presentation and would arrive as a colour pictogram ignoring
-                         Foreground, the same trap D1 hit on U+25B6 and D4 on U+26A0. U+25B8
-                         and U+25A0 are the two that were verified to render as text. -->
+                    <!-- «Пауза» и «Дальше» делят один слот: это взаимоисключающие состояния
+                         одного обхода, а в панели инструментов шириной 1520px нет места для
+                         навсегда мёртвого близнеца. Глифы ⏸ / ⤼ / ▷| из макета НЕ используются:
+                         U+23F8 несёт Emoji_Presentation и приехал бы цветной картинкой,
+                         игнорирующей Foreground, — та же ловушка, на которую D1 напоролась с
+                         U+25B6, а D4 с U+26A0. Проверено, что текстом рисуются U+25B8 и
+                         U+25A0, — их и взяли. -->
                     <Button Height="26"
                             Content="Пауза"
                             IsVisible="{Binding !SelectedRunIsPaused}"
@@ -1106,10 +1114,10 @@
                             ToolTip.Tip="{Binding StopTooltip}"
                             Click="OnDebugStopClicked" />
 
-                    <!-- Counter and clock only. The walk's IDENTITY and its pause reason are
-                         in the log strip's header, next to the ◂ ▸ that choose it — printing
-                         them twice cost 260px and pushed «Сохранить» off the window edge,
-                         which is exactly the button you reach for after a debugging session. -->
+                    <!-- Только счётчик и часы. ЛИЧНОСТЬ обхода и причина его паузы живут в шапке
+                         полосы лога, рядом с ◂ ▸, которыми его и выбирают, — напечатать их
+                         дважды стоило 260px и вытолкнуло «Сохранить» за край окна, а это ровно
+                         та кнопка, к которой тянешься после сеанса отладки. -->
                     <Border Height="26"
                             Margin="6,0,0,0"
                             Padding="8,0"
@@ -1132,8 +1140,8 @@
                     </Border>
                 </StackPanel>
 
-                <!-- Feedback lives in the middle of the bar: it is about the whole macro,
-                     not about whatever the inspector happens to be showing. -->
+                <!-- Обратная связь живёт посреди полосы: она про макрос целиком, а не про то,
+                     что инспектор случайно показывает прямо сейчас. -->
                 <StackPanel Grid.Column="6" Margin="14,0" VerticalAlignment="Center" Spacing="1">
                     <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
                                Foreground="{DynamicResource NocturneWarningBrush}"
@@ -1185,7 +1193,7 @@
 
         <Grid Grid.Row="1" ColumnDefinitions="228,*,308">
 
-            <!-- =============================== library =============================== -->
+            <!-- ============================= библиотека ============================= -->
             <Border Grid.Column="0"
                     Background="{DynamicResource NocturneSurfaceSunkenBrush}"
                     BorderBrush="{DynamicResource NocturneDividerBrush}"
@@ -1232,11 +1240,11 @@
                                                                                Foreground="{DynamicResource NocturneTextMutedBrush}"
                                                                                Text="{Binding TriggerBadge}" />
                                                                 </Border>
-                                                                <!-- The chord is bound but Windows would not give it to
-                                                                     us. Shown on the ROW because that is the only place
-                                                                     it can be noticed without opening the macro — and
-                                                                     the usual way this happens is at daemon startup,
-                                                                     to a macro nobody is editing. -->
+                                                                <!-- Сочетание привязано, но Windows нам его не отдала.
+                                                                     Показано на СТРОКЕ, потому что это единственное
+                                                                     место, где это можно заметить, не открывая макрос, —
+                                                                     а случается такое обычно при старте демона, с
+                                                                     макросом, который никто не правит. -->
                                                                 <TextBlock FontSize="9"
                                                                            VerticalAlignment="Center"
                                                                            Foreground="{DynamicResource NocturneDangerBrush}"
@@ -1293,7 +1301,7 @@
                 </Grid>
             </Border>
 
-            <!-- ========================= canvas + run log ========================= -->
+            <!-- ======================== canvas + лог прогона ======================== -->
             <Grid Grid.Column="1" RowDefinitions="*,158">
 
                 <Panel Grid.Row="0"
@@ -1311,8 +1319,8 @@
                                              OffsetX="{Binding PanX}"
                                              OffsetY="{Binding PanY}" />
 
-                    <!-- The transformed surface. Everything on it is in canvas coordinates;
-                         the code-behind converts pointer positions with the same numbers. -->
+                    <!-- Трансформируемая поверхность. Всё на ней — в координатах canvas;
+                         code-behind переводит положения указателя теми же числами. -->
                     <Canvas x:Name="Surface"
                             Width="4000"
                             Height="4000"
@@ -1334,11 +1342,11 @@
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.Styles>
-                                <!-- The generated container is what carries the position;
-                                     the box template itself knows nothing about where it is.
-                                     ClipToBounds is turned OFF explicitly: the breakpoint dot
-                                     hangs off the box's top-left corner on a negative margin,
-                                     and a node at canvas x=0 had its left half sliced away. -->
+                                <!-- Положение несёт сгенерированный контейнер; сам шаблон
+                                     коробки о том, где он находится, не знает ничего.
+                                     ClipToBounds выключен явно: точка останова свисает с левого
+                                     верхнего угла коробки на отрицательном отступе, и у ноды на
+                                     canvas при x=0 левую половину срезало. -->
                                 <Style Selector="ItemsControl > ContentPresenter" x:DataType="nodes:NodeRowViewModel">
                                     <Setter Property="Canvas.Left" Value="{Binding X}" />
                                     <Setter Property="Canvas.Top" Value="{Binding Y}" />
@@ -1348,7 +1356,7 @@
                         </ItemsControl>
                     </Canvas>
 
-                    <!-- empty state -->
+                    <!-- пустое состояние -->
                     <StackPanel VerticalAlignment="Center"
                                 HorizontalAlignment="Center"
                                 Spacing="8.4"
@@ -1365,9 +1373,9 @@
                                    Text="{Binding FolderPath}" />
                     </StackPanel>
 
-                    <!-- Zoom chip. Bottom-LEFT, unlike the mockup's top-right: the mockup's
-                         canvas is wider than its graph, ours is exactly as wide, so a
-                         top-right chip sits on top of the third column's first box. -->
+                    <!-- Чип масштаба. Внизу СЛЕВА, а не вверху справа, как в макете: у макета
+                         canvas шире графа, у нас — ровно по нему, так что чип в правом верхнем
+                         углу садится прямо на первую коробку третьей колонки. -->
                     <Border HorizontalAlignment="Left"
                             VerticalAlignment="Bottom"
                             Margin="12"
@@ -1391,7 +1399,7 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- legend -->
+                    <!-- легенда -->
                     <Border HorizontalAlignment="Right"
                             VerticalAlignment="Bottom"
                             Margin="12"
@@ -1429,7 +1437,7 @@
                     </Border>
                 </Panel>
 
-                <!-- ============================= run log ============================= -->
+                <!-- =========================== лог прогона =========================== -->
                 <Border Grid.Row="1"
                         Background="{DynamicResource NocturnePanelDeepBrush}"
                         BorderBrush="{DynamicResource NocturneDividerBrush}"
@@ -1447,9 +1455,9 @@
                                            Foreground="{DynamicResource NocturneNeutral300Brush}"
                                            Text="Лог прогона" />
 
-                                <!-- The run picker. One graph can be walked by ten windows at
-                                     once, so the strip and the canvas highlight follow ONE of
-                                     them and this is how it is chosen. -->
+                                <!-- Переключатель прогонов. По одному графу могут идти десять
+                                     окон разом, поэтому полоса и подсветка на canvas следуют за
+                                     ОДНИМ из них, а выбирают его здесь. -->
                                 <StackPanel Grid.Column="1"
                                             Orientation="Horizontal"
                                             Spacing="6"
@@ -1467,9 +1475,9 @@
                                                Text="{Binding RunChipText}" />
                                     <TextBlock Classes="hint"
                                                Text="{Binding RunPositionText}" />
-                                    <!-- U+25C2/U+25B8, not U+25C0/U+25B6: D1 found the large
-                                         triangles get emoji presentation and arrive white,
-                                         ignoring Foreground entirely. -->
+                                    <!-- U+25C2/U+25B8, а не U+25C0/U+25B6: D1 выяснила, что
+                                         большие треугольники получают эмодзи-представление и
+                                         приезжают белыми, начисто игнорируя Foreground. -->
                                     <Button Classes="ghost" Padding="5,0" FontSize="11"
                                             Content="&#x25C2;"
                                             ToolTip.Tip="Предыдущий прогон"
@@ -1480,7 +1488,7 @@
                                             Click="OnNextRunClicked" />
                                 </StackPanel>
 
-                                <!-- Never let a partial log look complete. -->
+                                <!-- Неполный лог не имеет права выглядеть полным. -->
                                 <Border Grid.Column="2"
                                         Margin="10,0,0,0"
                                         Padding="7,1"
@@ -1495,11 +1503,12 @@
                                                Text="{Binding RunLogNotice}" />
                                 </Border>
 
-                                <!-- Mockup 1d's red pill, widened to every pause reason: this
-                                     is the ONE place that names both the state and the node
-                                     it is parked at, so it has to cover a step and a manual
-                                     pause too, not only a breakpoint. Danger tint only for a
-                                     breakpoint — the others are the user's own doing. -->
+                                <!-- Красная пилюля из макета 1d, расширенная на все причины
+                                     паузы: это ЕДИНСТВЕННОЕ место, называющее и состояние, и
+                                     ноду, на которой обход припаркован, — а значит, оно обязано
+                                     покрывать и шаг, и ручную паузу, а не одну лишь точку
+                                     останова. Тревожный оттенок — только для точки останова:
+                                     остальное пользователь сделал сам. -->
                                 <Border Grid.Column="3"
                                         Margin="10,0,0,0"
                                         Padding="7,1"
@@ -1587,7 +1596,7 @@
                 </Border>
             </Grid>
 
-            <!-- ============================== inspector ============================== -->
+            <!-- ============================== инспектор ============================== -->
             <Border Grid.Column="2"
                     Background="{DynamicResource NocturnePanelDeepBrush}"
                     BorderBrush="{DynamicResource NocturneDividerBrush}"
@@ -1615,7 +1624,7 @@
                     <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
 
-                            <!-- node inspector -->
+                            <!-- инспектор ноды -->
                             <StackPanel IsVisible="{Binding HasSelectedNode}">
                                 <StackPanel Margin="12,9" Spacing="5.6">
                                     <Grid ColumnDefinitions="64,*">
@@ -1635,10 +1644,10 @@
                                     <StackPanel Spacing="5.6">
                                         <Grid ColumnDefinitions="Auto,*">
                                             <TextBlock Grid.Column="0" Classes="eyebrow" Text="ЦЕЛИ" />
-                                            <!-- The badge with its expansion (1g). Here rather
-                                                 than on the canvas box because a Popup over a
-                                                 scaled+translated surface lands where the
-                                                 transform is not. -->
+                                            <!-- Бейдж вместе со своим разворотом (1g). Здесь, а
+                                                 не на коробке canvas, потому что Popup над
+                                                 масштабированной и сдвинутой поверхностью
+                                                 приземляется туда, где transform не действует. -->
                                             <ContentControl Grid.Column="1"
                                                             HorizontalAlignment="Right"
                                                             Content="{Binding SelectedNode.Target}"
@@ -1658,10 +1667,10 @@
                                         <TextBlock Classes="hint"
                                                    TextWrapping="Wrap"
                                                    Text="«— конец —» — прогон заканчивается на этом исходе. Это не ошибка и не отдельная нода." />
-                                        <!-- Mockup 1d puts the breakpoint checkbox here, at
-                                             the foot of the outputs block. It is NOT part of
-                                             the graph: it goes to the daemon's session and
-                                             never into the macro file. -->
+                                        <!-- Макет 1d кладёт галочку точки останова сюда, в
+                                             подвал блока исходов. Частью графа она НЕ является:
+                                             уходит в сеанс демона и в файл макроса не попадает
+                                             никогда. -->
                                         <CheckBox Margin="0,4,0,0"
                                                   Content="Брейкпоинт на этой ноде"
                                                   ToolTip.Tip="Прогон встанет ПЕРЕД этой нодой. Хранится в демоне, не в файле макроса."
@@ -1680,7 +1689,7 @@
                                 </Border>
                             </StackPanel>
 
-                            <!-- macro inspector (nothing selected) -->
+                            <!-- инспектор макроса (ничего не выделено) -->
                             <StackPanel Margin="12,9"
                                         Spacing="8.4"
                                         IsVisible="{Binding !HasSelectedNode}">
@@ -1711,20 +1720,21 @@
                                                 Click="OnAddProcessTriggerClicked" />
                                     </Grid>
                                     <ItemsControl ItemsSource="{Binding Triggers}" />
-                                    <!-- The standing "hotkeys are off in this mode" line
-                                         used to live here. D4 moved it into the picker's
-                                         armed state (1f), which is the moment it is
-                                         actionable; two copies of the same sentence, one of
-                                         them permanent, is how a warning stops being read. -->
+                                    <!-- Здесь раньше стояла постоянная строка «в этом режиме
+                                         хоткеи выключены». D4 перенесла её во взведённое
+                                         состояние ловушки (1f) — в тот момент, когда с ней
+                                         можно что-то сделать; две копии одной фразы, одна из
+                                         них вечная, — верный способ добиться, чтобы
+                                         предупреждение перестали читать. -->
                                 </StackPanel>
                             </Border>
 
-                            <!-- ==== variables (D5) ====
-                                 Structure from the static analysis in Contracts, value from
-                                 the selected walk. Shown whatever the inspector's other half
-                                 is doing, like validation: it is about the MACRO, and hiding
-                                 it behind a node selection would make «кто пишет {tag}»
-                                 answerable only from the node that happens to be selected. -->
+                            <!-- ==== переменные (D5) ====
+                                 Структура — из статического анализа в Contracts, значение — из
+                                 выбранного обхода. Показывается, чем бы ни была занята другая
+                                 половина инспектора, как и валидация: речь про МАКРОС, и спрятав
+                                 её за выделением ноды, мы сделали бы «кто пишет {tag}» вопросом,
+                                 на который отвечают только с той ноды, что случайно выделена. -->
                             <Border Padding="12,9"
                                     BorderThickness="0,1,0,0"
                                     BorderBrush="{DynamicResource NocturnePanelDeepDividerBrush}"
@@ -1762,10 +1772,10 @@
                                                                            Margin="7,0,0,0"
                                                                            Classes="hint"
                                                                            Text="{Binding KindText}" />
-                                                                <!-- Nothing rather than a dash when the walk
-                                                                     has not set it: an empty cell reads as
-                                                                     "not yet", a dash reads as "empty
-                                                                     string", and those are different bugs. -->
+                                                                <!-- Ничего, а не прочерк, когда обход её ещё не
+                                                                     выставил: пустая ячейка читается как «пока
+                                                                     нет», а прочерк — как «пустая строка», и это
+                                                                     разные ошибки. -->
                                                                 <TextBlock Grid.Column="3"
                                                                            FontSize="10"
                                                                            FontFamily="{DynamicResource NocturneFontFamilyMono}"
@@ -1795,9 +1805,9 @@
                                                                 <TextBlock Classes="hint" Text="{Binding ReadWhere}" />
                                                             </StackPanel>
                                                         </Grid>
-                                                        <!-- A read with no writer aborts the run at that
-                                                             node (spec §5.3). Saying so here is cheaper
-                                                             than finding out from a log line. -->
+                                                        <!-- Чтение без записи обрывает прогон на этой ноде
+                                                             (spec §5.3). Сказать об этом здесь дешевле,
+                                                             чем узнать из строки лога. -->
                                                         <TextBlock Margin="8,0,8,5"
                                                                    FontSize="9.5"
                                                                    TextWrapping="Wrap"
@@ -1818,9 +1828,9 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <!-- Validation stays visible whatever the inspector is showing: it is
-                         about the graph, and hiding it behind a selection is how a blocked
-                         save becomes a mystery. -->
+                    <!-- Валидация остаётся на виду, что бы инспектор ни показывал: она про граф
+                         целиком, а спрятать её за выделением — верный способ превратить
+                         заблокированное сохранение в загадку. -->
                     <Border Grid.Row="2"
                             Margin="8"
                             Padding="{DynamicResource NocturneInsetTight}"

@@ -105,7 +105,7 @@
             <Setter Property="Foreground" Value="{DynamicResource NocturneAccent200Brush}" />
         </Style>
 
-        <!-- Primary. An outline, not a fill — the whole point of the system. -->
+        <!-- Основная. Контур, а не заливка, — в этом вся суть системы. -->
         <Style Selector="^.accent">
             <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
                 <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
@@ -140,8 +140,8 @@
             </Style>
         </Style>
 
-        <!-- Chrome-less: an icon or a line of text that happens to be clickable
-             (tag ✕, validation issue rows, flyout menu entries). -->
+        <!-- Без оправы: значок или строчка текста, которая просто оказалась кликабельной
+             (✕ у тега, строки замечаний валидатора, пункты выпадающих меню). -->
         <Style Selector="^.ghost">
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="{DynamicResource NocturneInsetTight}" />
@@ -158,9 +158,10 @@
             </Style>
         </Style>
 
-        <!-- LAST on purpose. Nested styles of equal specificity resolve in declaration
-             order, so this has to come after .accent/.danger/.ghost or a disabled
-             "Стоп всё" keeps its live danger edge and reads as clickable. -->
+        <!-- ПОСЛЕДНИМ, и это намеренно. Вложенные стили одинаковой специфичности разрешаются в
+             порядке объявления, поэтому этот обязан идти после .accent/.danger/.ghost, иначе
+             погашенная «Стоп всё» сохранит свою живую тревожную кромку и будет читаться как
+             нажимаемая. -->
         <Style Selector="^:disabled /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral900Brush}" />
@@ -169,7 +170,7 @@
     </ControlTheme>
 
     <!-- ================================================================
-         REPEATBUTTON — same skin as Button, for anything that auto-repeats.
+         REPEATBUTTON — та же шкура, что у Button, для всего, что самоповторяется.
          ================================================================ -->
 
     <ControlTheme x:Key="{x:Type RepeatButton}" TargetType="RepeatButton">
@@ -211,9 +212,10 @@
 
     <!-- ================================================================
          TEXTBOX
-         Sunken field, neutral edge at rest, accent LINE on focus. Fluent's version is
-         reproduced structurally (same PART_ names, same watermark/inner-content slots) so
-         nothing that binds to a TextBox has to change; only the skin and the density differ.
+         Утопленное поле, нейтральная кромка в покое, акцентная ЛИНИЯ на фокусе. Версия из
+         Fluent воспроизведена структурно (те же имена PART_, те же слоты watermark и
+         inner-content), так что ничему, что привязано к TextBox, меняться не нужно; отличаются
+         только шкура и плотность.
          ================================================================ -->
 
     <MenuFlyout x:Key="NocturneTextBoxContextFlyout">
@@ -327,7 +329,7 @@
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral700Brush}" />
         </Style>
 
-        <!-- Focus is the accent LINE; the field itself never floods. -->
+        <!-- Фокус — это акцентная ЛИНИЯ; само поле не заливается никогда. -->
         <Style Selector="^:focus /template/ Border#PART_BorderElement">
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
             <Setter Property="Background" Value="{DynamicResource NocturneSurfaceOverlayBrush}" />
@@ -514,8 +516,8 @@
 
     <!-- ================================================================
          CHECKBOX
-         The box is 14px at density 0.7×. Checked is an accent outline over the 22% wash
-         with an accent-300 glyph — a line and a glow, not a filled accent square.
+         Квадратик — 14px при плотности 0.7×. Отмеченное состояние — акцентный контур поверх
+         22%-заливки с глифом accent-300: линия и свечение, а не залитый акцентом квадрат.
          ================================================================ -->
 
     <StreamGeometry x:Key="NocturneCheckMark">M5.5 10.586 1.707 6.793A1 1 0 0 0 .293 8.207l4.5 4.5a1 1 0 0 0 1.414 0l11-11A1 1 0 0 0 15.793.293L5.5 10.586Z</StreamGeometry>
@@ -629,8 +631,9 @@
 
     <!-- ================================================================
          LISTBOX
-         Selection is the mockup's nav pattern: a 2px accent rule on the leading edge over
-         a 12% wash. The rule is present-but-transparent when unselected so nothing shifts.
+         Выделение сделано навигационным приёмом из макета: акцентная линейка 2px по ведущей
+         кромке поверх 12%-заливки. У невыделенного элемента линейка на месте, но прозрачная, —
+         так ничего не съезжает.
          ================================================================ -->
 
     <ControlTheme x:Key="{x:Type ListBoxItem}" TargetType="ListBoxItem">
@@ -707,20 +710,20 @@
     </ControlTheme>
 
     <!-- ================================================================
-         KEYBINDINGPICKER — the hotkey trap (wave D4, mockup 1f)
+         KEYBINDINGPICKER — ловушка хоткея (волна D4, макет 1f)
 
-         Four states in one control, and each is a different border recipe over the same
-         28px row:
+         Четыре состояния в одном контроле, и каждое — своя рецептура рамки поверх одной и той
+         же строки в 28px:
 
-           unbound    dashed neutral outline + the ⌨ prompt
-           capturing  accent outline over the 12% wash, a pulsing dot, «Нажмите сочетание…»
-           bound      neutral outline + the chord as physical keycaps
-           conflict   danger outline over the danger wash + the reason, right-aligned
+           unbound    пунктирный нейтральный контур + приглашение с ⌨
+           capturing  акцентный контур поверх 12%-заливки, пульсирующая точка, «Нажмите сочетание…»
+           bound      нейтральный контур + сочетание физическими кейкапами
+           conflict   тревожный контур поверх тревожной заливки + причина, по правому краю
 
-         The caps are the point of the widget: modifiers as separate keys rather than the
-         string "Ctrl+Shift+F1", so what was captured is legible and a clash with an
-         existing binding is easy to spot. Border bottom-width 2 is what makes a flat
-         rectangle read as a physical key.
+         Кейкапы и есть смысл этого виджета: модификаторы отдельными клавишами вместо строки
+         «Ctrl+Shift+F1», — так пойманное читаемо, а столкновение с уже существующей привязкой
+         легко заметить. Нижняя грань рамки толщиной 2 — то, из-за чего плоский прямоугольник
+         читается физической клавишей.
          ================================================================ -->
 
     <ControlTheme x:Key="{x:Type controls:KeyBindingPicker}" TargetType="controls:KeyBindingPicker">
@@ -739,8 +742,8 @@
         <Setter Property="Template">
             <ControlTemplate>
                 <Panel>
-                <!-- Border has no dash array in Avalonia; the empty state's dashed outline is
-                     a Rectangle laid over the (then borderless) root. -->
+                <!-- У Border в Avalonia нет штриховки; пунктирный контур пустого состояния —
+                     это Rectangle, положенный поверх корня, у которого в этот момент рамки нет. -->
                 <Rectangle x:Name="PART_Dash"
                            IsVisible="False"
                            RadiusX="5" RadiusY="5"
@@ -754,13 +757,14 @@
                         BorderThickness="{TemplateBinding BorderThickness}"
                         CornerRadius="{TemplateBinding CornerRadius}"
                         Padding="{TemplateBinding Padding}">
-                    <!-- The keycaps are Auto and the trailing note is the star column, not
-                         the other way round: an Auto column is measured first and takes what
-                         it asks for, so a hint sitting in one starves the caps and the chord
-                         renders as a sliver. The note is the part that may be trimmed. -->
+                    <!-- Кейкапы — это Auto, а замыкающая приписка — звёздочная колонка, а не
+                         наоборот: колонку Auto меряют первой, и она забирает столько, сколько
+                         просит, так что подсказка, посаженная в такую колонку, объедает кейкапы,
+                         и сочетание отрисовывается ниточкой. Урезать позволительно именно
+                         приписке. -->
                     <Grid ColumnDefinitions="Auto,Auto,Auto,*" VerticalAlignment="Center">
 
-                        <!-- armed dot -->
+                        <!-- точка «взведён» -->
                         <Ellipse x:Name="PART_Dot"
                                  Grid.Column="0"
                                  Width="6" Height="6"
@@ -769,7 +773,7 @@
                                  IsVisible="{TemplateBinding IsCapturing}"
                                  Fill="{DynamicResource NocturneAccent300Brush}" />
 
-                        <!-- prompt: empty state or armed state -->
+                        <!-- приглашение: пустое состояние либо взведённое -->
                         <TextBlock x:Name="PART_Prompt"
                                    Grid.Column="1"
                                    VerticalAlignment="Center"
@@ -778,7 +782,7 @@
                                    Foreground="{TemplateBinding Foreground}"
                                    Text="{TemplateBinding PromptText}" />
 
-                        <!-- the chord, as physical keys -->
+                        <!-- сочетание, физическими клавишами -->
                         <ItemsControl x:Name="PART_Keycaps"
                                       Grid.Column="2"
                                       VerticalAlignment="Center"
@@ -815,9 +819,9 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <!-- «клик — перезадать», or the conflict reason. Tooltipped because
-                             a long chord trims it, and a trimmed conflict must still be
-                             readable. -->
+                        <!-- «клик — перезадать» либо причина конфликта. С подсказкой, потому что
+                             длинное сочетание её урезает, а урезанный конфликт всё равно обязан
+                             оставаться читаемым. -->
                         <TextBlock x:Name="PART_Trailing"
                                    Grid.Column="3"
                                    Margin="8,0,0,0"
@@ -862,9 +866,10 @@
             <Style Selector="^ /template/ Border#PART_Root">
                 <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
                 <Setter Property="Background" Value="{DynamicResource NocturneAccentTint12Brush}" />
-                <!-- The mockup's smPulse. On an outlined control the honest equivalent of a
-                     CSS opacity keyframe is the whole row breathing: animating the border
-                     brush would need two brush resources and still not read as motion. -->
+                <!-- Тот самый smPulse из макета. У контурного элемента честный аналог
+                     CSS-кейфрейма по прозрачности — это когда дышит вся строка целиком:
+                     анимация кисти рамки потребовала бы двух ресурсов-кистей и всё равно не
+                     читалась бы как движение. -->
                 <Style.Animations>
                     <Animation Duration="0:0:1.4" IterationCount="INFINITE" Easing="SineEaseInOut">
                         <KeyFrame Cue="0%">
@@ -904,10 +909,10 @@
 
     <!-- ================================================================
          SCROLLBAR
-         A 4px rule that widens to 8px on hover. No arrow buttons, no chrome strip — the
-         Fluent scrollbar is the loudest un-Nocturne thing in a stock Avalonia window.
-         ScrollBar's line buttons are optional template parts (the control null-checks
-         them), so they are simply absent here.
+         Линейка 4px, расширяющаяся до 8px при наведении. Без кнопок-стрелок, без полосы
+         оправы — скроллбар из Fluent громче всего остального кричит «это не Nocturne» в
+         стоковом окне Avalonia. Кнопки прокрутки у ScrollBar — необязательные части шаблона
+         (сам control проверяет их на null), поэтому здесь их попросту нет.
          ================================================================ -->
 
     <x:Double x:Key="NocturneScrollBarSize">10</x:Double>
@@ -1006,8 +1011,8 @@
             </Setter>
         </Style>
 
-        <!-- Expanded = the pointer is over the bar (or auto-hide is off): the rule widens
-             and the track appears behind it. -->
+        <!-- Expanded = указатель над полосой (или автоскрытие выключено): линейка расширяется,
+             а за ней проступает дорожка. -->
         <Style Selector="^[IsExpanded=true]">
             <Style Selector="^ /template/ Border#Root">
                 <Setter Property="Background" Value="{DynamicResource NocturneSurfaceInsetBrush}" />

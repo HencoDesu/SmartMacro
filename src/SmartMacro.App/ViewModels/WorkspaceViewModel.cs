@@ -9,30 +9,31 @@ using SmartMacro.Contracts.Ipc;
 namespace SmartMacro.App.ViewModels;
 
 /// <summary>
-/// The live state the daemon reports: every tracked window with its tag chips, and every
-/// macro run in flight. Before D2 this was <c>MainWindowViewModel</c> and it WAS the window;
-/// now it is one of the shell's mode view-models, feeding «Окна», «Прогоны» and the run bar
-/// at once — hence the rename, and hence the derived partitions below.
+/// Живое состояние в том виде, в каком его сообщает демон: каждое отслеживаемое окно со своими
+/// чипами тегов и каждый прогон макроса в полёте. До D2 это был <c>MainWindowViewModel</c>, и
+/// он БЫЛ окном; теперь это одна из view-model'ей режимов оболочки, кормящая «Окна», «Прогоны»
+/// и полосу прогонов разом, — отсюда переименование и отсюда же производные разбиения ниже.
 ///
-/// Stage 3 moved the data source out of the process. The shape is unchanged — subscribe
-/// first, snapshot second, reconcile by key — but the events now arrive from the daemon and
-/// the snapshot is a request:
+/// Стадия 3 вынесла источник данных за пределы процесса. Форма не изменилась — сперва
+/// подписаться, потом снять снимок, сверить по ключу, — но события теперь приезжают от демона,
+/// а снимок стал запросом:
 ///
-///   * <b>Re-fetch on <see cref="IIpcClient.Connected"/>, not just at construction.</b> The
-///     server drops a client that stops draining, so a reconnect is a normal event and
-///     everything pushed during the gap is lost. Seeding again is the only way back to the
-///     truth, and it is why <see cref="RefreshAsync"/> RECONCILES (dropping rows the daemon
-///     no longer reports) instead of merely upserting.
-///   * <b>Every handler marshals through <see cref="IUiDispatcher"/>.</b> Events are raised
-///     on the client's reader thread; an <c>ObservableCollection</c> may only be touched on
-///     the UI thread.
+///   * <b>Перезапрашивать на <see cref="IIpcClient.Connected"/>, а не только при создании.</b>
+///     Сервер выбрасывает клиента, переставшего вычерпывать, поэтому переподключение — событие
+///     обычное, и всё, что пушили во время разрыва, потеряно. Засеяться заново — единственная
+///     дорога обратно к истине, и именно поэтому <see cref="RefreshAsync"/> СВЕРЯЕТ (выбрасывая
+///     строки, о которых демон больше не сообщает), а не просто добавляет-обновляет.
+///   * <b>Каждый обработчик перекладывается через <see cref="IUiDispatcher"/>.</b> События
+///     поднимаются в потоке чтения клиента, а <c>ObservableCollection</c> трогать позволительно
+///     только из потока UI.
 ///
-/// <b>Derived state (D2).</b> <see cref="TaggedWindows"/> / <see cref="UntaggedWindows"/> are
-/// projections of <see cref="Windows"/>, kept current by <see cref="WindowsChanged"/>'s own
-/// trigger points rather than by a re-fetch: the 1b layout puts untagged windows in a
-/// separate group at the bottom, and the sidebar's tag summary needs the same signal. They
-/// are RECONCILED, not rebuilt, so a row the user is typing a tag into keeps its container
-/// (and therefore its focus) when an unrelated window appears.
+/// <b>Производное состояние (D2).</b> <see cref="TaggedWindows"/> и
+/// <see cref="UntaggedWindows"/> — проекции <see cref="Windows"/>, которые держатся свежими в
+/// тех же точках, где срабатывает <see cref="WindowsChanged"/>, а не по перезапросу: раскладка
+/// 1b кладёт окна без тегов отдельной группой внизу, а сводке по тегам в боковой полосе нужен
+/// тот же сигнал. Они именно СВЕРЯЮТСЯ, а не пересобираются, — так строка, в которую
+/// пользователь набирает тег, сохраняет свой контейнер (а значит, и фокус), когда появляется
+/// постороннее окно.
 /// </summary>
 public sealed class WorkspaceViewModel : ObservableObject, IDisposable
 {
@@ -47,9 +48,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
         _client.Connected += OnConnected;
         _client.EventReceived += OnEventReceived;
 
-        // The connection is normally established before Avalonia (and therefore this VM)
-        // exists, so the first Connected has already come and gone. Seed from the live
-        // connection; later reconnects go through OnConnected.
+        // Соединение обычно устанавливается раньше, чем появляется Avalonia (а значит, и эта
+        // VM), так что первый Connected уже пришёл и ушёл. Засеваемся от живого соединения;
+        // последующие переподключения идут через OnConnected.
         if (_client.IsConnected)
         {
             _ = RefreshAsync();
@@ -57,68 +58,69 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Raised after any change to the window list OR to any window's tags — the one signal
-    /// the shell needs to re-derive its counters and its tag summary without asking the
-    /// daemon anything.
+    /// Поднимается после любого изменения списка окон ИЛИ тегов любого окна — тот единственный
+    /// сигнал, по которому оболочка пересчитывает свои счётчики и сводку по тегам, ничего не
+    /// спрашивая у демона.
     /// </summary>
     public event Action? WindowsChanged;
 
-    /// <summary>Windows currently registered, in the order the daemon reports them.</summary>
+    /// <summary>Зарегистрированные сейчас окна, в том порядке, в каком их сообщает демон.</summary>
     public ObservableCollection<WindowRowViewModel> Windows { get; } = [];
 
-    /// <summary>Windows carrying at least one tag, in <see cref="Windows"/> order.</summary>
+    /// <summary>Окна, несущие хотя бы один тег, в порядке <see cref="Windows"/>.</summary>
     public ObservableCollection<WindowRowViewModel> TaggedWindows { get; } = [];
 
-    /// <summary>Windows with no tags — the 1b layout's subordinate group at the bottom.</summary>
+    /// <summary>Окна без тегов — подчинённая группа внизу в раскладке 1b.</summary>
     public ObservableCollection<WindowRowViewModel> UntaggedWindows { get; } = [];
 
-    /// <summary>Macro runs currently tracked by the daemon.</summary>
+    /// <summary>Прогоны макросов, которые демон отслеживает прямо сейчас.</summary>
     public ObservableCollection<RunningMacroRowViewModel> Runs { get; } = [];
 
-    /// <summary>Number of windows that have been identified (= carry at least one tag).</summary>
+    /// <summary>Сколько окон опознано (= несут хотя бы один тег).</summary>
     public int IdentifiedCount => TaggedWindows.Count;
 
-    /// <summary>Number of windows still waiting for a tag.</summary>
+    /// <summary>Сколько окон всё ещё ждут тега.</summary>
     public int UntaggedCount => UntaggedWindows.Count;
 
-    /// <summary>Header line of the «Окна» mode: "8 опознано · 3 без тегов".</summary>
+    /// <summary>Строка шапки режима «Окна»: «8 опознано · 3 без тегов».</summary>
     public string WindowsSummaryText => Windows.Count == 0
         ? "нет окон под управлением"
         : UntaggedCount == 0
             ? string.Create(CultureInfo.CurrentCulture, $"{IdentifiedCount} опознано")
             : string.Create(CultureInfo.CurrentCulture, $"{IdentifiedCount} опознано · {UntaggedCount} без тегов");
 
-    /// <summary>Separator above the untagged group. Uppercase because the label is rendered as an eyebrow.</summary>
+    /// <summary>Разделитель над группой без тегов. Капсом, потому что подпись рисуется надзаголовком.</summary>
     public string UntaggedHeaderText =>
         string.Create(CultureInfo.CurrentCulture, $"НЕ ОПОЗНАНО · {UntaggedCount}");
 
-    /// <summary><c>true</c> while at least one window is untagged — gates the whole group.</summary>
+    /// <summary><c>true</c>, пока хотя бы одно окно без тегов, — этим включается вся группа.</summary>
     public bool HasUntagged => UntaggedWindows.Count > 0;
 
-    /// <summary><c>true</c> while the daemon reports no windows at all — the mode's empty state.</summary>
+    /// <summary><c>true</c>, пока демон не сообщает вообще ни одного окна, — пустое состояние режима.</summary>
     public bool HasNoWindows => Windows.Count == 0;
 
-    /// <summary>Header of the «Прогоны» mode; doubles as its empty-state text.</summary>
+    /// <summary>Шапка режима «Прогоны»; она же служит текстом пустого состояния.</summary>
     public string RunsHeaderText => Runs.Count == 0
         ? "нет активных прогонов"
         : string.Create(CultureInfo.CurrentCulture, $"активных прогонов: {Runs.Count}");
 
-    /// <summary><c>true</c> while at least one run is tracked — gates the "Стоп всё" button.</summary>
+    /// <summary><c>true</c>, пока отслеживается хотя бы один прогон, — этим включается кнопка «Стоп всё».</summary>
     public bool HasRuns => Runs.Count > 0;
 
     /// <summary>
-    /// Re-seeds both lists from the daemon. Called at construction and after every
-    /// reconnect; safe to call at any time.
+    /// Пересевает оба списка от демона. Вызывается при создании и после каждого
+    /// переподключения; вызывать безопасно в любой момент.
     /// </summary>
     public async Task RefreshAsync()
     {
         try
         {
             var windows = await _client.RequestAsync<WindowDto[]>(IpcMessageTypes.GetWindows).ConfigureAwait(false);
-            var runs = await _client.RequestAsync<RunningMacroDto[]>(IpcMessageTypes.GetRunningMacros).ConfigureAwait(false);
-            // Logged because it is the panel's only externally visible sign of life: if the
-            // list looks wrong, this line says whether the daemon reported it that way or
-            // the UI mangled it.
+            var runs = await _client.RequestAsync<RunningMacroDto[]>(IpcMessageTypes.GetRunningMacros)
+                .ConfigureAwait(false);
+            // Пишем в лог, потому что это единственный внешне видимый признак жизни панели:
+            // если список выглядит неправильно, эта строка говорит, таким ли его сообщил демон
+            // или его покорёжил UI.
             Log.Information(
                 "Снимок от демона: окон {Windows}, запусков {Runs}",
                 windows?.Length ?? 0,
@@ -131,38 +133,39 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
         {
-            // A drop between connecting and fetching. The maintain loop reconnects and
-            // Connected fires again, which retries this — no recovery needed here.
+            // Обрыв между подключением и запросом. Поддерживающий цикл переподключится, снова
+            // сработает Connected, и он это повторит, — восстанавливаться здесь нечему.
             Log.Warning(ex, "Не удалось получить снимок состояния демона");
         }
     }
 
-    /// <summary>Adds the tag typed into <paramref name="row"/>'s box.</summary>
+    /// <summary>Добавляет тег, набранный в поле строки <paramref name="row"/>.</summary>
     public Task<bool> AddTagAsync(WindowRowViewModel row)
     {
         ArgumentNullException.ThrowIfNull(row);
         return row.AddTagAsync();
     }
 
-    /// <summary>Removes one tag from a window.</summary>
+    /// <summary>Снимает с окна один тег.</summary>
     public Task<bool> RemoveTagAsync(WindowRowViewModel row, string tag)
     {
         ArgumentNullException.ThrowIfNull(row);
         return row.RemoveTagAsync(tag);
     }
 
-    /// <summary>Cancels one run. The row disappears when the daemon pushes the new run list.</summary>
+    /// <summary>Отменяет один прогон. Строка исчезнет, когда демон пришлёт новый список прогонов.</summary>
     public Task StopRunAsync(RunningMacroRowViewModel row)
     {
         ArgumentNullException.ThrowIfNull(row);
         return StopAsync(row.RunId);
     }
 
-    /// <summary>Cancels every tracked run (the panic button).</summary>
+    /// <summary>Отменяет все отслеживаемые прогоны (кнопка паники).</summary>
     public async Task StopAllRunsAsync()
     {
-        // One request per run rather than a bulk message: StopMacro already exists, the list
-        // is single-digit, and the daemon answers each one only after the runner acknowledges.
+        // По запросу на прогон, а не одно пакетное сообщение: StopMacro уже есть, в списке от
+        // силы несколько записей, а демон отвечает на каждый запрос только после того, как
+        // исполнитель подтвердит.
         foreach (var runId in Runs.Select(row => row.RunId).ToList())
         {
             await StopAsync(runId).ConfigureAwait(true);
@@ -170,8 +173,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Re-renders the elapsed column. Driven by the window's 1s timer — the VM keeps no
-    /// timer of its own so it stays free of Avalonia types.
+    /// Перерисовывает колонку прошедшего времени. Её тикает односекундный таймер окна — своего
+    /// таймера VM не держит, чтобы оставаться свободной от типов Avalonia.
     /// </summary>
     public void RefreshElapsed()
     {
@@ -188,7 +191,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
         _client.EventReceived -= OnEventReceived;
     }
 
-    // ---- daemon plumbing ---------------------------------------------------------------
+    // ---- проводка к демону ---------------------------------------------------------------
 
     private void OnConnected() => _ = RefreshAsync();
 
@@ -198,8 +201,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
         {
             case IpcMessageTypes.WindowAppeared:
             case IpcMessageTypes.WindowTagsChanged:
-                // Both carry the FULL new state, so one upsert serves both: an appearance is
-                // just an upsert that happens to find nothing.
+                // Оба несут ПОЛНОЕ новое состояние, так что одна вставка-обновление годится для
+                // обоих: появление — это та же вставка-обновление, которая просто ничего не
+                // нашла.
                 if (IpcJson.Read<WindowDto>(evt.Payload) is { } window)
                 {
                     _dispatcher.Post(() =>
@@ -208,6 +212,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
                         NotifyWindowsChanged();
                     });
                 }
+
                 break;
 
             case IpcMessageTypes.WindowClosed:
@@ -215,16 +220,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
                 {
                     _dispatcher.Post(() => Remove(closed.Hwnd));
                 }
+
                 break;
 
             case IpcMessageTypes.RunningMacrosChanged:
-                // This one carries the whole new list, so no GetRunningMacros round trip.
+                // Это событие несёт весь новый список целиком, так что round trip через
+                // GetRunningMacros не нужен.
                 var runs = IpcJson.Read<RunningMacroDto[]>(evt.Payload) ?? [];
                 _dispatcher.Post(() => SyncRuns(runs));
                 break;
 
             default:
-                break; // MacrosChanged / ActivateWindow belong to other listeners
+                break; // MacrosChanged и ActivateWindow принадлежат другим слушателям
         }
     }
 
@@ -240,11 +247,12 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
         }
     }
 
-    // ---- collection reconciliation -----------------------------------------------------
+    // ---- сверка коллекций -----------------------------------------------------------------
 
-    // Add-or-update, keyed on hwnd. Idempotent so the "subscribe, then snapshot" startup
-    // order can't produce a duplicate row for a window that appeared in between.
-    // Callers are responsible for NotifyWindowsChanged() — SyncWindows does a batch.
+    // Добавить или обновить, ключ — hwnd. Идемпотентно, чтобы порядок запуска «сперва
+    // подписаться, потом снять снимок» не мог породить строку-дубликат для окна, появившегося
+    // между этими двумя шагами. NotifyWindowsChanged() — на совести вызывающего; SyncWindows
+    // делает это одним разом на всю пачку.
     private void Upsert(WindowDto window)
     {
         if (FindRow(window.Hwnd) is { } existing)
@@ -265,9 +273,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Full reconcile: a reconnect may have missed a WindowClosed, so anything absent from
-    // the snapshot has to go, while surviving windows keep their row (and its half-typed
-    // tag box).
+    // Полная сверка: за время переподключения мог потеряться WindowClosed, поэтому всё, чего в
+    // снимке нет, должно уйти, а уцелевшие окна сохраняют свою строку (и недонабранное поле
+    // тега в ней).
     private void SyncWindows(IReadOnlyList<WindowDto> snapshot)
     {
         var seen = new HashSet<long>();
@@ -284,11 +292,13 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
                 Windows.RemoveAt(i);
             }
         }
+
         NotifyWindowsChanged();
     }
 
-    // Runs come and go wholesale, but rows are matched on RunId so a surviving run keeps
-    // its row object — and therefore its rendered elapsed value — across a refresh.
+    // Прогоны приходят и уходят целыми списками, но строки сопоставляются по RunId, так что
+    // уцелевший прогон сохраняет свой объект строки — а вместе с ним и нарисованное прошедшее
+    // время — через обновление.
     private void SyncRuns(IReadOnlyList<RunningMacroDto> snapshot)
     {
         var now = DateTimeOffset.UtcNow;
@@ -319,9 +329,9 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasRuns));
     }
 
-    // The one place the derived state is refreshed. Cheap by design: the list is ~10 rows,
-    // so an O(n²) reconcile is not worth avoiding, and doing it eagerly means no view ever
-    // sees a stale partition.
+    // Единственное место, где обновляется производное состояние. Дёшево по замыслу: в списке
+    // около десяти строк, так что от сверки за O(n²) уворачиваться не стоит, а делая её сразу,
+    // мы гарантируем, что ни один вид никогда не увидит устаревшего разбиения.
     private void NotifyWindowsChanged()
     {
         Repartition();
@@ -346,21 +356,22 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
         Reconcile(TaggedWindows, tagged);
         Reconcile(UntaggedWindows, untagged);
 
-        // Alternating row backgrounds are the mockup's, and Avalonia's ItemsControl has no
-        // alternation index — so the index lives on the row. Only the tagged group
-        // alternates; the untagged group is uniformly muted.
+        // Чередующийся фон строк — из макета, а у ItemsControl в Avalonia нет индекса
+        // чередования, поэтому индекс живёт на самой строке. Чередуется только помеченная
+        // группа; группа без тегов приглушена равномерно.
         for (var i = 0; i < tagged.Count; i++)
         {
             tagged[i].IsAlternate = i % 2 == 1;
         }
+
         foreach (var row in untagged)
         {
             row.IsAlternate = false;
         }
     }
 
-    // Remove-then-place rather than clear-and-refill: rebuilding the collection would
-    // recreate every container and drop the focus out of a tag box mid-typing.
+    // Сначала убрать, потом расставить, а не очистить и залить заново: пересборка коллекции
+    // пересоздала бы все контейнеры и выбила бы фокус из поля тега посреди набора.
     private static void Reconcile(
         ObservableCollection<WindowRowViewModel> target,
         IReadOnlyList<WindowRowViewModel> desired)
@@ -396,6 +407,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
                 return row;
             }
         }
+
         return null;
     }
 
@@ -408,6 +420,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
                 return row;
             }
         }
+
         return null;
     }
 }

@@ -4,7 +4,7 @@ using SmartMacro.Native;
 
 namespace SmartMacro.App.ViewModels.Nodes;
 
-/// <summary>The two trigger kinds, for the editor's "add trigger" buttons.</summary>
+/// <summary>Два вида триггеров — для кнопок «добавить триггер» в редакторе.</summary>
 public enum MacroTriggerKind
 {
     Hotkey,
@@ -12,22 +12,22 @@ public enum MacroTriggerKind
 }
 
 /// <summary>
-/// Base for the trigger rows of the editor. Same polymorphic-row pattern as the nodes:
-/// one concrete VM per <see cref="MacroTrigger"/> type, rendered by an implicit
-/// <c>DataTemplate</c>, mapping to and from the model in one place.
+/// Основа для строк-триггеров редактора. Тот же приём полиморфной строки, что и у нод: по одной
+/// конкретной VM на тип <see cref="MacroTrigger"/>, отрисовка неявным <c>DataTemplate</c>,
+/// перекладывание в модель и обратно — в одном месте.
 /// </summary>
 public abstract class TriggerRowViewModel : ObservableObject
 {
-    /// <summary>Russian type label for the row header.</summary>
+    /// <summary>Русская подпись типа для шапки строки.</summary>
     public abstract string TypeLabel { get; }
 
-    /// <summary>Builds the model trigger from the current editor state.</summary>
+    /// <summary>Собирает триггер модели из текущего состояния редактора.</summary>
     public abstract MacroTrigger ToTrigger();
 
-    /// <summary>Field-level complaints in Russian; empty when the row is clean.</summary>
+    /// <summary>Претензии по полям, по-русски; пусто, когда строка чиста.</summary>
     public virtual IEnumerable<string> GetInputErrors() => [];
 
-    /// <summary>Loads a model trigger into the matching row type.</summary>
+    /// <summary>Загружает триггер модели в строку подходящего типа.</summary>
     public static TriggerRowViewModel FromTrigger(MacroTrigger trigger) => trigger switch
     {
         HotkeyTrigger hotkey => new HotkeyTriggerRowViewModel(hotkey),
@@ -35,7 +35,7 @@ public abstract class TriggerRowViewModel : ObservableObject
         _ => throw new NotSupportedException($"No editor for trigger type {trigger.GetType().Name}."),
     };
 
-    /// <summary>Creates an empty row of the requested kind.</summary>
+    /// <summary>Создаёт пустую строку запрошенного вида.</summary>
     public static TriggerRowViewModel Create(MacroTriggerKind kind) => kind switch
     {
         MacroTriggerKind.Hotkey => new HotkeyTriggerRowViewModel(
@@ -47,13 +47,13 @@ public abstract class TriggerRowViewModel : ObservableObject
 }
 
 /// <summary>
-/// Editor for <see cref="HotkeyTrigger"/>, backed by <c>KeyBindingPicker</c> in
-/// <c>CaptureModifiers</c> mode (chords plus the mouse thumb/middle buttons).
+/// Редактор <see cref="HotkeyTrigger"/>, за которым стоит <c>KeyBindingPicker</c> в режиме
+/// <c>CaptureModifiers</c> (сочетания плюс боковые и средняя кнопки мыши).
 ///
-/// Editing one of these is exactly why the dialog suspends the hotkey listener: a chord
-/// already registered with <c>RegisterHotKey</c> never reaches the picker's KeyDown
-/// handler, so without suspension the combos most in need of re-binding are the ones that
-/// cannot be re-bound.
+/// Правка такой строки — ровно та причина, по которой режим приостанавливает слушателя
+/// хоткеев: сочетание, уже зарегистрированное через <c>RegisterHotKey</c>, до обработчика
+/// KeyDown ловушки не доходит никогда, так что без приостановки перебиндить нельзя было бы
+/// именно те сочетания, которые больше всего в этом нуждаются.
 /// </summary>
 public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
 {
@@ -65,7 +65,7 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
     public HotkeyTriggerRowViewModel(HotkeyTrigger trigger)
     {
         _modifiers = trigger.Modifiers;
-        // Empty rather than "0" for the unset key, so the picker shows its own prompt.
+        // Для неназначенной клавиши — пусто, а не «0», чтобы ловушка показала своё приглашение.
         _keyName = trigger.Key == 0 ? string.Empty : trigger.Key.ToString();
         _mouseButton = trigger.MouseButton;
     }
@@ -73,15 +73,15 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
     public override string TypeLabel => "Хоткей";
 
     /// <summary>
-    /// Why this chord will not do what it looks like it does, or <c>null</c> when it is
-    /// free. The picker's fourth state (mockup 1f).
+    /// Почему это сочетание не сделает того, что по нему кажется, либо <c>null</c>, когда оно
+    /// свободно. Четвёртое состояние ловушки (макет 1f).
     ///
-    /// Two different failures land in the same slot, because they are the same failure from
-    /// the user's chair — "you pressed it and nothing happened":
-    ///   * «уже занят pw-immunity» — another macro in the library claims the chord. The
-    ///     panel knows this on its own; <c>MacroEditorViewModel</c> computes it.
-    ///   * «занят другим приложением» — Win32 <c>RegisterHotKey</c> refused it. Only the
-    ///     daemon can see that, and it reports it through <c>GetHotkeyFailures</c>.
+    /// В один и тот же слот попадают два разных отказа, потому что из кресла пользователя это
+    /// один и тот же отказ — «нажал, и ничего не произошло»:
+    ///   * «уже занят pw-immunity» — сочетание забрал другой макрос библиотеки. Об этом панель
+    ///     знает сама; считает это <c>MacroEditorViewModel</c>.
+    ///   * «занят другим приложением» — Win32 <c>RegisterHotKey</c> отказал. Увидеть это может
+    ///     только демон, и он сообщает об этом через <c>GetHotkeyFailures</c>.
     /// </summary>
     public string? Conflict
     {
@@ -95,7 +95,7 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
         }
     }
 
-    /// <summary><c>true</c> when there is a conflict to render.</summary>
+    /// <summary><c>true</c>, когда есть конфликт, который надо нарисовать.</summary>
     public bool HasConflict => _conflict is not null;
 
     public HotkeyModifiers Modifiers
@@ -104,7 +104,7 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
         set => SetField(ref _modifiers, value);
     }
 
-    /// <summary><see cref="VirtualKey"/> member name, or empty for a mouse chord.</summary>
+    /// <summary>Имя члена <see cref="VirtualKey"/> либо пусто для сочетания с мышью.</summary>
     public string KeyName
     {
         get => _keyName;
@@ -132,14 +132,14 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
     }
 
     /// <summary>
-    /// Canonical identity of a chord, for comparing this row against the rest of the
-    /// library. <c>null</c> for a trigger with nothing bound — an unbound chord conflicts
-    /// with nothing, and reporting one unbound picker as clashing with another would be
-    /// noise on a macro that simply has not been finished yet.
+    /// Каноническая личность сочетания — то, чем эта строка сравнивается с остальной
+    /// библиотекой. <c>null</c> для триггера, к которому ничего не привязано: несвязанное
+    /// сочетание не конфликтует ни с чем, а объявить одну пустую ловушку столкнувшейся с
+    /// другой — значит шуметь на макросе, который просто ещё не доделали.
     ///
-    /// A string rather than a tuple so it can key a dictionary of library chords without a
-    /// custom comparer, and so a keyboard chord can never be equal to a mouse chord that
-    /// happens to share the modifier flags.
+    /// Строка, а не кортеж, — чтобы она могла быть ключом словаря сочетаний библиотеки без
+    /// самописного компаратора и чтобы клавиатурное сочетание никогда не оказалось равно
+    /// мышиному, у которого совпали флаги модификаторов.
     /// </summary>
     internal static string? ChordKey(HotkeyTrigger trigger)
     {
@@ -148,14 +148,15 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
         {
             return $"M:{(int)trigger.Modifiers}:{(int)trigger.MouseButton}";
         }
+
         return trigger.IsKeyboard ? $"K:{(int)trigger.Modifiers}:{(int)trigger.Key}" : null;
     }
 
-    /// <summary>Identity of the chord this row currently holds.</summary>
+    /// <summary>Личность сочетания, которое эта строка держит прямо сейчас.</summary>
     internal string? ChordKey() => ChordKey((HotkeyTrigger)ToTrigger());
 }
 
-/// <summary>Editor for <see cref="ProcessAppearedTrigger"/>: just the process name to watch.</summary>
+/// <summary>Редактор <see cref="ProcessAppearedTrigger"/>: одно только имя процесса, за которым следим.</summary>
 public sealed class ProcessTriggerRowViewModel : TriggerRowViewModel
 {
     private string _processName;
@@ -164,7 +165,7 @@ public sealed class ProcessTriggerRowViewModel : TriggerRowViewModel
 
     public override string TypeLabel => "Появление процесса";
 
-    /// <summary>Process name without extension, matched case-insensitively (e.g. <c>elementclient_64</c>).</summary>
+    /// <summary>Имя процесса без расширения, сопоставляется без учёта регистра (например, <c>elementclient_64</c>).</summary>
     public string ProcessName
     {
         get => _processName;

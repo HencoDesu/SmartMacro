@@ -7,44 +7,45 @@ using SmartMacro.Contracts.Ipc;
 namespace SmartMacro.App.Ipc;
 
 /// <summary>
-/// The client half of the control protocol: one <see cref="IpcConnection"/> to the daemon's
-/// named pipe, kept alive for the lifetime of the panel.
+/// Клиентская половина управляющего протокола: одно <see cref="IpcConnection"/> к named pipe
+/// демона, живущее столько же, сколько сама панель.
 ///
-/// <b>Correlation, not ordering.</b> The server does not await a handler before reading the
-/// next request, so <c>StopMacro</c> (which waits for a runner to acknowledge) and
-/// <c>DumpCaptures</c> (which screenshots every window) come back whenever they come back —
-/// possibly long after requests sent later. Every reply is therefore matched by
-/// <see cref="IpcRequest.Id"/> against <see cref="_pending"/>, and nothing in this class
-/// assumes replies arrive in order.
+/// <b>Корреляция, а не порядок.</b> Сервер не дожидается обработчика, прежде чем читать
+/// следующий запрос, поэтому <c>StopMacro</c> (который ждёт подтверждения от исполнителя) и
+/// <c>DumpCaptures</c> (который снимает каждое окно) возвращаются тогда, когда возвращаются, —
+/// возможно, много позже отправленных после них запросов. Поэтому каждый ответ сопоставляется
+/// по <see cref="IpcRequest.Id"/> с <see cref="_pending"/>, и ничто в этом классе не полагается
+/// на то, что ответы приходят по порядку.
 ///
-/// <b>One reader, many writers.</b> A single loop owns the read side and demultiplexes:
-/// a line with an id completes a pending request, a line without one is an unsolicited
-/// event. Writes come from arbitrary UI threads and are serialised by
-/// <see cref="IpcConnection"/> itself.
+/// <b>Один читатель, много писателей.</b> Единственный цикл владеет стороной чтения и
+/// разделяет поток: строка с id завершает ожидающий запрос, строка без него — непрошеное
+/// событие. Записи приходят из произвольных потоков UI, и упорядочивает их само
+/// <see cref="IpcConnection"/>.
 ///
-/// <b>Reconnection is expected, not exceptional.</b> The daemon drops a client that stops
-/// draining events, and the user may restart it. The maintain loop therefore reconnects for
-/// the whole life of the process with a 250 ms → 2 s backoff, and raises
-/// <see cref="Connected"/> every time it succeeds — which is what tells the view-models to
-/// re-fetch, because everything they missed while disconnected is simply gone.
+/// <b>Переподключение — норма, а не исключение.</b> Демон выбрасывает клиента, переставшего
+/// вычерпывать события, да и пользователь может его перезапустить. Поэтому поддерживающий цикл
+/// переподключается всю жизнь процесса, с откатом от 250 мс до 2 с, и поднимает
+/// <see cref="Connected"/> при каждой удаче — именно это и велит view-model'ям перезапросить
+/// всё заново, потому что пропущенное за время разрыва просто исчезло.
 /// </summary>
 public sealed class IpcClient : IIpcClient
 {
     /// <summary>
-    /// Opens one framed connection to the daemon. Injected — and returning an
-    /// <see cref="IpcConnection"/> rather than a <see cref="Stream"/> — so the protocol
-    /// tests can run the real client over in-memory halves, which are two streams rather
-    /// than one duplex object.
+    /// Открывает одно кадрированное соединение с демоном. Внедряется извне — и возвращает
+    /// <see cref="IpcConnection"/>, а не <see cref="Stream"/>, — чтобы тесты протокола могли
+    /// гонять настоящего клиента поверх половинок в памяти, а это два потока, а не один
+    /// дуплексный объект.
     /// </summary>
     public delegate Task<IpcConnection> ConnectionFactory(CancellationToken cancellationToken);
 
-    /// <summary>Default per-request patience. Generous: the pipe is local and the daemon is not busy.</summary>
+    /// <summary>Сколько по умолчанию ждём один запрос. С запасом: труба локальная, а демон не занят.</summary>
     public static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(10);
 
     private const int MinBackoffMs = 250;
     private const int MaxBackoffMs = 2000;
 
-    // Per-attempt pipe timeout. Short, because failing fast just feeds the backoff loop.
+    // Таймаут трубы на одну попытку. Короткий, потому что быстрый отказ просто подкармливает
+    // цикл отката.
     private const int PipeConnectTimeoutMs = 1000;
 
     private readonly ConnectionFactory _factory;
@@ -53,16 +54,17 @@ public sealed class IpcClient : IIpcClient
     private readonly ConcurrentDictionary<int, TaskCompletionSource<IpcResponse>> _pending = new();
     private readonly CancellationTokenSource _stopping = new();
 
-    // Not `volatile`: DropAsync swaps it with Interlocked, and C# forbids passing a volatile
-    // field by ref. Reference reads are atomic and the Interlocked write publishes.
+    // НЕ `volatile`: DropAsync подменяет его через Interlocked, а C# запрещает передавать
+    // volatile-поле по ссылке. Чтение ссылки атомарно, а запись через Interlocked публикует
+    // значение.
     private IpcConnection? _connection;
     private Task? _maintainLoop;
     private int _nextId;
     private int _disposed;
 
-    /// <param name="factory">Transport opener; defaults to the daemon's named pipe.</param>
-    /// <param name="defaultTimeout">Per-request timeout when a call doesn't override it.</param>
-    /// <param name="logger">Diagnostics sink; defaults to the ambient Serilog logger.</param>
+    /// <param name="factory">Чем открывать транспорт; по умолчанию — named pipe демона.</param>
+    /// <param name="defaultTimeout">Таймаут на запрос, когда вызов не задал свой.</param>
+    /// <param name="logger">Куда сливать диагностику; по умолчанию — окружающий логгер Serilog.</param>
     public IpcClient(ConnectionFactory? factory = null, TimeSpan? defaultTimeout = null, ILogger? logger = null)
     {
         _factory = factory ?? ConnectPipeAsync;
@@ -79,15 +81,16 @@ public sealed class IpcClient : IIpcClient
     public event Action<IpcEvent>? EventReceived;
 
     /// <summary>
-    /// Connects, then keeps the connection up until disposal.
+    /// Подключается и держит соединение поднятым до самого освобождения.
     /// </summary>
     /// <param name="initialConnectWindow">
-    /// How long to keep retrying the FIRST connect. The daemon may have just been launched
-    /// by us and still be building its composition root, so this is seconds, not milliseconds.
+    /// Сколько повторять ПЕРВОЕ подключение. Демон, возможно, только что запущен нами и всё ещё
+    /// собирает свой корень зависимостей, так что счёт тут на секунды, а не на миллисекунды.
     /// </param>
+    /// <param name="cancellationToken">Прекращает попытки подключиться досрочно.</param>
     /// <returns>
-    /// <c>false</c> when the daemon never answered within the window — the caller shows an
-    /// error and exits. Once this returns <c>true</c> a later drop is handled internally.
+    /// <c>false</c>, когда демон так и не ответил за отведённое окно, — вызывающий показывает
+    /// ошибку и выходит. После <c>true</c> все последующие обрывы разбираются внутри.
     /// </returns>
     public async Task<bool> StartAsync(TimeSpan initialConnectWindow, CancellationToken cancellationToken = default)
     {
@@ -98,8 +101,8 @@ public sealed class IpcClient : IIpcClient
         {
             if (await TryConnectAsync(linked.Token).ConfigureAwait(false))
             {
-                // The maintain loop takes over from here: it starts the reader for the
-                // connection we just made, and owns every reconnect after it.
+                // Дальше эстафету берёт поддерживающий цикл: он запускает читателя для только
+                // что установленного соединения и владеет всеми переподключениями после.
                 _maintainLoop = Task.Run(() => MaintainAsync(_stopping.Token), CancellationToken.None);
                 return true;
             }
@@ -150,21 +153,22 @@ public sealed class IpcClient : IIpcClient
 
         if (_maintainLoop is { } loop)
         {
-            // Bounded: the loop may be parked in a read that the cancellation should unblock,
-            // but a pipe that refuses to cancel must not hold up process exit.
+            // С потолком: цикл может стоять в чтении, которое отмена должна расшевелить, но
+            // труба, отказывающаяся отменяться, не имеет права задерживать выход процесса.
             await Task.WhenAny(loop, Task.Delay(TimeSpan.FromSeconds(2), CancellationToken.None)).ConfigureAwait(false);
             _maintainLoop = null;
         }
 
-        // notify: false — this is the UI closing itself, not the daemon disappearing, and
-        // the Disconnected handler's job is to tell the user the daemon died.
+        // notify: false — это UI гасит сам себя, а не демон пропадает, тогда как работа
+        // обработчика Disconnected — сообщить пользователю, что демон умер.
         await DropAsync(_connection, notify: false).ConfigureAwait(false);
         _stopping.Dispose();
     }
 
-    // ------------------------------------------------------------------ request plumbing
+    // ------------------------------------------------------------------ проводка запросов
 
-    private async Task<IpcResponse> SendAsync(string type, object? payload, TimeSpan? timeout, CancellationToken cancellationToken)
+    private async Task<IpcResponse> SendAsync(string type, object? payload, TimeSpan? timeout,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
@@ -190,7 +194,7 @@ public sealed class IpcClient : IIpcClient
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            // The pipe broke under the write. The maintain loop will notice and reconnect.
+            // Труба порвалась прямо под записью. Поддерживающий цикл это заметит и переподключится.
             throw new IpcRequestException(type, "соединение с демоном разорвано", ex);
         }
         finally
@@ -199,7 +203,7 @@ public sealed class IpcClient : IIpcClient
         }
     }
 
-    // ------------------------------------------------------------------- connection loop
+    // ------------------------------------------------------------------- цикл соединения
 
     private async Task MaintainAsync(CancellationToken cancellationToken)
     {
@@ -224,12 +228,14 @@ public sealed class IpcClient : IIpcClient
                 {
                     return;
                 }
+
                 backoffMs = Math.Min(backoffMs * 2, MaxBackoffMs);
                 continue;
             }
 
-            // Raised off the reader thread so a handler that fires requests (which every
-            // view-model does) can never delay the loop that has to read their replies.
+            // Поднимается вне потока чтения, чтобы обработчик, отправляющий запросы (а это
+            // делает каждая view-model), не мог задержать тот самый цикл, которому предстоит
+            // читать ответы на них.
             Raise(Connected);
 
             await ReadLoopAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -250,9 +256,9 @@ public sealed class IpcClient : IIpcClient
         }
         catch (Exception ex)
         {
-            // Overwhelmingly "the daemon isn't listening yet" (TimeoutException from
-            // NamedPipeClientStream). Debug, not Warning: the backoff loop retries this
-            // several times a second while the daemon boots.
+            // В подавляющем большинстве случаев это «демон ещё не слушает» (TimeoutException от
+            // NamedPipeClientStream). Debug, а не Warning: пока демон поднимается, цикл отката
+            // повторяет это по нескольку раз в секунду.
             _log.Debug(ex, "Не удалось подключиться к каналу демона '{Pipe}'", IpcPipe.Name);
             return false;
         }
@@ -273,8 +279,8 @@ public sealed class IpcClient : IIpcClient
             }
             catch (JsonException ex)
             {
-                // Recoverable by contract: the reader is already positioned at the next
-                // line, so one malformed message is not a broken connection.
+                // По контракту это поправимо: читатель уже стоит на следующей строке, так что
+                // одно покорёженное сообщение — не порванное соединение.
                 _log.Warning(ex, "Неразбираемая строка от демона — пропущена");
                 continue;
             }
@@ -290,7 +296,7 @@ public sealed class IpcClient : IIpcClient
 
             if (inbound is null)
             {
-                return; // EOF — the daemon closed the pipe
+                return; // EOF — демон закрыл трубу
             }
 
             Dispatch(inbound);
@@ -307,18 +313,20 @@ public sealed class IpcClient : IIpcClient
             }
             else
             {
-                // A reply to a request that already timed out or was cancelled. Normal.
+                // Ответ на запрос, который уже отвалился по таймауту или был отменён. Нормально.
                 _log.Debug("Ответ на неизвестный запрос #{Id} — проигнорирован", id);
             }
+
             return;
         }
 
         var evt = new IpcEvent(inbound.Type ?? string.Empty, inbound.Payload);
         try
         {
-            // Inline, NOT posted: event order is meaningful (WindowAppeared before the
-            // WindowTagsChanged that follows it), and offloading each one would scramble it.
-            // Handlers are contractually non-blocking — they marshal to the UI thread.
+            // Прямо здесь, НЕ через постановку в очередь: порядок событий значим
+            // (WindowAppeared раньше идущего следом WindowTagsChanged), а раскидывание каждого
+            // по потокам его бы перемешало. Обработчики по контракту не блокируют — они
+            // перекладывают работу в поток UI.
             EventReceived?.Invoke(evt);
         }
         catch (Exception ex)
@@ -334,13 +342,13 @@ public sealed class IpcClient : IIpcClient
             return;
         }
 
-        // Only the owner of THIS connection clears the field: a reconnect may already have
-        // installed a newer one.
+        // Поле обнуляет только владелец ИМЕННО ЭТОГО соединения: переподключение могло уже
+        // поставить туда новое.
         Interlocked.CompareExchange(ref _connection, null, connection);
         await connection.DisposeAsync().ConfigureAwait(false);
 
-        // Every in-flight request dies with the connection. Failing them explicitly beats
-        // letting each one burn its own timeout — the UI learns immediately.
+        // Каждый запрос в полёте умирает вместе с соединением. Завалить их явно лучше, чем дать
+        // каждому выжечь свой таймаут, — UI узнаёт об этом сразу.
         foreach (var id in _pending.Keys)
         {
             if (_pending.TryRemove(id, out var completion))
@@ -376,17 +384,18 @@ public sealed class IpcClient : IIpcClient
             await pipe.DisposeAsync().ConfigureAwait(false);
             throw;
         }
-        // leaveOpen: false — disposing the connection closes the pipe, which is what the
-        // reconnect path relies on.
+
+        // leaveOpen: false — освобождение соединения закрывает трубу, и на это как раз и
+        // рассчитан путь переподключения.
         return new IpcConnection(pipe);
     }
 
     /// <summary>
-    /// One inbound line, before we know what it is. The protocol has two daemon → client
-    /// shapes on one stream and no discriminator field: an <see cref="IpcResponse"/> carries
-    /// an <c>Id</c>, an <see cref="IpcEvent"/> never does. Reading into this permissive
-    /// union and testing <see cref="Id"/> is what makes that decidable without peeking at
-    /// raw JSON.
+    /// Одна входящая строка, пока мы ещё не знаем, что это. У протокола две формы «демон →
+    /// клиент» в одном потоке и никакого различающего поля: у <see cref="IpcResponse"/> есть
+    /// <c>Id</c>, у <see cref="IpcEvent"/> его не бывает никогда. Чтение в это снисходительное
+    /// объединение и проверка <see cref="Id"/> — вот что делает вопрос разрешимым, не
+    /// подглядывая в сырой JSON.
     /// </summary>
     private sealed record IpcInbound(int? Id, bool? Ok, string? Type, JsonElement? Payload, string? Error);
 }

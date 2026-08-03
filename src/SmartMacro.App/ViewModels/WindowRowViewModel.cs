@@ -9,9 +9,8 @@ using SmartMacro.Contracts.Ipc;
 namespace SmartMacro.App.ViewModels;
 
 /// <summary>
-/// One tag on a window, rendered as a removable chip. Carries a reference back to its row
-/// so the chip's <c>×</c> button has somewhere to go without the view having to correlate
-/// two data contexts.
+/// Один тег на окне, нарисованный снимаемым чипом. Несёт ссылку назад на свою строку, чтобы
+/// кнопке <c>×</c> у чипа было куда обратиться и виду не приходилось сводить два DataContext.
 /// </summary>
 public sealed class TagChipViewModel
 {
@@ -23,23 +22,23 @@ public sealed class TagChipViewModel
         Text = text;
     }
 
-    /// <summary>The tag itself. Free-form, case-sensitive, usually Cyrillic.</summary>
+    /// <summary>Сам тег. Произвольная строка, регистрозависимая, обычно кириллица.</summary>
     public string Text { get; }
 
-    /// <summary>Asks the daemon to drop this tag. Fire-and-forget — the chip disappears when the push comes back.</summary>
+    /// <summary>Просит демон снять этот тег. Без ожидания — чип исчезнет, когда придёт ответный пуш.</summary>
     public void Remove() => _ = _owner.RemoveTagAsync(Text);
 }
 
 /// <summary>
-/// One tracked window in the main list: which process it belongs to, its handle, and its
-/// live tag set with add/remove affordances.
+/// Одно отслеживаемое окно в главном списке: какому процессу принадлежит, его хэндл и живой
+/// набор тегов с возможностью добавить и убрать.
 ///
-/// The row owns no tag state of its own. Stage 3 did not change that, only where the owner
-/// lives: it used to be Core's <c>WindowRegistry</c> in this process, and is now the
-/// daemon's, reached over IPC. Add/remove therefore send a request and change nothing
-/// locally — the visible chips are rebuilt by <see cref="ApplyTags"/> when the daemon pushes
-/// <c>WindowTagsChanged</c> back. That keeps the display honest whether the change came from
-/// this row, from another panel, or from a macro node.
+/// Собственного состояния тегов у строки нет. Стадия 3 этого не изменила — изменила только то,
+/// где живёт владелец: раньше это был <c>WindowRegistry</c> из Core в этом же процессе, теперь
+/// демонский, до которого дотягиваются по IPC. Поэтому добавление и удаление отправляют запрос
+/// и локально не меняют ничего — видимые чипы пересобирает <see cref="ApplyTags"/>, когда демон
+/// пришлёт обратно <c>WindowTagsChanged</c>. Так показанное остаётся честным независимо от
+/// того, пришло изменение из этой строки, из другой панели или из ноды макроса.
 /// </summary>
 public sealed class WindowRowViewModel : ObservableObject
 {
@@ -57,32 +56,32 @@ public sealed class WindowRowViewModel : ObservableObject
         ApplyTags(window.Tags);
     }
 
-    /// <summary>Native handle — identity of the row, matching the daemon's key.</summary>
+    /// <summary>Нативный хэндл — личность строки, совпадающая с ключом у демона.</summary>
     public long Hwnd { get; }
 
-    /// <summary>Owning process name, as reported by the daemon's process monitor.</summary>
+    /// <summary>Имя процесса-владельца в том виде, в каком его сообщил монитор процессов демона.</summary>
     public string ProcessName { get; }
 
-    /// <summary>Handle in the hex form the logs use, so a row can be matched to a log line.</summary>
+    /// <summary>Хэндл в той шестнадцатеричной форме, что и в логах, — чтобы строку можно было сопоставить со строкой лога.</summary>
     public string HwndHex => string.Create(CultureInfo.InvariantCulture, $"0x{Hwnd:X}");
 
-    /// <summary>Live chips for the window's tags, in the order the daemon reported them.</summary>
+    /// <summary>Живые чипы тегов окна, в том порядке, в каком их сообщил демон.</summary>
     public ObservableCollection<TagChipViewModel> Tags { get; } = [];
 
-    /// <summary>Text of the row's "add a tag" box.</summary>
+    /// <summary>Текст поля «добавить тег» у этой строки.</summary>
     public string NewTagText
     {
         get => _newTagText;
         set => SetField(ref _newTagText, value);
     }
 
-    /// <summary>An untagged window is the "not identified yet" case — the view greys the row.</summary>
+    /// <summary>Окно без тегов — это случай «ещё не опознано»: вид гасит такую строку в серое.</summary>
     public bool HasTags => Tags.Count > 0;
 
     /// <summary>
-    /// Every other row of the tagged group gets the alternate background. Display state,
-    /// assigned by <c>WorkspaceViewModel</c> when it repartitions: Avalonia's
-    /// <c>ItemsControl</c> has no alternation index, so the index has to live on the item.
+    /// Каждая вторая строка помеченной группы получает чередующийся фон. Это состояние показа,
+    /// его проставляет <c>WorkspaceViewModel</c> при перераскладке: у <c>ItemsControl</c> в
+    /// Avalonia нет индекса чередования, так что индексу приходится жить на самом элементе.
     /// </summary>
     public bool IsAlternate
     {
@@ -91,9 +90,9 @@ public sealed class WindowRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The tag box is revealed on a tagged row (untagged rows show it permanently — it is
-    /// their only meaningful action, so the 1b layout gives it the accent border while a
-    /// tagged row hides it behind a quiet "+").
+    /// На помеченной строке поле тега раскрывается (у непомеченных оно видно всегда — это их
+    /// единственное осмысленное действие, поэтому раскладка 1b даёт ему акцентную рамку, а
+    /// помеченная строка прячет его за тихим «+»).
     /// </summary>
     public bool IsAddingTag
     {
@@ -102,11 +101,11 @@ public sealed class WindowRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Sends whatever is typed in <see cref="NewTagText"/> to the daemon. The box is only
-    /// cleared when a request actually went out, so a duplicate (or a failed call) leaves the
-    /// text in place for the user to correct instead of vanishing silently.
+    /// Отправляет демону то, что набрано в <see cref="NewTagText"/>. Поле очищается только
+    /// тогда, когда запрос действительно ушёл, — так дубликат (или провалившийся вызов)
+    /// оставляет текст на месте, чтобы пользователь его поправил, а не тихо его теряет.
     /// </summary>
-    /// <returns><c>true</c> when an <c>AddTag</c> request was accepted by the daemon.</returns>
+    /// <returns><c>true</c>, когда демон принял запрос <c>AddTag</c>.</returns>
     public async Task<bool> AddTagAsync()
     {
         var tag = _newTagText.Trim();
@@ -115,9 +114,9 @@ public sealed class WindowRowViewModel : ObservableObject
             return false;
         }
 
-        // Checked locally rather than by asking: the daemon treats a duplicate as a silent
-        // no-op (it cannot know the difference matters to a text box), so this is the only
-        // place that can tell "already there" from "added".
+        // Проверяем на месте, а не спрашивая: дубликат для демона — тихая пустая операция (ему
+        // неоткуда знать, что для текстового поля разница есть), так что отличить «уже есть» от
+        // «добавлено» способно только это место.
         if (Tags.Any(chip => string.Equals(chip.Text, tag, StringComparison.Ordinal)))
         {
             return false;
@@ -133,24 +132,24 @@ public sealed class WindowRowViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>Opens the inline tag box on a row that already has chips.</summary>
+    /// <summary>Открывает встроенное поле тега на строке, у которой чипы уже есть.</summary>
     public void BeginAddTag() => IsAddingTag = true;
 
-    /// <summary>Abandons the inline tag box and whatever was half-typed in it.</summary>
+    /// <summary>Бросает встроенное поле тега вместе со всем, что в нём успели набрать.</summary>
     public void CancelAddTag()
     {
         NewTagText = string.Empty;
         IsAddingTag = false;
     }
 
-    /// <summary>Asks the daemon to remove one tag from the window.</summary>
-    /// <returns><c>true</c> when the request was accepted.</returns>
+    /// <summary>Просит демон снять с окна один тег.</summary>
+    /// <returns><c>true</c>, когда запрос приняли.</returns>
     public Task<bool> RemoveTagAsync(string tag) =>
         SendAsync(IpcMessageTypes.RemoveTag, new RemoveTagRequest(Hwnd, tag));
 
     /// <summary>
-    /// Rebuilds the chips from a daemon snapshot. Wholesale rather than diffed: a window
-    /// carries a handful of tags at most, and the chips have no state worth preserving.
+    /// Пересобирает чипы по снимку от демона. Целиком, а не по разнице: тегов у окна от силы
+    /// горстка, и у чипов нет состояния, которое стоило бы сберегать.
     /// </summary>
     public void ApplyTags(IReadOnlyList<string> tags)
     {
@@ -160,6 +159,7 @@ public sealed class WindowRowViewModel : ObservableObject
         {
             Tags.Add(new TagChipViewModel(this, tag));
         }
+
         OnPropertyChanged(nameof(HasTags));
     }
 
@@ -172,8 +172,8 @@ public sealed class WindowRowViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
         {
-            // Tagging a window that died a moment ago is the common case and is not worth a
-            // dialog; the row is about to disappear anyway.
+            // Повесить тег на окно, умершее мгновением раньше, — обычное дело, и диалога оно не
+            // стоит; строка всё равно вот-вот исчезнет.
             Log.Warning(ex, "Не удалось выполнить '{Request}' для окна 0x{Hwnd:X}", type, Hwnd);
             return false;
         }

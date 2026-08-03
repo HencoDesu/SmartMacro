@@ -5,20 +5,20 @@ using Avalonia.Media;
 namespace SmartMacro.App.Controls;
 
 /// <summary>
-/// The dot grid behind the graph.
+/// Точечная сетка за графом.
 ///
-/// It lives in the VIEWPORT rather than on the transformed surface, and reproduces the
-/// pan/zoom itself from <see cref="Zoom"/>/<see cref="OffsetX"/>/<see cref="OffsetY"/>.
-/// The alternative — a tiled brush on the surface — would need the surface to be as large
-/// as anywhere the user might pan to, and would still stop at its edge. This way the grid
-/// is infinite by construction and costs one <c>Render</c> per pan.
+/// Живёт она в ОБЛАСТИ ПРОСМОТРА, а не на трансформируемой поверхности, и воспроизводит
+/// панораму и масштаб сама, из <see cref="Zoom"/>/<see cref="OffsetX"/>/<see cref="OffsetY"/>.
+/// Альтернатива — замощающая кисть на самой поверхности — потребовала бы, чтобы поверхность
+/// была размером со всё, куда пользователь может увести панораму, и всё равно обрывалась бы на
+/// её краю. А так сетка бесконечна по построению и стоит одного <c>Render</c> на панораму.
 /// </summary>
 public sealed class CanvasBackdrop : Control
 {
-    /// <summary>Grid pitch at 100%, from the mockup.</summary>
+    /// <summary>Шаг сетки на 100%, из макета.</summary>
     private const double BaseSpacing = 22;
 
-    /// <summary>Below this the dots merge into noise, so the pitch doubles instead.</summary>
+    /// <summary>Ниже этого точки сливаются в шум, поэтому шаг вместо того удваивается.</summary>
     private const double MinSpacing = 13;
 
     private const double DotSize = 1;
@@ -38,21 +38,21 @@ public sealed class CanvasBackdrop : Control
         ClipToBounds = true;
     }
 
-    /// <summary>Canvas scale, so the grid breathes with the graph.</summary>
+    /// <summary>Масштаб canvas — чтобы сетка дышала вместе с графом.</summary>
     public double Zoom
     {
         get => GetValue(ZoomProperty);
         set => SetValue(ZoomProperty, value);
     }
 
-    /// <summary>Canvas pan X in screen pixels.</summary>
+    /// <summary>Панорама canvas по X, в экранных пикселях.</summary>
     public double OffsetX
     {
         get => GetValue(OffsetXProperty);
         set => SetValue(OffsetXProperty, value);
     }
 
-    /// <summary>Canvas pan Y in screen pixels.</summary>
+    /// <summary>Панорама canvas по Y, в экранных пикселях.</summary>
     public double OffsetY
     {
         get => GetValue(OffsetYProperty);
@@ -91,8 +91,8 @@ public sealed class CanvasBackdrop : Control
             return;
         }
 
-        // Start on the first grid line at or before the left/top edge, so the dots stay
-        // anchored to canvas space while the viewport moves over them.
+        // Начинаем с первой линии сетки на левом/верхнем крае или до него — так точки остаются
+        // привязанными к пространству canvas, пока область просмотра ездит поверх них.
         var startX = OffsetX - (Math.Ceiling(OffsetX / spacing) * spacing);
         var startY = OffsetY - (Math.Ceiling(OffsetY / spacing) * spacing);
 
