@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
@@ -102,14 +103,20 @@ public class DebuggerProtocolTests
 
     private static JsonElement Parse(string line) => JsonDocument.Parse(line).RootElement.Clone();
 
-    private static async Task<bool> WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)
+    // Возвращала bool, который единственный вызывающий игнорировал: истёкшее ожидание молча
+    // ехало дальше и падало позже и не там. Теперь бросает сама.
+    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
         while (Environment.TickCount64 < deadline && !condition())
         {
             await Task.Delay(10);
         }
-        return condition();
+
+        if (!condition())
+        {
+            throw new TimeoutException($"Условие не выполнилось за {timeoutMs} мс.");
+        }
     }
 
     /// <summary>
@@ -147,12 +154,14 @@ public class DebuggerProtocolTests
             {
                 await NextAsync();
             }
+
             return Events;
         }
 
         public async Task<DebugAckDto> CommandAsync(int id, Guid walkId, DebugCommand command, string? nodeId = null)
         {
-            var reply = await RequestAsync(id, IpcMessageTypes.DebugCommand, new DebugCommandRequest(walkId, command, nodeId));
+            var reply = await RequestAsync(id, IpcMessageTypes.DebugCommand,
+                new DebugCommandRequest(walkId, command, nodeId));
             return IpcJson.Read<DebugAckDto>(reply.GetProperty("Payload"))!;
         }
 
@@ -167,6 +176,7 @@ public class DebuggerProtocolTests
             {
                 Events.AddRange(IpcJson.Read<RunEventBatch>(line.GetProperty("Payload"))!.Events);
             }
+
             return line;
         }
     }
@@ -219,7 +229,8 @@ public class DebuggerProtocolTests
         // перезапуск панели», — а именно этого от сохранения на самом деле и хотели.
         await using var fixture = new Fixture();
         var (first, firstServe) = await fixture.ConnectAsync();
-        await new Reader(first).RequestAsync(1, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["b"]));
+        await new Reader(first).RequestAsync(1, IpcMessageTypes.SetBreakpoints,
+            new SetBreakpointsRequest("pw-boot", ["b"]));
         first.CloseClient();
         await firstServe;
 
@@ -414,22 +425,42 @@ public class DebuggerProtocolTests
     public async Task ADebuggerEventDoesNotWaitOutTheCoalescingWindow()
     {
         // Окно склейки — 50 мс, и для лога это правильно. Для шага же это разница между
-        // мгновенной кнопкой и залипающей, поэтому пауза и возобновление выдержку пропускают.
-        // Замер сделан с запасом: проверяется «не полная выдержка», а не производительность.
+        // мгновенной кнопкой и залипающей, поэтому пауза и попадание в точку останова
+        // выдержку пропускают.
+        //
+        // Замеряется НЕ абсолютное время, а разница с контрольным прогоном без точки
+        // останова. Так пробовали раньше — сравнением с порогом 45 мс по Environment
+        // .TickCount64, — и тест плавал: у этого счётчика шаг около 15,6 мс, так что при
+        // запасе в 5 мс одно выравнивание тика давало 46 без всякой регрессии, а под
+        // нагрузкой (скажем, параллельная сборка) в 45 мс не укладывалась и честная
+        // работа. Нагрузка замедляет оба прогона одинаково, поэтому разница между ними
+        // устойчива там, где абсолютное время не устойчиво.
         await using var fixture = new Fixture();
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
         await reader.SubscribeAsync(1);
+
+        // Контроль: точек останова нет, значит первая пачка честно ждёт выдержку целиком.
+        var control = Stopwatch.StartNew();
+        await fixture.RunAsync(Chain()).WaitAsync(TimeSpan.FromSeconds(5));
+        await reader.UntilAsync(all => all.Count > 0);
+        control.Stop();
+
         await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["a"]));
 
-        var started = Environment.TickCount64;
+        // Тот же путь, но событие срочное: оно обязано прервать выдержку, а не досидеть её.
+        var mark = reader.Events.Count;
+        var urgent = Stopwatch.StartNew();
         var run = fixture.RunAsync(Chain());
-        var events = await reader.UntilAsync(all => all.Any(e => e.Kind == RunEventKind.BreakpointHit));
-        var elapsed = Environment.TickCount64 - started;
+        var events = await reader.UntilAsync(all => all.Skip(mark).Any(e => e.Kind == RunEventKind.BreakpointHit));
+        urgent.Stop();
 
-        await Assert.That(elapsed).IsLessThan(45);
+        // Разрыв должен быть порядка полной выдержки. Половины хватает, чтобы отличить
+        // «прервали» от «досидели», и остаётся запас на дрожание планировщика.
+        await Assert.That(urgent.Elapsed).IsLessThan(control.Elapsed - TimeSpan.FromMilliseconds(25));
 
-        await reader.CommandAsync(3, events.Single(e => e.Kind == RunEventKind.BreakpointHit).WalkId, DebugCommand.Resume);
+        await reader.CommandAsync(3, events.Single(e => e.Kind == RunEventKind.BreakpointHit).WalkId,
+            DebugCommand.Resume);
         await run.WaitAsync(TimeSpan.FromSeconds(5));
 
         client.CloseClient();
