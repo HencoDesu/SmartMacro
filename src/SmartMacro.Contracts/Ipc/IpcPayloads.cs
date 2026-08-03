@@ -67,7 +67,7 @@ public sealed record SubscribeLogRequest(bool Enabled);
 /// <param name="Name">
 /// Основа имени файла из <c>TemplateDto.Name</c>. Сегменты пути в ней запрос отклоняют: это
 /// строка, приехавшая по проводу, и <c>..\</c> в ней означает попытку вычитать что-то за
-/// пределами <c>Assets/</c>, а не шаблон, которого не хватает.
+/// пределами дерева <c>templates/</c>, а не шаблон, которого не хватает.
 /// </param>
 public sealed record GetTemplateImageRequest(string? Set, string Name);
 

@@ -363,7 +363,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// <summary><c>true</c>, когда демон вообще ответил хоть раз.</summary>
     public bool IsLoaded => _snapshot is not null;
 
-    /// <summary>«проверка от 14:22:07 · 4 из 6 в порядке» либо приглашение проверить.</summary>
+    /// <summary>«проверка от 14:22:07 · 5 из 7 в порядке» либо приглашение проверить.</summary>
     public string DiagnosticsSummary
     {
         get
@@ -529,7 +529,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Прогоняет проверки среды. Пять из шести делает демон; шестую — время ответа канала —
+    /// Прогоняет проверки среды. Шесть из семи делает демон; седьмую — время ответа канала —
     /// панель, потому что демон не может честно измерить время ответа самому себе.
     /// </summary>
     public async Task RunDiagnosticsAsync()
