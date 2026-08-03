@@ -17,7 +17,8 @@ public class MacroGraphStoreTests
         new() { Name = name, StartNodeId = nodes[0].Id, Nodes = [.. nodes] };
 
     private static MacroGraph SimpleMacro(string name, VirtualKey key = VirtualKey.F1) =>
-        Chain(name, new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = key, Target = new TargetSelector() });
+        Chain(name,
+            new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = key, Target = new TargetSelector() });
 
     private static string CreateTempDir()
     {
@@ -63,7 +64,7 @@ public class MacroGraphStoreTests
     // конструктор мигрировал старый macros.json, переименовывал его в *.migrated, сеял шесть
     // примеров pw-* и ставил маркер .examples-seeded — то есть «создать объект» означало
     // «изменить состояние на диске». Тест стоит здесь именно затем, чтобы побочные эффекты не
-    // навесили обратно: примеры теперь раздаются файлами из examples/ рядом с демоном.
+    // навесили обратно: примеров нет вовсе — ни в коде, ни отдельной раздаточной папкой.
     [Test]
     public async Task Construction_ReadsTheFolder_AndWritesNothingIntoIt()
     {
@@ -340,6 +341,7 @@ public class MacroGraphStoreTests
             DeleteTempDir(dir);
         }
     }
+
     [Test]
     public async Task Load_LeavesAnUnreadableFileAlone_BecauseThatIsTemporary()
     {

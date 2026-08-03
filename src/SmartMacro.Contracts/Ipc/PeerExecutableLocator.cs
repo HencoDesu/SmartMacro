@@ -11,11 +11,26 @@ namespace SmartMacro.Contracts.Ipc;
 /// панель» из трея молча не работало у всех, кто гоняет проект через <c>dotnet run</c>.
 ///
 /// Кандидатов ровно два, и они обслуживают РАЗНЫЕ раскладки, а не подстраховывают друг друга:
-/// «рядом со мной» — это поставка, где оба exe публикуются в одну папку (build/portable.proj),
-/// и там второй кандидат не понадобится никогда; подмена сегмента с именем проекта — это дерево
-/// разработки, где у каждого проекта свой <c>bin\Debug\net10.0-windows\</c> и соседа рядом нет
-/// по определению. Порядок соответствует: у пользователя попадаем с первой попытки, лишняя
-/// проверка достаётся разработчику.
+///
+/// <list type="table">
+///   <listheader><term>кандидат</term><description>раскладка</description></listheader>
+///   <item>
+///     <term>соседняя папка поставки</term>
+///     <description>
+///       панель ищет демона в <c>daemon\</c>, демон панель — уровнем выше (см.
+///       <see cref="InstallationLayout"/>); у пользователя попадаем с первой попытки
+///     </description>
+///   </item>
+///   <item>
+///     <term>подмена сегмента <c>SmartMacro.App</c> ⇄ <c>SmartMacro.Daemon</c></term>
+///     <description>дерево разработки, где у каждого проекта свой <c>bin\Debug\net10.0-windows\</c></description>
+///   </item>
+/// </list>
+///
+/// Кандидата «рядом со мной» здесь больше нет: с тех пор как панель переехала в корень поставки,
+/// а демон в подпапку, соседями по одной папке два exe не бывают ни в одной раскладке. Первый
+/// кандидат подставляется вызывающим — папкой, а не флагом, — потому что направление у двух
+/// локаторов разное (вниз и вверх), и знает о нём тот, у кого оно своё.
 ///
 /// Тут только арифметика над путями: файловую систему не трогаем, проба на существование
 /// приходит параметром (и это не только ради тестов — в Contracts по жёсткому правилу не
@@ -29,24 +44,30 @@ public static class PeerExecutableLocator
     /// «не найдено» без пути — бесполезная диагностика.
     /// </summary>
     /// <param name="baseDirectory">Каталог, откуда ищем, — обычно <see cref="AppContext.BaseDirectory"/>.</param>
-    /// <param name="executableName">Имя файла искомого процесса, например <c>SmartMacro.App.exe</c>.</param>
-    /// <param name="ownProjectFolder">Имя папки СВОЕГО проекта, например <c>SmartMacro.Daemon</c>.</param>
-    /// <param name="peerProjectFolder">Имя папки проекта-напарника, например <c>SmartMacro.App</c>.</param>
+    /// <param name="shippedPeerDirectory">
+    /// Где напарник лежит В ПОСТАВКЕ: для панели — <c>{своя папка}\daemon</c>, для демона — папка
+    /// уровнем выше своей. Проверяется всегда, в том числе в дереве разработки, где его просто
+    /// не существует и он уступает второму кандидату.
+    /// </param>
+    /// <param name="executableName">Имя файла искомого процесса, например <c>SmartMacro.Daemon.exe</c>.</param>
+    /// <param name="ownProjectFolder">Имя папки СВОЕГО проекта, например <c>SmartMacro.App</c>.</param>
+    /// <param name="peerProjectFolder">Имя папки проекта-напарника, например <c>SmartMacro.Daemon</c>.</param>
     public static IReadOnlyList<string> ProbePaths(
         string baseDirectory,
+        string shippedPeerDirectory,
         string executableName,
         string ownProjectFolder,
         string peerProjectFolder)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(shippedPeerDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(executableName);
         ArgumentException.ThrowIfNullOrWhiteSpace(ownProjectFolder);
         ArgumentException.ThrowIfNullOrWhiteSpace(peerProjectFolder);
 
-        // КАНДИДАТ 1 — раскладка ПОСТАВКИ: оба exe в одной папке, потому что публикуются они
-        // туда вместе (build/portable.proj). Идёт первым и проверяется всегда: на машине
+        // КАНДИДАТ 1 — раскладка ПОСТАВКИ. Идёт первым и проверяется всегда: на машине
         // пользователя это единственный случай, и попадает он с первой попытки.
-        var candidates = new List<string>(2) { Path.Combine(baseDirectory, executableName) };
+        var candidates = new List<string>(2) { Path.Combine(shippedPeerDirectory, executableName) };
 
         if (SwapProjectFolder(baseDirectory, ownProjectFolder, peerProjectFolder) is { } sibling)
         {
@@ -60,22 +81,24 @@ public static class PeerExecutableLocator
     /// Первый из <see cref="ProbePaths"/>, который существует, или <c>null</c>, если ни одного.
     /// </summary>
     /// <param name="baseDirectory">Каталог, откуда ищем, — обычно <see cref="AppContext.BaseDirectory"/>.</param>
-    /// <param name="executableName">Имя файла искомого процесса, например <c>SmartMacro.App.exe</c>.</param>
-    /// <param name="ownProjectFolder">Имя папки СВОЕГО проекта, например <c>SmartMacro.Daemon</c>.</param>
-    /// <param name="peerProjectFolder">Имя папки проекта-напарника, например <c>SmartMacro.App</c>.</param>
+    /// <param name="shippedPeerDirectory">Где напарник лежит в поставке; см. <see cref="ProbePaths"/>.</param>
+    /// <param name="executableName">Имя файла искомого процесса, например <c>SmartMacro.Daemon.exe</c>.</param>
+    /// <param name="ownProjectFolder">Имя папки СВОЕГО проекта, например <c>SmartMacro.App</c>.</param>
+    /// <param name="peerProjectFolder">Имя папки проекта-напарника, например <c>SmartMacro.Daemon</c>.</param>
     /// <param name="fileExists">
     /// Проба на существование. Параметр обязательный: в Contracts не заезжает файловый
     /// ввод-вывод, поэтому <see cref="File.Exists(string)"/> подставляет вызывающий.
     /// </param>
     public static string? Resolve(
         string baseDirectory,
+        string shippedPeerDirectory,
         string executableName,
         string ownProjectFolder,
         string peerProjectFolder,
         Func<string, bool> fileExists)
     {
         ArgumentNullException.ThrowIfNull(fileExists);
-        return ProbePaths(baseDirectory, executableName, ownProjectFolder, peerProjectFolder)
+        return ProbePaths(baseDirectory, shippedPeerDirectory, executableName, ownProjectFolder, peerProjectFolder)
             .FirstOrDefault(fileExists);
     }
 

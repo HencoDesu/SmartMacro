@@ -1404,10 +1404,10 @@
                                    Text="{Binding FolderPath}" />
                     </StackPanel>
 
-                    <!-- пустое состояние: в macros/ у демона нет вообще ничего.
-                         Свежая установка теперь открывается именно так — примеры демон больше
-                         не сеет, — поэтому здесь сказано, где их взять. Без этого первое
-                         впечатление от панели было бы «ничего не работает». -->
+                    <!-- пустое состояние: в macros/ нет вообще ничего.
+                         Свежая установка открывается именно так: ни посева, ни раздаточных
+                         примеров больше нет. Отдельно от «выберите макрос слева» намеренно —
+                         пустой список с надписью «выберите» читается как сломанная панель. -->
                     <StackPanel VerticalAlignment="Center"
                                 HorizontalAlignment="Center"
                                 MaxWidth="460"
@@ -1422,7 +1422,7 @@
                                    TextAlignment="Center"
                                    TextWrapping="Wrap"
                                    Foreground="{DynamicResource NocturneTextFaintBrush}"
-                                   Text="Создайте макрос кнопкой слева внизу — или возьмите готовый: примеры pw-* лежат в папке examples рядом с SmartMacro.Daemon.exe, скопируйте нужный .json в macros и он подхватится сам." />
+                                   Text="Создайте макрос кнопкой слева внизу. Готовый .json, положенный в эту папку, тоже подхватится сам — перезапускать ничего не надо." />
                         <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                    Foreground="{DynamicResource NocturneTextGhostBrush}"

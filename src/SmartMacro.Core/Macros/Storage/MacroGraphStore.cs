@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
@@ -9,8 +10,8 @@ using SmartMacro.Macros.Validation;
 namespace SmartMacro.Macros.Storage;
 
 /// <summary>
-/// Библиотека макросов на диске: по одному JSON-файлу на граф в папке <c>macros/</c> рядом с
-/// исполняемым файлом, где ОСНОВА ИМЕНИ ФАЙЛА и есть имя макроса. Файл на макрос (вместо
+/// Библиотека макросов на диске: по одному JSON-файлу на граф в папке <c>macros/</c> в корне
+/// установки, где ОСНОВА ИМЕНИ ФАЙЛА и есть имя макроса. Файл на макрос (вместо
 /// прежнего единого <c>macros.json</c>) — чтобы править руками, смотреть диффом и делиться
 /// отдельным макросом было естественными действиями.
 ///
@@ -32,9 +33,9 @@ namespace SmartMacro.Macros.Storage;
 /// <c>pw-*</c> и ставил маркер <c>.examples-seeded</c>. То есть «создать объект» означало
 /// «изменить состояние на диске»: тест не мог построить хранилище, не получив в придачу чужих
 /// файлов, а пользователь не мог понять, откуда в его папке макросы, которых он не писал.
-/// Примеры теперь раздаются файлами (<c>examples/</c> рядом с демоном) и копируются руками, а
-/// мигрировать больше нечего. Побочные эффекты сюда не возвращать: если что-то нужно записать
-/// на старте, это отдельный метод, видимый на месте вызова.
+/// Примеров теперь нет вовсе — ни в коде, ни отдельной раздаточной папкой, — а мигрировать
+/// больше нечего. Побочные эффекты сюда не возвращать: если что-то нужно записать на старте, это
+/// отдельный метод, видимый на месте вызова.
 ///
 /// ЕДИНСТВЕННОЕ ИСКЛЮЧЕНИЕ — <c>*.json.incompatible</c>. Файл, который не разбирается, ОТОДВИГАЕТСЯ
 /// в сторону переименованием: содержимого это не сочиняет, но состояние на диске меняет, поэтому
@@ -73,9 +74,13 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     // это либо эхо нашей же записи, либо дубль события, и она выбрасывается.
     private ImmutableDictionary<string, DateTime> _signature = ImmutableDictionary<string, DateTime>.Empty;
 
-    /// <summary>Боевой конструктор: <c>macros/</c> рядом с исполняемым файлом.</summary>
+    /// <summary>
+    /// Боевой конструктор: <c>macros/</c> в КОРНЕ УСТАНОВКИ. В поставке это папка уровнем выше
+    /// демона (он сам лежит в <c>daemon\</c>), в дереве разработки — его собственная;
+    /// см. <see cref="InstallationLayout"/>.
+    /// </summary>
     public MacroGraphStore(ILogger<MacroGraphStore> logger)
-        : this(AppContext.BaseDirectory, logger)
+        : this(InstallationLayout.RootFromDaemonDirectory(AppContext.BaseDirectory), logger)
     {
     }
 

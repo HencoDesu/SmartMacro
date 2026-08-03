@@ -1,6 +1,7 @@
 using Avalonia;
 using Microsoft.Extensions.Configuration;
 using Serilog;
+using Serilog.Events;
 using Serilog.Settings.Configuration;
 using SmartMacro.App.Ipc;
 using SmartMacro.Contracts.Ipc;
@@ -30,6 +31,17 @@ namespace SmartMacro.App;
 /// </summary>
 internal static class Program
 {
+    /// <summary>
+    /// Имя необязательного файла конфигурации панели. Суффикс «panel» остался с тех пор, когда
+    /// оба exe публиковались в одну папку и одноимённые конфиги затирали бы друг друга; теперь
+    /// это просто устоявшееся имя, которое пользователь мог уже знать. Слоя окружения
+    /// (вроде <c>appsettings.Development.json</c>) у панели нет вовсе.
+    /// </summary>
+    private const string PanelConfigurationFileName = "appsettings.panel.json";
+
+    /// <summary>Папка с макросами внутри корня установки — её показывает и открывает редактор.</summary>
+    private const string MacroFolderName = "macros";
+
     // Хватает на случай, когда демон уже поднят (он либо отвечает сразу, либо его нет).
     private static readonly TimeSpan ExistingDaemonWindow = TimeSpan.FromSeconds(2);
 
@@ -50,55 +62,30 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        // «panel», а не «appsettings.json», потому что в портативной поставке оба exe лежат в
-        // ОДНОЙ папке, и одноимённые конфиги двух проектов затирали бы друг друга — кто
-        // опубликуется вторым, тот и победил. Победа демона была бы особенно тихой: у него
-        // сток File пишет в logs/smartmacro-.log, так что панель начала бы подмешивать свой
-        // журнал в журнал движка (у обоих "shared": true, то есть даже не упала бы), и режим
-        // «Лог» показывал бы UI-строки как строки демона.
-        //
-        // Это НЕ файл-оверрайд по окружению вроде appsettings.Development.json: слоя окружения
-        // у панели нет вовсе, суффикс здесь просто говорит, чей это конфиг.
-        //
+        // Корень установки нужен ДО журнала: в него же пишется logs\. В поставке панель лежит в
+        // корне, так что это её собственная папка; в дереве разработки — папка демона, у которой
+        // спрашивают через локатор. Одно правило на оба процесса живёт в InstallationLayout.
+        var root = InstallationLayout.RootFromPanelDirectory(
+            AppContext.BaseDirectory,
+            DaemonLauncher.ResolveDirectory(AppContext.BaseDirectory));
+
+        // Относительные пути (например, в конфиге, который пользователь положил сам) должны
+        // разрешаться в корне установки, а не там, откуда процесс случайно запустили. Демон
+        // делает ровно то же самое своей папкой; см. комментарий в его Program.
+        Directory.SetCurrentDirectory(root);
+
         // Обёрнуто в try, потому что это ЕДИНСТВЕННОЕ место, падение в котором некуда записать:
         // журнала ещё нет, а у WinExe нет и консоли — до этой правки отказ здесь выходил
         // безмолвным крахом процесса. Портативная раскладка сделала такой отказ достижимым:
-        // logs\ панели лежит рядом с её exe, и распакованный в C:\Program Files архив роняет
-        // сток File прямо на CreateLogger. Демон ту же беду ловит пробой пера (см.
+        // logs\ лежит в корне установки, и распакованный в C:\Program Files архив роняет сток
+        // File прямо на CreateLogger. Демон ту же беду ловит пробой пера (см.
         // BaseDirectoryWriteProbe) — здесь пробы нет намеренно: общей сборки для неё у двух
         // процессов не нашлось (в Contracts файловый ввод-вывод не заезжает по жёсткому правилу,
         // а Native — только P/Invoke), а заводить вторую копию ради того, что и так ловится
         // одним catch, незачем. Заодно сюда же попадает битый appsettings.panel.json.
         try
         {
-            var configuration = new ConfigurationBuilder()
-                .SetBasePath(AppContext.BaseDirectory)
-                .AddJsonFile("appsettings.panel.json", optional: false, reloadOnChange: true)
-                .AddJsonFile("appsettings.panel.local.json", optional: true, reloadOnChange: true)
-                .AddEnvironmentVariables(prefix: "SMARTMACRO_")
-                .Build();
-
-            // ЯВНЫЙ список сборок вместо поиска по папке — требование портативной раскладки, а
-            // не вкусовщина. Serilog.Settings.Configuration, когда ему не сказали, где искать
-            // методы вроде WriteTo.File, перебирает Serilog*.dll РЯДОМ С СОБОЙ. Пока у панели
-            // была своя папка, это было безобидно. В общей папке он находит серилоговские
-            // расширения ДЕМОНА (Serilog.Extensions.Hosting, Serilog.Extensions.Logging),
-            // грузит их и спотыкается: их зависимости есть у демона и отсутствуют в
-            // SmartMacro.App.deps.json, а значит, для этого процесса недоступны. Панель падала
-            // ровно здесь, на CreateLogger, ещё до первой своей строки в журнале.
-            //
-            // Перечисление убирает перебор целиком: читаются только те две сборки, чьи методы
-            // реально названы в appsettings.panel.json. Демону зеркальная защита не нужна — его
-            // набор Serilog'а надмножество панельного, так что перебор не находит у него ничего
-            // нового.
-            Log.Logger = new LoggerConfiguration()
-                .ReadFrom.Configuration(
-                    configuration,
-                    new ConfigurationReaderOptions(
-                        typeof(ConsoleLoggerConfigurationExtensions).Assembly,
-                        typeof(FileLoggerConfigurationExtensions).Assembly))
-                .Enrich.FromLogContext()
-                .CreateLogger();
+            Log.Logger = BuildLogger(root);
         }
         catch (Exception ex)
         {
@@ -107,13 +94,22 @@ internal static class Program
                 "Не удалось поднять журнал панели.\n\n" +
                 $"{ex.Message}\n\n" +
                 "Чаще всего это каталог программы, недоступный для записи: SmartMacro хранит " +
-                "журналы и макросы рядом со своими исполняемыми файлами. Распакуйте папку туда, " +
+                "журналы и макросы рядом со своим исполняемым файлом. Распакуйте папку туда, " +
                 "куда можно писать, и запустите ещё раз.");
             return 1;
         }
 
         try
         {
+            // Та же строка, что и у демона, и по той же причине: перепутанный корень — сбой без
+            // единого сообщения об ошибке (панель смотрит в один macros\, демон пишет в другой,
+            // библиотека кажется пустой). Пусть он будет виден в первых строках журнала.
+            Log.Information(
+                "Корень установки: {Root} (каталог панели: {PanelDirectory}, раскладка: {Layout})",
+                root,
+                AppContext.BaseDirectory,
+                InstallationLayout.IsShippedLayout ? "поставка" : "дерево разработки");
+
             using var instance = SingleInstanceLock.TryAcquire(SingleInstanceLock.AppMutexName);
             if (instance is null)
             {
@@ -130,12 +126,12 @@ internal static class Program
                 Win32MessageBox.Error(
                     "SmartMacro",
                     "Не удалось подключиться к службе SmartMacro.\n\n" +
-                    "Запустите SmartMacro.Daemon.exe вручную и откройте панель ещё раз.\n" +
+                    "Запустите daemon\\SmartMacro.Daemon.exe вручную и откройте панель ещё раз.\n" +
                     "Подробности — в logs/smartmacro-ui-*.log.");
                 return 1;
             }
 
-            Services = new AppServices(client, ResolveMacroFolder());
+            Services = new AppServices(client, Path.Combine(root, MacroFolderName));
             try
             {
                 BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
@@ -145,7 +141,7 @@ internal static class Program
                 Log.Information("Avalonia exited, closing the daemon connection");
                 var services = Services;
                 Services = null;
-                services?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                services.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
 
             return 0;
@@ -208,15 +204,65 @@ internal static class Program
         return client.StartAsync(LaunchedDaemonWindow).GetAwaiter().GetResult();
     }
 
-    // Папка с макросами принадлежит демону, поэтому её ищут относительно его исполняемого
-    // файла, — а в дереве разработки это соседний каталог bin, а не наш.
-    private static string ResolveMacroFolder()
+    /// <summary>
+    /// Журнал панели. Умолчания ЖИВУТ ЗДЕСЬ, а не в файле рядом с exe, потому что панель
+    /// публикуется одним файлом: содержимое из бандла не распаковывается, а положить конфиг
+    /// рядом — это второй файл в корне поставки, ровно то, чего вся раскладка избегает.
+    ///
+    /// Внешний <c>appsettings.panel.json</c> при этом читается, ЕСЛИ пользователь положил его
+    /// сам, и тогда полностью заменяет умолчания: пришедший чинить свой журнал не должен
+    /// разбираться, что из написанного им сложится с зашитым, а что перекроет.
+    ///
+    /// ⚠️ ЯВНЫЙ список сборок в <see cref="ConfigurationReaderOptions"/> остаётся обязательным, и
+    /// теперь по другой причине, чем раньше. Когда оба exe лежали в одной папке,
+    /// <c>Serilog.Settings.Configuration</c> перебирал <c>Serilog*.dll</c> рядом с собой, находил
+    /// расширения ДЕМОНА и падал на их зависимостях. Общей папки больше нет — зато нет и dll на
+    /// диске: в single-file перебирать ему нечего, и <c>WriteTo.File</c> он бы просто не нашёл.
+    /// Перечисление снимает вопрос в обоих случаях.
+    /// </summary>
+    /// <param name="root">Корень установки: в него пишется <c>logs\</c>.</param>
+    private static ILogger BuildLogger(string root)
     {
-        var daemon = DaemonLauncher.Resolve(AppContext.BaseDirectory);
-        var directory = daemon is null
-            ? AppContext.BaseDirectory
-            : Path.GetDirectoryName(daemon) ?? AppContext.BaseDirectory;
-        return Path.Combine(directory, "macros");
+        var configurationPath = Path.Combine(root, PanelConfigurationFileName);
+        var logger = new LoggerConfiguration();
+
+        if (File.Exists(configurationPath))
+        {
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(root)
+                .AddJsonFile(PanelConfigurationFileName, optional: true, reloadOnChange: true)
+                .AddEnvironmentVariables(prefix: "SMARTMACRO_")
+                .Build();
+
+            logger.ReadFrom.Configuration(
+                configuration,
+                new ConfigurationReaderOptions(
+                    typeof(ConsoleLoggerConfigurationExtensions).Assembly,
+                    typeof(FileLoggerConfigurationExtensions).Assembly));
+        }
+        else
+        {
+            // Путь к файлу АБСОЛЮТНЫЙ: сток File разрешает относительный по текущему каталогу, а
+            // не по своему, и «журнал панели уехал туда, откуда её запустили» — беда, которую
+            // потом ищут глазами. Текущий каталог мы, правда, и так прибили к корню, но
+            // полагаться на это ради пути, который знаем точно, незачем.
+            logger
+                .MinimumLevel.Information()
+                .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+                .MinimumLevel.Override("System", LogEventLevel.Warning)
+                .WriteTo.Console(
+                    outputTemplate:
+                    "{Timestamp:HH:mm:ss.fff} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
+                .WriteTo.File(
+                    Path.Combine(root, "logs", "smartmacro-ui-.log"),
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 14,
+                    shared: true,
+                    outputTemplate:
+                    "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}");
+        }
+
+        return logger.Enrich.FromLogContext().CreateLogger();
     }
 
     // Используется предпросмотром и дизайнером Avalonia; обязан быть без параметров и

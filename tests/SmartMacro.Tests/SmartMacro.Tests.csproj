@@ -20,11 +20,10 @@
          Avalonia application, a dispatcher loop, or a render surface. -->
     <ProjectReference Include="..\..\src\SmartMacro.App\SmartMacro.App.csproj" />
     <!-- Stage 2A: the daemon's pieces of real (non-Win32) logic — the single-instance mutex,
-         the UI-executable probe, the writability probe. Раньше здесь стояла оговорка, что
-         оба проекта кладут в выхлоп appsettings.json и побеждает тот, кого MSBuild скопирует
-         последним. Оговорка снята: с портативной раскладкой у панели файл называется
-         appsettings.panel.json, и в выхлопе тестов теперь лежат оба. Читать их отсюда
-         по-прежнему некому — ни один exe тесты не запускают. -->
+         the UI-executable probe, the writability probe. Оговорка про столкновение двух
+         appsettings.json в выхлопе тестов снята дважды: сперва имена разошлись, потом файл
+         конфигурации у панели исчез вовсе. Читать конфиг отсюда всё равно некому — ни один exe
+         тесты не запускают. -->
     <ProjectReference Include="..\..\src\SmartMacro.Daemon\SmartMacro.Daemon.csproj" />
   </ItemGroup>
 

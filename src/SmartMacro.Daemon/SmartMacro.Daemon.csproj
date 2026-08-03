@@ -85,28 +85,23 @@
     <None Include="Assets\ClassIcons\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <!-- The whole vision-template tree, one glob because there is now one tree:
-           Assets\templates\{name}.png        single template, named by stem from Find/Wait
-           Assets\templates\{set}\{tag}.png   template set, named by folder from RecognizeTag
-         This replaces the separate GameUiElements\ and GameClassNames\ globs. The names macros
-         carry did not change — only where the files sit — so "classes" still means the same
-         set, it is just an ordinary subfolder now instead of a hard-wired alias in
-         TemplateSetProvider.
-         Recursive glob so a set the user drops in reaches the output on the next build. -->
-    <None Include="Assets\templates\**\*.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+    <!-- Дерево шаблонов зрения, один glob, потому что дерево одно:
+           templates\{имя}.png        одиночный шаблон, имя = стем       (Find/Wait)
+           templates\{набор}\{тег}.png набор, имя = папка, тег = стем    (RecognizeTag)
+         Оно заменило раздельные GameUiElements\ и GameClassNames\; имена, которыми шаблоны
+         называют ноды, при этом не менялись — только расположение файлов.
 
-  <ItemGroup>
-    <!-- Раздаточный материал, а не рабочие данные. Программа в examples\ не пишет и из неё
-         ничего не читает: макросы она берёт только из macros\, куда пользователь копирует
-         нужное сам. Так и задумано — до этой волны шесть примеров pw-* сеял в macros\ сам
-         конструктор MacroGraphStore, и «создать хранилище» означало «изменить состояние на
-         диске»; см. инвариант в комментарии того класса.
-         Копируется рядом с exe (а не остаётся только в дереве исходников), потому что искать
-         примеры пользователь пойдёт туда же, где лежит демон. -->
-    <None Include="examples\**\*">
+         ⚠️ Link, а не просто CopyToOutputDirectory: в исходниках дерево лежит под Assets\, а в
+         выхлопе обязано оказаться В КОРНЕ УСТАНОВКИ — рядом с macros\ и settings.json, потому
+         что PNG сюда роняет пользователь, и это его данные, а не выхлоп сборки. В дереве
+         разработки корень установки и есть выходная папка демона, так что Link кладёт файлы
+         ровно куда надо. В ПОСТАВКЕ демон публикуется в daemon\, поэтому дерево оттуда
+         поднимает на уровень выше build\portable.proj — причина написана там.
+
+         Рекурсивный glob, чтобы добавленный пользователем набор доезжал до выхлопа следующей
+         сборкой. -->
+    <None Include="Assets\templates\**\*.png">
+      <Link>templates\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

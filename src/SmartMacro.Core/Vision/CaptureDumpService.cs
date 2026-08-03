@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using SmartMacro.Contracts.Ipc;
 using SmartMacro.GameWindows;
 using SmartMacro.Windows;
 
@@ -35,9 +36,13 @@ public sealed partial class CaptureDumpService
     private readonly IClassMatcher _matcher;
     private readonly ILogger<CaptureDumpService> _logger;
 
-    /// <summary>Боевой конструктор: <c>debug/</c> рядом с исполняемым файлом.</summary>
+    /// <summary>
+    /// Боевой конструктор: <c>debug/</c> в КОРНЕ УСТАНОВКИ, рядом с <c>macros/</c> и
+    /// <c>templates/</c>, а не в подпапке демона. Дампы смотрит человек, и лежать они обязаны
+    /// там, куда он и так ходит; см. <see cref="InstallationLayout"/>.
+    /// </summary>
     public CaptureDumpService(WindowRegistry windows, IClassMatcher matcher, ILogger<CaptureDumpService> logger)
-        : this(AppContext.BaseDirectory, windows, matcher, logger)
+        : this(InstallationLayout.RootFromDaemonDirectory(AppContext.BaseDirectory), windows, matcher, logger)
     {
     }
 

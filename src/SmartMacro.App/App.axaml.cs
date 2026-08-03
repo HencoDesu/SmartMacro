@@ -61,7 +61,7 @@ public partial class App : Application
 
     private static WindowIcon LoadIcon()
     {
-        using var stream = AssetLoader.Open(new Uri("avares://SmartMacro.App/Assets/icon.png"));
+        using var stream = AssetLoader.Open(new Uri("avares://SmartMacro/Assets/icon.png"));
         return new WindowIcon(stream);
     }
 

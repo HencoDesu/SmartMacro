@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using SmartMacro.Contracts.Ipc;
 using SmartMacro.Contracts.Settings;
 
 namespace SmartMacro.Settings;
@@ -52,9 +53,13 @@ public sealed partial class SettingsStore : ISettingsSource, IDisposable
 
     private volatile AppSettings _current = AppSettings.Default;
 
-    /// <summary>Боевой конструктор: <c>settings.json</c> рядом с исполняемым файлом.</summary>
+    /// <summary>
+    /// Боевой конструктор: <c>settings.json</c> в КОРНЕ УСТАНОВКИ. В поставке это папка уровнем
+    /// выше демона (он сам лежит в <c>daemon\</c>), в дереве разработки — его собственная;
+    /// см. <see cref="InstallationLayout"/>.
+    /// </summary>
     public SettingsStore(ILogger<SettingsStore> logger)
-        : this(AppContext.BaseDirectory, logger)
+        : this(InstallationLayout.RootFromDaemonDirectory(AppContext.BaseDirectory), logger)
     {
     }
 
@@ -71,8 +76,8 @@ public sealed partial class SettingsStore : ISettingsSource, IDisposable
 
         // Наблюдатель ставится по возможности: горячая перезагрузка — приятное дополнение, так
         // что сбои прав или платформы деградируют до «перезапустите, чтобы подхватить внешние
-        // правки», а не до падения. Фильтр по имени файла, а не по маске: в этой папке лежат ещё
-        // appsettings.json и логи, и будить перезагрузку на каждый их байт незачем.
+        // правки», а не до падения. Фильтр по имени файла, а не по маске: в корне установки
+        // лежат ещё макросы, шаблоны и журналы, и будить перезагрузку на каждый их байт незачем.
         try
         {
             _watcher = new FileSystemWatcher(baseDirectory, FileName)

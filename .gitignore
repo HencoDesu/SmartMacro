@@ -16,8 +16,8 @@ packages/
 
 ## Local config / secrets
 config.local.json
-# Оверрайды обоих процессов: appsettings.local.json у демона,
-# appsettings.panel.local.json у панели (имена разошлись из-за общей папки поставки).
+# Локальные оверрайды демона (appsettings.local.json) плюс необязательный конфиг панели,
+# который пользователь может положить рядом с SmartMacro.exe сам (appsettings.panel*.json).
 appsettings*.local.json
 .env
 

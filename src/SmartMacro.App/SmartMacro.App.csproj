@@ -7,7 +7,23 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>SmartMacro.App</RootNamespace>
-    <AssemblyName>SmartMacro.App</AssemblyName>
+    <!-- ИМЯ ПРОГРАММЫ, а не имя проекта. В корне поставки видна ровно одна кнопка, и назваться
+         она обязана SmartMacro.exe: SmartMacro.App.exe рядом с папкой daemon\ читается как
+         «одна из двух половин», хотя это и есть то, что запускают.
+
+         Почему AssemblyName, хотя переименовать хотелось только выходной файл: имя apphost'а SDK
+         не даёт настроить отдельно. В Microsoft.NET.Sdk.targets он приезжает в выхлоп элементом
+         None с жёстко заданным Link=$(AssemblyName)$(_NativeExecutableExtension) — свойства
+         «как назвать exe» не существует. Оставались два пути: переименовать AssemblyName или
+         переименовывать файл после публикации. Второй проигрывает дважды — это переименование
+         УЖЕ СОБРАННОГО single-file-хоста (сценарий, который никто не поддерживает), и имя
+         разъезжается между деревом разработки и поставкой, из-за чего локатору напарника
+         пришлось бы знать два имени вместо одного.
+
+         RootNamespace при этом НЕ меняется: типы, папка проекта, имя мьютекса и файл журнала
+         остаются SmartMacro.App. Единственное, что тянется за идентичностью сборки, — адреса
+         avares://, они теперь avares://SmartMacro/ (их четыре, все в App.axaml и App.axaml.cs). -->
+    <AssemblyName>SmartMacro</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Stage 4A, same reasoning as SmartMacro.Daemon.csproj — see the comment there.
          Avalonia is the expensive one here: without a RID the output carried Skia and
@@ -20,6 +36,34 @@
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+
+    <!-- ОДИН ФАЙЛ В КОРНЕ ПОСТАВКИ. Свойство влияет только на publish, сборка в bin\ остаётся
+         обычной россыпью, так что дереву разработки это ничего не стоит.
+
+         Смысл ровно тот же, что у всей раскладки: пользователь видит одну кнопку и свои данные,
+         а не полсотни dll. Единственный интересный побочный эффект — распаковка: у панели три
+         нативные библиотеки (libSkiaSharp, libHarfBuzzSharp, av_libglesv2), а они, в отличие от
+         управляемых сборок, из бандла не грузятся и требуют файла на диске. Отсюда
+         IncludeNativeLibrariesForSelfExtract: при первом запуске они уезжают в %TEMP%\.net\...,
+         ОДИН РАЗ НА ВЕРСИЮ, а не при каждом старте. Это и есть та цена, из-за которой демона в
+         single-file заворачивать не стали: у него нативы OpenCV, он резидентный, и стек с
+         путями, которых нет на диске, отлаживать заметно противнее.
+
+         DebugType=embedded, а не отдельный .pdb: pdb рядом с exe — второй файл в корне, ровно
+         то, чего раскладка избегает; удалять его после публикации значило бы отдавать номера
+         строк в стеках. Внутри бандла он не мешает никому. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+    <!-- DebugType выше распоряжается только СВОИМИ символами. Символы ССЫЛОК (Contracts,
+         Native) приезжают отдельными .pdb как «сопутствующие файлы» и в бандл не заворачиваются
+         (IncludeSymbolsInSingleFile по умолчанию false) — то есть в корне поставки оказывались
+         SmartMacro.Contracts.pdb и SmartMacro.Native.pdb, ровно те лишние файлы, ради
+         отсутствия которых всё и затевалось.
+
+         Только в Release: в Debug они нужны, без них отладчик не покажет ни строки в коде
+         Contracts. А Release-сборка панели — это и есть то, что уезжает пользователю. -->
+    <AllowedReferenceRelatedFileExtensions Condition="'$(Configuration)' == 'Release'">none</AllowedReferenceRelatedFileExtensions>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,17 +72,18 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.3" />
     <PackageReference Include="Avalonia.Diagnostics" Version="11.2.3" Condition="'$(Configuration)' == 'Debug'" />
-    <!-- Configuration, but no Hosting: after stage 3 the only thing appsettings.json
-         configures is Serilog, and the four objects this process owns are wired by hand in
-         AppServices rather than by a container. -->
+    <!-- Configuration, but no Hosting: единственное, что панель вообще настраивает, — Serilog,
+         а четыре объекта, которыми она владеет, связаны руками в AppServices, без контейнера.
+         Конфигурация осталась даже после того, как файл конфигурации исчез: НЕОБЯЗАТЕЛЬНЫЙ
+         appsettings.panel.json рядом с exe читается, если пользователь его положил. -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.8" />
-    <!-- Транзитивный пакет, выписанный явно РАДИ ОБЩЕЙ ПАПКИ ПОСТАВКИ. Сюда он приезжает через
-         Serilog.Settings.Configuration (зависимость >= 10.0.0), а к демону — через
-         Microsoft.Extensions.Hosting (>= 10.0.8), и NuGet честно даёт каждому свой минимум. Пока
-         выхлопы были раздельные, разница никого не трогала; в одной папке физически лежит одна
-         копия, и молча побеждала та, что публиковалась первой. Пин выравнивает обе стороны;
-         расхождение здесь и ловит VerifyNoClobber в build/portable.proj. -->
+    <!-- Транзитивный пакет, выписанный явно. Сюда он приезжает через Serilog.Settings.Configuration
+         (зависимость >= 10.0.0), а к демону — через Microsoft.Extensions.Hosting (>= 10.0.8), и
+         NuGet честно даёт каждому свой минимум. Пин появился, когда оба exe публиковались в ОДНУ
+         папку: там физически лежала одна копия, и молча побеждала та, что публиковалась первой.
+         Папки теперь разные, и столкнуться этим версиям негде — пин остаётся гигиеной, чтобы два
+         процесса одной программы не расходились в общей зависимости без причины. -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.8" />
     <PackageReference Include="Serilog" Version="4.3.0" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
@@ -55,24 +100,15 @@
     <ProjectReference Include="..\SmartMacro.Contracts\SmartMacro.Contracts.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Serilog only. Every engine knob (Agent / ProcessProfiles / Vision) lives in the
-         daemon's appsettings.json — this process has nothing to configure.
-         Имя с суффиксом «panel» — из-за портативной раскладки: оба exe публикуются в одну
-         папку, и второй одноимённый appsettings.json просто затёр бы первый. Подробности —
-         в комментарии на месте чтения, App/Program.cs. -->
-    <None Update="appsettings.panel.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="appsettings.panel.local.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <DependentUpon>appsettings.panel.json</DependentUpon>
-    </None>
-  </ItemGroup>
+  <!-- Файла конфигурации у панели больше НЕТ. Раньше рядом лежал appsettings.panel.json ровно с
+       одной секцией Serilog; теперь эти умолчания живут в App/Program.cs, а внешний файл читается
+       опционально — если пользователь положил его сам. Причина в single-file: файлы содержимого
+       из бандла не распаковываются, значит конфиг пришлось бы класть рядом с exe — и в корне
+       поставки снова оказалось бы два файла вместо одного. -->
 
   <ItemGroup>
     <!-- The only asset left in this project: the window icon, embedded and loaded via
-         avares://SmartMacro.App/Assets/icon.png. The vision templates, the per-tag taskbar
+         avares://SmartMacro/Assets/icon.png. The vision templates, the per-tag taskbar
          icons, the tray .ico and the Tesseract language pack all moved to SmartMacro.Daemon
          in stage 3 — they are read at runtime by code that no longer runs here. -->
     <AvaloniaResource Include="Assets\icon.png" />

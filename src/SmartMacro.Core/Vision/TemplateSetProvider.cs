@@ -1,25 +1,28 @@
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using SmartMacro.Contracts.Ipc;
 
 namespace SmartMacro.Vision;
 
 /// <summary>
-/// Одно дерево <c>Assets/templates/</c> и всё, что о нём знает демон: разрешение имён, которые
-/// несут ноды макроса, в байты PNG — и перечисление того же дерева для браузера шаблонов в
-/// панели.
+/// Одно дерево <c>templates/</c> в корне установки и всё, что о нём знает демон: разрешение имён,
+/// которые несут ноды макроса, в байты PNG — и перечисление того же дерева для браузера шаблонов
+/// в панели.
 ///
 /// Раскладка ровно одна, и она же есть правило именования:
 /// <code>
-///   Assets/templates/{имя}.png        одиночный шаблон  → FindElement / WaitForElement
-///   Assets/templates/{набор}/{тег}.png набор шаблонов    → RecognizeTag (имя файла = тег)
+///   templates/{имя}.png         одиночный шаблон  → FindElement / WaitForElement
+///   templates/{набор}/{тег}.png набор шаблонов    → RecognizeTag (имя файла = тег)
 /// </code>
-/// До этой волны одиночные шаблоны лежали в <c>Assets/GameUiElements</c>, а набор
-/// <c>"classes"</c> был жёстко прошитым псевдонимом папки <c>Assets/GameClassNames</c>. Псевдоним
-/// удалён: <c>"classes"</c> теперь ничем не отличается от любого другого набора и означает
-/// подпапку <c>templates/classes/</c>. <b>Имена, которыми шаблоны называют ноды, при этом не
-/// поменялись ни одно</b> — переехали только файлы, — поэтому ни миграции макросов, ни правки
-/// пользовательских графов не потребовалось.
+/// Когда-то одиночные шаблоны лежали в <c>Assets/GameUiElements</c>, а набор <c>"classes"</c> был
+/// жёстко прошитым псевдонимом папки <c>Assets/GameClassNames</c>. Псевдоним удалён:
+/// <c>"classes"</c> теперь ничем не отличается от любого другого набора и означает подпапку
+/// <c>templates/classes/</c>. Следующим шагом дерево вышло из <c>Assets/</c> в корень установки —
+/// шаблоны пользователь правит и добавляет сам, и им место рядом с <c>macros/</c>, а не в выхлопе
+/// сборки. <b>Имена, которыми шаблоны называют ноды, при этом не поменялись ни разу</b> —
+/// переезжали только файлы, — поэтому ни миграции макросов, ни правки пользовательских графов не
+/// потребовалось ни в тот, ни в этот раз.
 ///
 /// <b>Два пути чтения, намеренно разные.</b>
 ///   * <see cref="TryGetTemplate"/> / <see cref="GetSet"/> — путь ИСПОЛНИТЕЛЯ. Кэшируется на
@@ -45,7 +48,7 @@ public sealed partial class TemplateSetProvider
     /// </summary>
     public const string ClassesSetName = "classes";
 
-    /// <summary>Имя папки с шаблонами внутри <c>Assets/</c>.</summary>
+    /// <summary>Имя папки с шаблонами внутри корня установки.</summary>
     public const string TemplatesFolderName = "templates";
 
     private readonly string _root;
@@ -56,22 +59,27 @@ public sealed partial class TemplateSetProvider
 
     private readonly Lazy<IReadOnlyDictionary<string, byte[]>> _singleTemplates;
 
+    /// <summary>
+    /// Боевой конструктор: <c>templates/</c> в КОРНЕ УСТАНОВКИ. В поставке это папка уровнем выше
+    /// демона (он сам лежит в <c>daemon\</c>), в дереве разработки — его собственная;
+    /// см. <see cref="InstallationLayout"/>.
+    /// </summary>
     public TemplateSetProvider(ILogger<TemplateSetProvider> logger)
-        : this(Path.Combine(AppContext.BaseDirectory, "Assets"), logger)
+        : this(InstallationLayout.RootFromDaemonDirectory(AppContext.BaseDirectory), logger)
     {
     }
 
-    /// <param name="assetsRoot">Папка <c>Assets/</c>, внутри которой лежит дерево <c>templates/</c>.</param>
+    /// <param name="installationRoot">Корень установки, внутри которого лежит дерево <c>templates/</c>.</param>
     /// <param name="logger">Приёмник диагностики.</param>
-    public TemplateSetProvider(string assetsRoot, ILogger<TemplateSetProvider> logger)
+    public TemplateSetProvider(string installationRoot, ILogger<TemplateSetProvider> logger)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(assetsRoot);
-        _root = Path.Combine(assetsRoot, TemplatesFolderName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(installationRoot);
+        _root = Path.Combine(installationRoot, TemplatesFolderName);
         _logger = logger;
         _singleTemplates = new Lazy<IReadOnlyDictionary<string, byte[]>>(() => LoadFolder("одиночные шаблоны", _root));
     }
 
-    /// <summary>Корень дерева шаблонов — <c>{assetsRoot}/templates</c>. Диагностика и тесты.</summary>
+    /// <summary>Корень дерева шаблонов — <c>{installationRoot}/templates</c>. Диагностика и тесты.</summary>
     public string TemplatesRoot => _root;
 
     // ---------------------------------------------------------------- путь исполнителя
@@ -146,7 +154,7 @@ public sealed partial class TemplateSetProvider
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
         // Имена приезжают из панели, то есть по проводу. Сегменты пути в них — это выход за
-        // пределы Assets/, поэтому запрос с ними отклоняется целиком, а не «санируется»: имя с
+        // пределы templates/, поэтому запрос с ними отклоняется целиком, а не «санируется»: имя с
         // разделителем не соответствует ни одному настоящему шаблону, так что терять нечего.
         if (HasPathSeparators(name) || (set is not null && HasPathSeparators(set)))
         {

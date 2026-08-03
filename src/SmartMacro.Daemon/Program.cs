@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
+using SmartMacro.Contracts.Ipc;
 using SmartMacro.Daemon.Logging;
 using SmartMacro.GameWindows;
 using SmartMacro.Hotkeys;
@@ -47,25 +48,44 @@ internal static class Program
         using var instance = SingleInstanceGuard.TryAcquire(SingleInstanceGuard.DaemonMutexName);
 
         // Проба пера сразу за мьютексом и ДО конфигурации с логгером — иначе сообщать не через
-        // что. Раскладка портативная: macros\, logs\ и debug\ живут рядом с exe, так что
-        // нераспакованный в пишущееся место архив (C:\Program Files, сетевая шара) ломает всё
-        // сразу и молча. Молча — потому что сток File у Serilog глотает отказ, а строить логгер
-        // раньше пробы нельзя ещё и технически: он сам первым делом полезет создавать logs\.
+        // что. Раскладка портативная: macros\, settings.json и debug\ живут в корне установки,
+        // logs\ — в папке самого демона, так что нераспакованный в пишущееся место архив
+        // (C:\Program Files, сетевая шара) ломает всё сразу и молча. Молча — потому что сток File
+        // у Serilog глотает отказ, а строить логгер раньше пробы нельзя ещё и технически: он сам
+        // первым делом полезет создавать logs\.
+        //
+        // Каталогов ДВА, и проверяются оба: корень — потому что в нём данные пользователя, своя
+        // папка — потому что в ней журнал. Один вместо двух означал бы «проверили права там, где
+        // ничего не пишем». В дереве разработки это один и тот же путь, поэтому вторая проба
+        // отсеивается сравнением, а не делается впустую.
         //
         // Единственный доступный в этой точке канал — нативное окно: консоли у WinExe нет,
         // журнала ещё нет. Строка в stderr — не дубликат, а подстраховка для `dotnet run`, где
         // консоль как раз есть.
         //
-        // Отвергнутый второй экземпляр тоже проходит пробу: две файловые операции, и они дешевле
+        // Отвергнутый второй экземпляр тоже проходит пробу: пара файловых операций дешевле
         // условия, которое пришлось бы объяснять. Имена проб разведены по pid, так что
         // одновременный запуск двух демонов за одно имя не спорит.
-        if (!BaseDirectoryWriteProbe.TryVerifyWritable(AppContext.BaseDirectory, out var writeFailure))
+        var installationRoot = InstallationLayout.RootFromDaemonDirectory(AppContext.BaseDirectory);
+        foreach (var directory in Writable(installationRoot, AppContext.BaseDirectory))
         {
-            var message = BaseDirectoryWriteProbe.DescribeFailure(AppContext.BaseDirectory, writeFailure);
+            if (BaseDirectoryWriteProbe.TryVerifyWritable(directory, out var writeFailure))
+            {
+                continue;
+            }
+
+            var message = BaseDirectoryWriteProbe.DescribeFailure(directory, writeFailure);
             Console.Error.WriteLine(message);
             Win32MessageBox.Error("SmartMacro", message);
             return 2;
         }
+
+        // Относительные пути становятся предсказуемыми: у стока File в appsettings.json путь
+        // относительный (logs/smartmacro-.log), а разрешает он его по ТЕКУЩЕМУ каталогу, а не по
+        // своему. При автозапуске через ключ Run текущим каталогом оказывается system32, и журнал
+        // молча уезжает туда (или не пишется вовсе — сток File глотает отказ). Один вызов
+        // прибивает его к папке демона, то есть logs\ у демона всегда СВОЙ, внутри daemon\.
+        Directory.SetCurrentDirectory(AppContext.BaseDirectory);
 
         var bootstrapConfiguration = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
@@ -98,6 +118,17 @@ internal static class Program
         try
         {
             Log.Information("SmartMacro daemon starting");
+
+            // ОБЯЗАТЕЛЬНАЯ строка, а не украшение диагностики. Ошибка в вычислении корня —
+            // молчаливая и дорогая: демон заведёт себе macros\ рядом с собой, панель будет
+            // смотреть в другие, библиотека окажется пустой, и ни одного сообщения об ошибке при
+            // этом не появится. Проба пера этого не ловит по построению — она про права, а не про
+            // адрес. Печатаем обе величины: по каталогу демона видно, какая раскладка опознана.
+            Log.Information(
+                "Корень установки: {Root} (каталог демона: {DaemonDirectory}, раскладка: {Layout})",
+                installationRoot,
+                AppContext.BaseDirectory,
+                InstallationLayout.IsShippedLayout ? "поставка" : "дерево разработки");
 
             var builder = Host.CreateApplicationBuilder(args);
             builder.Configuration.AddConfiguration(bootstrapConfiguration);
@@ -149,6 +180,20 @@ internal static class Program
             Log.CloseAndFlush();
         }
     }
+
+    /// <summary>
+    /// Каталоги, которые обязаны быть доступны на запись, без повторов: в дереве разработки
+    /// корень установки и папка демона — одно и то же место.
+    /// </summary>
+    /// <remarks>
+    /// Хвостовой разделитель снимается перед сравнением: <see cref="AppContext.BaseDirectory"/>
+    /// приходит с ним, а корень его уже не имеет, и без нормализации «одно и то же место»
+    /// сравнением не поймалось бы никогда.
+    /// </remarks>
+    private static IEnumerable<string> Writable(string root, string daemonDirectory) =>
+        new[] { root, daemonDirectory }
+            .Select(path => path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Начальный уровень для рубильника — тот, что записан в <c>appsettings.json</c>.

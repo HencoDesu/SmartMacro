@@ -25,14 +25,34 @@ public static class DaemonLauncher
     /// можно было записать в лог вместе с тем, куда на самом деле смотрели.
     /// </summary>
     public static IReadOnlyList<string> ProbePaths(string baseDirectory) =>
-        PeerExecutableLocator.ProbePaths(baseDirectory, DaemonExecutableName, AppProjectFolder, DaemonProjectFolder);
+        PeerExecutableLocator.ProbePaths(
+            baseDirectory,
+            InstallationLayout.DaemonDirectory(baseDirectory),
+            DaemonExecutableName,
+            AppProjectFolder,
+            DaemonProjectFolder);
 
     /// <summary>Полный путь к исполняемому файлу демона или <c>null</c>, если его нет ни в одном из мест, куда мы смотрим.</summary>
     /// <param name="baseDirectory">Обычно <see cref="AppContext.BaseDirectory"/>.</param>
     /// <param name="fileExists">Проба на существование; по умолчанию <see cref="File.Exists(string)"/>.</param>
     public static string? Resolve(string baseDirectory, Func<string, bool>? fileExists = null) =>
         PeerExecutableLocator.Resolve(
-            baseDirectory, DaemonExecutableName, AppProjectFolder, DaemonProjectFolder, fileExists ?? File.Exists);
+            baseDirectory,
+            InstallationLayout.DaemonDirectory(baseDirectory),
+            DaemonExecutableName,
+            AppProjectFolder,
+            DaemonProjectFolder,
+            fileExists ?? File.Exists);
+
+    /// <summary>
+    /// Каталог найденного демона либо <c>null</c>. Нужен ровно затем, чтобы вычислить корень
+    /// установки в дереве разработки, где панель собирается в свой <c>bin\</c> и рядом с ней нет
+    /// ни <c>macros\</c>, ни <c>settings.json</c>; см. <see cref="InstallationLayout.RootFromPanelDirectory(string, string?)"/>.
+    /// </summary>
+    /// <param name="baseDirectory">Обычно <see cref="AppContext.BaseDirectory"/>.</param>
+    /// <param name="fileExists">Проба на существование; по умолчанию <see cref="File.Exists(string)"/>.</param>
+    public static string? ResolveDirectory(string baseDirectory, Func<string, bool>? fileExists = null) =>
+        Resolve(baseDirectory, fileExists) is { } path ? Path.GetDirectoryName(path) : null;
 
     /// <summary>
     /// Запускает демона и возвращает <c>true</c>, когда процесс создан. О готовности не говорит

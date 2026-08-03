@@ -20,7 +20,7 @@ The refactoring plan is complete through stage 4. What follows is `docs/design/i
 - **D3b done** — the run-event channel. See below; it is the foundation D5 and the «Лог» mode both build on.
 - **D4 done** — hotkey capture (1f) + target-filter badge (1g). See below.
 - **D5 done** — the debugger. See below. **The design waves are complete.**
-- **After D5** — the asset trees collapsed into one `Assets/templates/`, and «Шаблоны» stopped being an empty frame. See «Vision» and «The template browser» below. Then **example seeding and the legacy migrator were deleted**: backwards compatibility is off, so `MacroGraphStore`'s constructor no longer writes anything, and the six `pw-*` graphs ship as ordinary files under `src/SmartMacro.Daemon/examples/`. See «Core pipeline» and «Runtime state files». And **«Лог» stopped being an empty frame** — the daemon's Serilog output now crosses the pipe as a second opt-in subscription. See «The log feed» below.
+- **After D5** — the asset trees collapsed into one `Assets/templates/`, and «Шаблоны» stopped being an empty frame. See «Vision» and «The template browser» below. Then **example seeding and the legacy migrator were deleted**: backwards compatibility is off, so `MacroGraphStore`'s constructor no longer writes anything. (The handout folder that briefly replaced the seeding is gone too — see «Runtime state files».) And **«Лог» stopped being an empty frame** — the daemon's Serilog output now crosses the pipe as a second opt-in subscription. See «The log feed» below.
 
 ### The targets badge and the hotkey trap (D4)
 
@@ -53,7 +53,7 @@ A panel connecting mid-run gets the live walks with `FromStart = false` and says
 
 **The gate is between two nodes, and that is the safety argument, not a convenience.** Every `ActivateAsync`/`DeactivateAsync` bracket and every vision tick's wake/re-freeze lives entirely inside `IMacroPrimitives`, so by the time control is back in `MacroExecutor` no game window is left woken. Pausing there cannot strand a frozen client; pausing anywhere deeper could. `ABreakpointParksTheWalkBeforeTheNodeRuns` pins it with a primitive-call count.
 
-**Breakpoints live in the daemon's session, never in the macro file.** The reasoning is written where the storage is (`MacroDebugSession`): a breakpoint is a fact about a debugging session, and persisting one would put it in a diff, ship it with the `pw-*` examples, and make a red dot dirty the editor. The ergonomic half of persistence comes free from the split — the daemon outlives the panel, so a breakpoint survives closing and reopening the UI. It does not survive «Выход» from the tray, which is also when every tag, hotkey and run goes.
+**Breakpoints live in the daemon's session, never in the macro file.** The reasoning is written where the storage is (`MacroDebugSession`): a breakpoint is a fact about a debugging session, and persisting one would put it in a diff, travel with any macro the user shares, and make a red dot dirty the editor. The ergonomic half of persistence comes free from the split — the daemon outlives the panel, so a breakpoint survives closing and reopening the UI. It does not survive «Выход» from the tray, which is also when every tag, hotkey and run goes.
 
 **A parked walk must never outlive its audience.** A walk waiting in the gate holds its `MacroRunRegistry` single-flight slot, so that macro's hotkey is dead until it moves — unacceptable in a resident daemon driving a live game. The attach count is therefore the *same edge* as `SubscribeRunEvents` (`IpcServer.ClientConnection.SetRunEventSubscription` drives both), which the server already releases on disconnect. The last debugger leaving **auto-resumes every parked walk** and stops breakpoints biting. Resume rather than abort: the run was started legitimately and abandoning a macro halfway can leave the game worse off. There is deliberately **no inactivity timeout** — the only case left is "the panel is open and the user walked away", where the pause is doing its job.
 
@@ -112,9 +112,9 @@ Found by eye while running it, none of it visible to build or tests: `ScreenRect
 
 ⚠️ **The fixed-height `TextBox` trap.** The theme's field padding is 11.2px vertical and the text sits inside a clipping `ScrollViewer`; a caller-supplied `Height` of 24–26 leaves less room than the line needs and severs descenders exactly at the baseline — letters stay legible, only the tails of «р»/«у»/«д» vanish. Three sites had it (log search, macro name, library search); all now pass `Padding="8,0"` + `VerticalContentAlignment="Center"` alongside their `Height`, and the trap is written up at the theme. Build and tests cannot see this class of defect — it was found by measuring glyph ink rows against a reference `TextBlock`.
 
-**Two executables run elevated** (`requireAdministrator`) — and they stay two; see «The portable layout» for why merging them is not on the table. A medium-integrity shell cannot terminate either one — `Stop-Process`/`taskkill` return access denied. A wedged panel has to be closed from an elevated context. It also holds the single-instance mutex and renames locked DLLs to `*.locked<pid>` in its `bin/`; those clear themselves when it finally exits.
+**Two executables run elevated** (`requireAdministrator`) — and they stay two; see «The shipped layout» for why merging them is not on the table. A medium-integrity shell cannot terminate either one — `Stop-Process`/`taskkill` return access denied. A wedged panel has to be closed from an elevated context. It also holds the single-instance mutex and renames locked DLLs to `*.locked<pid>` in its `bin/`; those clear themselves when it finally exits.
 
-**The split is live.** `SmartMacro.Daemon.exe` is the resident engine (tray, hooks, vision, macro library, IPC server); `SmartMacro.App.exe` is an on-demand panel that owns nothing and reaches everything over the `smartmacro-control` pipe. Run the daemon; the tray's "Открыть панель" (or launching the App directly) brings the UI up. A second App launch does not open a second window — it asks the daemon to broadcast `ActivateWindow` and exits. If the daemon dies, the panel says so and closes.
+**The split is live.** `SmartMacro.Daemon.exe` is the resident engine (tray, hooks, vision, macro library, IPC server); `SmartMacro.exe` (the panel project is still `SmartMacro.App`) is an on-demand panel that owns nothing and reaches everything over the `smartmacro-control` pipe. Run the daemon; the tray's "Открыть панель" (or launching the App directly) brings the UI up. A second App launch does not open a second window — it asks the daemon to broadcast `ActivateWindow` and exits. If the daemon dies, the panel says so and closes.
 
 ## Commands
 
@@ -125,7 +125,7 @@ dotnet run --project src/SmartMacro.App       # the panel (also auto-starts the 
 dotnet run --project tools/VisionSampleRunner # vision debugging harness (coord OCR over samples/)
 dotnet run --project tests/SmartMacro.Tests   # TEST GATE — use this one
 
-dotnet msbuild build/portable.proj            # portable layout: BOTH exes into dist/portable/SmartMacro/
+dotnet msbuild build/portable.proj            # shipped layout into dist/portable/SmartMacro/ (panel at the root, daemon in daemon/)
 dotnet msbuild build/portable.proj -t:Package # …plus dist/SmartMacro-Release.zip
 ```
 
@@ -177,8 +177,8 @@ hotkey / process-appeared / UI Run
 - **WindowRegistry** (`Core/Windows`) is the sole owner of window tags AND the `hwnd → IGameWindow` lookup. Tag selectors (`RequireTags`/`ExcludeTags`) route every fan-out; "identified" just means "has at least one tag".
 - **Orchestrator** (`Core/Orchestration`) turns triggers into runs. Hotkey runs have no context window (macros must route by selector) and are single-flight per macro NAME; process-appeared runs get the new window as context and are single-flight per (macro, window) so N clients launching at once each boot. Both seed the `cursor` variable via `CursorPositionProvider`. Its `OnProcessAppeared` is also the only place a window is *adopted*, and **`Register` and `StartProcessAppearedMacros` are deliberately adjacent, synchronous lines** — a node reaching an unregistered hwnd fails at execution, so nothing may go between them. Ordering at shutdown is the mirror image: `WindowLifetimeMonitor` is registered in the host BEFORE the orchestrator so it stops AFTER it, and windows leave the registry only once in-flight runs have been cancelled.
 - **Macros** — the model (polymorphic `$type` nodes + triggers) and its validator now live in `Contracts/Macros`; `Core/Macros` keeps the daemon-side halves: `Execution` (`MacroExecutor` walker, `MacroPrimitives`, `MacroRunRegistry`, run variables) and `Storage`. See `docs/refactoring-plan-split.md` §0.2–0.3 for the node catalogue and semantics.
-- **`MacroGraphStore`** (`Core/Macros/Storage`) is the library of record: one JSON file per graph under `macros/`, filename stem = macro name. It resolves sub-macros for `RunMacroNode`, supplies `HotkeyListener`'s bindings (re-registered on every change), and tells the orchestrator which graphs a new process should boot. **Its constructor writes nothing**: it creates the folder if missing, reads it, and stops. That is an invariant written on the class, not an accident — until backwards compatibility was dropped the same constructor migrated a legacy `macros.json`, renamed it and `hotkeys.json` to `*.migrated`, seeded six `pw-*` examples and dropped a `.examples-seeded` marker, so *constructing the object* meant *changing state on disk*. `DefaultMacroGraphs` and `LegacyMacroMigration` are gone; do not hang start-up side effects back on the ctor.
-- **Identification** is no longer built in: it's the `pw-identify` / `pw-boot` example graphs (shipped as files in `examples/`, copied into `macros/` by hand) — `KeyPress(C)` → `Delay` → `RecognizeTagNode` (template set `"classes"` → `Assets/templates/classes/{tag}.png`) → `SetIconNode` → `KeyPress(C)`. Master/ignored characters are just tags in a selector (`ExcludeTags: ["Лучник", "Шаман"]`).
+- **`MacroGraphStore`** (`Core/Macros/Storage`) is the library of record: one JSON file per graph under `macros/` in the installation root, filename stem = macro name. It resolves sub-macros for `RunMacroNode`, supplies `HotkeyListener`'s bindings (re-registered on every change), and tells the orchestrator which graphs a new process should boot. **Its constructor writes nothing**: it creates the folder if missing, reads it, and stops. That is an invariant written on the class, not an accident — until backwards compatibility was dropped the same constructor migrated a legacy `macros.json`, renamed it and `hotkeys.json` to `*.migrated`, seeded six `pw-*` examples and dropped a `.examples-seeded` marker, so *constructing the object* meant *changing state on disk*. `DefaultMacroGraphs` and `LegacyMacroMigration` are gone; do not hang start-up side effects back on the ctor.
+- **Identification** is no longer built in: it is an ordinary macro the user writes — `KeyPress(C)` → `Delay` → `RecognizeTagNode` (template set `"classes"` → `templates/classes/{tag}.png`) → `SetIconNode` → `KeyPress(C)`. Master/ignored characters are just tags in a selector (`ExcludeTags: ["Лучник", "Шаман"]`).
 
 ### Win32 input model (the hard-won part — do not "simplify" without re-testing in game)
 
@@ -193,108 +193,124 @@ PW freezes background clients (input + rendering). Every input session is bracke
 
 `IGameWindow.FindElementAsync` (one shot) and `WaitForElementAsync` (poll until timeout) are the generic primitives; both return the CLIENT-SPACE CENTRE of the match, which is what `FoundPointVar` feeds to a later `ClickNode`. Each tick is an active capture (wake → PrintWindow with `PW_CLIENTONLY | PW_RENDERFULLCONTENT` → re-freeze) + grayscale `TM_CCOEFF_NORMED` matching. Grayscale, NOT binarized — game UI sits on semi-transparent backgrounds where binarization is unstable. `ClassMatcher` (stats-window text on solid panel) is the exception that still binarizes.
 
-`TemplateSetProvider` resolves the names nodes carry into bytes out of **one tree**, `Assets/templates/`: a PNG in the root is a single template named by its stem (`Find`/`Wait`), a subfolder is a set named by the folder (`RecognizeTag`, filename stem = tag). Root and subfolders are separate namespaces — `Find` cannot reach a set member by tag name. `GameUiElements`/`GameClassNames` and the hard-wired `"classes"` alias are gone; **no name a macro carries changed**, only where the files sit, so there was no migration and `"classes"` still means exactly what it meant. All coordinates/templates are pixel-exact for the author's 3840×2160 screen; they now live in macro nodes, not config.
+`TemplateSetProvider` resolves the names nodes carry into bytes out of **one tree**, `templates/` in the installation root (it ships from `src/SmartMacro.Daemon/Assets/templates/`): a PNG in the root is a single template named by its stem (`Find`/`Wait`), a subfolder is a set named by the folder (`RecognizeTag`, filename stem = tag). Root and subfolders are separate namespaces — `Find` cannot reach a set member by tag name. `GameUiElements`/`GameClassNames` and the hard-wired `"classes"` alias are gone; **no name a macro carries changed**, only where the files sit, so there was no migration and `"classes"` still means exactly what it meant. All coordinates/templates are pixel-exact for the author's 3840×2160 screen; they now live in macro nodes, not config.
 
 The provider has **two read paths on purpose**. `TryGetTemplate`/`GetSet` is the executor's, cached for the process lifetime — a vision tick must not hit the disk. `Catalog()`/`TryReadFile` is the panel's template browser, reads the disk every time and never touches that cache, because the user drops a PNG in that folder precisely in order to look at it. The cost is named honestly: until the daemon restarts it still matches with whatever bytes were cached first. `Catalog()` reads pixel dimensions from the 24-byte IHDR header rather than decoding.
 
-**Assets live with the daemon.** `src/SmartMacro.Daemon/Assets/**` — the `templates/` tree, per-tag `ClassIcons`, the tray `icon.ico`. Stage 3 moved them out of App because every reader of them runs in the daemon; App keeps exactly one, `Assets/icon.png`, embedded as an `AvaloniaResource` for the window icon, and sees templates only over IPC.
+**Assets ship from the daemon project.** `src/SmartMacro.Daemon/Assets/**` — the `templates/` tree, per-tag `ClassIcons`, the tray `icon.ico`. Stage 3 moved them out of App because every reader of them runs in the daemon; App keeps exactly one, `Assets/icon.png`, embedded as an `AvaloniaResource` for the window icon, and sees templates only over IPC. **Where they LAND differs by kind**: `templates/` goes to the installation root (user data — the user drops PNGs in it and browses them in «Шаблоны»), while `ClassIcons/` and `icon.ico` stay in `daemon/Assets/`. That split is deliberate: a `SetIconNode` carries the string `Assets/ClassIcons/{tag}.png`, `WindowIconService` resolves it against `AppContext.BaseDirectory`, and moving those files would break every macro that names one — exactly the migration the template move avoided.
 
 **Tesseract is parked and no longer ships with the daemon (stage 4B).** `TesseractCoordinateReader` (HUD coordinate OCR) still works and is still exercised by `tools/VisionSampleRunner`, but the daemon does not register `ICoordinateReader` — nothing injected it, and the ctor eagerly builds a `TesseractEngine`. `SmartMacro.Core.csproj` marks the package `PrivateAssets="all" ExcludeAssets="build"`, which keeps both the managed dll and the 12 MB of `x64/`+`x86/` natives out of the daemon's output; `src/SmartMacro.Daemon/tessdata/` is gone and the language pack lives only with the sample runner, which carries its own PackageReference. Daemon output: 107 → 91 MB. Un-parking it for stuck detection = drop those two attributes and restore the DI line. ⚠️ Until then `SmartMacro.Core.dll` ships next to the daemon with a metadata reference to an assembly that is not there — harmless because the CLR resolves it lazily and nothing touches that type.
 
-### The portable layout (one folder, two exes)
+### The shipped layout (panel at the root, daemon in a subfolder)
 
-Distribution is a **zip containing a folder**, and everything is next to the executables — no
-`%LOCALAPPDATA%`, one path for the whole install. `build/portable.proj` is how that is
-expressed: `dotnet msbuild build\portable.proj` publishes **both** projects into
-`dist\portable\SmartMacro\`, `-t:Package` adds the zip. Four things constrain anything built on
-it:
+Distribution is a **zip containing a folder**, and everything is inside it — no `%LOCALAPPDATA%`,
+one path for the whole install:
 
-- **One folder, and the win is layout, not bytes.** Measured: 153 files / 117.97 MB as two
-  outputs (daemon 94 / 90.19, panel 59 / 27.78) against **127 files / 114.97 MB** merged — 26
-  duplicates and 3.0 MB of 118, because the weight is OpenCV natives on one side and
-  Skia/HarfBuzz on the other and those do not overlap. What it does buy is two adjacent exes,
-  one `macros/`, one `logs/`, one shortcut target — and it retires the peer-lookup asymmetry:
-  `PeerExecutableLocator`'s first candidate ("next to me") is the shipped layout and always
-  hits, the project-folder swap is **only** for the dev tree where each project builds into its
-  own `bin/`. Both cases are named at the locator.
-- **The two exes must NOT be merged into one with a `--daemon`/`--panel` switch.** The manifest
-  binds to the BINARY, not the mode: the daemon needs `requireAdministrator` (UIPI), and a
-  single exe would inherit elevation in both modes — the panel would always prompt for UAC and
-  de-elevating it would become impossible. The split is exactly what keeps that door open. The
-  reason is written in `build/portable.proj` because that file is where the temptation lands.
-- **A shared folder means the two publishes can disagree about a file.** `VerifyNoClobber` runs
-  BETWEEN them: it asks the panel for its `ResolvedFileToPublish` list and, for every entry
-  whose destination already exists, SHA-256s the panel's SOURCE against what the daemon put
-  there. Two things make it look the way it does. Getting the list needs
-  `build/publish-file-list.targets` injected via `CustomAfterMicrosoftCommonTargets`, because
-  the SDK's `ComputeFilesToPublish` has **no `Returns`** and hands back nothing through
-  `TargetOutputs` (verified). And ⚠️ **checking "was anything overwritten" is not enough** —
-  package files carry `CopyToPublishDirectory=PreserveNewest`, and "newer" is compared against
-  the file the *first* publish just wrote, so the second publish silently SKIPS them; a
-  before/after hash of the folder reports all-clear while the versions differ. That was not
-  theoretical — it is how the Binder clash below hid.
-- **`Publish` always cleans first**, so `dist/` is a BUILD OUTPUT, not an install: run the
-  daemon from there and its `macros/`, `logs/`, `debug/` and `settings.json` are gone on the
-  next publish.
+```
+SmartMacro/
+  SmartMacro.exe      the panel, single-file — THE ONLY thing visible at the root
+  macros/  templates/  settings.json  logs/  debug/
+  daemon/
+    SmartMacro.Daemon.exe + runtime + appsettings.json + Assets/ + its own logs/
+```
 
-**Three things the shared folder actually broke**, all found on the first portable build:
+`build/portable.proj` expresses it: `dotnet msbuild build\portable.proj` publishes the daemon into
+`dist\portable\SmartMacro\daemon\` and the panel into `dist\portable\SmartMacro\`, `-t:Package`
+adds the zip. Measured at `HEAD`: **88 files / 117.9 MB** — 1 file / 27.7 MB at the root, 73 /
+90.1 in `daemon/`, 14 template PNGs. The zip is 48.5 MB.
 
-1. **Both projects shipped an `appsettings.json`.** The panel's is now
-   **`appsettings.panel.json`** (override `appsettings.panel.local.json`). The daemon winning
-   would have redirected the panel's Serilog into `logs/smartmacro-.log` — both sinks are
-   `"shared": true`, so it would not even have thrown, just interleaved UI lines into the
-   engine log.
-2. **`Microsoft.Extensions.Configuration.Binder` was 10.0.8 for the daemon** (via
-   `Microsoft.Extensions.Hosting`) **and 10.0.0 for the panel** (via
-   `Serilog.Settings.Configuration`). One folder holds one copy, so the shipped version
-   depended on target ordering in the build file. Pinned explicitly in `SmartMacro.App.csproj`;
-   removing the pin makes `VerifyNoClobber` fail by name (verified).
-3. **⚠️ The panel did not start from the shared folder at all** — the expensive one, and the
-   one no file check could have caught. `Serilog.Settings.Configuration`, told nothing about
-   where to look, **scans `Serilog*.dll` in the application directory**. In one folder it finds
-   the daemon's `Serilog.Extensions.Hosting`/`Serilog.Extensions.Logging`, loads them, and
-   trips over dependencies that are the daemon's and absent from `SmartMacro.App.deps.json`.
-   The panel died on `CreateLogger` — before its first log line, and (because `MessageBoxW`
-   returns silently in a non-interactive session) with exit code 1 and no output whatsoever.
-   Fixed by handing `ReadFrom.Configuration` an explicit `ConfigurationReaderOptions` assembly
-   list, which removes the scan. The daemon needs no mirror fix: its Serilog set is a superset
-   of the panel's, so the scan finds it nothing new.
+- **The point is what the user sees, not bytes.** The previous iteration merged both exes into one
+  folder for deduplication. It bought 26 files and 3.0 MB of 118 — 2.5%, because the weight is
+  OpenCV natives on one side and Skia/HarfBuzz on the other and those do not overlap — and it cost
+  a whole class of bug: **one folder is one assembly probing directory, and anything that scans it
+  starts seeing the other process's dependencies.** The panel once did not start at all
+  (`Serilog.Settings.Configuration` scans `Serilog*.dll` next to itself, found the daemon's
+  `Serilog.Extensions.*`, and died on `CreateLogger` with exit code 1 and no output). That was
+  cured with an explicit assembly list — i.e. the symptom. Separate folders remove the cause. The
+  26 duplicates are back and that is the accepted price.
+- **The root resolver is `#if DEBUG`, and deliberately nothing cleverer.** `Contracts/Ipc/InstallationLayout`:
+  **in DEBUG the root is my own folder, in Release the parent.** No filesystem probing, no marker
+  files — in the dev tree each project builds into its own `bin/` and "next to me" is right; in the
+  shipped layout the daemon sits in `daemon/` and the root is one level up. The panel computes the
+  same thing from its side (shipped: its own folder; dev: the located daemon's). ⚠️ **A Release
+  build run from `bin/Release/net10.0-windows/` will look for state in `bin/Release/`** — consistent,
+  but surprising if you do not know. Getting this wrong is silent and expensive (the daemon writes
+  one `macros/`, the panel reads another, the library looks empty), so **both processes log the
+  computed root at startup**, and both halves of the rule are unit-tested (the layout flag is a
+  parameter; `#if DEBUG` only feeds the production overloads).
+- **`PeerExecutableLocator` has no "next to me" candidate any more.** Two exes are never folder
+  neighbours in any layout now: the panel looks for the daemon in `daemon/`, the daemon looks for
+  the panel one level up, and the second candidate is still the dev-tree project-folder swap.
+- **The panel is single-file; the daemon is not.** `PublishSingleFile` +
+  `IncludeNativeLibrariesForSelfExtract` (Skia/HarfBuzz/ANGLE cannot load from a bundle, so they
+  extract to `%TEMP%\.net\SmartMacro\` — **once per version**, verified: exactly those three files).
+  `DebugType=embedded` and, in Release only, `AllowedReferenceRelatedFileExtensions=none` — otherwise
+  `SmartMacro.Contracts.pdb`/`SmartMacro.Native.pdb` land next to the exe and the root stops being
+  one file. The daemon stays unbundled: it is in a subfolder, does not have to look like a product,
+  and its OpenCV blobs plus stack traces pointing at paths that are not on disk cost more than they
+  save.
+- **The panel's `AssemblyName` is `SmartMacro`** (project, folder and namespaces stay
+  `SmartMacro.App`; the four `avares://` URIs moved). The SDK gives no separate knob for the apphost
+  name — `Microsoft.NET.Sdk.targets` emits it with `Link=$(AssemblyName)$(_NativeExecutableExtension)`.
+  Renaming a built single-file host post-publish loses twice: unsupported, and the name would differ
+  between dev tree and shipping artifact, forcing the peer locator to know two names.
+- **The panel has no configuration file.** Single-file does not unpack content files, and putting
+  `appsettings.panel.json` next to the exe is a second file at the root. Serilog defaults live in
+  `App/Program.BuildLogger`; an external `appsettings.panel.json` next to the exe is read **if the
+  user puts one there** and then replaces them wholesale. The explicit `ConfigurationReaderOptions`
+  assembly list stays — now for the opposite reason: in single-file there are no dlls on disk to
+  scan, so `WriteTo.File` would not resolve at all.
+- **`templates/` is lifted out of `daemon/` by `LiftSharedContent`.** The files come from the daemon
+  project (`Assets/templates/`, copied to output with `Link=templates\...`) and the daemon publishes
+  into a subfolder, so they land in `daemon/templates/`. In the dev tree that is the right address
+  (root == the daemon's output folder); in the shipped layout it is one level too low, and the build
+  file is the only place that knows. `Move`, not `Copy` — a copy in `daemon/templates/` would be a
+  decoy the user eventually edits.
+- **`Publish` always cleans first**, so `dist/` is a BUILD OUTPUT, not an install: run from there and
+  `macros/`, `logs/`, `debug/` and `settings.json` are gone on the next publish.
+- **`VerifyNoClobber` and `build/publish-file-list.targets` are gone** with the shared folder — two
+  different `PublishDir`s cannot put a file on top of a file. The
+  `Microsoft.Extensions.Configuration.Binder` pin in `SmartMacro.App.csproj` stays as hygiene, not
+  necessity.
+- **The two exes must NOT be merged into one with a `--daemon`/`--panel` switch.** The manifest binds
+  to the BINARY, not the mode: the daemon needs `requireAdministrator` (UIPI), and a single exe would
+  inherit elevation in both modes — the panel would always prompt for UAC and de-elevating it would
+  become impossible. The reason is written in `build/portable.proj` because that file is where the
+  temptation lands.
 
-The moral of (3) is bigger than one package: **one folder is one assembly probing directory,
-and anything that scans it starts seeing the other process's dependencies.** `deps.json` stays
-honest — but only for code that loads through it.
-- **No single-file publish.** OpenCV's native blobs get unpacked to a temp folder at start:
-  slower, and stack traces point at paths that are not on disk.
+⚠️ Separate folders do **not** re-enable checking "App references Contracts and nothing else" by
+listing files: the panel's dependencies are inside a bundle now. Check `deps.json`.
 
-⚠️ One folder does **not** relax "App references Contracts and nothing else". That rule is about
-the PROCESS, not the directory: `OpenCvSharp*` and `SmartMacro.Core.dll` now sit next to the
-panel, but its `SmartMacro.App.deps.json` does not list them and nothing references them, so
-they never enter its address space. The invariant can no longer be checked by listing files in
-the panel's output — check `deps.json`.
+**Both processes pin their working directory** (`Directory.SetCurrentDirectory`) — the daemon to its
+own folder, the panel to the root. Serilog's File sink resolves a relative path against the CURRENT
+directory, and the daemon's `appsettings.json` carries one; started from the `Run` key the current
+directory is `system32` and the log silently goes there or nowhere.
 
 **Portability rests on being unzipped somewhere writable**, so the daemon proves it:
 `Daemon/BaseDirectoryWriteProbe` creates a subdirectory and a file in it — **right after the
-single-instance mutex and BEFORE the configuration and the logger**, because the logger's first
-act is to create `logs/`, and by then there is nothing left to report through. Both ACL bits
-are checked (`FILE_ADD_FILE` and `FILE_ADD_SUBDIRECTORY`); the probe name carries the pid; it
-cleans up after itself. **Failure is fatal — there is no read-only mode.** A resident daemon
-exists in order to write (macro library, log, capture dumps), and a live tray icon over an
-engine that cannot save a line is a promise it will not keep. The channel is a native message
-box (`Native/Dialogs/Win32MessageBox` — a WinExe has no console and the logger does not exist
-yet) and the exit code is `2`. The panel has no probe (no shared assembly would take it:
-Contracts forbids file IO, Native is P/Invoke only) but its configuration + logger construction
-is now wrapped in a `try` with the same box — before that it was the one place in the panel
-where a failure had nowhere to go and killed the process silently.
+single-instance mutex and BEFORE the configuration and the logger**, because the logger's first act
+is to create `logs/`, and by then there is nothing left to report through. **Two directories are
+probed**: the installation root (user data) and the daemon's own folder (`logs/`, the first thing the
+logger touches); in the dev tree they are the same path and the duplicate is dropped by comparison.
+Both ACL bits are checked (`FILE_ADD_FILE` and `FILE_ADD_SUBDIRECTORY`); the probe name carries the
+pid; it cleans up after itself. **Failure is fatal — there is no read-only mode.** A resident daemon
+exists in order to write (macro library, log, capture dumps), and a live tray icon over an engine
+that cannot save a line is a promise it will not keep. The channel is a native message box
+(`Native/Dialogs/Win32MessageBox` — a WinExe has no console and the logger does not exist yet) and
+the exit code is `2`. The panel has no probe (no shared assembly would take it: Contracts forbids
+file IO, Native is P/Invoke only) but its logger construction is wrapped in a `try` with the same
+box — before that it was the one place in the panel where a failure had nowhere to go and killed the
+process silently.
 
-### Runtime state files (next to the DAEMON exe, gitignored)
+### Runtime state files (in the installation ROOT, gitignored)
 
-`settings.json` (all engine knobs — see «Settings» above), `macros/*.json` (one graph per file), `debug/` and `logs/smartmacro-*.log`. `MacroGraphStore` follows the usual store pattern — load on ctor → immutable snapshot → CRUD persists + raises `MacrosChanged` → subscribers (`HotkeyListener`, and the panel via the `MacrosChanged` push) re-register live — plus a debounced `FileSystemWatcher` for external edits, with our own writes suppressed by comparing a folder signature of last-write timestamps. An unparseable file is skipped and logged, never fatal to the load.
+`settings.json` (all engine knobs — see «Settings» above), `macros/*.json` (one graph per file), `templates/**` and `debug/` all live in the installation ROOT — the folder the panel sits in, one level above the daemon (see «The shipped layout»). The daemon's own `logs/smartmacro-*.log` is the exception: it stays in `daemon/`, next to the exe whose `appsettings.json` names it. `MacroGraphStore` follows the usual store pattern — load on ctor → immutable snapshot → CRUD persists + raises `MacrosChanged` → subscribers (`HotkeyListener`, and the panel via the `MacrosChanged` push) re-register live — plus a debounced `FileSystemWatcher` for external edits, with our own writes suppressed by comparing a folder signature of last-write timestamps. An unparseable file is skipped and logged, never fatal to the load.
 
-The panel's own directory holds only `logs/smartmacro-ui-*.log` — and in the shipped layout that *is* the daemon's directory. Its `appsettings.panel.json` configures Serilog and nothing else — every engine knob (`Agent`, `ProcessProfiles`, `Vision:*`) is the daemon's.
+The panel writes `logs/smartmacro-ui-*.log` into the root as well, at an absolute path computed in code — in the dev tree the root IS the daemon's output folder, so both logs share one `logs/` there. The panel has no configuration file at all; an optional `appsettings.panel.json` next to the exe overrides the built-in Serilog defaults if the user drops one in. Every engine knob (`Agent`, `ProcessProfiles`, `Vision:*`) is the daemon's, and lives in `settings.json`.
 
 `hotkeys.json` and the single `macros.json` are GONE — and so is the one-shot migrator that used to convert them. Backwards compatibility is off: a file in either legacy format is now just an unknown file the store ignores. A hotkey is a `HotkeyTrigger` inside the macro it starts.
 
-**A fresh install starts with an empty library.** Nothing seeds `macros/` any more. `src/SmartMacro.Daemon/examples/` ships the six `pw-*` graphs as files (`PreserveNewest`, like the assets) plus a README that says what they are; the daemon neither writes to that folder nor reads from it — copying a `.json` into `macros/` is a user action, and the watcher picks it up live. The «Макросы» mode has its own empty state saying exactly that, kept separate from «выберите макрос слева» because an empty list with "pick one" on it reads as a broken panel.
+**A fresh install starts with an empty library, and there is nothing to copy from.** Nothing seeds `macros/`, and `src/SmartMacro.Daemon/examples/` — the six `pw-*` graphs that used to ship as a handout — is deleted. After the node-id → `Guid` change they no longer loaded anyway, and a folder you have to copy files out of explains the program's internals instead of giving the user a button. The «Макросы» mode has its own empty state («create one with the button, bottom left», plus the folder path — a `.json` dropped in there is picked up live), kept separate from «выберите макрос слева» because an empty list with "pick one" on it reads as a broken panel.
 
 ### Conventions
 
