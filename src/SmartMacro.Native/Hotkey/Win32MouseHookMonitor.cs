@@ -163,6 +163,7 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
                 User32Native.UnhookWindowsHookEx(_hookHandle);
                 _hookHandle = IntPtr.Zero;
             }
+
             _hookDelegate = null;
         }
     }
@@ -250,25 +251,25 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
 
     #region Logging
 
-    [LoggerMessage(LogLevel.Information, "Win32MouseHookMonitor started — {Count} mouse binding(s) active")]
+    [LoggerMessage(LogLevel.Information, "Win32MouseHookMonitor запущен — активных мышиных привязок: {Count}")]
     partial void LogStarted(int count);
 
-    [LoggerMessage(LogLevel.Information, "Win32MouseHookMonitor stopped")]
+    [LoggerMessage(LogLevel.Information, "Win32MouseHookMonitor остановлен")]
     partial void LogStopped();
 
-    [LoggerMessage(LogLevel.Error, "SetWindowsHookEx(WH_MOUSE_LL) failed with Win32 error {ErrorCode}")]
+    [LoggerMessage(LogLevel.Error, "SetWindowsHookEx(WH_MOUSE_LL) не удался, ошибка Win32 {ErrorCode}")]
     partial void LogHookInstallFailed(int errorCode);
 
-    [LoggerMessage(LogLevel.Debug, "Mouse hotkey matched: {Button} (mods {Modifiers}) → id {Id}")]
+    [LoggerMessage(LogLevel.Debug, "Сработала мышиная привязка: {Button} (модификаторы {Modifiers}) → id {Id}")]
     partial void LogMousePressed(MouseButton button, HotkeyModifiers modifiers, int id);
 
-    [LoggerMessage(LogLevel.Error, "MouseHook subscriber threw for id {Id}")]
+    [LoggerMessage(LogLevel.Error, "Подписчик мышиного хука бросил исключение на id {Id}")]
     partial void LogSubscriberFailed(Exception ex, int id);
 
-    [LoggerMessage(LogLevel.Error, "MouseHook callback failed; passing through to next hook")]
+    [LoggerMessage(LogLevel.Error, "Колбэк мышиного хука упал; пропускаем событие дальше по цепочке")]
     partial void LogHookCallbackFailed(Exception ex);
 
-    [LoggerMessage(LogLevel.Error, "Win32MouseHookMonitor message loop failed")]
+    [LoggerMessage(LogLevel.Error, "Цикл сообщений Win32MouseHookMonitor упал")]
     partial void LogMessageLoopFailed(Exception ex);
 
     #endregion

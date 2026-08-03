@@ -59,7 +59,7 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
             return Task.CompletedTask;
         }
 
-        return _input.FireKeyAsync(window, key, $"Key({key})", Describe(hwnd));
+        return _input.FireKeyAsync(window, key, Describe(hwnd));
     }
 
     /// <inheritdoc />
@@ -190,24 +190,24 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
         return tags.Count > 0 ? string.Join("/", tags) : $"hwnd=0x{hwnd.ToInt64():X}";
     }
 
-    [LoggerMessage(LogLevel.Warning, "{Operation}: hwnd=0x{Hwnd:X} has no drivable window in the registry — skipping")]
+    [LoggerMessage(LogLevel.Warning, "{Operation}: для hwnd=0x{Hwnd:X} в реестре нет управляемого окна — пропускаем")]
     partial void LogUnknownWindow(string operation, long hwnd);
 
-    [LoggerMessage(LogLevel.Warning, "Template '{Template}' is unavailable — node treated as 'not found'")]
+    [LoggerMessage(LogLevel.Warning, "Шаблон '{Template}' недоступен — нода считается «не найдено»")]
     partial void LogTemplateUnavailable(string template);
 
-    [LoggerMessage(LogLevel.Warning, "Template set '{TemplateSet}' is empty — node treated as 'not matched'")]
+    [LoggerMessage(LogLevel.Warning, "Набор шаблонов '{TemplateSet}' пуст — нода считается «не совпало»")]
     partial void LogEmptyTemplateSet(string templateSet);
 
-    [LoggerMessage(LogLevel.Warning, "Capture failed for hwnd=0x{Hwnd:X} during recognition")]
+    [LoggerMessage(LogLevel.Warning, "Не удался захват hwnd=0x{Hwnd:X} при распознавании")]
     partial void LogCaptureFailed(Exception ex, long hwnd);
 
-    [LoggerMessage(LogLevel.Information, "Recognized '{Tag}' (score {Score:F3}) from set '{TemplateSet}'")]
+    [LoggerMessage(LogLevel.Information, "Распознан '{Tag}' (оценка {Score:F3}) из набора '{TemplateSet}'")]
     partial void LogRecognized(string tag, double score, string templateSet);
 
-    [LoggerMessage(LogLevel.Information, "No template of set '{TemplateSet}' matched on hwnd=0x{Hwnd:X}")]
+    [LoggerMessage(LogLevel.Information, "Ни один шаблон набора '{TemplateSet}' не совпал на hwnd=0x{Hwnd:X}")]
     partial void LogRecognizeNoMatch(string templateSet, long hwnd);
 
-    [LoggerMessage(LogLevel.Error, "Recognition against set '{TemplateSet}' threw")]
+    [LoggerMessage(LogLevel.Error, "Распознавание по набору '{TemplateSet}' бросило исключение")]
     partial void LogRecognizeFailed(Exception ex, string templateSet);
 }

@@ -6,67 +6,70 @@ namespace SmartMacro.Macros.Storage;
 // основной файл читался как логика хранения, а не как заготовки логгера.
 public sealed partial class MacroGraphStore
 {
-    [LoggerMessage(LogLevel.Information, "Macro library loaded: {Count} graph(s) ({Skipped} skipped) from {Path}")]
+    [LoggerMessage(LogLevel.Information,
+        "Библиотека макросов загружена: графов {Count} (пропущено {Skipped}) из {Path}")]
     partial void LogLoaded(int count, int skipped, string path);
 
-    [LoggerMessage(LogLevel.Error, "Skipping unreadable macro file {Path} — the rest of the library still loads")]
+    [LoggerMessage(LogLevel.Error,
+        "Пропущен нечитаемый файл макроса {Path} — остальная библиотека всё равно загрузится")]
     partial void LogFileSkipped(Exception ex, string path);
 
-    [LoggerMessage(LogLevel.Warning, "Macro file name wins over its 'Name' field: '{JsonName}' loaded as '{FileName}'")]
+    [LoggerMessage(LogLevel.Warning, "Имя файла важнее поля 'Name': '{JsonName}' загружен как '{FileName}'")]
     partial void LogNameMismatch(string jsonName, string fileName);
 
-    [LoggerMessage(LogLevel.Error, "Cannot enumerate macro folder {Path} — treating the library as empty")]
+    [LoggerMessage(LogLevel.Error, "Не удалось перечислить папку макросов {Path} — считаем библиотеку пустой")]
     partial void LogEnumerationFailed(Exception ex, string path);
 
-    [LoggerMessage(LogLevel.Information, "Macro '{Name}' saved to {Path}")]
+    [LoggerMessage(LogLevel.Information, "Макрос '{Name}' сохранён в {Path}")]
     partial void LogSaved(string name, string path);
 
-    [LoggerMessage(LogLevel.Information, "Macro '{Name}' deleted ({Path})")]
+    [LoggerMessage(LogLevel.Information, "Макрос '{Name}' удалён ({Path})")]
     partial void LogDeleted(string name, string path);
 
     [LoggerMessage(LogLevel.Error,
-        "Macro '{Name}' has a validation error at {NodeId}: {Message} — saved anyway, runs will abort there")]
+        "Ошибка валидации макроса '{Name}' на ноде {NodeId}: {Message} — сохранён всё равно, прогон на ней оборвётся")]
     partial void LogValidationError(string name, string nodeId, string message);
 
-    [LoggerMessage(LogLevel.Information, "Macro library reloaded after external change: {Count} graph(s)")]
+    [LoggerMessage(LogLevel.Information, "Библиотека перечитана после внешнего изменения: графов {Count}")]
     partial void LogReloadedExternally(int count);
 
-    [LoggerMessage(LogLevel.Warning, "Failed to hot-reload the macro library after an external change")]
+    [LoggerMessage(LogLevel.Warning, "Не удалось перечитать библиотеку макросов после внешнего изменения")]
     partial void LogReloadFailed(Exception ex);
 
-    [LoggerMessage(LogLevel.Warning, "FileSystemWatcher failed to start on {Path}; macro hot-reload disabled")]
+    [LoggerMessage(LogLevel.Warning,
+        "FileSystemWatcher не запустился на {Path}; перечитывание макросов на лету отключено")]
     partial void LogWatcherStartFailed(Exception ex, string path);
 
-    [LoggerMessage(LogLevel.Information, "Migrated {Count} macro graph(s) from {LegacyPath} into {Path}")]
+    [LoggerMessage(LogLevel.Information, "Перенесено графов макросов: {Count} из {LegacyPath} в {Path}")]
     partial void LogMigrated(int count, string legacyPath, string path);
 
-    [LoggerMessage(LogLevel.Warning, "Migration dropped {Count} legacy macro(s) with no runnable actions")]
+    [LoggerMessage(LogLevel.Warning, "При переносе отброшено старых макросов без исполнимых действий: {Count}")]
     partial void LogMigrationSkipped(int count);
 
     [LoggerMessage(LogLevel.Information,
-        "Migration moved {Count} hotkey binding(s) from hotkeys.json into their macros as triggers")]
+        "Перенос переложил привязок из hotkeys.json в сами макросы триггерами: {Count}")]
     partial void LogMigrationHotkeysAttached(int count);
 
     [LoggerMessage(LogLevel.Warning,
-        "Migration could not place {Count} hotkey binding(s) from hotkeys.json — they bound the old built-in broadcast actions (immunity/assist/cursor-click/identify), which are now the pw-* example macros. Re-bind them there; the old file is kept as hotkeys.json.migrated")]
+        "Перенос не нашёл места привязкам из hotkeys.json: {Count} — они были на старые встроенные рассылки (immunity/assist/cursor-click/identify), а теперь это макросы-примеры pw-*. Привяжите их заново там; старый файл сохранён как hotkeys.json.migrated")]
     partial void LogMigrationHotkeysOrphaned(int count);
 
-    [LoggerMessage(LogLevel.Error, "Cannot read legacy macro file {Path}; skipping migration")]
+    [LoggerMessage(LogLevel.Error, "Не удалось прочитать старый файл макросов {Path}; перенос пропущен")]
     partial void LogMigrationReadFailed(Exception ex, string path);
 
-    [LoggerMessage(LogLevel.Error, "Cannot parse legacy macro file {Path}; skipping migration")]
+    [LoggerMessage(LogLevel.Error, "Не удалось разобрать старый файл макросов {Path}; перенос пропущен")]
     partial void LogMigrationParseFailed(Exception ex, string path);
 
-    [LoggerMessage(LogLevel.Error, "Failed to write migrated macro '{Name}'")]
+    [LoggerMessage(LogLevel.Error, "Не удалось записать перенесённый макрос '{Name}'")]
     partial void LogMigrationWriteFailed(Exception ex, string name);
 
     [LoggerMessage(LogLevel.Warning,
-        "Migrated macros, but could not rename {Path} — it will be skipped next run because the macros folder now exists")]
+        "Макросы перенесены, но переименовать {Path} не вышло — при следующем запуске он будет пропущен, потому что папка macros уже есть")]
     partial void LogMigrationRenameFailed(Exception ex, string path);
 
-    [LoggerMessage(LogLevel.Information, "Seeded {Count} default example macro(s) into {Path}")]
+    [LoggerMessage(LogLevel.Information, "Записано макросов-примеров: {Count} в {Path}")]
     partial void LogSeeded(int count, string path);
 
-    [LoggerMessage(LogLevel.Error, "Failed to write default example macro '{Name}'")]
+    [LoggerMessage(LogLevel.Error, "Не удалось записать макрос-пример '{Name}'")]
     partial void LogSeedFailed(Exception ex, string name);
 }

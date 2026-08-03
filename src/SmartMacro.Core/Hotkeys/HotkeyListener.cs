@@ -283,35 +283,35 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
         }
     }
 
-    [LoggerMessage(LogLevel.Debug, "Macro hotkey fired: '{Macro}'")]
+    [LoggerMessage(LogLevel.Debug, "Сработал хоткей макроса: '{Macro}'")]
     partial void LogMacroHotkey(string macro);
 
-    [LoggerMessage(LogLevel.Warning, "Received hotkey for unknown id {Id} — binding map out of sync?")]
+    [LoggerMessage(LogLevel.Warning, "Пришёл хоткей с неизвестным id {Id} — таблица привязок рассинхронизирована?")]
     partial void LogUnknownHotkeyId(int id);
 
-    [LoggerMessage(LogLevel.Information, "Re-registering hotkeys for {MacroCount} macro(s) after a library change")]
+    [LoggerMessage(LogLevel.Information, "Перерегистрируем хоткеи после изменения библиотеки, макросов: {MacroCount}")]
     partial void LogReregisterStart(int macroCount);
 
     [LoggerMessage(LogLevel.Information,
-        "Re-registration done — {KeyboardCount} keyboard + {MouseCount} mouse binding(s) now active")]
+        "Перерегистрация закончена — активно привязок: клавиатурных {KeyboardCount} + мышиных {MouseCount}")]
     partial void LogReregisterDone(int keyboardCount, int mouseCount);
 
-    [LoggerMessage(LogLevel.Error, "Failed to re-register hotkeys after a library change")]
+    [LoggerMessage(LogLevel.Error, "Не удалось перерегистрировать хоткеи после изменения библиотеки")]
     partial void LogReregisterFailed(Exception ex);
 
     [LoggerMessage(LogLevel.Information,
-        "Hotkey listener suspended — all global hotkeys unregistered (rebinding UI open)")]
+        "Слушатель хоткеев приостановлен — все глобальные сочетания сняты (открыт редактор привязок)")]
     partial void LogSuspended();
 
     [LoggerMessage(LogLevel.Information,
-        "Hotkey listener resumed — {KeyboardCount} keyboard + {MouseCount} mouse binding(s) re-registered")]
+        "Слушатель хоткеев возобновлён — заново зарегистрировано привязок: клавиатурных {KeyboardCount} + мышиных {MouseCount}")]
     partial void LogResumed(int keyboardCount, int mouseCount);
 
     [LoggerMessage(LogLevel.Warning,
-        "Macro '{Macro}' has a hotkey trigger with neither Key nor MouseButton set — skipping it")]
+        "У макроса '{Macro}' хоткей-триггер без Key и без MouseButton — пропускаем")]
     partial void LogMalformedTrigger(string macro);
 
     [LoggerMessage(LogLevel.Warning,
-        "{Count} macro hotkey(s) could not be registered — another application owns the chord; the panel reports them via GetHotkeyFailures")]
+        "Не удалось зарегистрировать сочетаний: {Count} — их занимает другое приложение; панель покажет их через GetHotkeyFailures")]
     partial void LogRegistrationFailures(int count);
 }

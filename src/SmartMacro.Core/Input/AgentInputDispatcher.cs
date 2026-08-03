@@ -33,13 +33,18 @@ public sealed partial class AgentInputDispatcher
     /// <summary>Отправка одной клавиши, обёрнутая в один цикл активации.</summary>
     /// <param name="window">Целевое игровое окно.</param>
     /// <param name="key">Отправляемая клавиша.</param>
-    /// <param name="actionName">Смысловая метка для лога («Key(F8)») — чисто диагностическая, на поведение не влияет.</param>
     /// <param name="agentName">Метка окна в сообщениях лога, чтобы оператор мог грепать активность по окну.</param>
-    public async Task FireKeyAsync(IGameWindow window, VirtualKey key, string actionName, string agentName)
+    // Здесь был ещё параметр actionName — «смысловая метка для лога». Единственный вызывающий
+    // передавал в него $"Key({key})", то есть пересказ соседнего аргумента, и каждая строка
+    // лога выходила вида «Отправляем Key(F8)=F8 на 'Лучник'». Метка осталась от
+    // доW0.2b-конвейера, где через неё ехало имя команды («Иммунитет»), а не клавиша; команд
+    // больше нет, всё стало макросами. Структурным полем должна быть сама клавиша, а не
+    // отформатированная строка вокруг неё.
+    public async Task FireKeyAsync(IGameWindow window, VirtualKey key, string agentName)
     {
         try
         {
-            LogActionFiring(actionName, key, agentName);
+            LogActionFiring(key, agentName);
             await window.ActivateAsync().ConfigureAwait(false);
             try
             {
@@ -50,7 +55,7 @@ public sealed partial class AgentInputDispatcher
                 await window.DeactivateAsync().ConfigureAwait(false);
             }
 
-            LogActionFired(actionName, key, agentName);
+            LogActionFired(key, agentName);
         }
         catch (Exception ex)
         {
@@ -92,16 +97,16 @@ public sealed partial class AgentInputDispatcher
 
     #region Logging
 
-    [LoggerMessage(LogLevel.Information, "Firing {Action}={Key} on '{Name}'")]
-    partial void LogActionFiring(string action, VirtualKey key, string name);
+    [LoggerMessage(LogLevel.Information, "Отправляем клавишу {Key} на '{Name}'")]
+    partial void LogActionFiring(VirtualKey key, string name);
 
-    [LoggerMessage(LogLevel.Information, "Fired {Action}={Key} on '{Name}' OK")]
-    partial void LogActionFired(string action, VirtualKey key, string name);
+    [LoggerMessage(LogLevel.Information, "Отправлено {Key} на '{Name}' — OK")]
+    partial void LogActionFired(VirtualKey key, string name);
 
-    [LoggerMessage(LogLevel.Error, "PressKeyAsync({Key}) failed on '{Name}'")]
+    [LoggerMessage(LogLevel.Error, "PressKeyAsync({Key}) не удался на '{Name}'")]
     partial void LogSendKeyFailed(Exception ex, VirtualKey key, string name);
 
-    [LoggerMessage(LogLevel.Error, "Click {Point} doubleClick={DoubleClick} failed on '{Name}'")]
+    [LoggerMessage(LogLevel.Error, "Клик {Point} двойной={DoubleClick} не удался на '{Name}'")]
     partial void LogSendClickFailed(Exception ex, ScreenPoint point, bool doubleClick, string name);
 
     #endregion

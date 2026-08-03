@@ -165,13 +165,13 @@ public sealed partial class CaptureDumpService
         }
     }
 
-    [LoggerMessage(LogLevel.Warning, "Capture dump: PrintWindow failed for hwnd=0x{Hwnd:X}")]
+    [LoggerMessage(LogLevel.Warning, "Дамп захватов: PrintWindow не удался для hwnd=0x{Hwnd:X}")]
     partial void LogCaptureFailed(Exception ex, long hwnd);
 
-    [LoggerMessage(LogLevel.Warning, "Capture dump: class-region binarisation failed for hwnd=0x{Hwnd:X}")]
+    [LoggerMessage(LogLevel.Warning, "Дамп захватов: бинаризация области класса не удалась для hwnd=0x{Hwnd:X}")]
     partial void LogBinarizeFailed(Exception ex, long hwnd);
 
     [LoggerMessage(LogLevel.Information,
-        "Capture dump finished: {Captured} window(s) captured, {Failed} failure(s) → '{Folder}'")]
+        "Дамп захватов закончен: снято окон {Captured}, сбоев {Failed} → '{Folder}'")]
     partial void LogDumpFinished(int captured, int failed, string folder);
 }

@@ -233,15 +233,16 @@ public sealed partial class MacroRunRegistry : IDisposable
         }
     }
 
-    [LoggerMessage(LogLevel.Information, "Macro '{MacroName}' is already running — trigger ignored (single-flight)")]
+    [LoggerMessage(LogLevel.Information,
+        "Макрос '{MacroName}' уже выполняется — триггер проигнорирован (single-flight)")]
     partial void LogAlreadyRunning(string macroName);
 
-    [LoggerMessage(LogLevel.Information, "Macro run started: '{MacroName}' ({RunId})")]
+    [LoggerMessage(LogLevel.Information, "Прогон макроса начат: '{MacroName}' ({RunId})")]
     partial void LogRunStarted(string macroName, Guid runId);
 
-    [LoggerMessage(LogLevel.Information, "Macro run finished: '{MacroName}' ({RunId})")]
+    [LoggerMessage(LogLevel.Information, "Прогон макроса закончен: '{MacroName}' ({RunId})")]
     partial void LogRunCompleted(string macroName, Guid runId);
 
-    [LoggerMessage(LogLevel.Information, "Stop requested for macro run '{MacroName}' ({RunId})")]
+    [LoggerMessage(LogLevel.Information, "Запрошена остановка прогона '{MacroName}' ({RunId})")]
     partial void LogStopRequested(string macroName, Guid runId);
 }

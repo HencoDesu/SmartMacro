@@ -156,15 +156,16 @@ public sealed partial class WindowIconService
     }
 
     [LoggerMessage(LogLevel.Debug,
-        "Icon file not found for '{IconPath}' (nor under its legacy alias); window icon stays default")]
+        "Файл иконки для '{IconPath}' не найден (и по старому псевдониму тоже); иконка окна остаётся стандартной")]
     partial void LogIconMissing(string iconPath);
 
-    [LoggerMessage(LogLevel.Information, "Window icon applied from {Path}")]
+    [LoggerMessage(LogLevel.Information, "Иконка окна поставлена из {Path}")]
     partial void LogIconApplied(string path);
 
-    [LoggerMessage(LogLevel.Warning, "Window icon load failed for {Path} (file may be corrupt or not a valid image)")]
+    [LoggerMessage(LogLevel.Warning,
+        "Не удалось загрузить иконку окна из {Path} (файл может быть битым или не картинкой)")]
     partial void LogIconLoadFailed(string path);
 
-    [LoggerMessage(LogLevel.Error, "Window icon application threw for {Path}")]
+    [LoggerMessage(LogLevel.Error, "Установка иконки окна бросила исключение на {Path}")]
     partial void LogIconException(Exception ex, string path);
 }

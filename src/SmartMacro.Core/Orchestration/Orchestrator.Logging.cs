@@ -7,35 +7,35 @@ namespace SmartMacro.Orchestration;
 // как заготовки логгера. На поведение не влияет.
 public sealed partial class Orchestrator
 {
-    [LoggerMessage(LogLevel.Information, "Orchestrator dispatch loop started")]
+    [LoggerMessage(LogLevel.Information, "Цикл раздачи оркестратора запущен")]
     partial void LogDispatchLoopStarted();
 
-    [LoggerMessage(LogLevel.Information, "Orchestrator dispatch loop stopped")]
+    [LoggerMessage(LogLevel.Information, "Цикл раздачи оркестратора остановлен")]
     partial void LogDispatchLoopStopped();
 
-    [LoggerMessage(LogLevel.Debug, "Unhandled upstream message {Type}")]
+    [LoggerMessage(LogLevel.Debug, "Необработанное сообщение снизу: {Type}")]
     partial void LogUnhandledUpstreamMessageType(string type);
 
     [LoggerMessage(LogLevel.Information,
-        "Process appeared (from monitor): pid={Pid} name='{ProcessName}' hwnd=0x{Hwnd:X}")]
+        "Появился процесс (от монитора): pid={Pid} имя='{ProcessName}' hwnd=0x{Hwnd:X}")]
     partial void LogProcessAppearedNotification(int pid, string processName, long hwnd);
 
-    [LoggerMessage(LogLevel.Error, "Failed to create agent for pid={Pid}")]
+    [LoggerMessage(LogLevel.Error, "Не удалось создать агента для pid={Pid}")]
     partial void LogAgentCreationFailed(Exception ex, int pid);
 
-    [LoggerMessage(LogLevel.Information, "Hotkey trigger → macro '{MacroName}'")]
+    [LoggerMessage(LogLevel.Information, "Триггер хоткея → макрос '{MacroName}'")]
     partial void LogHotkeyTriggered(string macroName);
 
     [LoggerMessage(LogLevel.Information,
-        "Process '{ProcessName}' appeared → starting macro '{MacroName}' on hwnd=0x{Hwnd:X}")]
+        "Появился процесс '{ProcessName}' → запускаем макрос '{MacroName}' на hwnd=0x{Hwnd:X}")]
     partial void LogProcessMacroStarting(string macroName, string processName, long hwnd);
 
-    [LoggerMessage(LogLevel.Warning, "Macro '{MacroName}' is not in the library — trigger dropped")]
+    [LoggerMessage(LogLevel.Warning, "Макроса '{MacroName}' нет в библиотеке — триггер отброшен")]
     partial void LogMacroNotFound(string macroName);
 
-    [LoggerMessage(LogLevel.Warning, "Macro '{MacroName}' aborted: {Reason}")]
+    [LoggerMessage(LogLevel.Warning, "Макрос '{MacroName}' оборван: {Reason}")]
     partial void LogMacroAborted(string macroName, string reason);
 
-    [LoggerMessage(LogLevel.Error, "Macro '{MacroName}' failed unexpectedly")]
+    [LoggerMessage(LogLevel.Error, "Макрос '{MacroName}' упал непредвиденно")]
     partial void LogMacroFailed(Exception ex, string macroName);
 }

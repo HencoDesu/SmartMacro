@@ -231,21 +231,21 @@ public sealed partial class WindowRegistry
     private static ManagedWindowInfo ToSnapshot(IntPtr hwnd, Entry entry) =>
         new(hwnd, entry.ProcessName, new HashSet<string>(entry.Tags, StringComparer.Ordinal));
 
-    [LoggerMessage(LogLevel.Information, "Window registered: hwnd=0x{Hwnd:X} process='{ProcessName}'")]
+    [LoggerMessage(LogLevel.Information, "Окно зарегистрировано: hwnd=0x{Hwnd:X} процесс='{ProcessName}'")]
     partial void LogRegistered(long hwnd, string processName);
 
-    [LoggerMessage(LogLevel.Warning, "Window hwnd=0x{Hwnd:X} is already registered — ignoring duplicate Register")]
+    [LoggerMessage(LogLevel.Warning, "Окно hwnd=0x{Hwnd:X} уже зарегистрировано — повторный Register проигнорирован")]
     partial void LogAlreadyRegistered(long hwnd);
 
-    [LoggerMessage(LogLevel.Information, "Window unregistered: hwnd=0x{Hwnd:X} process='{ProcessName}'")]
+    [LoggerMessage(LogLevel.Information, "Окно снято с регистрации: hwnd=0x{Hwnd:X} процесс='{ProcessName}'")]
     partial void LogUnregistered(long hwnd, string processName);
 
-    [LoggerMessage(LogLevel.Information, "Tag '{Tag}' added to hwnd=0x{Hwnd:X}")]
+    [LoggerMessage(LogLevel.Information, "Тег '{Tag}' добавлен окну hwnd=0x{Hwnd:X}")]
     partial void LogTagAdded(string tag, long hwnd);
 
-    [LoggerMessage(LogLevel.Information, "Tag '{Tag}' removed from hwnd=0x{Hwnd:X}")]
+    [LoggerMessage(LogLevel.Information, "Тег '{Tag}' снят с окна hwnd=0x{Hwnd:X}")]
     partial void LogTagRemoved(string tag, long hwnd);
 
-    [LoggerMessage(LogLevel.Warning, "Tag '{Tag}' targets unregistered hwnd=0x{Hwnd:X} — ignored")]
+    [LoggerMessage(LogLevel.Warning, "Тег '{Tag}' адресован незарегистрированному hwnd=0x{Hwnd:X} — проигнорирован")]
     partial void LogTagForUnknownWindow(string tag, long hwnd);
 }

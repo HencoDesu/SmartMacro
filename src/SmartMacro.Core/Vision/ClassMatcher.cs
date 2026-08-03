@@ -143,20 +143,20 @@ public sealed partial class ClassMatcher : IClassMatcher
     }
 
     [LoggerMessage(LogLevel.Information,
-        "ClassMatcher configured: region=({X},{Y} {W}x{H}) luminance={Lum:F0} matchThreshold={Match:F2}")]
+        "ClassMatcher настроен: область=({X},{Y} {W}x{H}) яркость={Lum:F0} порог совпадения={Match:F2}")]
     partial void LogConfigured(int x, int y, int w, int h, double lum, double match);
 
-    [LoggerMessage(LogLevel.Debug, "Tag template '{Tag}' score: {Score:F3}")]
+    [LoggerMessage(LogLevel.Debug, "Шаблон тега '{Tag}', оценка: {Score:F3}")]
     partial void LogScore(string tag, double score);
 
-    [LoggerMessage(LogLevel.Information, "Tag match: best={Tag} score={Score:F3} threshold={Threshold:F3}")]
+    [LoggerMessage(LogLevel.Information, "Тег не опознан: лучший={Tag} оценка={Score:F3} порог={Threshold:F3}")]
     partial void LogNoMatch(string? tag, double? score, double threshold);
 
     [LoggerMessage(LogLevel.Warning,
-        "Tag template '{Tag}' ({TemplateW}x{TemplateH}) is larger than the search region ({SourceW}x{SourceH}); skipping")]
+        "Шаблон тега '{Tag}' ({TemplateW}x{TemplateH}) больше области поиска ({SourceW}x{SourceH}); пропускаем")]
     partial void LogTemplateTooLarge(string tag, int templateW, int templateH, int sourceW, int sourceH);
 
     [LoggerMessage(LogLevel.Debug,
-        "Binarised stats-class region is nearly empty ({Bright}/{Total} bright pixels) — stats window probably not open")]
+        "Бинаризованная область класса почти пуста (ярких пикселей {Bright}/{Total}) — окно характеристик, скорее всего, не открыто")]
     partial void LogEmptyRegion(int bright, int total);
 }

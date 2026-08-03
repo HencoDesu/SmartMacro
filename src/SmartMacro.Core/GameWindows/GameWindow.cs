@@ -310,15 +310,15 @@ public sealed partial class GameWindow : IGameWindow
     }
 
     [LoggerMessage(LogLevel.Warning,
-        "Template match: template ({TplW}x{TplH}) is larger than search region ({SrcW}x{SrcH}) — shrink template or grow region")]
+        "Сопоставление: шаблон ({TplW}x{TplH}) больше области поиска ({SrcW}x{SrcH}) — уменьшите шаблон или расширьте область")]
     partial void LogTemplateLargerThanRegion(int tplW, int tplH, int srcW, int srcH);
 
-    [LoggerMessage(LogLevel.Debug, "Template match: hit at {Region} score={Score:F3} >= {Threshold:F3}")]
+    [LoggerMessage(LogLevel.Debug, "Сопоставление: попадание в {Region} оценка={Score:F3} >= {Threshold:F3}")]
     partial void LogMatchHit(ScreenRect region, double score, double threshold);
 
-    [LoggerMessage(LogLevel.Debug, "Template match: miss at {Region} score={Score:F3} < {Threshold:F3}")]
+    [LoggerMessage(LogLevel.Debug, "Сопоставление: промах в {Region} оценка={Score:F3} < {Threshold:F3}")]
     partial void LogMatchMiss(ScreenRect region, double score, double threshold);
 
-    [LoggerMessage(LogLevel.Debug, "Template match: capture failed (transient — minimised window, GPU stall)")]
+    [LoggerMessage(LogLevel.Debug, "Сопоставление: захват не удался (обычно временно — окно свёрнуто, затык GPU)")]
     partial void LogCaptureFailed(Exception ex);
 }

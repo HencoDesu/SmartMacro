@@ -66,10 +66,14 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
         return Task.FromResult(agent);
     }
 
-    [LoggerMessage(LogLevel.Information, "Agent created for pid={Pid} (awaiting identification)")]
+    // «Опознание впереди» отсюда убрано: с W0.1 фабрика ничего такого не обещает. Опознание
+    // перестало быть встроенным и стало макросами pw-identify / pw-boot, так что дойдёт ли до
+    // него дело — зависит от того, завёл ли пользователь такой макрос с триггером на появление
+    // процесса. Агент — это только время жизни окна.
+    [LoggerMessage(LogLevel.Information, "Создан агент для pid={Pid}")]
     partial void LogAgentCreated(int pid);
 
     [LoggerMessage(LogLevel.Information,
-        "Skipping pid={Pid} — main window has zero client area (likely a launcher process)")]
+        "Пропускаем pid={Pid} — у главного окна нулевая клиентская область (скорее всего процесс лаунчера)")]
     partial void LogSkippedZeroSize(int pid);
 }

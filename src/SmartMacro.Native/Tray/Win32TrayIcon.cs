@@ -152,6 +152,7 @@ public sealed partial class Win32TrayIcon : IDisposable
             {
                 return;
             }
+
             threadId = _pumpThreadId;
             _pumpThread = null;
             _pumpThreadId = 0;
@@ -346,7 +347,7 @@ public sealed partial class Win32TrayIcon : IDisposable
 
     private void AddNotifyIconWithRetry()
     {
-        for (var attempt = 1; ; attempt++)
+        for (var attempt = 1;; attempt++)
         {
             if (TryAddNotifyIcon())
             {
@@ -402,6 +403,7 @@ public sealed partial class Win32TrayIcon : IDisposable
         {
             destination[i] = value[i];
         }
+
         destination[length] = '\0';
     }
 
@@ -439,8 +441,10 @@ public sealed partial class Win32TrayIcon : IDisposable
                             {
                                 RaiseItemClicked(_defaultCommand);
                             }
+
                             return IntPtr.Zero;
                     }
+
                     break;
 
                 case User32Native.WM_DESTROY:
@@ -477,7 +481,7 @@ public sealed partial class Win32TrayIcon : IDisposable
         var command = User32Native.TrackPopupMenuEx(
             _menu,
             User32Native.TPM_RETURNCMD | User32Native.TPM_RIGHTBUTTON | User32Native.TPM_NONOTIFY
-                | User32Native.TPM_LEFTALIGN | User32Native.TPM_BOTTOMALIGN,
+            | User32Native.TPM_LEFTALIGN | User32Native.TPM_BOTTOMALIGN,
             cursor.X,
             cursor.Y,
             _hwnd,
@@ -550,6 +554,7 @@ public sealed partial class Win32TrayIcon : IDisposable
         {
             User32Native.DestroyIcon(_icon);
         }
+
         _icon = IntPtr.Zero;
         _ownsIcon = false;
 
@@ -562,46 +567,52 @@ public sealed partial class Win32TrayIcon : IDisposable
 
     #region Logging
 
-    [LoggerMessage(LogLevel.Information, "Tray icon started with {ItemCount} menu item(s)")]
+    [LoggerMessage(LogLevel.Information, "Иконка в трее запущена, пунктов меню: {ItemCount}")]
     partial void LogStarted(int itemCount);
 
-    [LoggerMessage(LogLevel.Information, "Tray icon stopped")]
+    [LoggerMessage(LogLevel.Information, "Иконка в трее остановлена")]
     partial void LogStopped();
 
-    [LoggerMessage(LogLevel.Warning, "Tray pump thread did not exit within {Seconds}s — leaving it to process teardown")]
+    [LoggerMessage(LogLevel.Warning,
+        "Поток насоса трея не завершился за {Seconds} с — оставляем его выходу из процесса")]
     partial void LogStopTimedOut(int seconds);
 
-    [LoggerMessage(LogLevel.Debug, "Tray menu item '{ItemId}' clicked")]
+    [LoggerMessage(LogLevel.Debug, "Клик по пункту меню трея '{ItemId}'")]
     partial void LogItemClicked(string itemId);
 
-    [LoggerMessage(LogLevel.Warning, "Tray icon file '{IconPath}' not found — falling back to the stock application icon")]
+    [LoggerMessage(LogLevel.Warning, "Файл иконки трея '{IconPath}' не найден — берём стандартную иконку приложения")]
     partial void LogIconMissing(string iconPath);
 
-    [LoggerMessage(LogLevel.Warning, "LoadImage failed for tray icon '{IconPath}' (Win32 error {ErrorCode}) — falling back to the stock application icon")]
+    [LoggerMessage(LogLevel.Warning,
+        "LoadImage не загрузил иконку трея '{IconPath}' (ошибка Win32 {ErrorCode}) — берём стандартную иконку приложения")]
     partial void LogIconLoadFailed(string iconPath, int errorCode);
 
-    [LoggerMessage(LogLevel.Warning, "AppendMenu failed for tray menu item '{Text}' (Win32 error {ErrorCode})")]
+    [LoggerMessage(LogLevel.Warning, "AppendMenu не добавил пункт меню трея '{Text}' (ошибка Win32 {ErrorCode})")]
     partial void LogMenuItemFailed(string text, int errorCode);
 
-    [LoggerMessage(LogLevel.Warning, "Shell_NotifyIcon(NIM_DELETE) failed (Win32 error {ErrorCode}) — the icon may linger until the shell refreshes")]
+    [LoggerMessage(LogLevel.Warning,
+        "Shell_NotifyIcon(NIM_DELETE) не удался (ошибка Win32 {ErrorCode}) — иконка может висеть, пока оболочка не обновится")]
     partial void LogIconRemovalFailed(int errorCode);
 
-    [LoggerMessage(LogLevel.Warning, "Shell_NotifyIcon(NIM_ADD) attempt {Attempt}/{Total} failed (Win32 error {ErrorCode}) — shell not ready, retrying")]
+    [LoggerMessage(LogLevel.Warning,
+        "Shell_NotifyIcon(NIM_ADD), попытка {Attempt}/{Total} не удалась (ошибка Win32 {ErrorCode}) — оболочка не готова, повторяем")]
     partial void LogIconAddRetry(int attempt, int total, int errorCode);
 
-    [LoggerMessage(LogLevel.Information, "Explorer restarted (TaskbarCreated) — tray icon re-added: {Succeeded}")]
+    [LoggerMessage(LogLevel.Information,
+        "Explorer перезапущен (TaskbarCreated) — иконка добавлена заново: {Succeeded}")]
     partial void LogTaskbarRecreated(bool succeeded);
 
-    [LoggerMessage(LogLevel.Warning, "Tray menu returned unknown command {Command} — menu map out of sync?")]
+    [LoggerMessage(LogLevel.Warning,
+        "Меню трея вернуло неизвестную команду {Command} — таблица пунктов рассинхронизирована?")]
     partial void LogUnknownCommand(int command);
 
-    [LoggerMessage(LogLevel.Error, "ItemClicked subscriber threw for tray item '{ItemId}'")]
+    [LoggerMessage(LogLevel.Error, "Подписчик ItemClicked бросил исключение на пункте трея '{ItemId}'")]
     partial void LogSubscriberFailed(Exception ex, string itemId);
 
-    [LoggerMessage(LogLevel.Error, "Tray window procedure threw handling message 0x{Message:X4}")]
+    [LoggerMessage(LogLevel.Error, "Оконная процедура трея бросила исключение на сообщении 0x{Message:X4}")]
     partial void LogWindowProcFailed(Exception ex, uint message);
 
-    [LoggerMessage(LogLevel.Error, "Tray message pump failed")]
+    [LoggerMessage(LogLevel.Error, "Насос сообщений трея упал")]
     partial void LogPumpFailed(Exception ex);
 
     #endregion

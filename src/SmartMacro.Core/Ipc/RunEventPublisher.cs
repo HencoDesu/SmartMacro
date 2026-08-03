@@ -363,15 +363,15 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
         Interlocked.Increment(ref _dropped);
     }
 
-    [LoggerMessage(LogLevel.Debug, "Run-event tracing on — a client subscribed")]
+    [LoggerMessage(LogLevel.Debug, "Съём событий прогона включён — клиент подписался")]
     partial void LogTracingOn();
 
-    [LoggerMessage(LogLevel.Debug, "Run-event tracing off — no subscribers left")]
+    [LoggerMessage(LogLevel.Debug, "Съём событий прогона выключен — подписчиков не осталось")]
     partial void LogTracingOff();
 
-    [LoggerMessage(LogLevel.Warning, "Run-event queue overflowed: {Dropped} events dropped")]
+    [LoggerMessage(LogLevel.Warning, "Очередь событий прогона переполнилась: выброшено событий {Dropped}")]
     partial void LogDropped(int dropped);
 
-    [LoggerMessage(LogLevel.Error, "Run-event pump failed; the stream is dead until the daemon restarts")]
+    [LoggerMessage(LogLevel.Error, "Насос событий прогона упал; поток мёртв до перезапуска демона")]
     partial void LogPumpFailed(Exception exception);
 }

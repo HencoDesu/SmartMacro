@@ -121,17 +121,17 @@ public sealed partial class TemplateSetProvider
         return templates;
     }
 
-    [LoggerMessage(LogLevel.Information, "Template set '{SetName}' loaded: {Count} template(s) from {Path}")]
+    [LoggerMessage(LogLevel.Information, "Набор шаблонов '{SetName}' загружен: шаблонов {Count} из {Path}")]
     partial void LogSetLoaded(string setName, int count, string path);
 
     [LoggerMessage(LogLevel.Warning,
-        "Template set '{SetName}' has no folder at {Path} — RecognizeTag nodes using it will never match")]
+        "У набора шаблонов '{SetName}' нет папки в {Path} — ноды RecognizeTag с ним никогда не совпадут")]
     partial void LogSetDirMissing(string setName, string path);
 
     [LoggerMessage(LogLevel.Warning,
-        "Template '{TemplateName}' not found in {Path} — Find/Wait nodes using it will never match")]
+        "Шаблон '{TemplateName}' не найден в {Path} — ноды Find/Wait с ним никогда не совпадут")]
     partial void LogTemplateMissing(string templateName, string path);
 
-    [LoggerMessage(LogLevel.Error, "Failed to read template '{TemplateName}' from {Path}")]
+    [LoggerMessage(LogLevel.Error, "Не удалось прочитать шаблон '{TemplateName}' из {Path}")]
     partial void LogTemplateReadFailed(Exception ex, string templateName, string path);
 }

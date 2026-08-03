@@ -580,22 +580,23 @@ public sealed partial class MacroExecutor
         };
     }
 
-    [LoggerMessage(LogLevel.Information, "Macro '{MacroName}' completed")]
+    [LoggerMessage(LogLevel.Information, "Макрос '{MacroName}' завершён")]
     partial void LogCompleted(string macroName);
 
-    [LoggerMessage(LogLevel.Information, "Macro '{MacroName}' cancelled")]
+    [LoggerMessage(LogLevel.Information, "Макрос '{MacroName}' отменён")]
     partial void LogCancelled(string macroName);
 
-    [LoggerMessage(LogLevel.Warning, "Macro '{MacroName}' aborted: {Reason}")]
+    [LoggerMessage(LogLevel.Warning, "Макрос '{MacroName}' оборван: {Reason}")]
     partial void LogAborted(string macroName, string reason);
 
-    [LoggerMessage(LogLevel.Debug, "Macro '{MacroName}': node '{NodeId}' selector matched no windows — no-op")]
+    [LoggerMessage(LogLevel.Debug,
+        "Макрос '{MacroName}': селектор ноды '{NodeId}' не совпал ни с одним окном — ничего не делаем")]
     partial void LogNoTargets(string macroName, string nodeId);
 
-    [LoggerMessage(LogLevel.Warning, "Detached sub-macro '{MacroName}' aborted: {Reason}")]
+    [LoggerMessage(LogLevel.Warning, "Под-макрос без ожидания '{MacroName}' оборван: {Reason}")]
     partial void LogDetachedSubRunAborted(string macroName, string reason);
 
-    [LoggerMessage(LogLevel.Error, "Detached sub-macro '{MacroName}' failed unexpectedly")]
+    [LoggerMessage(LogLevel.Error, "Под-макрос без ожидания '{MacroName}' упал непредвиденно")]
     partial void LogDetachedSubRunFailed(Exception exception, string macroName);
 }
 

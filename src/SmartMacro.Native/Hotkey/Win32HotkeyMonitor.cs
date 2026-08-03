@@ -190,25 +190,26 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
 
     #region Logging
 
-    [LoggerMessage(LogLevel.Information, "Win32HotkeyMonitor started with {Count} hotkey(s) registered")]
+    [LoggerMessage(LogLevel.Information, "Win32HotkeyMonitor запущен, зарегистрировано горячих клавиш: {Count}")]
     partial void LogStarted(int count);
 
-    [LoggerMessage(LogLevel.Information, "Win32HotkeyMonitor stopped")]
+    [LoggerMessage(LogLevel.Information, "Win32HotkeyMonitor остановлен")]
     partial void LogStopped();
 
-    [LoggerMessage(LogLevel.Information, "Hotkey registered: {Modifiers}+{Key} → id {Id}")]
+    [LoggerMessage(LogLevel.Information, "Горячая клавиша зарегистрирована: {Modifiers}+{Key} → id {Id}")]
     partial void LogHotkeyRegistered(HotkeyModifiers modifiers, VirtualKey key, int id);
 
-    [LoggerMessage(LogLevel.Warning, "RegisterHotKey failed for {Modifiers}+{Key} (Win32 error {ErrorCode}) — already bound by another process?")]
+    [LoggerMessage(LogLevel.Warning,
+        "RegisterHotKey отказал для {Modifiers}+{Key} (ошибка Win32 {ErrorCode}) — аккорд занят другим процессом?")]
     partial void LogHotkeyRegistrationFailed(HotkeyModifiers modifiers, VirtualKey key, int errorCode);
 
-    [LoggerMessage(LogLevel.Debug, "Hotkey pressed: id {Id}")]
+    [LoggerMessage(LogLevel.Debug, "Нажата горячая клавиша: id {Id}")]
     partial void LogHotkeyPressed(int id);
 
-    [LoggerMessage(LogLevel.Error, "HotkeyPressed subscriber threw for id {Id}")]
+    [LoggerMessage(LogLevel.Error, "Подписчик HotkeyPressed бросил исключение на id {Id}")]
     partial void LogSubscriberFailed(Exception ex, int id);
 
-    [LoggerMessage(LogLevel.Error, "Win32HotkeyMonitor message loop failed")]
+    [LoggerMessage(LogLevel.Error, "Цикл сообщений Win32HotkeyMonitor упал")]
     partial void LogMessageLoopFailed(Exception ex);
 
     #endregion

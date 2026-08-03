@@ -4,42 +4,43 @@ namespace SmartMacro.Ipc;
 
 public sealed partial class IpcServer
 {
-    [LoggerMessage(LogLevel.Information, "IPC server listening on named pipe '{PipeName}' ({MaxInstances} instances)")]
+    [LoggerMessage(LogLevel.Information, "Сервер IPC слушает named pipe '{PipeName}' (экземпляров: {MaxInstances})")]
     partial void LogListening(string pipeName, int maxInstances);
 
-    [LoggerMessage(LogLevel.Information, "IPC server stopped")]
+    [LoggerMessage(LogLevel.Information, "Сервер IPC остановлен")]
     partial void LogStopped();
 
-    [LoggerMessage(LogLevel.Warning, "IPC accept loop did not stop within the drain timeout")]
+    [LoggerMessage(LogLevel.Warning, "Цикл приёма IPC не остановился за отведённое на слив время")]
     partial void LogAcceptLoopDidNotStop();
 
-    [LoggerMessage(LogLevel.Warning, "IPC: could not open a listening instance of '{PipeName}' — retrying")]
+    [LoggerMessage(LogLevel.Warning, "IPC: не удалось открыть слушающий экземпляр '{PipeName}' — повторяем")]
     partial void LogAcceptFailed(Exception ex, string pipeName);
 
-    [LoggerMessage(LogLevel.Information, "IPC client connected ({Count} total)")]
+    [LoggerMessage(LogLevel.Information, "Клиент IPC подключился (всего {Count})")]
     partial void LogClientConnected(int count);
 
-    [LoggerMessage(LogLevel.Information, "IPC client disconnected ({Count} remaining)")]
+    [LoggerMessage(LogLevel.Information, "Клиент IPC отключился (осталось {Count})")]
     partial void LogClientDisconnected(int count);
 
-    [LoggerMessage(LogLevel.Warning, "IPC connection faulted outside the read loop")]
+    [LoggerMessage(LogLevel.Warning, "Соединение IPC упало вне цикла чтения")]
     partial void LogConnectionFaulted(Exception ex);
 
-    [LoggerMessage(LogLevel.Warning, "IPC: unparseable line from a client — skipped")]
+    [LoggerMessage(LogLevel.Warning, "IPC: неразбираемая строка от клиента — пропущена")]
     partial void LogMalformedLine(Exception ex);
 
-    [LoggerMessage(LogLevel.Debug, "IPC: read from a client failed — closing the connection")]
+    [LoggerMessage(LogLevel.Debug, "IPC: чтение от клиента не удалось — закрываем соединение")]
     partial void LogReadFailed(Exception ex);
 
-    [LoggerMessage(LogLevel.Warning, "IPC: failed to write the reply to '{Type}' (#{Id}) — dropping the connection")]
+    [LoggerMessage(LogLevel.Warning, "IPC: не удалось записать ответ на '{Type}' (#{Id}) — рвём соединение")]
     partial void LogResponseWriteFailed(Exception ex, string type, int id);
 
-    [LoggerMessage(LogLevel.Warning, "IPC: failed to push an event — dropping the connection")]
+    [LoggerMessage(LogLevel.Warning, "IPC: не удалось отправить событие — рвём соединение")]
     partial void LogEventWriteFailed(Exception ex);
 
-    [LoggerMessage(LogLevel.Warning, "IPC client is not draining events ({Capacity} queued, dropped at '{Type}') — closing it; the panel will reconnect and re-fetch")]
+    [LoggerMessage(LogLevel.Warning,
+        "Клиент IPC не разбирает события (в очереди {Capacity}, сорвались на '{Type}') — закрываем его; панель переподключится и перечитает всё заново")]
     partial void LogClientBacklogged(string type, int capacity);
 
-    [LoggerMessage(LogLevel.Warning, "IPC: {Count} client connection(s) still open after the drain timeout")]
+    [LoggerMessage(LogLevel.Warning, "IPC: после слива всё ещё открыто соединений с клиентами: {Count}")]
     partial void LogClientsDidNotDrain(int count);
 }

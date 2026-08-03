@@ -365,22 +365,22 @@ public sealed partial class MacroDebugSession : IMacroDebugger
         public MacroDebugGate? Gate { get; set; }
     }
 
-    [LoggerMessage(LogLevel.Debug, "Debugger attached")]
+    [LoggerMessage(LogLevel.Debug, "Отладчик подключён")]
     partial void LogAttached();
 
-    [LoggerMessage(LogLevel.Debug, "Debugger detached")]
+    [LoggerMessage(LogLevel.Debug, "Отладчик отключён")]
     partial void LogDetached();
 
     [LoggerMessage(LogLevel.Warning,
-        "Last debugger detached — auto-resumed {Count} paused walk(s) so they cannot hold their single-flight slots forever")]
+        "Отцепился последний отладчик — распущено припаркованных обходов: {Count}, иначе они держали бы свои слоты single-flight вечно")]
     partial void LogAutoResumed(int count);
 
-    [LoggerMessage(LogLevel.Debug, "Breakpoints for '{MacroName}': {Count}")]
+    [LoggerMessage(LogLevel.Debug, "Точек останова у '{MacroName}': {Count}")]
     partial void LogBreakpointsSet(string macroName, int count);
 
-    [LoggerMessage(LogLevel.Debug, "Debug command {Command} on walk {WalkId}")]
+    [LoggerMessage(LogLevel.Debug, "Команда отладчика {Command} обходу {WalkId}")]
     partial void LogCommand(string command, Guid walkId);
 
-    [LoggerMessage(LogLevel.Information, "Walk {WalkId} paused before node '{NodeId}' ({Reason})")]
+    [LoggerMessage(LogLevel.Information, "Обход {WalkId} припаркован перед нодой '{NodeId}' ({Reason})")]
     partial void LogPaused(Guid walkId, string nodeId, string reason);
 }

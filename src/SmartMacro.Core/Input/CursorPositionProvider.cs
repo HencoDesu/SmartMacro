@@ -61,12 +61,12 @@ public sealed partial class CursorPositionProvider
     }
 
     [LoggerMessage(LogLevel.Debug,
-        "Cursor variable = {Client} (client space of foreground hwnd=0x{Hwnd:X}, screen {Screen})")]
+        "Переменная cursor = {Client} (клиентские координаты окна переднего плана hwnd=0x{Hwnd:X}, экранные {Screen})")]
     partial void LogClientSpace(ScreenPoint screen, ScreenPoint client, long hwnd);
 
-    [LoggerMessage(LogLevel.Debug, "Cursor variable = {Screen} (screen space — foreground window is not one of ours)")]
+    [LoggerMessage(LogLevel.Debug, "Переменная cursor = {Screen} (экранные координаты — окно переднего плана не наше)")]
     partial void LogScreenSpace(ScreenPoint screen);
 
-    [LoggerMessage(LogLevel.Debug, "Cursor translation to client space failed; using screen coordinates {Screen}")]
+    [LoggerMessage(LogLevel.Debug, "Пересчёт курсора в клиентские координаты не удался; берём экранные {Screen}")]
     partial void LogTranslationFailed(Exception ex, ScreenPoint screen);
 }

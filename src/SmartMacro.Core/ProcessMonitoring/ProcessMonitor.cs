@@ -244,27 +244,27 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
 
     #region Logging
 
-    [LoggerMessage(LogLevel.Information, "ProcessMonitor started for [{ProcessNames}] (interval {Interval})")]
+    [LoggerMessage(LogLevel.Information, "ProcessMonitor запущен по [{ProcessNames}] (интервал {Interval})")]
     partial void LogStarted(string processNames, TimeSpan interval);
 
-    [LoggerMessage(LogLevel.Information, "ProcessMonitor stopped for [{ProcessNames}]")]
+    [LoggerMessage(LogLevel.Information, "ProcessMonitor остановлен по [{ProcessNames}]")]
     partial void LogStopped(string processNames);
 
     [LoggerMessage(LogLevel.Warning,
-        "No ProcessProfiles configured — ProcessMonitor has nothing to watch; add entries to the \"ProcessProfiles\" section in appsettings.json")]
+        "Не настроено ни одного ProcessProfiles — ProcessMonitor'у не за чем следить; добавьте записи в раздел \"ProcessProfiles\" в appsettings.json")]
     partial void LogNoProfiles();
 
-    [LoggerMessage(LogLevel.Information, "Process appeared: pid={Pid} name='{ProcessName}' hwnd=0x{Hwnd:X}")]
+    [LoggerMessage(LogLevel.Information, "Появился процесс: pid={Pid} имя='{ProcessName}' hwnd=0x{Hwnd:X}")]
     partial void LogProcessAppeared(int pid, string processName, long hwnd);
 
-    [LoggerMessage(LogLevel.Information, "Process disappeared: pid={Pid}")]
+    [LoggerMessage(LogLevel.Information, "Процесс исчез: pid={Pid}")]
     partial void LogProcessDisappeared(int pid);
 
-    [LoggerMessage(LogLevel.Error, "Poll iteration failed; continuing loop")]
+    [LoggerMessage(LogLevel.Error, "Тик опроса не удался; цикл продолжается")]
     partial void LogPollFailed(Exception ex);
 
     [LoggerMessage(LogLevel.Information,
-        "Process seen but main window not ready yet: pid={Pid} name='{ProcessName}' — will keep polling until hwnd appears")]
+        "Процесс виден, но главное окно ещё не готово: pid={Pid} имя='{ProcessName}' — продолжаем опрашивать, пока не появится hwnd")]
     partial void LogProcessWaitingForWindow(int pid, string processName);
 
     #endregion

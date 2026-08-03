@@ -183,15 +183,15 @@ public sealed partial class TesseractCoordinateReader : ICoordinateReader, IDisp
 
     public void Dispose() => _engine.Dispose();
 
-    [LoggerMessage(LogLevel.Debug, "Read coords {Coords} from raw '{RawText}'")]
+    [LoggerMessage(LogLevel.Debug, "Прочитаны координаты {Coords} из сырого '{RawText}'")]
     partial void LogRead(string rawText, Coordinates coords);
 
-    [LoggerMessage(LogLevel.Debug, "Failed to parse coords from raw OCR '{RawText}'")]
+    [LoggerMessage(LogLevel.Debug, "Не удалось выделить координаты из сырого OCR '{RawText}'")]
     partial void LogParseFailed(string rawText);
 
-    [LoggerMessage(LogLevel.Warning, "Coordinate preprocessing failed")]
+    [LoggerMessage(LogLevel.Warning, "Предобработка области координат не удалась")]
     partial void LogPreprocessFailed(Exception ex);
 
-    [LoggerMessage(LogLevel.Warning, "Tesseract OCR failed on coord region")]
+    [LoggerMessage(LogLevel.Warning, "Tesseract OCR упал на области координат")]
     partial void LogOcrFailed(Exception ex);
 }
