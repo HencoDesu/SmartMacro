@@ -5,21 +5,23 @@ using SmartMacro.Native.Internal;
 
 namespace SmartMacro.Native.Window;
 
-// Process-static cache: image file path → HICON. Each unique class icon is decoded once
-// and reused across every game window that wants it. We never DestroyIcon because the
-// HICONs need to outlive the WM_SETICON broadcasts that consume them — if we freed them
-// at end-of-call, the target windows would be left pointing at invalid handles.
-// Process-lifetime leak of ~18 HICONs (one per class) is harmless.
+// Статический на весь процесс кэш: путь к файлу изображения → HICON. Каждая уникальная
+// иконка класса декодируется один раз и переиспользуется всеми игровыми окнами, которым она
+// нужна. DestroyIcon мы не вызываем никогда, потому что HICON'ы должны пережить рассылки
+// WM_SETICON, которые их потребляют: освободи мы их по завершении вызова — целевые окна
+// остались бы с недействительными хендлами. Утечка на время жизни процесса в ~18 HICON'ов
+// (по одному на класс) безвредна.
 //
-// Loading paths:
-//   * .ico — Win32 LoadImage handles natively (with multi-resolution selection).
-//   * .png / .jpg / .bmp / others — System.Drawing.Bitmap decodes, then GetHicon() builds
-//     an HICON from the pixels. Caller owns it (would need DestroyIcon) but we cache for
-//     process lifetime so it's fine.
+// Пути загрузки:
+//   * .ico — Win32 LoadImage справляется нативно (с выбором нужного разрешения из нескольких).
+//   * .png / .jpg / .bmp и прочие — декодирует System.Drawing.Bitmap, затем GetHicon()
+//     собирает HICON из пикселей. Владеет им вызывающая сторона (потребовался бы
+//     DestroyIcon), но мы кэшируем на всё время жизни процесса, так что это не проблема.
 //
-// Concurrency: ConcurrentDictionary handles the race where two agents on different
-// threads try to load the same path. Worst case both decode in parallel — we keep one
-// HICON and destroy the other (only place we ever destroy an HICON).
+// Многопоточность: ConcurrentDictionary разруливает гонку, когда два агента из разных
+// потоков пытаются загрузить один и тот же путь. В худшем случае оба декодируют параллельно —
+// один HICON оставляем, второй уничтожаем (единственное место, где мы вообще уничтожаем
+// HICON).
 [SupportedOSPlatform("windows")]
 internal static class WindowIconCache
 {
@@ -40,8 +42,8 @@ internal static class WindowIconCache
 
         if (!Cache.TryAdd(path, hicon))
         {
-            // Race — someone else loaded the same path between our TryGetValue and now.
-            // Free our redundant HICON and use the cached one.
+            // Гонка — кто-то успел загрузить тот же путь между нашим TryGetValue и этим
+            // моментом. Освобождаем свой лишний HICON и берём тот, что уже в кэше.
             User32Native.DestroyIcon(hicon);
             return Cache[path];
         }
@@ -54,8 +56,9 @@ internal static class WindowIconCache
         var ext = Path.GetExtension(path);
         if (string.Equals(ext, ".ico", StringComparison.OrdinalIgnoreCase))
         {
-            // LoadImage picks the best frame from a multi-resolution .ico for the
-            // system-default size. Cleanest path when the file is already .ico.
+            // LoadImage сам выбирает из многоразрешенческого .ico кадр, лучше всего
+            // подходящий под системный размер по умолчанию. Самый чистый путь, когда файл
+            // и так .ico.
             return User32Native.LoadImage(
                 IntPtr.Zero,
                 path,
@@ -65,10 +68,11 @@ internal static class WindowIconCache
                 User32Native.LR_LOADFROMFILE | User32Native.LR_DEFAULTSIZE);
         }
 
-        // PNG / JPG / BMP — decode via GDI+ then synthesize an HICON. GetHicon copies
-        // the bitmap into an icon resource we own; the Bitmap can be safely disposed
-        // afterwards. Windows resamples the HICON for the actual taskbar/title-bar
-        // surfaces, so non-square or oversized PNGs still display sensibly.
+        // PNG / JPG / BMP — декодируем через GDI+ и синтезируем HICON. GetHicon копирует
+        // растр в ресурс иконки, которым владеем мы; сам Bitmap после этого можно спокойно
+        // освободить. Под реальные поверхности (панель задач, заголовок окна) Windows
+        // пересэмплирует HICON сама, поэтому неквадратные или слишком большие PNG всё равно
+        // отображаются вменяемо.
         try
         {
             using var bitmap = new Bitmap(path);
@@ -76,8 +80,9 @@ internal static class WindowIconCache
         }
         catch
         {
-            // GDI+ throws on missing/corrupt files or unsupported formats. Surface as
-            // IntPtr.Zero so the caller can log and skip — never crash.
+            // GDI+ бросает исключение на отсутствующих и повреждённых файлах и на
+            // неподдерживаемых форматах. Отдаём наружу IntPtr.Zero, чтобы вызывающий смог
+            // записать это в лог и пропустить, — падать нельзя ни в коем случае.
             return IntPtr.Zero;
         }
     }

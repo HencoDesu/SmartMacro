@@ -1,15 +1,16 @@
 namespace SmartMacro.Native;
 
 /// <summary>
-/// Pixel-space point. Used wherever we'd otherwise pass an (x, y) pair: click coords,
-/// cursor positions, button locations. Lives in the Native namespace alongside the
-/// other primitive types (VirtualKey, MouseButton).
+/// Точка в пиксельных координатах. Используется везде, где иначе пришлось бы передавать
+/// пару (x, y): координаты клика, положение курсора, расположение кнопок. Живёт в
+/// пространстве имён Native рядом с остальными примитивными типами (VirtualKey,
+/// MouseButton).
 /// </summary>
 /// <remarks>
-/// Record-struct so it round-trips cleanly through Microsoft.Extensions.Configuration
-/// binding (positional ctor params have setters via init under the hood). Default
-/// values on the parameters let the binder construct via the default ctor if the
-/// JSON section is empty.
+/// Сделано record struct, чтобы тип чисто проходил round trip через привязку
+/// Microsoft.Extensions.Configuration (у позиционных параметров конструктора под капотом
+/// есть init-сеттеры). Значения по умолчанию у параметров позволяют биндеру построить
+/// объект через конструктор без аргументов, если секция JSON пуста.
 /// </remarks>
 public readonly record struct ScreenPoint(int X = 0, int Y = 0)
 {
@@ -17,9 +18,9 @@ public readonly record struct ScreenPoint(int X = 0, int Y = 0)
 }
 
 /// <summary>
-/// Pixel-space rectangle. Used for vision crop regions, button bounding boxes, anything
-/// that needs (x, y, w, h). Same record-struct trick as <see cref="ScreenPoint"/> for
-/// config binding.
+/// Прямоугольник в пиксельных координатах. Используется для областей обрезки в машинном
+/// зрении, для габаритов кнопок — для всего, чему нужны (x, y, w, h). Тот же приём с
+/// record struct ради привязки конфигурации, что и у <see cref="ScreenPoint"/>.
 /// </summary>
 public readonly record struct ScreenRect(int X = 0, int Y = 0, int Width = 0, int Height = 0)
 {

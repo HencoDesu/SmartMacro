@@ -3,29 +3,30 @@ using System.Text.RegularExpressions;
 namespace SmartMacro.Macros.Model;
 
 /// <summary>
-/// The two facts about run variables that BOTH processes have to agree on: the name the
-/// trigger always seeds, and the syntax of a <c>{name}</c> placeholder.
+/// Два факта о переменных прогона, о которых ОБА процесса обязаны договориться: имя, которое
+/// триггер засевает всегда, и синтаксис подстановки <c>{name}</c>.
 ///
-/// They live in Contracts because the daemon's <c>MacroVariables</c> (which substitutes) and
-/// the panel's variables panel (which reports who reads what) must not each carry their own
-/// copy. A regex that drifted by one character would make the panel claim a node reads a
-/// variable the executor never substitutes — the exact class of lie wave D4 refused to allow
-/// for the targets badge.
+/// Они живут в Contracts, потому что <c>MacroVariables</c> демона (который подставляет) и
+/// панель переменных в интерфейсе (которая рассказывает, кто что читает) не должны каждый
+/// нести свою копию. Регулярка, разошедшаяся хотя бы на символ, заставила бы панель заявлять,
+/// что нода читает переменную, которую исполнитель никогда не подставляет, — ровно тот класс
+/// вранья, который волна D4 запретила себе для бейджа целей.
 /// </summary>
 public static partial class MacroVariableNames
 {
     /// <summary>
-    /// The variable every trigger seeds with the cursor position at fire time — hotkey,
-    /// process-appeared and UI Run alike. Nothing in a graph writes it.
+    /// Переменная, которую любой триггер засевает положением курсора на момент срабатывания —
+    /// и горячая клавиша, и появление процесса, и запуск из интерфейса. В графе её не пишет
+    /// ничто.
     /// </summary>
     public const string Cursor = "cursor";
 
     /// <summary>
-    /// <c>{name}</c>, with the name in group 1.
+    /// <c>{name}</c>, имя — в группе 1.
     ///
-    /// <b>There is no escaping.</b> A literal <c>{</c> cannot be written, and that is a
-    /// deliberate v1 ceiling (spec §5.3) rather than an oversight — anything that needs one
-    /// needs expressions, which is ScriptNode territory.
+    /// <b>Экранирования нет.</b> Литеральную <c>{</c> написать невозможно, и это намеренный
+    /// потолок версии 1 (spec §5.3), а не недосмотр: всё, чему такое нужно, нуждается в
+    /// выражениях, а это уже территория ScriptNode.
     /// </summary>
     [GeneratedRegex(@"\{([^{}]+)\}")]
     public static partial Regex Placeholder();

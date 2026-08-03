@@ -1,24 +1,24 @@
 namespace SmartMacro.Daemon;
 
 /// <summary>
-/// Resolves the path of the Avalonia panel executable that the tray's "Открыть панель" item
-/// launches.
+/// Определяет путь к исполняемому файлу панели на Avalonia, который запускает пункт трея
+/// «Открыть панель».
 /// </summary>
 /// <remarks>
-/// The two executables ship side by side in one output directory, so "next to me" is the
-/// whole search strategy — no registry, no PATH, no configuration. Kept as a pure function
-/// over a base directory plus an injected existence probe so it can be tested without
-/// touching the filesystem.
+/// Оба исполняемых файла лежат бок о бок в одном выходном каталоге, поэтому «рядом со мной» —
+/// это и есть вся стратегия поиска: ни реестра, ни PATH, ни конфигурации. Оставлено чистой
+/// функцией от базового каталога плюс внедряемая проверка существования файла, чтобы это
+/// можно было тестировать, не трогая файловую систему.
 /// </remarks>
 public static class UiExecutableLocator
 {
-    /// <summary>File name of the UI process, as produced by <c>SmartMacro.App.csproj</c>.</summary>
+    /// <summary>Имя файла процесса интерфейса — такое, каким его выпускает <c>SmartMacro.App.csproj</c>.</summary>
     public const string UiExecutableName = "SmartMacro.App.exe";
 
     /// <summary>
-    /// The single path we look at. Exposed separately so a failed <see cref="Resolve"/> can
-    /// be logged with the exact location that was probed — "not found" without a path is a
-    /// useless diagnostic.
+    /// Единственный путь, в который мы смотрим. Вынесен отдельно, чтобы неудачный
+    /// <see cref="Resolve"/> можно было записать в лог с точным местом, где искали:
+    /// «не найдено» без пути — бесполезная диагностика.
     /// </summary>
     public static string ProbePath(string baseDirectory)
     {
@@ -27,10 +27,10 @@ public static class UiExecutableLocator
     }
 
     /// <summary>
-    /// Returns the full path to the UI executable, or <c>null</c> when it isn't there.
+    /// Возвращает полный путь к исполняемому файлу интерфейса или <c>null</c>, если его там нет.
     /// </summary>
-    /// <param name="baseDirectory">Directory to look in — normally <see cref="AppContext.BaseDirectory"/>.</param>
-    /// <param name="fileExists">Existence probe; defaults to <see cref="File.Exists(string)"/>.</param>
+    /// <param name="baseDirectory">Каталог, в котором искать, — обычно <see cref="AppContext.BaseDirectory"/>.</param>
+    /// <param name="fileExists">Проверка существования файла; по умолчанию <see cref="File.Exists(string)"/>.</param>
     public static string? Resolve(string baseDirectory, Func<string, bool>? fileExists = null)
     {
         var candidate = ProbePath(baseDirectory);

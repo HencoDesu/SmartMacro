@@ -3,76 +3,79 @@ using SmartMacro.Macros.Model;
 namespace SmartMacro.Macros.Validation;
 
 /// <summary>
-/// Static checks run on save/load — catches broken graphs before the executor has to
-/// abort at runtime.
+/// Статические проверки, которые гоняются при сохранении и загрузке, — ловят сломанные графы
+/// раньше, чем исполнителю придётся прерываться в рантайме.
 ///
-/// Errors: unknown/blank StartNodeId; duplicate node ids; edges referencing unknown
-/// nodes; ClickNode with both or neither of Point/PointVar; and the context rule — a
-/// macro that can START ON ITS OWN without a context window (i.e. it has triggers, but no
-/// <see cref="ProcessAppearedTrigger"/>) may not contain a REACHABLE conditional node or
-/// a targetless action node (simplified rule per plan §0.2; RunMacro-with-Target sub-runs
-/// that would supply a context are deliberately not modeled).
+/// Ошибки: несуществующий или пустой StartNodeId; дубликаты id нод; рёбра в несуществующие
+/// ноды; ClickNode, у которого заданы оба или ни одного из Point/PointVar; и правило
+/// контекста — макрос, способный ЗАПУСТИТЬСЯ САМ без контекстного окна (то есть у него есть
+/// триггеры, но нет <see cref="ProcessAppearedTrigger"/>), не имеет права содержать
+/// ДОСТИЖИМУЮ условную ноду или ноду действия без селектора (упрощённое правило по §0.2
+/// плана; подпрогоны RunMacro с Target, которые контекст всё же дали бы, намеренно не
+/// моделируются).
 ///
-/// A macro with NO triggers at all is exempt from the context rule: it is library-only,
-/// reachable solely through <see cref="RunMacroNode"/> or a UI Run against a window, and
-/// its context therefore always comes from the caller. Targetless nodes are in fact the
-/// CORRECT shape for such a macro — that is what makes it reusable per window.
+/// Макрос СОВСЕМ без триггеров от правила контекста освобождён: он библиотечный, попасть в
+/// него можно только через <see cref="RunMacroNode"/> или ручной запуск из интерфейса против
+/// конкретного окна, а значит контекст всегда приходит от вызывающего. Ноды без селектора для
+/// такого макроса — как раз ПРАВИЛЬНАЯ форма: именно она и делает его переиспользуемым для
+/// каждого окна.
 ///
-/// Warnings: unreachable nodes; cycles containing no <see cref="DelayNode"/> /
-/// <see cref="WaitForElementNode"/> (hot loops — detected per strongly connected
-/// component of the reachable subgraph).
+/// Предупреждения: недостижимые ноды; циклы, внутри которых нет ни <see cref="DelayNode"/>,
+/// ни <see cref="WaitForElementNode"/> (крутятся вхолостую — ищутся по сильно связным
+/// компонентам достижимого подграфа).
 /// </summary>
 public static class MacroGraphValidator
 {
-    /// <summary>Validates the graph. Empty list = clean.</summary>
+    /// <summary>Проверяет граф. Пустой список = всё чисто.</summary>
     public static IReadOnlyList<ValidationIssue> Validate(MacroGraph macro)
     {
         ArgumentNullException.ThrowIfNull(macro);
 
         var issues = new List<ValidationIssue>();
 
-        // Duplicate ids. byId keeps the FIRST occurrence — later rules work off that map.
+        // Дубликаты id. byId оставляет ПЕРВОЕ вхождение — дальнейшие правила работают по этой
+        // карте.
         var byId = new Dictionary<string, MacroNode>(StringComparer.Ordinal);
         foreach (var node in macro.Nodes)
         {
             if (!byId.TryAdd(node.Id, node))
             {
-                issues.Add(Error(node.Id, $"Duplicate node id '{node.Id}'."));
+                issues.Add(Error(node.Id, $"Дубликат id ноды: «{node.Id}»."));
             }
         }
 
-        // Start node.
+        // Стартовая нода.
         var startIsValid = !string.IsNullOrWhiteSpace(macro.StartNodeId) && byId.ContainsKey(macro.StartNodeId);
         if (!startIsValid)
         {
-            issues.Add(Error(null, $"StartNodeId '{macro.StartNodeId}' does not reference a node."));
+            issues.Add(Error(null, $"StartNodeId «{macro.StartNodeId}» не указывает ни на одну ноду."));
         }
 
-        // Broken edges.
+        // Сломанные рёбра.
         foreach (var (id, node) in byId)
         {
             foreach (var (edgeName, targetId) in OutgoingEdges(node))
             {
                 if (targetId is not null && !byId.ContainsKey(targetId))
                 {
-                    issues.Add(Error(id, $"Edge {edgeName} references unknown node '{targetId}'."));
+                    issues.Add(Error(id, $"Ребро {edgeName} ведёт в несуществующую ноду «{targetId}»."));
                 }
             }
         }
 
-        // ClickNode: exactly one of Point / PointVar.
+        // ClickNode: ровно одно из Point / PointVar.
         foreach (var node in byId.Values.OfType<ClickNode>())
         {
             if (node.Point is null == node.PointVar is null)
             {
-                issues.Add(Error(node.Id, "ClickNode must set exactly one of Point / PointVar."));
+                issues.Add(Error(node.Id, "У ClickNode должно быть задано ровно одно из Point / PointVar."));
             }
         }
 
         var reachable = ComputeReachable(macro, byId, startIsValid);
 
-        // Context rule. Skipped entirely for trigger-less (library-only) graphs — the
-        // caller always supplies their context window.
+        // Правило контекста. Для графов без триггеров (библиотечных) пропускается целиком —
+        // им контекстное окно всегда даёт вызывающий.
         var isLibraryOnly = macro.Triggers.Count == 0;
         var hasProcessTrigger = macro.Triggers.Any(trigger => trigger is ProcessAppearedTrigger);
         if (!isLibraryOnly && !hasProcessTrigger)
@@ -83,27 +86,28 @@ public static class MacroGraphValidator
                 {
                     case FindElementNode or WaitForElementNode or RecognizeTagNode:
                         issues.Add(Error(id,
-                            "Conditional node requires a context window, but this macro can start without one (no process trigger)."));
+                            "Условной ноде нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса)."));
                         break;
                     case KeyPressNode { Target: null } or ClickNode { Target: null } or AddTagNode { Target: null }
                         or RemoveTagNode { Target: null } or SetIconNode { Target: null } or RunMacroNode { Target: null }:
                         issues.Add(Error(id,
-                            "Action node without a Target selector requires a context window, but this macro can start without one (no process trigger)."));
+                            "Ноде действия без селектора Target нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса)."));
                         break;
                 }
             }
         }
 
-        // Unreachable nodes.
+        // Недостижимые ноды.
         foreach (var (id, _) in byId)
         {
             if (!reachable.Contains(id))
             {
-                issues.Add(Warning(id, "Node is unreachable from StartNodeId."));
+                issues.Add(Warning(id, "Нода недостижима из StartNodeId."));
             }
         }
 
-        // Hot loops: cyclic SCCs of the reachable subgraph with no pause inside.
+        // Циклы без пауз: циклические сильно связные компоненты достижимого подграфа, внутри
+        // которых нет ни одной задержки.
         foreach (var component in StronglyConnectedComponents(reachable, byId))
         {
             var isCyclic = component.Count > 1 || HasSelfLoop(component[0], byId);
@@ -114,7 +118,7 @@ public static class MacroGraphValidator
             if (!component.Any(id => byId[id] is DelayNode or WaitForElementNode))
             {
                 issues.Add(Warning(component[0],
-                    $"Cycle without a Delay/WaitForElement node (hot loop): {string.Join(" → ", component)}."));
+                    $"Цикл без ноды Delay/WaitForElement — будет крутиться вхолостую: {string.Join(" → ", component)}."));
             }
         }
 
@@ -173,7 +177,7 @@ public static class MacroGraphValidator
     private static bool HasSelfLoop(string id, Dictionary<string, MacroNode> byId) =>
         OutgoingEdges(byId[id]).Any(edge => string.Equals(edge.TargetId, id, StringComparison.Ordinal));
 
-    // Tarjan. Recursion is fine — macro graphs are user-authored and tiny.
+    // Алгоритм Тарьяна. Рекурсия здесь нормальна: графы макросов пишет человек, и они крошечные.
     private static List<List<string>> StronglyConnectedComponents(
         HashSet<string> reachable,
         Dictionary<string, MacroNode> byId)

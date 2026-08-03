@@ -2,109 +2,111 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Macros.Model;
 
-/// <summary>Press <see cref="Key"/> on the target window(s).</summary>
+/// <summary>Нажимает <see cref="Key"/> в целевом окне (или окнах).</summary>
 public sealed record KeyPressNode : MacroNode
 {
-    /// <summary>Virtual key to press.</summary>
+    /// <summary>Виртуальная клавиша, которую надо нажать.</summary>
     public required VirtualKey Key { get; init; }
 
-    /// <summary>Fan-out selector; <c>null</c> = the run's context window.</summary>
+    /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary>Next node id; <c>null</c> = end of run.</summary>
+    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
     public string? Next { get; init; }
 }
 
 /// <summary>
-/// Left-click at a client-space point on the target window(s). EXACTLY one of
-/// <see cref="Point"/> (literal) / <see cref="PointVar"/> (run variable holding a point,
-/// e.g. <c>"cursor"</c>) must be set — the validator flags graphs that violate this and
-/// the executor aborts the run if one slips through.
+/// Клик левой кнопкой по точке в координатах клиентской области целевого окна (или окон).
+/// Задано должно быть РОВНО одно из <see cref="Point"/> (литерал) /
+/// <see cref="PointVar"/> (переменная прогона с точкой, например <c>"cursor"</c>): графы,
+/// нарушающие это, помечает валидатор, а если такой всё же проскочит — исполнитель прерывает
+/// прогон.
 /// </summary>
 public sealed record ClickNode : MacroNode
 {
-    /// <summary>Literal click point. Mutually exclusive with <see cref="PointVar"/>.</summary>
+    /// <summary>Литеральная точка клика. Взаимоисключима с <see cref="PointVar"/>.</summary>
     public ScreenPoint? Point { get; init; }
 
-    /// <summary>Name of a run variable holding the click point. Mutually exclusive with <see cref="Point"/>.</summary>
+    /// <summary>Имя переменной прогона, в которой лежит точка клика. Взаимоисключимо с <see cref="Point"/>.</summary>
     public string? PointVar { get; init; }
 
-    /// <summary>Double-click instead of a single click.</summary>
+    /// <summary>Двойной клик вместо одинарного.</summary>
     public bool DoubleClick { get; init; }
 
-    /// <summary>Fan-out selector; <c>null</c> = the run's context window.</summary>
+    /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary>Next node id; <c>null</c> = end of run.</summary>
+    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
     public string? Next { get; init; }
 }
 
-/// <summary>Pause the scenario for <see cref="Ms"/> milliseconds. No target — the pause is global to the run.</summary>
+/// <summary>Приостанавливает сценарий на <see cref="Ms"/> миллисекунд. Цели нет — пауза общая для всего прогона.</summary>
 public sealed record DelayNode : MacroNode
 {
-    /// <summary>Delay in milliseconds. Zero or negative = no-op.</summary>
+    /// <summary>Задержка в миллисекундах. Ноль или отрицательное значение = ничего не делать.</summary>
     public required int Ms { get; init; }
 
-    /// <summary>Next node id; <c>null</c> = end of run.</summary>
+    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
     public string? Next { get; init; }
 }
 
-/// <summary>Add <see cref="Tag"/> to the target window(s) via the window registry.</summary>
+/// <summary>Добавляет тег <see cref="Tag"/> целевому окну (или окнам) через реестр окон.</summary>
 public sealed record AddTagNode : MacroNode
 {
-    /// <summary>Tag to add. Supports <c>{var}</c> interpolation from run variables.</summary>
+    /// <summary>Добавляемый тег. Поддерживает подстановку <c>{var}</c> из переменных прогона.</summary>
     public required string Tag { get; init; }
 
-    /// <summary>Fan-out selector; <c>null</c> = the run's context window.</summary>
+    /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary>Next node id; <c>null</c> = end of run.</summary>
+    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
     public string? Next { get; init; }
 }
 
-/// <summary>Remove <see cref="Tag"/> from the target window(s) via the window registry.</summary>
+/// <summary>Снимает тег <see cref="Tag"/> с целевого окна (или окон) через реестр окон.</summary>
 public sealed record RemoveTagNode : MacroNode
 {
-    /// <summary>Tag to remove. Supports <c>{var}</c> interpolation from run variables.</summary>
+    /// <summary>Снимаемый тег. Поддерживает подстановку <c>{var}</c> из переменных прогона.</summary>
     public required string Tag { get; init; }
 
-    /// <summary>Fan-out selector; <c>null</c> = the run's context window.</summary>
+    /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary>Next node id; <c>null</c> = end of run.</summary>
+    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
     public string? Next { get; init; }
 }
 
-/// <summary>Set the taskbar/window icon of the target window(s) to <see cref="IconPath"/>.</summary>
+/// <summary>Ставит целевому окну (или окнам) иконку в заголовке и на панели задач из <see cref="IconPath"/>.</summary>
 public sealed record SetIconNode : MacroNode
 {
-    /// <summary>Icon file path, e.g. <c>"icons/{tag}.png"</c>. Supports <c>{var}</c> interpolation.</summary>
+    /// <summary>Путь к файлу иконки, например <c>"icons/{tag}.png"</c>. Поддерживает подстановку <c>{var}</c>.</summary>
     public required string IconPath { get; init; }
 
-    /// <summary>Fan-out selector; <c>null</c> = the run's context window.</summary>
+    /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary>Next node id; <c>null</c> = end of run.</summary>
+    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
     public string? Next { get; init; }
 }
 
 /// <summary>
-/// Run another macro as a sub-run. With <see cref="Target"/>: one parallel sub-run per
-/// matched window (that window becomes the sub-run's context). Without: a single sub-run
-/// on this run's context window. Sub-runs get a COPY of the parent's variables — reads
-/// inherit, writes never leak back. Depth is limited and name cycles abort the run.
+/// Запускает другой макрос как подпрогон. С <see cref="Target"/> — по параллельному подпрогону
+/// на каждое подошедшее окно (это окно и становится контекстом подпрогона). Без него — один
+/// подпрогон на контекстном окне текущего прогона. Подпрогоны получают КОПИЮ переменных
+/// родителя: чтение наследуется, записи наружу не протекают никогда. Глубина ограничена, а
+/// цикл по именам прерывает прогон.
 /// </summary>
 public sealed record RunMacroNode : MacroNode
 {
-    /// <summary>Name of the macro to run. Supports <c>{var}</c> interpolation.</summary>
+    /// <summary>Имя запускаемого макроса. Поддерживает подстановку <c>{var}</c>.</summary>
     public required string MacroName { get; init; }
 
-    /// <summary>Fan-out selector; <c>null</c> = the run's context window.</summary>
+    /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary><c>true</c> (default) = wait for the sub-run(s) before following <see cref="Next"/>; <c>false</c> = fire-and-forget.</summary>
+    /// <summary><c>true</c> (по умолчанию) = дождаться подпрогонов, прежде чем идти по <see cref="Next"/>; <c>false</c> = запустить и забыть.</summary>
     public bool Await { get; init; } = true;
 
-    /// <summary>Next node id; <c>null</c> = end of run.</summary>
+    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
     public string? Next { get; init; }
 }

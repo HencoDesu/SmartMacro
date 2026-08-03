@@ -1,6 +1,6 @@
 namespace SmartMacro.Native.Internal;
 
-// Win32 lParam packing utilities — used by the input implementations.
+// Утилиты упаковки Win32 lParam — используются реализациями ввода.
 internal static class LParamHelpers
 {
     public static IntPtr MakeCoordLParam(int x, int y)
@@ -9,12 +9,12 @@ internal static class LParamHelpers
         return (IntPtr)packed;
     }
 
-    // lParam layout for WM_KEYDOWN/WM_KEYUP:
-    //   bits  0..15 : repeat count (we send 1)
-    //   bits 16..23 : scan code (from MapVirtualKey)
-    //   bit 24      : extended key flag (0 for the keys we care about)
-    //   bit 30      : previous key state (1 on keyup)
-    //   bit 31      : transition state (1 on keyup)
+    // Раскладка lParam для WM_KEYDOWN/WM_KEYUP:
+    //   биты  0..15 : счётчик повторов (шлём 1)
+    //   биты 16..23 : скан-код (из MapVirtualKey)
+    //   бит 24      : флаг расширенной клавиши (для нужных нам клавиш — 0)
+    //   бит 30      : предыдущее состояние клавиши (1 при отпускании)
+    //   бит 31      : состояние перехода (1 при отпускании)
     public static IntPtr BuildKeyLParam(VirtualKey key, bool isKeyUp)
     {
         var scanCode = User32Native.MapVirtualKey((uint)key, User32Native.MAPVK_VK_TO_VSC);

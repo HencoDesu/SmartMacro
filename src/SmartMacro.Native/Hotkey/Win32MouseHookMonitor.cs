@@ -5,22 +5,23 @@ using SmartMacro.Native.Internal;
 
 namespace SmartMacro.Native.Hotkey;
 
-// Mirror of Win32HotkeyMonitor for mouse buttons, using a WH_MOUSE_LL low-level hook
-// instead of RegisterHotKey (which is keyboard-only).
+// Зеркало Win32HotkeyMonitor для кнопок мыши: вместо RegisterHotKey (который умеет только
+// клавиатуру) используется низкоуровневый хук WH_MOUSE_LL.
 //
-// The hook is system-wide: the callback fires for EVERY mouse event before any window
-// sees it. Two consequences:
-//   1. The hook callback must finish fast — slow callbacks throttle all mouse input
-//      across the entire system. We just check the binding table and Invoke the event
-//      (which is itself fast since subscribers post to channels rather than block).
-//   2. The hook only fires on a thread that's actively pumping messages. So we own a
-//      dedicated background thread that installs the hook on itself and runs GetMessage.
-//      Identical to Win32HotkeyMonitor's model — keeps shutdown ergonomics (PostThreadMessage
-//      WM_QUIT) consistent.
+// Хук общесистемный: колбэк срабатывает на КАЖДОЕ событие мыши раньше, чем его увидит хоть
+// одно окно. Отсюда два следствия:
+//   1. Колбэк обязан отрабатывать быстро — медленный колбэк придушивает ввод мышью во всей
+//      системе. Мы всего лишь проверяем таблицу привязок и поднимаем событие (само по себе
+//      это тоже быстро: подписчики пишут в каналы, а не блокируются).
+//   2. Хук срабатывает только в потоке, который активно прокачивает сообщения. Поэтому мы
+//      владеем отдельным фоновым потоком, который ставит хук на себя и крутит GetMessage.
+//      Модель ровно та же, что у Win32HotkeyMonitor, — так эргономика завершения
+//      (PostThreadMessage WM_QUIT) остаётся единообразной.
 //
-// We don't suppress the original mouse event (return CallNextHookEx, not 1). So pressing
-// Mouse4 still does whatever Mouse4 normally does — browser back, etc. The user typically
-// has Mouse4/5 unbound for their game-action, so the only effect is our broadcast firing.
+// Исходное событие мыши мы не подавляем (возвращаем CallNextHookEx, а не 1). То есть нажатие
+// Mouse4 по-прежнему делает то, что Mouse4 обычно делает, — «назад» в браузере и так далее.
+// Обычно у пользователя Mouse4/5 под игровое действие ни к чему не привязаны, так что
+// единственный эффект — срабатывание нашей рассылки.
 [SupportedOSPlatform("windows")]
 public sealed partial class Win32MouseHookMonitor : IDisposable
 {
@@ -33,14 +34,15 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
     private MouseHookBinding[] _activeBindings = Array.Empty<MouseHookBinding>();
     private IntPtr _hookHandle;
 
-    // Strong reference holder for the unmanaged callback. SetWindowsHookEx stores a raw
-    // function pointer; if the delegate gets GC'd, the next event calls into freed memory
-    // and the whole process crashes. Keep this as long as the hook is installed.
+    // Держатель сильной ссылки на неуправляемый колбэк. SetWindowsHookEx хранит сырой
+    // указатель на функцию; если делегат соберёт GC, следующее событие вызовет освобождённую
+    // память и уронит весь процесс. Держим ссылку всё время, пока хук установлен.
     private User32Native.HookProc? _hookDelegate;
 
     /// <summary>
-    /// Raised on the hook's message-loop thread when a registered mouse binding fires.
-    /// Subscribers receive the binding's <c>Id</c> for resolution to their semantic meaning.
+    /// Поднимается в потоке цикла сообщений хука, когда срабатывает зарегистрированная
+    /// мышиная привязка. Подписчики получают <c>Id</c> привязки и сами сопоставляют его со
+    /// своим смыслом.
     /// </summary>
     public event Action<int>? HotkeyPressed;
 
@@ -50,12 +52,12 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
     }
 
     /// <summary>
-    /// Spawns a dedicated message-loop thread, installs a <c>WH_MOUSE_LL</c> low-level
-    /// mouse hook on it, and returns when the thread signals it's ready. The hook itself
-    /// is system-wide; the message loop is only needed because Windows fires the hook
-    /// callback during message dispatch on the installing thread.
+    /// Поднимает отдельный поток с циклом сообщений, ставит на нём низкоуровневый мышиный
+    /// хук <c>WH_MOUSE_LL</c> и возвращает управление, когда поток сообщает о готовности.
+    /// Сам хук общесистемный; цикл сообщений нужен только потому, что Windows вызывает
+    /// колбэк хука во время диспетчеризации сообщений в потоке, который его поставил.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown when the monitor is already started.</exception>
+    /// <exception cref="InvalidOperationException">Монитор уже запущен.</exception>
     public Task StartAsync(IReadOnlyList<MouseHookBinding> bindings, CancellationToken cancellationToken = default)
     {
         if (_messageLoopThread is not null)
@@ -68,7 +70,7 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
         _messageLoopThread = new Thread(MessageLoop)
         {
             IsBackground = true,
-            Name = "PWAgent-MouseHookLoop",
+            Name = "SmartMacro-MouseHookLoop",
         };
         _messageLoopThread.Start();
 
@@ -76,8 +78,8 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
     }
 
     /// <summary>
-    /// Signals the message-loop thread to exit (<c>WM_QUIT</c>) and waits for it to
-    /// uninstall the hook in its <c>finally</c> block. Safe to call when already stopped.
+    /// Сигнализирует потоку цикла сообщений о выходе (<c>WM_QUIT</c>) и ждёт, пока тот снимет
+    /// хук в своём блоке <c>finally</c>. Вызывать на уже остановленном мониторе безопасно.
     /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
@@ -97,7 +99,7 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Shutdown deadline expired — daemon thread, killed at process exit.
+            // Срок на завершение вышел — поток фоновый, его прибьёт при выходе из процесса.
         }
         finally
         {
@@ -122,7 +124,7 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
         _messageLoopThreadId = Kernel32Native.GetCurrentThreadId();
         _activeBindings = _pendingBindings?.ToArray() ?? Array.Empty<MouseHookBinding>();
 
-        // Keep the delegate alive for the lifetime of the hook (see field comment).
+        // Держим делегат живым всё время жизни хука (см. комментарий у поля).
         _hookDelegate = MouseProc;
         try
         {
@@ -140,13 +142,13 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
             LogStarted(_activeBindings.Length);
             _ready?.TrySetResult();
 
-            // GetMessage blocks until WM_QUIT — but the hook callback fires on this
-            // thread during message dispatch, so a pump is required even if we never
-            // post any messages of our own.
+            // GetMessage блокируется до WM_QUIT — но колбэк хука срабатывает в этом же
+            // потоке во время диспетчеризации сообщений, поэтому насос нужен, даже если мы
+            // сами не отправляем ни одного сообщения.
             while (User32Native.GetMessage(out var _, IntPtr.Zero, 0, 0) > 0)
             {
-                // No-op — the hook callback is invoked synchronously by the OS during
-                // GetMessage / PeekMessage cycles, not via a message we'd handle here.
+                // Пусто — колбэк хука ОС вызывает синхронно в циклах GetMessage / PeekMessage,
+                // а не через сообщение, которое мы бы здесь обработали.
             }
         }
         catch (Exception ex)
@@ -167,14 +169,15 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
 
     private IntPtr MouseProc(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        // nCode < 0 ⇒ docs require we don't process and just chain.
+        // nCode < 0 ⇒ документация требует ничего не обрабатывать и просто передать дальше
+        // по цепочке.
         if (nCode != User32Native.HC_ACTION)
         {
             return User32Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
         }
 
-        // We care about Middle and XButton down-events. Left/Right are deliberately
-        // ignored — see MouseButton.cs comment.
+        // Нас интересуют события нажатия средней кнопки и XButton. Левая и правая
+        // игнорируются намеренно — см. комментарий в MouseButton.cs.
         var message = (uint)wParam.ToInt32();
         MouseButton button;
         try
@@ -186,8 +189,8 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
             else if (message == User32Native.WM_XBUTTONDOWN)
             {
                 var data = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
-                // XButton id is in the high word of mouseData. Cast through ushort to
-                // strip the sign and align with MouseButton's underlying type.
+                // Номер XButton лежит в старшем слове mouseData. Приводим через ushort,
+                // чтобы срезать знак и совпасть с базовым типом MouseButton.
                 var xButton = (ushort)((data.mouseData >> 16) & 0xFFFF);
                 button = xButton switch
                 {
@@ -225,8 +228,8 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
         }
         catch (Exception ex)
         {
-            // Never let an exception escape the hook callback — that kills the whole
-            // process. Log and pass through.
+            // Ни в коем случае не выпускаем исключение из колбэка хука — это убивает весь
+            // процесс. Пишем в лог и пропускаем событие дальше.
             LogHookCallbackFailed(ex);
         }
 

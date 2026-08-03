@@ -4,26 +4,28 @@ using System.Text.Json.Serialization;
 namespace SmartMacro.Macros.Model;
 
 /// <summary>
-/// THE serializer for macro graph files. Storage (W0.2b), tests, and any tooling must go
-/// through this helper so every consumer agrees on one JSON dialect: <c>$type</c>
-/// discriminators, enums as strings, indented output, nulls omitted.
+/// ЕДИНСТВЕННЫЙ сериализатор файлов с графами макросов. Хранилище (W0.2b), тесты и любая
+/// оснастка обязаны ходить через этот помощник, чтобы все потребители сходились на одном
+/// диалекте JSON: дискриминаторы <c>$type</c>, перечисления строками, вывод с отступами,
+/// <c>null</c> опускаются.
 /// </summary>
 public static class MacroGraphJson
 {
     /// <summary>
-    /// The options every macro-graph (de)serialization uses. Exposed for consumers that
-    /// need to embed a graph in a larger payload; do not mutate.
+    /// Настройки, которыми пользуется любая (де)сериализация графа макроса. Выставлены наружу
+    /// для тех, кому нужно вложить граф в бо́льшую нагрузку; менять их нельзя.
     /// </summary>
     public static JsonSerializerOptions Options { get; } = new()
     {
         WriteIndented = true,
         Converters = { new JsonStringEnumConverter() },
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        // Hand-edited files shouldn't break just because "$type" isn't the first property.
+        // Правленные руками файлы не должны ломаться просто потому, что "$type" оказался не
+        // первым свойством.
         AllowOutOfOrderMetadataProperties = true,
     };
 
-    /// <summary>Serializes a graph to indented JSON.</summary>
+    /// <summary>Сериализует граф в JSON с отступами.</summary>
     public static string Serialize(MacroGraph graph)
     {
         ArgumentNullException.ThrowIfNull(graph);
@@ -31,8 +33,8 @@ public static class MacroGraphJson
     }
 
     /// <summary>
-    /// Deserializes a graph from JSON. Malformed input — including an unknown <c>$type</c>
-    /// discriminator or a literal <c>null</c> document — throws <see cref="JsonException"/>.
+    /// Десериализует граф из JSON. Кривой вход — включая незнакомый дискриминатор <c>$type</c>
+    /// и документ из литерального <c>null</c> — бросает <see cref="JsonException"/>.
     /// </summary>
     public static MacroGraph Deserialize(string json)
     {
@@ -44,8 +46,8 @@ public static class MacroGraphJson
         }
         catch (NotSupportedException ex)
         {
-            // STJ reports some polymorphism failures as NotSupportedException; normalize
-            // so callers only ever have to handle JsonException.
+            // Часть сбоев полиморфизма STJ сообщает как NotSupportedException; нормализуем,
+            // чтобы вызывающим приходилось обрабатывать только JsonException.
             throw new JsonException("Macro graph JSON is not deserializable.", ex);
         }
 

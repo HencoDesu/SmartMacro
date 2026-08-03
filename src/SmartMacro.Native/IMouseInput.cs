@@ -1,16 +1,17 @@
 namespace SmartMacro.Native;
 
-// Sends mouse interactions at client-area coordinates of a target window. Same trade-off
-// space as IKeyboardInput: different implementations for different focus/compatibility needs.
+// Отправляет действия мышью по координатам клиентской области целевого окна. Пространство
+// компромиссов то же, что у IKeyboardInput: разные реализации под разные требования к
+// фокусу и совместимости.
 public interface IMouseInput
 {
     /// <summary>
-    /// Posts a left-button click at the given client-area coordinates.
+    /// Посылает клик левой кнопкой по заданным координатам клиентской области.
     /// </summary>
     Task ClickAsync(IntPtr hwnd, int x, int y, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Posts a double left-button click at the given client-area coordinates.
+    /// Посылает двойной клик левой кнопкой по заданным координатам клиентской области.
     /// </summary>
     Task DoubleClickAsync(IntPtr hwnd, int x, int y, CancellationToken cancellationToken = default);
 }

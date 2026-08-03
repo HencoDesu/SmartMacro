@@ -4,33 +4,35 @@ using System.Text.Json;
 namespace SmartMacro.Contracts.Ipc;
 
 /// <summary>
-/// One JSON Lines conversation over a duplex byte stream: read a line → one envelope,
-/// write one envelope → one line.
+/// Один разговор в формате JSON Lines поверх дуплексного потока байт: прочитали строку — один
+/// конверт, записали один конверт — одна строка.
 ///
-/// It takes <see cref="Stream"/>s, not a <see cref="System.IO.Pipes.NamedPipeServerStream"/>,
-/// and that is the whole point — every protocol test in the suite drives a real
-/// <see cref="IpcConnection"/> over in-memory halves, so correlation, framing and write
-/// serialisation are covered without a pipe, a second process, or a desktop session.
+/// Класс принимает <see cref="Stream"/>, а не
+/// <see cref="System.IO.Pipes.NamedPipeServerStream"/>, и в этом весь смысл: каждый
+/// протокольный тест в наборе гоняет настоящий <see cref="IpcConnection"/> поверх половинок
+/// в памяти, так что корреляция, кадрирование и сериализация записи покрыты без named pipe,
+/// без второго процесса и без сессии рабочего стола.
 ///
-/// Two invariants it owns:
+/// Два инварианта, за которые он отвечает:
 ///
-///   * <b>One message per line.</b> <see cref="IpcJson.Options"/> never indents, and
-///     System.Text.Json escapes control characters inside strings, so no payload can
-///     smuggle a newline into the middle of a message.
-///   * <b>Writes are serialised.</b> A connection has two independent writers — the
-///     request/response loop and the event pump — and <see cref="StreamWriter"/> is not
-///     thread-safe: two concurrent <c>WriteLineAsync</c> calls corrupt the buffer or throw.
-///     Every write therefore goes through <see cref="_writeLock"/>. Reads need no such
-///     guard: exactly one reader loop per connection.
+///   * <b>Одно сообщение — одна строка.</b> <see cref="IpcJson.Options"/> никогда не ставит
+///     отступов, а System.Text.Json экранирует управляющие символы внутри строк, так что ни
+///     одна нагрузка не протащит перевод строки в середину сообщения.
+///   * <b>Записи сериализованы.</b> У соединения два независимых писателя — цикл
+///     «запрос/ответ» и насос событий, — а <see cref="StreamWriter"/> не потокобезопасен: два
+///     одновременных <c>WriteLineAsync</c> портят буфер или бросают исключение. Поэтому любая
+///     запись проходит через <see cref="_writeLock"/>. Чтению такая защита не нужна: цикл
+///     чтения на соединение ровно один.
 ///
-/// Deliberately free of any dependency beyond Contracts (no logger, no Core types) so it
-/// can move to <c>SmartMacro.Contracts</c> in stage 3 and be shared with the UI's client
-/// instead of being reimplemented there.
+/// Намеренно не имеет ни одной зависимости за пределами Contracts — ни логгера, ни типов
+/// Core. Ради этого класс сюда и переехал (стадия 3): обе стороны трубы используют одно и
+/// то же обрамление, вместо того чтобы панель переписывала его у себя заново. Появится
+/// зависимость на Core — переезд придётся отменять.
 /// </summary>
 public sealed class IpcConnection : IAsyncDisposable
 {
-    // No BOM: a byte-order mark at the head of the first line would break the reader on the
-    // other end, which parses lines as bare JSON.
+    // Без BOM: метка порядка байтов в начале первой строки сломала бы читателя на том конце —
+    // он разбирает строки как голый JSON.
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
     private readonly StreamReader _reader;
@@ -38,51 +40,53 @@ public sealed class IpcConnection : IAsyncDisposable
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private int _disposed;
 
-    /// <param name="duplex">Stream that is both read from and written to (a named pipe).</param>
-    /// <param name="leaveOpen">Leave <paramref name="duplex"/> open when this connection is disposed.</param>
+    /// <param name="duplex">Поток, из которого и читают, и в который пишут (named pipe).</param>
+    /// <param name="leaveOpen">Оставить <paramref name="duplex"/> открытым, когда это соединение освобождают.</param>
     public IpcConnection(Stream duplex, bool leaveOpen = false)
         : this(duplex, duplex, leaveOpen)
     {
     }
 
-    /// <param name="input">Stream the peer's lines arrive on.</param>
-    /// <param name="output">Stream our lines go out on. May be the same object as <paramref name="input"/>.</param>
-    /// <param name="leaveOpen">Leave both streams open when this connection is disposed.</param>
+    /// <param name="input">Поток, по которому приходят строки собеседника.</param>
+    /// <param name="output">Поток, в который уходят наши строки. Может быть тем же объектом, что и <paramref name="input"/>.</param>
+    /// <param name="leaveOpen">Оставить оба потока открытыми, когда это соединение освобождают.</param>
     public IpcConnection(Stream input, Stream output, bool leaveOpen = false)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);
 
-        _reader = new StreamReader(input, Utf8NoBom, detectEncodingFromByteOrderMarks: false, bufferSize: 8192, leaveOpen: leaveOpen);
+        _reader = new StreamReader(input, Utf8NoBom, detectEncodingFromByteOrderMarks: false, bufferSize: 8192,
+            leaveOpen: leaveOpen);
         _writer = new StreamWriter(output, Utf8NoBom, bufferSize: 8192, leaveOpen: leaveOpen)
         {
-            // "\n" rather than the platform default: one byte of terminator, and every
-            // JSON Lines reader in existence accepts it (StreamReader.ReadLineAsync also
-            // accepts "\r\n", so a peer using the Windows default still parses here).
+            // "\n", а не платформенное значение по умолчанию: один байт терминатора, и его
+            // принимает любой существующий читатель JSON Lines (StreamReader.ReadLineAsync
+            // принимает и "\r\n", так что собеседник с виндовым значением по умолчанию тоже
+            // разберётся).
             NewLine = "\n",
-            // Flushing is explicit and happens inside the write lock — AutoFlush would
-            // flush per Write call, which for WriteLine means two syscalls per message.
+            // Сброс буфера делаем явно и внутри блокировки записи: AutoFlush сбрасывал бы на
+            // каждый вызов Write, а для WriteLine это два системных вызова на сообщение.
             AutoFlush = false,
         };
     }
 
     /// <summary>
-    /// Reads the next message. Blank lines (some peers pad with them) are skipped.
+    /// Читает следующее сообщение. Пустые строки (некоторые собеседники ими добивают) пропускаются.
     /// </summary>
     /// <typeparam name="T">
-    /// <see cref="IpcRequest"/> on the server side, <see cref="IpcResponse"/> /
-    /// <see cref="IpcEvent"/> on the client side.
+    /// <see cref="IpcRequest"/> на стороне сервера, <see cref="IpcResponse"/> /
+    /// <see cref="IpcEvent"/> на стороне клиента.
     /// </typeparam>
     /// <returns>
-    /// The parsed message, or <c>null</c> at end of stream (the peer closed its write half
-    /// or the pipe broke cleanly). A peer that sends a literal <c>null</c> line is read as
-    /// EOF too — a degenerate message nobody has a reason to send, and treating it as a
-    /// hang-up is the safe reading.
+    /// Разобранное сообщение или <c>null</c> в конце потока (собеседник закрыл свою половину
+    /// на запись либо канал чисто оборвался). Собеседник, приславший строку с литеральным
+    /// <c>null</c>, тоже читается как EOF: это вырожденное сообщение, которое ни у кого нет
+    /// причин отправлять, и трактовать его как «повесили трубку» — безопасное прочтение.
     /// </returns>
     /// <exception cref="JsonException">
-    /// The line is not valid JSON for <typeparamref name="T"/>. RECOVERABLE — the stream is
-    /// still positioned at the start of the next line, so a reader loop should log and keep
-    /// going rather than tear the connection down over one bad message.
+    /// Строка не является корректным JSON под <typeparamref name="T"/>. ВОССТАНОВИМО: поток
+    /// по-прежнему стоит в начале следующей строки, поэтому цикл чтения должен записать это в
+    /// лог и продолжить, а не рвать соединение из-за одного плохого сообщения.
     /// </exception>
     public async Task<T?> ReadAsync<T>(CancellationToken cancellationToken = default)
         where T : class
@@ -94,20 +98,22 @@ public sealed class IpcConnection : IAsyncDisposable
             {
                 return null;
             }
+
             if (string.IsNullOrWhiteSpace(line))
             {
                 continue;
             }
+
             return JsonSerializer.Deserialize<T>(line, IpcJson.Options);
         }
     }
 
     /// <summary>
-    /// Serialises <paramref name="message"/> and writes it as one line, then flushes.
-    /// Concurrent callers are serialised; the message is rendered to a string BEFORE the
-    /// lock is taken so serialisation cost never widens the critical section.
+    /// Сериализует <paramref name="message"/>, пишет его одной строкой и сбрасывает буфер.
+    /// Одновременные вызовы выстраиваются в очередь; сообщение превращается в строку ДО взятия
+    /// блокировки, чтобы стоимость сериализации никогда не расширяла критическую секцию.
     /// </summary>
-    /// <exception cref="IOException">The peer is gone. The caller should drop the connection.</exception>
+    /// <exception cref="IOException">Собеседника больше нет. Вызывающему следует закрыть соединение.</exception>
     public async Task WriteAsync<T>(T message, CancellationToken cancellationToken = default)
     {
         var line = JsonSerializer.Serialize(message, IpcJson.Options);
@@ -133,12 +139,16 @@ public sealed class IpcConnection : IAsyncDisposable
 
         try
         {
-            // Best-effort flush of anything a cancelled write left buffered. A dead peer
-            // throws here — IOException from the transport, InvalidOperationException if a
-            // write was still in flight — and that is exactly the case where there is
-            // nothing left to do. Disposal must not throw.
+            // По возможности сбрасываем всё, что отменённая запись оставила в буфере. Мёртвый
+            // собеседник бросит здесь исключение — IOException из транспорта или
+            // InvalidOperationException, если запись ещё шла, — и это ровно тот случай, когда
+            // делать уже нечего. Освобождение не имеет права бросать.
             await _writer.DisposeAsync().ConfigureAwait(false);
         }
+        // Перехват намеренно всеохватный, а не по списку типов: транспорт волен бросить что
+        // угодно, а освобождение не имеет права бросать вообще ничего. Сузить catch — значит
+        // однажды уронить путь очистки исключением, которого не было в списке.
+        // ReSharper disable once EmptyGeneralCatchClause
         catch (Exception)
         {
         }
@@ -147,6 +157,8 @@ public sealed class IpcConnection : IAsyncDisposable
         {
             _reader.Dispose();
         }
+        // То же самое: см. выше.
+        // ReSharper disable once EmptyGeneralCatchClause
         catch (Exception)
         {
         }

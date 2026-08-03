@@ -1,18 +1,20 @@
 namespace SmartMacro.Native;
 
-// Mouse buttons we allow as global-hotkey inputs. Left/Right are deliberately excluded —
-// binding a normal click as a global hotkey makes the system effectively unusable (every
-// click in every app would trigger the bound action). Middle (wheel-click) and XButton1/2
-// (thumb buttons) are rare enough in normal Windows operation that binding them is safe
-// and a natural fit for game-action remapping.
+// Кнопки мыши, которые мы разрешаем как глобальные горячие клавиши. Левая и правая
+// исключены намеренно: повесить обычный клик на глобальную горячую клавишу — значит сделать
+// систему непригодной для работы (каждый клик в любом приложении запускал бы привязанное
+// действие). Средняя (нажатие колеса) и XButton1/2 (боковые кнопки) в обычной работе Windows
+// встречаются достаточно редко, поэтому привязывать их безопасно, и для переназначения
+// игровых действий они подходят естественно.
 //
-// XButton1/XButton2 values match the XBUTTON1/XBUTTON2 constants from <WinUser.h> (high
-// word of WM_XBUTTON's MSLLHOOKSTRUCT.mouseData). Middle has no equivalent constant in
-// that protocol (WM_MBUTTONDOWN identifies it via the message itself, not mouseData), so
-// we pick an arbitrary unique value that doesn't collide with the XButton ones.
+// Значения XButton1/XButton2 совпадают с константами XBUTTON1/XBUTTON2 из <WinUser.h>
+// (старшее слово MSLLHOOKSTRUCT.mouseData у WM_XBUTTON). У средней кнопки аналогичной
+// константы в этом протоколе нет (WM_MBUTTONDOWN опознаётся по самому сообщению, а не по
+// mouseData), поэтому мы берём произвольное уникальное значение, не пересекающееся с
+// XButton-ами.
 //
-// Enum is serialised as the name string in macro-graph JSON (JsonStringEnumConverter), so
-// these numeric values aren't part of the on-disk contract — feel free to renumber.
+// В JSON графов макросов перечисление сериализуется строкой-именем (JsonStringEnumConverter),
+// так что эти числовые значения не часть дискового контракта — перенумеровать можно свободно.
 public enum MouseButton : ushort
 {
     None = 0,

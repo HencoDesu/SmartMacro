@@ -1,31 +1,33 @@
 namespace SmartMacro.Daemon;
 
 /// <summary>
-/// Named-mutex lock that lets exactly one daemon process run at a time.
+/// Замок на именованном мьютексе, позволяющий работать ровно одному процессу демона за раз.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Two daemons on one machine would each register the same global hotkeys (the second
-/// silently losing the race), each poll for game processes, and each drive input into the
-/// same windows — so the second instance must not merely warn, it must exit.
+/// Два демона на одной машине зарегистрировали бы каждый одни и те же глобальные горячие
+/// клавиши (второй молча проиграл бы гонку), каждый опрашивал бы процессы игры и каждый гнал
+/// бы ввод в одни и те же окна, — поэтому второму экземпляру мало предупредить, он обязан
+/// выйти.
 /// </para>
 /// <para>
-/// The name is deliberately <c>Global\</c>-prefixed rather than <c>Local\</c>. <c>Local\</c>
-/// scopes the mutex to a terminal-services session, which is exactly the guarantee we do NOT
-/// want: the daemon's contended resources — <c>RegisterHotKey</c>, the WH_MOUSE_LL hook, the
-/// game clients themselves — are machine-wide, and an elevated instance started from a
-/// different session (a scheduled task, a second RDP login, "run as another user") would slip
-/// past a session-scoped guard and fight the first one. <c>Global\</c> requires no special
-/// privilege to create, and the daemon runs elevated anyway.
+/// Префикс <c>Global\</c>, а не <c>Local\</c>, выбран намеренно. <c>Local\</c> ограничивает
+/// мьютекс сессией terminal services, а это ровно та гарантия, которая нам НЕ нужна:
+/// ресурсы, за которые демон конкурирует, — <c>RegisterHotKey</c>, хук WH_MOUSE_LL, сами
+/// клиенты игры — общемашинные, и экземпляр с повышенными правами, запущенный из другой
+/// сессии (запланированная задача, второй вход по RDP, «запуск от имени другого
+/// пользователя»), проскользнул бы мимо защиты уровня сессии и подрался с первым. Создание
+/// <c>Global\</c>-имени не требует особых привилегий, а демон и так работает с повышенными
+/// правами.
 /// </para>
 /// <para>
-/// Public rather than internal so the daemon's tests can exercise the acquire/release
-/// semantics against a throwaway name.
+/// Public, а не internal, чтобы тесты демона могли гонять семантику захвата и освобождения на
+/// одноразовом имени.
 /// </para>
 /// </remarks>
 public sealed class SingleInstanceGuard : IDisposable
 {
-    /// <summary>Mutex name the daemon actually uses.</summary>
+    /// <summary>Имя мьютекса, которым демон пользуется на самом деле.</summary>
     public const string DaemonMutexName = @"Global\SmartMacro.Daemon";
 
     private Mutex? _mutex;
@@ -36,11 +38,11 @@ public sealed class SingleInstanceGuard : IDisposable
     }
 
     /// <summary>
-    /// Tries to become the single instance identified by <paramref name="mutexName"/>.
+    /// Пытается стать единственным экземпляром, обозначенным именем <paramref name="mutexName"/>.
     /// </summary>
     /// <returns>
-    /// The guard when this process won the race (dispose it to release), or <c>null</c> when
-    /// another process already holds it.
+    /// Захваченный замок, если этот процесс выиграл гонку (освободить — через Dispose), либо
+    /// <c>null</c>, если замком уже владеет другой процесс.
     /// </returns>
     public static SingleInstanceGuard? TryAcquire(string mutexName)
     {
@@ -50,14 +52,14 @@ public sealed class SingleInstanceGuard : IDisposable
         bool acquired;
         try
         {
-            // Zero timeout: this is a race we either win outright or concede.
+            // Нулевой таймаут: эту гонку мы либо выигрываем сразу, либо уступаем.
             acquired = mutex.WaitOne(TimeSpan.Zero, exitContext: false);
         }
         catch (AbandonedMutexException)
         {
-            // The previous holder died without releasing (crash, kill). The mutex is ours
-            // now — that's precisely the state we want, and there's no shared data to
-            // distrust because the mutex protects a process identity, not a data structure.
+            // Предыдущий владелец умер, не освободив мьютекс (упал, прибили). Теперь мьютекс
+            // наш — ровно то состояние, которое нам и нужно, и не доверять тут нечему: мьютекс
+            // защищает идентичность процесса, а не структуру данных.
             acquired = true;
         }
 
@@ -83,8 +85,8 @@ public sealed class SingleInstanceGuard : IDisposable
         }
         catch (ApplicationException)
         {
-            // Not the owning thread (finalisation order, or Dispose from a pool thread).
-            // Disposing the handle releases it anyway when the process exits.
+            // Поток не владеющий (порядок финализации или Dispose из потока пула).
+            // Освобождение хендла всё равно снимет мьютекс при выходе из процесса.
         }
 
         _mutex.Dispose();

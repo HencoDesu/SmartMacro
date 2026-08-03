@@ -49,8 +49,8 @@ public sealed class Win32NativeWindow : INativeWindow
             return true;
         }
 
-        // Modern Windows blocks SetForegroundWindow from non-foreground processes.
-        // AttachThreadInput is the canonical workaround.
+        // Современная Windows блокирует SetForegroundWindow для процессов, которые не на
+        // переднем плане. AttachThreadInput — канонический обходной приём.
         var targetThread = User32Native.GetWindowThreadProcessId(Handle, out _);
         var currentThread = Kernel32Native.GetCurrentThreadId();
         if (targetThread == 0 || targetThread == currentThread)
@@ -75,39 +75,40 @@ public sealed class Win32NativeWindow : INativeWindow
 
     public void SendActivationSignal(uint lParam)
     {
-        // wParam=1 (TRUE) — "this window is being activated". lParam is documented as
-        // "thread id of the thread that owns the window being activated/deactivated";
-        // the magic 0x91D8 default is carried over from a known-working third-party
-        // helper — PW's engine appears to ignore the value but accepts the message
-        // itself as a wake-up trigger.
+        // wParam=1 (TRUE) — «это окно активируется». lParam в документации описан как
+        // «идентификатор потока, которому принадлежит активируемое/деактивируемое окно»;
+        // магическое значение по умолчанию 0x91D8 перенято из заведомо рабочего стороннего
+        // хелпера — движок PW, судя по всему, само значение игнорирует, но принимает
+        // сообщение как сигнал к пробуждению.
         //
-        // Uses SendMessage (synchronous): blocks until PW's WndProc returns. Guarantees
-        // PW has handled the activation BEFORE we proceed to post input — under load
-        // (11 windows broadcasting simultaneously), PostMessage variants would queue
-        // along with everything else and could be processed too late, with KEYDOWN
-        // arriving while PW was still in throttled background state. The matching
-        // deactivation uses PostMessage so it queues AFTER posted input, giving PW time
-        // to process the keypress in order: ACTIVATE(TRUE, sync) → KEYDOWN/UP (queued) →
-        // ACTIVATE(FALSE, queued). See SendDeactivationSignal for rationale on the
-        // asymmetry.
+        // Используем SendMessage (синхронный): блокируемся, пока WndProc у PW не вернёт
+        // управление. Это гарантирует, что PW обработал активацию ДО того, как мы начнём
+        // отправлять ввод. Под нагрузкой (11 окон рассылают одновременно) варианты на
+        // PostMessage встали бы в очередь наравне со всем остальным и могли бы обработаться
+        // слишком поздно — KEYDOWN пришёл бы, пока PW всё ещё в придушенном фоновом
+        // состоянии. Парная деактивация, наоборот, идёт через PostMessage, чтобы встать в
+        // очередь ПОСЛЕ отправленного ввода и дать PW обработать нажатие в правильном
+        // порядке: ACTIVATE(TRUE, синхронно) → KEYDOWN/UP (в очереди) → ACTIVATE(FALSE, в
+        // очереди). Обоснование этой асимметрии см. в SendDeactivationSignal.
         User32Native.SendMessage(Handle, User32Native.WM_ACTIVATEAPP, (IntPtr)1, (IntPtr)lParam);
     }
 
     public void SendDeactivationSignal()
     {
-        // wParam=0 (FALSE) — "this window is being deactivated". lParam is per the docs
-        // the thread id of the window taking over focus; passing 0 since PW ignores it.
+        // wParam=0 (FALSE) — «это окно деактивируется». lParam по документации — id потока
+        // окна, забирающего фокус; передаём 0, поскольку PW его игнорирует.
         //
-        // PostMessage so the deactivation queues AFTER any KEYDOWN/UP we posted for
-        // input — see SendActivationSignal for why we run the whole sequence through
-        // the queue. The drain delay in GameWindow.DeactivateAsync still exists to give
-        // PW's pump enough wall-clock to chew through the queue before we leave.
+        // PostMessage — чтобы деактивация встала в очередь ПОСЛЕ всех KEYDOWN/UP, которые мы
+        // отправили как ввод; почему вся последовательность гоняется через очередь, см. в
+        // SendActivationSignal. Задержка на прокачку очереди в GameWindow.DeactivateAsync
+        // всё равно нужна: она даёт насосу сообщений PW достаточно реального времени, чтобы
+        // разобрать очередь до нашего ухода.
         User32Native.PostMessage(Handle, User32Native.WM_ACTIVATEAPP, IntPtr.Zero, IntPtr.Zero);
     }
 
-    // Captures via PrintWindow with PW_CLIENTONLY | PW_RENDERFULLCONTENT — the second flag
-    // is critical for DirectX/DirectComposition windows (the game client is one); without
-    // it many such windows return a solid-black image.
+    // Снимает кадр через PrintWindow с PW_CLIENTONLY | PW_RENDERFULLCONTENT — второй флаг
+    // критичен для окон на DirectX/DirectComposition (клиент игры именно такой): без него
+    // многие такие окна отдают сплошь чёрную картинку.
     public byte[] CapturePng()
     {
         if (Handle == IntPtr.Zero)
@@ -151,12 +152,13 @@ public sealed class Win32NativeWindow : INativeWindow
             return false;
         }
 
-        // Set all three surfaces so the icon shows up in title bar, taskbar list, and
-        // taskbar button. SendMessage rather than PostMessage — PW freezes background
-        // clients and their message queue doesn't drain until something wakes the
-        // window (user click, WM_ACTIVATEAPP). PostMessage'd WM_SETICON would just sit
-        // queued for inactive windows, so after multi-agent identify only the
-        // foreground few would get their icon. SendMessage forces sync WndProc dispatch.
+        // Выставляем все три поверхности, чтобы иконка появилась и в заголовке окна, и в
+        // списке задач, и на кнопке панели задач. SendMessage, а не PostMessage: PW
+        // замораживает фоновые клиенты, и их очередь сообщений не разбирается, пока окно
+        // что-нибудь не разбудит (клик пользователя, WM_ACTIVATEAPP). Post'нутый WM_SETICON
+        // просто лежал бы в очереди неактивных окон, и после опознания нескольких агентов
+        // иконку получили бы только те немногие, что оказались на переднем плане.
+        // SendMessage же вынуждает синхронную диспетчеризацию в WndProc.
         User32Native.SendMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_SMALL, hicon);
         User32Native.SendMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_BIG, hicon);
         User32Native.SendMessage(Handle, User32Native.WM_SETICON, (IntPtr)User32Native.ICON_SMALL2, hicon);

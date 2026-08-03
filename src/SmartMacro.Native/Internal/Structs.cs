@@ -67,8 +67,8 @@ internal struct MOUSEINPUT
     public UIntPtr dwExtraInfo;
 }
 
-// LPARAM payload for WH_MOUSE_LL hook callbacks. mouseData holds the XButton id in its
-// high word for WM_XBUTTONDOWN/UP messages (1 = XButton1, 2 = XButton2).
+// Полезная нагрузка LPARAM для колбэков хука WH_MOUSE_LL. Для сообщений WM_XBUTTONDOWN/UP
+// в старшем слове mouseData лежит номер XButton (1 = XButton1, 2 = XButton2).
 [StructLayout(LayoutKind.Sequential)]
 internal struct MSLLHOOKSTRUCT
 {
@@ -79,10 +79,10 @@ internal struct MSLLHOOKSTRUCT
     public UIntPtr dwExtraInfo;
 }
 
-// Window-class registration payload for RegisterClassExW. Deliberately blittable: the two
-// string members are held as raw IntPtr (Marshal.StringToHGlobalUni) and lpfnWndProc as a
-// function pointer, so the whole struct can travel through a LibraryImport-generated stub
-// without a custom marshaller.
+// Данные для регистрации оконного класса через RegisterClassExW. Намеренно блиттируемая:
+// оба строковых поля хранятся как сырые IntPtr (Marshal.StringToHGlobalUni), а lpfnWndProc —
+// как указатель на функцию, поэтому вся структура проходит через сгенерированный
+// LibraryImport stub без собственного маршалера.
 [StructLayout(LayoutKind.Sequential)]
 internal struct WNDCLASSEXW
 {
@@ -100,11 +100,11 @@ internal struct WNDCLASSEXW
     public IntPtr hIconSm;
 }
 
-// Shell_NotifyIconW payload. The three text members are inline WCHAR arrays in the native
-// declaration, so they're modelled as `fixed char` buffers rather than
-// [MarshalAs(ByValTStr)] strings — LibraryImport only accepts blittable types, and this
-// keeps the struct's size/layout identical to the native one (976 bytes on x64, which is
-// what cbSize must report on Vista+).
+// Полезная нагрузка Shell_NotifyIconW. Три текстовых поля в нативном объявлении — это
+// встроенные массивы WCHAR, поэтому они смоделированы буферами `fixed char`, а не строками
+// с [MarshalAs(ByValTStr)]: LibraryImport принимает только блиттируемые типы, и так размер
+// и раскладка структуры остаются точь-в-точь как у нативной (976 байт на x64 — именно это
+// значение cbSize обязан сообщать начиная с Vista).
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct NOTIFYICONDATAW
 {

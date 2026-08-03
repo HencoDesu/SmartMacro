@@ -1,6 +1,6 @@
 namespace SmartMacro.Native.Hotkey;
 
-// A single hotkey binding the monitor will register. Id is the value the consumer cares
-// about — the monitor passes it back on HotkeyPressed so the consumer can resolve it to
-// whatever meaning they attach to the id (e.g., an orchestrator trigger).
+// Одна привязка горячей клавиши, которую зарегистрирует монитор. Id — то, что важно
+// потребителю: монитор возвращает его обратно через HotkeyPressed, и потребитель сам
+// сопоставляет id с тем смыслом, который в него вложил (например, с триггером оркестратора).
 public sealed record HotkeyDescriptor(int Id, HotkeyModifiers Modifiers, VirtualKey Key);

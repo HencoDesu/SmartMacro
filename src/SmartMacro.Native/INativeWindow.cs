@@ -2,75 +2,76 @@ using System.Runtime.Versioning;
 
 namespace SmartMacro.Native;
 
-// Per-hwnd window handle wrapper. Methods operate on the encapsulated Handle — no hwnd
-// parameter on the API. Instances are typically obtained via INativeWindowSystem.Open(hwnd).
+// Обёртка над хендлом одного окна. Методы работают с инкапсулированным Handle — параметра
+// hwnd в API нет. Экземпляры обычно получают через INativeWindowSystem.Open(hwnd).
 [SupportedOSPlatform("windows")]
 public interface INativeWindow
 {
     IntPtr Handle { get; }
 
     /// <summary>
-    /// Cheap aliveness check — returns <c>false</c> once the underlying window has been
-    /// destroyed (e.g. game client crashed or was closed). Backed by <c>User32.IsWindow</c>
-    /// on Windows; safe to call from any thread.
+    /// Дешёвая проверка «окно ещё живо» — возвращает <c>false</c>, как только нижележащее
+    /// окно уничтожено (например, клиент игры упал или его закрыли). Под Windows опирается
+    /// на <c>User32.IsWindow</c>; вызывать можно из любого потока.
     /// </summary>
     bool IsAlive { get; }
 
     /// <summary>
-    /// Client-area width/height in pixels.
+    /// Ширина и высота клиентской области в пикселях.
     /// </summary>
     (int Width, int Height) GetClientSize();
 
     /// <summary>
-    /// Converts client-relative coordinates to screen-absolute coordinates.
+    /// Переводит координаты относительно клиентской области в абсолютные экранные.
     /// </summary>
     (int X, int Y) ClientToScreen(int clientX, int clientY);
 
     /// <summary>
-    /// Converts screen-absolute coordinates to client-relative coordinates of this window.
-    /// May return negative numbers / values outside <see cref="GetClientSize"/> when the
-    /// point is not physically inside the window.
+    /// Переводит абсолютные экранные координаты в координаты относительно клиентской области
+    /// этого окна. Может вернуть отрицательные значения или значения за пределами
+    /// <see cref="GetClientSize"/>, если точка физически лежит вне окна.
     /// </summary>
     (int X, int Y) ScreenToClient(int screenX, int screenY);
 
     /// <summary>
-    /// Tries to bring this window to the foreground, including the AttachThreadInput
-    /// workaround modern Windows requires for non-foreground processes.
+    /// Пытается вывести это окно на передний план, включая обходной приём с
+    /// AttachThreadInput, которого современная Windows требует от процессов не на переднем
+    /// плане.
     /// </summary>
-    /// <returns><c>false</c> if all activation attempts failed.</returns>
+    /// <returns><c>false</c>, если все попытки активации провалились.</returns>
     bool BringToFront();
 
     /// <summary>
-    /// Sends the <c>WM_ACTIVATEAPP</c> wake-up signal — Perfect World's client freezes
-    /// background windows; this snaps the engine awake long enough for a subsequent input
-    /// call to be processed.
+    /// Отправляет пробуждающий сигнал <c>WM_ACTIVATEAPP</c>: клиент Perfect World
+    /// замораживает фоновые окна, а это встряхивает движок ровно настолько, чтобы
+    /// следующий вызов ввода был обработан.
     /// </summary>
-    /// <param name="lParam">Magic value carried over from a known-working helper. PW ignores it but it's exposed in case future client versions start validating.</param>
+    /// <param name="lParam">Магическое значение, перенятое из заведомо рабочего стороннего хелпера. PW его игнорирует, но параметр выставлен наружу на случай, если будущие версии клиента начнут его проверять.</param>
     void SendActivationSignal(uint lParam);
 
     /// <summary>
-    /// Sends the matching deactivation signal — tells the window it's no longer the active
-    /// app, putting PW's render loop back into its low-power background state. Must be
-    /// paired with <see cref="SendActivationSignal"/> on background windows so they don't
-    /// all stay at full render rate after a broadcast (11 windows × full render = noticeable
-    /// game lag).
+    /// Отправляет парный сигнал деактивации — сообщает окну, что оно больше не активное
+    /// приложение, и возвращает цикл отрисовки PW в фоновый энергосберегающий режим. На
+    /// фоновых окнах обязателен в паре с <see cref="SendActivationSignal"/>, иначе после
+    /// рассылки они все останутся на полной частоте отрисовки (11 окон × полная отрисовка =
+    /// заметные лаги в игре).
     /// </summary>
     void SendDeactivationSignal();
 
     /// <summary>
-    /// Captures the client area into a PNG <c>byte[]</c> via <c>PrintWindow</c>. Will
-    /// return a blank image if the caller's integrity level is below the target's — PW
-    /// launches elevated, so the agent must too.
+    /// Снимает клиентскую область в PNG (<c>byte[]</c>) через <c>PrintWindow</c>. Вернёт
+    /// пустое изображение, если уровень целостности вызывающего ниже, чем у цели: PW
+    /// запускается с повышенными правами, значит и агент обязан.
     /// </summary>
     byte[] CapturePng();
 
     /// <summary>
-    /// Replaces the window's title-bar / taskbar icon. Loads the image file from disk
-    /// (.ico via <c>LoadImage</c>, .png / .jpg / .bmp via GDI+), cached process-wide so
-    /// each class icon is decoded once and reused across all 9 agents. Sends
-    /// <c>WM_SETICON</c> for SMALL + BIG + SMALL2 covering title bar, Alt-Tab, taskbar
-    /// list, taskbar button.
+    /// Заменяет иконку окна в заголовке и на панели задач. Загружает файл изображения с
+    /// диска (.ico через <c>LoadImage</c>, .png / .jpg / .bmp через GDI+) и кэширует его на
+    /// весь процесс, так что каждая иконка класса декодируется один раз и переиспользуется
+    /// всеми 9 агентами. Шлёт <c>WM_SETICON</c> для SMALL + BIG + SMALL2, покрывая заголовок
+    /// окна, Alt-Tab, список задач и кнопку на панели задач.
     /// </summary>
-    /// <returns><c>false</c> if the file couldn't be loaded (missing, corrupt, unsupported).</returns>
+    /// <returns><c>false</c>, если файл не удалось загрузить (нет, повреждён, формат не поддерживается).</returns>
     bool SetIconFromFile(string imagePath);
 }

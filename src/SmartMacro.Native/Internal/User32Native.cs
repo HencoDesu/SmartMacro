@@ -2,12 +2,12 @@ using System.Runtime.InteropServices;
 
 namespace SmartMacro.Native.Internal;
 
-// Raw P/Invoke surface for user32.dll + the Win32 constants we use. Internal so the public
-// API of this assembly stays at the abstraction level (IKeyboardInput / IMouseInput /
-// INativeWindow) — callers never see User32 directly.
+// Голая P/Invoke-поверхность user32.dll плюс используемые нами константы Win32. Internal,
+// чтобы публичный API этой сборки оставался на уровне абстракции (IKeyboardInput /
+// IMouseInput / INativeWindow) — вызывающие никогда не видят User32 напрямую.
 internal static partial class User32Native
 {
-    // ─── Window messages ───
+    // ─── Оконные сообщения ───
     public const uint WM_ACTIVATEAPP = 0x001C;
     public const uint WM_KEYDOWN = 0x0100;
     public const uint WM_KEYUP = 0x0101;
@@ -24,17 +24,18 @@ internal static partial class User32Native
     public const uint WM_CONTEXTMENU = 0x007B;
     public const uint WM_RBUTTONUP = 0x0205;
 
-    // Private message range. Shell_NotifyIcon delivers its mouse notifications through a
-    // callback message the owner picks, and WM_APP+n is the documented range for that.
+    // Диапазон приватных сообщений. Shell_NotifyIcon доставляет свои уведомления о мыши
+    // через callback-сообщение, которое выбирает владелец иконки, и WM_APP+n — как раз
+    // документированный для этого диапазон.
     public const uint WM_APP = 0x8000;
 
-    // ─── Low-level hooks ───
+    // ─── Низкоуровневые хуки ───
     public const int WH_MOUSE_LL = 14;
     public const int HC_ACTION = 0;
 
-    // GetAsyncKeyState — high bit set ⇨ key currently down. Returned value is a short, we
-    // mask explicitly because we want unambiguous "is held" semantics, not the low-bit
-    // "was pressed since last call" history.
+    // GetAsyncKeyState — старший бит взведён ⇨ клавиша сейчас нажата. Возвращается short, и
+    // маску мы накладываем явно, потому что нам нужна однозначная семантика «зажата ли», а
+    // не история из младшего бита «нажимали ли с прошлого вызова».
     public const int VK_SHIFT = 0x10;
     public const int VK_CONTROL = 0x11;
     public const int VK_MENU = 0x12;     // Alt
@@ -61,36 +62,40 @@ internal static partial class User32Native
     public const uint PW_CLIENTONLY = 0x00000001;
     public const uint PW_RENDERFULLCONTENT = 0x00000002;
 
-    // WM_SETICON — replaces the icon shown in the window's title bar and taskbar entry.
-    // ICON_SMALL = 16x16 (title bar, taskbar list). ICON_BIG = 32x32 (Alt-Tab switcher,
-    // task switcher thumbnails). ICON_SMALL2 is what Windows 7+ uses for the taskbar
-    // button itself; setting all three covers every UI surface.
+    // WM_SETICON — заменяет иконку, которую окно показывает в заголовке и в своей записи на
+    // панели задач. ICON_SMALL = 16x16 (заголовок, список задач). ICON_BIG = 32x32
+    // (переключатель Alt-Tab, эскизы в task switcher). ICON_SMALL2 — то, что Windows 7+
+    // использует для самой кнопки на панели задач; выставив все три, покрываем каждую
+    // поверхность интерфейса.
     public const uint WM_SETICON = 0x0080;
     public const int ICON_SMALL = 0;
     public const int ICON_BIG = 1;
     public const int ICON_SMALL2 = 2;
 
-    // LoadImage with IMAGE_ICON + LR_LOADFROMFILE reads a .ico file from disk and
-    // returns an HICON. cx/cy = 0 means "use the file's default size" (multi-resolution
-    // .ico picks the largest by convention). LR_DEFAULTSIZE picks the system-default
-    // small/large size instead. Without LR_SHARED the HICON belongs to us and we'd need
-    // DestroyIcon — but for process-lifetime cache that's not worth the bookkeeping.
+    // LoadImage с IMAGE_ICON + LR_LOADFROMFILE читает .ico с диска и возвращает HICON.
+    // cx/cy = 0 означает «взять размер по умолчанию из файла» (в многоразрешенческом .ico по
+    // соглашению берётся самый крупный). LR_DEFAULTSIZE вместо этого берёт системный
+    // маленький/большой размер по умолчанию. Без LR_SHARED HICON принадлежит нам и нам
+    // полагалось бы звать DestroyIcon — но для кэша на всё время жизни процесса эта
+    // бухгалтерия не окупается.
     public const uint IMAGE_ICON = 1;
     public const uint LR_LOADFROMFILE = 0x0010;
     public const uint LR_DEFAULTSIZE = 0x0040;
 
-    // ─── Message-only windows, popup menus (tray icon) ───
+    // ─── Окна только для сообщений, всплывающие меню (иконка в трее) ───
 
-    // A window parented to HWND_MESSAGE is never shown, never enumerated, and gets no
-    // input — it exists purely to own a message queue. Exactly what a tray icon needs.
+    // Окно с родителем HWND_MESSAGE никогда не показывается, не попадает в перечисления и не
+    // получает ввод — оно существует исключительно ради собственной очереди сообщений.
+    // Ровно то, что нужно иконке в трее.
     public static readonly IntPtr HWND_MESSAGE = new(-3);
 
     public const uint MF_STRING = 0x0000;
     public const uint MF_SEPARATOR = 0x0800;
 
-    // TPM_RETURNCMD makes TrackPopupMenuEx return the chosen command id instead of posting
-    // WM_COMMAND, which keeps the whole menu interaction inside one synchronous call.
-    // TPM_NONOTIFY suppresses the WM_ENTERMENULOOP/WM_INITMENU chatter we'd ignore anyway.
+    // TPM_RETURNCMD заставляет TrackPopupMenuEx вернуть id выбранной команды, а не слать
+    // WM_COMMAND, — так всё взаимодействие с меню умещается в один синхронный вызов.
+    // TPM_NONOTIFY глушит болтовню из WM_ENTERMENULOOP/WM_INITMENU, которую мы всё равно
+    // проигнорировали бы.
     public const uint TPM_LEFTALIGN = 0x0000;
     public const uint TPM_RIGHTBUTTON = 0x0002;
     public const uint TPM_BOTTOMALIGN = 0x0020;
@@ -100,11 +105,11 @@ internal static partial class User32Native
     public const uint MF_BYCOMMAND = 0x0000;
     public const uint MF_BYPOSITION = 0x0400;
 
-    // MAKEINTRESOURCE(32512) — the stock application icon, used as the fallback when the
-    // configured .ico file is missing.
+    // MAKEINTRESOURCE(32512) — стандартная иконка приложения, запасной вариант, когда
+    // настроенного .ico-файла нет.
     public static readonly IntPtr IDI_APPLICATION = new(32512);
 
-    // ─── Functions with A/W variants need explicit W EntryPoint under LibraryImport ───
+    // ─── Функциям с вариантами A/W под LibraryImport нужен явный EntryPoint на W ───
 
     [LibraryImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -129,8 +134,8 @@ internal static partial class User32Native
     [LibraryImport("user32.dll", EntryPoint = "DefWindowProcW")]
     public static partial IntPtr DefWindowProc(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
-    // WNDCLASSEXW is blittable (see Structs.cs) so the generated stub can pass it by ref
-    // without a marshaller. Returns the class ATOM, 0 on failure.
+    // WNDCLASSEXW блиттируема (см. Structs.cs), поэтому сгенерированный stub передаёт её по
+    // ссылке без маршалера. Возвращает ATOM класса, при неудаче — 0.
     [LibraryImport("user32.dll", EntryPoint = "RegisterClassExW", SetLastError = true)]
     public static partial ushort RegisterClassEx(in WNDCLASSEXW lpwcx);
 
@@ -156,9 +161,10 @@ internal static partial class User32Native
     [LibraryImport("user32.dll", EntryPoint = "LoadIconW", SetLastError = true)]
     public static partial IntPtr LoadIcon(IntPtr hInstance, IntPtr lpIconName);
 
-    // Interns a message string into the system-wide message table; every caller passing the
-    // same string gets the same id. Used to listen for the shell's "TaskbarCreated"
-    // broadcast, which is how a tray owner learns Explorer restarted and its icon is gone.
+    // Регистрирует строку сообщения в общесистемной таблице; все, кто передал одну и ту же
+    // строку, получают один и тот же id. Нужна, чтобы слушать широковещательное сообщение
+    // оболочки «TaskbarCreated» — именно так владелец иконки в трее узнаёт, что Explorer
+    // перезапустился и его иконки больше нет.
     [LibraryImport("user32.dll", EntryPoint = "RegisterWindowMessageW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     public static partial uint RegisterWindowMessage(string lpString);
 
@@ -166,7 +172,7 @@ internal static partial class User32Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool AppendMenu(IntPtr hMenu, uint uFlags, UIntPtr uIDNewItem, string? lpNewItem);
 
-    // ─── Single-variant functions ───
+    // ─── Функции без вариантов A/W ───
 
     [LibraryImport("user32.dll", SetLastError = true)]
     public static partial uint SendInput(uint nInputs, [In] INPUT[] pInputs, int cbSize);
@@ -242,27 +248,28 @@ internal static partial class User32Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetMenuDefaultItem(IntPtr hMenu, uint uItem, uint fByPos);
 
-    // With TPM_RETURNCMD the return value IS the selected command id (0 = dismissed).
+    // С TPM_RETURNCMD возвращаемое значение И ЕСТЬ id выбранной команды (0 = меню закрыли
+    // без выбора).
     [LibraryImport("user32.dll", SetLastError = true)]
     public static partial int TrackPopupMenuEx(IntPtr hMenu, uint uFlags, int x, int y, IntPtr hwnd, IntPtr lptpm);
 
-    // ─── Low-level mouse hook ───
-    // SetWindowsHookEx with WH_MOUSE_LL is system-wide; the callback fires for every mouse
-    // event before any window sees it. Keep the callback short — long work blocks all
-    // mouse input across the system.
+    // ─── Низкоуровневый хук мыши ───
+    // SetWindowsHookEx с WH_MOUSE_LL работает на всю систему; колбэк срабатывает на каждое
+    // событие мыши раньше, чем его увидит хоть одно окно. Колбэк должен быть коротким —
+    // долгая работа в нём тормозит ввод мышью во всей системе.
     public delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
 
-    // Window procedure for our own message-only windows. Handed to RegisterClassEx as a
-    // raw function pointer via Marshal.GetFunctionPointerForDelegate — the caller MUST keep
-    // the delegate instance rooted for as long as the class stays registered, otherwise the
-    // GC collects the thunk out from under Windows.
+    // Оконная процедура для наших собственных окон только для сообщений. Передаётся в
+    // RegisterClassEx сырым указателем на функцию через
+    // Marshal.GetFunctionPointerForDelegate — вызывающий ОБЯЗАН удерживать экземпляр
+    // делегата живым всё время, пока класс зарегистрирован, иначе GC соберёт thunk прямо
+    // из-под Windows.
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     public delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
-    // SetWindowsHookEx itself doesn't have A/W variants in the same way — it's just one
-    // entry point, and the delegate marshalling requires the older [DllImport] surface
-    // (LibraryImport can't generate the function-pointer marshaller for a managed delegate
-    // type).
+    // У самой SetWindowsHookEx вариантов A/W в привычном смысле нет — это одна точка входа, а
+    // маршалинг делегата требует старой поверхности [DllImport] (LibraryImport не умеет
+    // генерировать маршалер указателя на функцию для управляемого типа-делегата).
     [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
 
@@ -276,9 +283,9 @@ internal static partial class User32Native
     [LibraryImport("user32.dll")]
     public static partial short GetAsyncKeyState(int vKey);
 
-    // LoadImage — reads .ico from disk into an HICON. EntryPoint W variant because the
-    // path is wide-char in Unicode builds. Returns IntPtr.Zero on failure (path missing,
-    // not an icon file, etc.); GetLastError gives detail.
+    // LoadImage — читает .ico с диска в HICON. Вариант EntryPoint на W, потому что в
+    // Unicode-сборках путь широкосимвольный. При неудаче возвращает IntPtr.Zero (пути нет,
+    // файл не иконка и т. п.); подробности даёт GetLastError.
     [LibraryImport("user32.dll", EntryPoint = "LoadImageW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     public static partial IntPtr LoadImage(IntPtr hInst, string name, uint type, int cx, int cy, uint fuLoad);
 

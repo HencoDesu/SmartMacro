@@ -1,208 +1,212 @@
 namespace SmartMacro.Contracts.Ipc;
 
 /// <summary>
-/// The complete protocol catalog: every legal value of <see cref="IpcRequest.Type"/> and
-/// <see cref="IpcEvent.Type"/>. Each constant documents its request payload and its
-/// response payload; "—" means the payload is <c>null</c>/absent.
+/// Полный каталог протокола: все допустимые значения <see cref="IpcRequest.Type"/> и
+/// <see cref="IpcEvent.Type"/>. У каждой константы описаны нагрузка запроса и нагрузка
+/// ответа; «—» означает, что нагрузка <c>null</c> или её нет.
 ///
-/// The names are the strings themselves so an unparsed line is still readable in a log.
+/// Имена совпадают с самими строками, чтобы неразобранная строка всё равно читалась в логе.
 ///
-/// Every constant here is live on both ends: each request type has a <c>case</c> in
-/// <c>IpcRequestDispatcher</c> (daemon) and a caller in <c>IpcClient</c> (panel); each event
-/// type has an <c>IpcServer</c> publisher and a panel subscriber. Adding a constant without
-/// wiring both ends is the thing to avoid — this catalog is the protocol, not a wish list.
+/// Каждая константа отсюда живая на обоих концах: у любого типа запроса есть <c>case</c> в
+/// <c>IpcRequestDispatcher</c> (демон) и вызывающий в <c>IpcClient</c> (панель); у любого типа
+/// события есть публикатор в <c>IpcServer</c> и подписчик в панели. Добавить константу, не
+/// подключив оба конца, — как раз то, чего делать не стоит: этот каталог и есть протокол, а не
+/// список пожеланий.
 /// </summary>
 public static class IpcMessageTypes
 {
-    // ---------------------------------------------------------------- requests: windows
+    // ---------------------------------------------------------------- запросы: окна
 
-    /// <summary>Request: — → Response: <c>WindowDto[]</c>. Snapshot of every tracked window with its tags.</summary>
+    /// <summary>Запрос: — → Ответ: <c>WindowDto[]</c>. Снимок всех отслеживаемых окон вместе с их тегами.</summary>
     public const string GetWindows = "GetWindows";
 
-    /// <summary>Request: <see cref="AddTagRequest"/> → Response: —. Manual tagging from the UI.</summary>
+    /// <summary>Запрос: <see cref="AddTagRequest"/> → Ответ: —. Ручное назначение тега из интерфейса.</summary>
     public const string AddTag = "AddTag";
 
-    /// <summary>Request: <see cref="RemoveTagRequest"/> → Response: —. Manual untagging from the UI.</summary>
+    /// <summary>Запрос: <see cref="RemoveTagRequest"/> → Ответ: —. Ручное снятие тега из интерфейса.</summary>
     public const string RemoveTag = "RemoveTag";
 
-    // ----------------------------------------------------------------- requests: macros
+    // ----------------------------------------------------------------- запросы: макросы
 
     /// <summary>
-    /// Request: <see cref="RunMacroRequest"/> → Response: —. Manual Run from the editor.
-    /// The daemon resolves the cursor context itself; the client sends no coordinates.
+    /// Запрос: <see cref="RunMacroRequest"/> → Ответ: —. Ручной запуск из редактора. Контекст
+    /// курсора демон определяет сам; клиент никаких координат не присылает.
     /// </summary>
     public const string RunMacro = "RunMacro";
 
     /// <summary>
-    /// Request: <see cref="StopMacroRequest"/> → Response: —. Cancels one tracked RUN — which
-    /// means every walk in it, including the nine siblings of a ten-window fan-out.
+    /// Запрос: <see cref="StopMacroRequest"/> → Ответ: —. Отменяет один отслеживаемый ПРОГОН,
+    /// а значит и каждый обход внутри него, включая девять «братьев» при разветвлении на
+    /// десять окон.
     ///
-    /// <b>This is also the debugger's ■ Стоп</b>, and it is the one debugger control that is
-    /// not per-walk. The asymmetry is deliberate: pause and step exist to look at ONE walk,
-    /// but nobody pressing stop while ten clients are being driven means "stop one of them".
-    /// The panel is required to LABEL it — the button says «■ Стоп ×3» when the selected
-    /// walk's run has three of them.
+    /// <b>Это же и кнопка «■ Стоп» отладчика</b> — единственный элемент управления отладчиком,
+    /// который работает не по обходу. Асимметрия намеренная: пауза и шаг существуют, чтобы
+    /// разглядывать ОДИН обход, но никто, нажимая «стоп» посреди работы с десятью клиентами,
+    /// не имеет в виду «останови один из них». Панель обязана это ПОДПИСАТЬ — кнопка пишет
+    /// «■ Стоп ×3», когда в прогоне выбранного обхода их три.
     /// </summary>
     public const string StopMacro = "StopMacro";
 
-    /// <summary>Request: — → Response: <c>RunningMacroDto[]</c>. Snapshot of the run registry.</summary>
+    /// <summary>Запрос: — → Ответ: <c>RunningMacroDto[]</c>. Снимок реестра прогонов.</summary>
     public const string GetRunningMacros = "GetRunningMacros";
 
-    /// <summary>Request: — → Response: <c>MacroGraph[]</c>. The whole macro library.</summary>
+    /// <summary>Запрос: — → Ответ: <c>MacroGraph[]</c>. Вся библиотека макросов.</summary>
     public const string GetMacros = "GetMacros";
 
     /// <summary>
-    /// Request: <see cref="SaveMacroRequest"/> → Response: <c>ValidationIssueDto[]</c>.
-    /// An EMPTY array means the graph was written; a non-empty one means it was rejected
-    /// and carries the reasons. Warnings alone do not block a save, so a rejection always
-    /// contains at least one <c>Error</c>.
+    /// Запрос: <see cref="SaveMacroRequest"/> → Ответ: <c>ValidationIssueDto[]</c>. ПУСТОЙ
+    /// массив означает, что граф записан; непустой — что его отвергли, и он несёт причины.
+    /// Одни предупреждения сохранение не блокируют, поэтому в отказе всегда есть хотя бы одна
+    /// <c>Error</c>.
     /// </summary>
     public const string SaveMacro = "SaveMacro";
 
-    /// <summary>Request: <see cref="DeleteMacroRequest"/> → Response: —. Deletes the macro file.</summary>
+    /// <summary>Запрос: <see cref="DeleteMacroRequest"/> → Ответ: —. Удаляет файл макроса.</summary>
     public const string DeleteMacro = "DeleteMacro";
 
     /// <summary>
-    /// Request: <see cref="SubscribeRunEventsRequest"/> → Response: <c>RunWalkDto[]</c>.
-    /// Turns the <see cref="RunEvents"/> stream on or off FOR THIS CONNECTION.
+    /// Запрос: <see cref="SubscribeRunEventsRequest"/> → Ответ: <c>RunWalkDto[]</c>. Включает
+    /// или выключает поток <see cref="RunEvents"/> ДЛЯ ЭТОГО СОЕДИНЕНИЯ.
     ///
-    /// <b>Opt-in on purpose.</b> With nobody subscribed the executor emits nothing at all —
-    /// no timing, no detail strings, no serialisation — so the resident daemon costs the
-    /// same whether or not a panel exists. This is the load-bearing half of the flooding
-    /// answer; the other half is that the events are batched (see <c>RunEventBatch</c>).
+    /// <b>Подписка по запросу — это принципиально.</b> Пока никто не подписан, исполнитель не
+    /// излучает вообще ничего: ни замеров времени, ни строк подробностей, ни сериализации, —
+    /// поэтому резидентный демон стоит одинаково независимо от того, есть панель или нет. Это
+    /// несущая половина ответа на вопрос «а не захлебнёмся ли»; вторая половина — что события
+    /// идут пачками (см. <c>RunEventBatch</c>).
     ///
-    /// The response is the set of walks ALREADY in flight, each with
-    /// <c>FromStart = false</c>: a subscriber that arrives mid-run has missed rows nobody
-    /// can reconstruct, and the protocol says so rather than letting the panel show a
-    /// partial log as a complete one. Subscriptions do NOT survive a reconnect — the
-    /// daemon forgets a connection's flag with the connection — so a client must re-send
-    /// this on every <c>Connected</c>.
+    /// В ответе — набор обходов, которые УЖЕ идут, у каждого <c>FromStart = false</c>:
+    /// подписчик, пришедший в середине прогона, пропустил строки, которых никто уже не
+    /// восстановит, и протокол об этом честно сообщает, а не даёт панели выдать неполный лог за
+    /// полный. Подписки переподключение НЕ переживают — демон забывает флаг соединения вместе с
+    /// самим соединением, — поэтому клиент обязан присылать этот запрос на каждый
+    /// <c>Connected</c>.
     /// </summary>
     public const string SubscribeRunEvents = "SubscribeRunEvents";
 
-    // -------------------------------------------------------------- requests: debugger
+    // -------------------------------------------------------------- запросы: отладчик
 
     /// <summary>
-    /// Request: <see cref="SetBreakpointsRequest"/> → Response: —. Replaces the breakpoint
-    /// set of ONE macro.
+    /// Запрос: <see cref="SetBreakpointsRequest"/> → Ответ: —. Заменяет набор точек останова
+    /// ОДНОГО макроса.
     ///
-    /// <b>Breakpoints live in the daemon's session, not in the macro file.</b> See
-    /// <c>MacroDebugSession</c> for the reasoning; the protocol consequences are that they
-    /// survive a panel restart (the daemon is resident), that they are lost when the daemon
-    /// exits, and that they never appear in a <c>SaveMacro</c> payload or in a git diff.
+    /// <b>Точки останова живут в сессии демона, а не в файле макроса.</b> Обоснование — в
+    /// <c>MacroDebugSession</c>; для протокола отсюда следует, что они переживают перезапуск
+    /// панели (демон резидентный), теряются при выходе из демона и никогда не появляются ни в
+    /// нагрузке <c>SaveMacro</c>, ни в git-диффе.
     ///
-    /// Settable while nothing is running — arming a breakpoint before pressing Run is the
-    /// normal way to use one.
+    /// Ставить их можно, когда ничего не запущено: взвести точку останова до нажатия «Запуск» —
+    /// это нормальный способ ими пользоваться.
     /// </summary>
     public const string SetBreakpoints = "SetBreakpoints";
 
     /// <summary>
-    /// Request: — → Response: <c>BreakpointSetDto[]</c>. Every macro that has breakpoints.
+    /// Запрос: — → Ответ: <c>BreakpointSetDto[]</c>. Все макросы, у которых есть точки останова.
     ///
-    /// A pull, like <see cref="GetHotkeyFailures"/> and for the same reason: the set only
-    /// changes when a panel changes it. Re-read on every <c>Connected</c>, which is what makes
-    /// a breakpoint survive the panel being closed and reopened.
+    /// Это вытягивание, как и <see cref="GetHotkeyFailures"/>, и по той же причине: набор
+    /// меняется только тогда, когда его меняет панель. Перечитывается на каждый
+    /// <c>Connected</c> — именно это и позволяет точке останова пережить закрытие и повторное
+    /// открытие панели.
     /// </summary>
     public const string GetBreakpoints = "GetBreakpoints";
 
     /// <summary>
-    /// Request: <see cref="DebugCommandRequest"/> → Response: <c>DebugAckDto</c>.
-    /// Pause / resume / step / run-to-node, addressed to ONE WALK.
+    /// Запрос: <see cref="DebugCommandRequest"/> → Ответ: <c>DebugAckDto</c>. Пауза /
+    /// продолжить / шаг / до ноды — адресованные ОДНОМУ ОБХОДУ.
     ///
-    /// <b>Requires the caller to be subscribed to <see cref="SubscribeRunEvents"/></b>, which
-    /// is also what keeps a paused walk from outliving its audience: the daemon counts run
-    /// event subscribers as attached debuggers, and the last one leaving releases every
-    /// parked walk. A walk parked with nobody watching would hold its macro's single-flight
-    /// slot — and therefore kill that macro's hotkey — until the daemon restarted.
+    /// <b>Требует, чтобы вызывающий был подписан на <see cref="SubscribeRunEvents"/></b>, — и
+    /// это же не даёт приостановленному обходу пережить свою аудиторию: демон считает
+    /// подписчиков на события прогона подключёнными отладчиками, и уход последнего отпускает
+    /// все припаркованные обходы. Обход, припаркованный, когда на него никто не смотрит, держал
+    /// бы single-flight-слот своего макроса — а значит, убил бы его горячую клавишу — до самого
+    /// перезапуска демона.
     /// </summary>
     public const string DebugCommand = "DebugCommand";
 
-    // --------------------------------------------------------------- requests: hotkeys
+    // --------------------------------------------------------------- запросы: горячие клавиши
 
     /// <summary>
-    /// Request: — → Response: —. Unregisters the daemon's global hotkeys so the editor's
-    /// hotkey picker can capture a chord instead of firing a macro with it.
+    /// Запрос: — → Ответ: —. Снимает регистрацию глобальных горячих клавиш демона, чтобы
+    /// «ловушка» горячих клавиш в редакторе могла поймать аккорд, а не запустить им макрос.
     /// </summary>
     public const string SuspendHotkeys = "SuspendHotkeys";
 
-    /// <summary>Request: — → Response: —. Re-registers the hotkeys suspended by <see cref="SuspendHotkeys"/>.</summary>
+    /// <summary>Запрос: — → Ответ: —. Заново регистрирует горячие клавиши, приостановленные через <see cref="SuspendHotkeys"/>.</summary>
     public const string ResumeHotkeys = "ResumeHotkeys";
 
     /// <summary>
-    /// Request: — → Response: <c>HotkeyFailureDto[]</c>. Chords the daemon has bound to a
-    /// macro but could not register with Win32, because something outside this application
-    /// owns them.
+    /// Запрос: — → Ответ: <c>HotkeyFailureDto[]</c>. Аккорды, к которым у демона привязан
+    /// макрос, но которые не удалось зарегистрировать в Win32, потому что ими владеет что-то
+    /// вне этого приложения.
     ///
-    /// A pull rather than a push, deliberately: the list only ever changes when the daemon
-    /// (re-)registers, and the panel is the thing that causes that — it re-fetches after
-    /// <see cref="ResumeHotkeys"/> completes, on <see cref="MacrosChanged"/>, and on every
-    /// reconnect. Adding an event type for a value nobody can change behind the panel's back
-    /// would be protocol for its own sake.
+    /// Намеренно вытягивание, а не пуш: список меняется исключительно тогда, когда демон
+    /// (пере)регистрирует клавиши, а причина этого — панель. Она перечитывает список после
+    /// завершения <see cref="ResumeHotkeys"/>, по <see cref="MacrosChanged"/> и на каждом
+    /// переподключении. Заводить тип события ради значения, которое никто не может поменять за
+    /// спиной у панели, — это протокол ради протокола.
     ///
-    /// While the panel holds hotkeys suspended the answer describes the LAST real
-    /// registration, which is the useful answer — see <c>IHotkeyRegistration.Failures</c>.
+    /// Пока панель держит горячие клавиши приостановленными, ответ описывает ПОСЛЕДНЮЮ
+    /// настоящую регистрацию, и это как раз полезный ответ — см. <c>IHotkeyRegistration.Failures</c>.
     /// </summary>
     public const string GetHotkeyFailures = "GetHotkeyFailures";
 
-    // ------------------------------------------------------------- requests: diagnostics
+    // ------------------------------------------------------------- запросы: диагностика
 
-    /// <summary>Request: — → Response: JSON string, the directory the captures were written to. Vision debugging.</summary>
+    /// <summary>Запрос: — → Ответ: строка JSON, каталог, куда записаны снимки. Отладка машинного зрения.</summary>
     public const string DumpCaptures = "DumpCaptures";
 
-    /// <summary>Request: — → Response: —. Orderly daemon shutdown; the reply is sent before the process exits.</summary>
+    /// <summary>Запрос: — → Ответ: —. Штатное завершение демона; ответ уходит до выхода из процесса.</summary>
     public const string Shutdown = "Shutdown";
 
-    // -------------------------------------------------------------- requests: lifecycle
+    // -------------------------------------------------------------- запросы: жизненный цикл
 
     /// <summary>
-    /// Request: — → Response: —. "Bring the panel to the front." The daemon answers by
-    /// broadcasting <see cref="ActivateWindow"/> to every client, INCLUDING the one that
-    /// asked — the sender is normally a second UI launch that is about to exit, and the
-    /// recipient is the panel already on screen.
+    /// Запрос: — → Ответ: —. «Выведи панель на передний план». Демон отвечает рассылкой
+    /// <see cref="ActivateWindow"/> всем клиентам, ВКЛЮЧАЯ спросившего: отправитель обычно —
+    /// второй запуск интерфейса, который вот-вот завершится, а получатель — панель, уже
+    /// открытая на экране.
     ///
-    /// It exists as a round trip through the daemon rather than as a direct
-    /// process-to-process poke because the second instance knows nothing about the first:
-    /// no window handle, no pid, only the pipe they share.
+    /// Это round trip через демона, а не прямой тычок из процесса в процесс, потому что второй
+    /// экземпляр не знает о первом ничего: ни хендла окна, ни pid — только общий канал.
     /// </summary>
     public const string RequestActivate = "RequestActivate";
 
-    // ------------------------------------------------------------------------- events
+    // ------------------------------------------------------------------------- события
 
-    /// <summary>Payload: <c>WindowDto</c>. A new window of a monitored process was registered.</summary>
+    /// <summary>Нагрузка: <c>WindowDto</c>. Зарегистрировано новое окно отслеживаемого процесса.</summary>
     public const string WindowAppeared = "WindowAppeared";
 
-    /// <summary>Payload: <c>WindowDto</c> (full new state, not a delta). The window's tag set changed.</summary>
+    /// <summary>Нагрузка: <c>WindowDto</c> (полное новое состояние, а не дельта). У окна изменился набор тегов.</summary>
     public const string WindowTagsChanged = "WindowTagsChanged";
 
-    /// <summary>Payload: <see cref="WindowClosedEvent"/>. The window is gone and its tags with it.</summary>
+    /// <summary>Нагрузка: <see cref="WindowClosedEvent"/>. Окна больше нет, и его тегов вместе с ним.</summary>
     public const string WindowClosed = "WindowClosed";
 
-    /// <summary>Payload: —. The macro library changed on disk; the client re-fetches with <see cref="GetMacros"/>.</summary>
+    /// <summary>Нагрузка: —. Библиотека макросов изменилась на диске; клиент перечитывает её через <see cref="GetMacros"/>.</summary>
     public const string MacrosChanged = "MacrosChanged";
 
-    /// <summary>Payload: <c>RunningMacroDto[]</c>. The run registry changed; carries the new snapshot.</summary>
+    /// <summary>Нагрузка: <c>RunningMacroDto[]</c>. Реестр прогонов изменился; событие несёт новый снимок.</summary>
     public const string RunningMacrosChanged = "RunningMacrosChanged";
 
     /// <summary>
-    /// Payload: <c>RunEventBatch</c>. What the executor did since the last flush — nodes
-    /// entered and left, walks started and finished.
+    /// Нагрузка: <c>RunEventBatch</c>. Что исполнитель успел сделать с прошлого сброса: в какие
+    /// ноды вошёл и из каких вышел, какие обходы начались и закончились.
     ///
-    /// Sent ONLY to connections that asked via <see cref="SubscribeRunEvents"/>, and only
-    /// in coalesced batches. Both properties are deliberate: this is the one event whose
-    /// natural rate (hundreds per second during a fan-out) exceeds what a per-connection
-    /// queue of 256 can absorb, and a dropped panel mid-run is precisely the failure the
-    /// user would be watching.
+    /// Уходит ТОЛЬКО тем соединениям, которые попросили через <see cref="SubscribeRunEvents"/>,
+    /// и только склеенными пачками. Оба свойства намеренные: это единственное событие, чья
+    /// естественная частота (сотни в секунду при разветвлении) превышает то, что способна
+    /// впитать очередь в 256 на соединение, а отключённая посреди прогона панель — ровно та
+    /// поломка, за которой пользователь в этот момент и наблюдал бы.
     ///
-    /// Also carries the debugger's <c>Paused</c> / <c>BreakpointHit</c> / <c>Resumed</c> and
-    /// the variables panel's <c>VariableSet</c>. The first three BYPASS the coalescing
-    /// window: a step that takes 50 ms longer than it had to feels like a stuck button, and
-    /// they are three events, not three hundred.
+    /// Здесь же едут отладочные <c>Paused</c> / <c>BreakpointHit</c> / <c>Resumed</c> и
+    /// <c>VariableSet</c> для панели переменных. Первые три ОБХОДЯТ окно склейки: шаг, который
+    /// занял на 50 мс больше, чем должен был, ощущается как залипшая кнопка, — а событий этих
+    /// три, а не триста.
     /// </summary>
     public const string RunEvents = "RunEvents";
 
     /// <summary>
-    /// Payload: —. Someone asked for the panel to come to the foreground: the tray's
-    /// "Открыть панель" when a panel is already running, or a second UI launch via
+    /// Нагрузка: —. Кто-то попросил вывести панель на передний план: пункт трея «Открыть
+    /// панель», когда панель уже запущена, или второй запуск интерфейса через
     /// <see cref="RequestActivate"/>.
     /// </summary>
     public const string ActivateWindow = "ActivateWindow";

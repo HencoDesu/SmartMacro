@@ -1,6 +1,6 @@
 namespace SmartMacro.Native.Hotkey;
 
-// Mirror of HotkeyDescriptor for mouse bindings: Id is the value Win32MouseHookMonitor
-// hands back on a match so the consumer can resolve it to its own meaning. Modifiers
-// must all be held at the moment the mouse button goes down for the binding to fire.
+// Зеркало HotkeyDescriptor для мышиных привязок: Id — значение, которое Win32MouseHookMonitor
+// возвращает при совпадении, чтобы потребитель сопоставил его со своим смыслом. Чтобы
+// привязка сработала, все модификаторы должны быть зажаты в момент нажатия кнопки мыши.
 public sealed record MouseHookBinding(int Id, HotkeyModifiers Modifiers, MouseButton Button);

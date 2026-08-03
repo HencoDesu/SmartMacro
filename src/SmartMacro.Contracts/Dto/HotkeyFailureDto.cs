@@ -3,20 +3,21 @@ using SmartMacro.Native;
 namespace SmartMacro.Contracts.Dto;
 
 /// <summary>
-/// One chord the daemon has a macro bound to but could NOT register with Win32
-/// <c>RegisterHotKey</c> — because some other application, or the shell itself, already
-/// owns that combination system-wide.
+/// Один аккорд, к которому у демона привязан макрос, но зарегистрировать его через Win32
+/// <c>RegisterHotKey</c> НЕ вышло — потому что этой комбинацией системно уже владеет другое
+/// приложение или сама оболочка.
 ///
-/// This exists because the failure is otherwise invisible from the panel: the daemon logs a
-/// warning to a file the pipe never carries, and the user is left with a hotkey that looks
-/// bound in the editor and does nothing at all when pressed. It is a DIFFERENT failure from
-/// the editor's own conflict check ("this chord is already a trigger of pw-immunity"), which
-/// the panel answers on its own from the library — only the daemon can see this one.
+/// Тип существует потому, что иначе такая неудача из панели вообще не видна: демон пишет
+/// предупреждение в файл, который по трубе не передаётся, а пользователь остаётся с горячей
+/// клавишей, которая в редакторе выглядит привязанной и при нажатии не делает ровным счётом
+/// ничего. Это ДРУГАЯ неудача, не та, что ловит собственная проверка конфликтов в редакторе
+/// («этот аккорд уже триггер у pw-immunity»): на ту панель отвечает сама, по библиотеке, — а
+/// эту видит только демон.
 ///
-/// Mouse chords never appear here: they ride a low-level hook rather than
-/// <c>RegisterHotKey</c> and have no registration to lose.
+/// Мышиные аккорды сюда не попадают никогда: они едут через низкоуровневый хук, а не через
+/// <c>RegisterHotKey</c>, и терять им нечего — регистрации у них нет.
 /// </summary>
-/// <param name="MacroName">Macro whose <c>HotkeyTrigger</c> was rejected.</param>
-/// <param name="Modifiers">Modifier flags of the rejected chord.</param>
-/// <param name="Key">Main key of the rejected chord.</param>
+/// <param name="MacroName">Макрос, чей <c>HotkeyTrigger</c> отвергли.</param>
+/// <param name="Modifiers">Флаги модификаторов отвергнутого аккорда.</param>
+/// <param name="Key">Основная клавиша отвергнутого аккорда.</param>
 public sealed record HotkeyFailureDto(string MacroName, HotkeyModifiers Modifiers, VirtualKey Key);

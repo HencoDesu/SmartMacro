@@ -3,60 +3,61 @@ using SmartMacro.Macros.Model;
 namespace SmartMacro.Macros.Analysis;
 
 /// <summary>
-/// The field a variable is written to or read from. Symbolic, never Russian — same rule as
-/// <c>RunOutcomes</c>: the daemon and the analyser name the slot, the panel owns the wording
-/// («в пути к иконке») and the colour.
+/// Поле, в которое переменную пишут или из которого читают. Символьное, никогда не русское, —
+/// то же правило, что у <c>RunOutcomes</c>: демон и анализатор называют слот, а формулировка
+/// («в пути к иконке») и цвет принадлежат панели.
 /// </summary>
 public enum VariableSlot
 {
-    /// <summary>Written: the match centre of a <c>FindElement</c> / <c>WaitForElement</c>.</summary>
+    /// <summary>Запись: центр совпадения у <c>FindElement</c> / <c>WaitForElement</c>.</summary>
     FoundPointVar,
 
-    /// <summary>Written: the winning template name of a <c>RecognizeTag</c>.</summary>
+    /// <summary>Запись: имя победившего шаблона у <c>RecognizeTag</c>.</summary>
     ResultVar,
 
-    /// <summary>Read: <c>ClickNode.PointVar</c>, the only non-interpolating read in the model.</summary>
+    /// <summary>Чтение: <c>ClickNode.PointVar</c> — единственное чтение в модели, идущее не через подстановку.</summary>
     PointVar,
 
-    /// <summary>Read: <c>{var}</c> inside <c>AddTag</c> / <c>RemoveTag</c>'s tag.</summary>
+    /// <summary>Чтение: <c>{var}</c> внутри тега у <c>AddTag</c> / <c>RemoveTag</c>.</summary>
     Tag,
 
-    /// <summary>Read: <c>{var}</c> inside <c>SetIcon</c>'s path.</summary>
+    /// <summary>Чтение: <c>{var}</c> внутри пути у <c>SetIcon</c>.</summary>
     IconPath,
 
-    /// <summary>Read: <c>{var}</c> inside <c>RunMacro</c>'s macro name.</summary>
+    /// <summary>Чтение: <c>{var}</c> внутри имени макроса у <c>RunMacro</c>.</summary>
     MacroName,
 }
 
-/// <summary>What a variable holds, as far as the graph alone can tell.</summary>
+/// <summary>Что лежит в переменной — насколько об этом можно судить по одному только графу.</summary>
 public enum VariableKind
 {
-    /// <summary>Nothing in the graph pins it down: it is only ever interpolated into a string.</summary>
+    /// <summary>Граф ничего не уточняет: переменную только подставляют в строку, и всё.</summary>
     Unknown,
 
-    /// <summary>A screen point — <c>cursor</c>, a <c>FoundPointVar</c>, or something a <c>PointVar</c> reads.</summary>
+    /// <summary>Экранная точка — <c>cursor</c>, какой-нибудь <c>FoundPointVar</c> или то, что читает <c>PointVar</c>.</summary>
     Point,
 
-    /// <summary>A string — the tag a <c>RecognizeTag</c> wrote.</summary>
+    /// <summary>Строка — тег, который записала <c>RecognizeTag</c>.</summary>
     Text,
 }
 
-/// <summary>One place a variable is touched.</summary>
-/// <param name="NodeId">Node doing the touching.</param>
-/// <param name="Slot">Which field of that node.</param>
+/// <summary>Одно место, где переменную трогают.</summary>
+/// <param name="NodeId">Нода, которая её трогает.</param>
+/// <param name="Slot">Какое именно поле этой ноды.</param>
 public sealed record VariableReference(string NodeId, VariableSlot Slot);
 
 /// <summary>
-/// Everything the graph says about one variable: who writes it, who reads it, what it holds.
+/// Всё, что граф говорит об одной переменной: кто её пишет, кто читает, что в ней лежит.
 /// </summary>
-/// <param name="Name">Variable name, as written between the braces. Case-sensitive.</param>
-/// <param name="Kind">Inferred from the WRITE when there is one, otherwise from the reads.</param>
+/// <param name="Name">Имя переменной ровно в том виде, в каком оно написано между фигурными скобками. Регистр важен.</param>
+/// <param name="Kind">Выводится из ЗАПИСИ, если она есть, иначе — из чтений.</param>
 /// <param name="SeededByTrigger">
-/// <c>true</c> only for <see cref="MacroVariableNames.Cursor"/> — the one variable no node
-/// writes and every run has. The panel renders it as «пишет: триггер (сид)».
+/// <c>true</c> только для <see cref="MacroVariableNames.Cursor"/> — единственной переменной,
+/// которую не пишет ни одна нода и которая есть в каждом прогоне. Панель показывает её как
+/// «пишет: триггер (сид)».
 /// </param>
-/// <param name="Writes">Nodes that assign it, in graph order. Empty for the trigger seed.</param>
-/// <param name="Reads">Nodes that consume it, in graph order.</param>
+/// <param name="Writes">Ноды, которые ей присваивают, в порядке следования в графе. Для сида от триггера — пусто.</param>
+/// <param name="Reads">Ноды, которые её потребляют, в порядке следования в графе.</param>
 public sealed record MacroVariableInfo(
     string Name,
     VariableKind Kind,
@@ -65,45 +66,47 @@ public sealed record MacroVariableInfo(
     IReadOnlyList<VariableReference> Reads)
 {
     /// <summary>
-    /// <c>false</c> when a node reads a variable nothing ever assigns — at run time that is
-    /// an aborted run, not a blank substitution (spec §5.3).
+    /// <c>false</c>, когда нода читает переменную, которой ничто и никогда не присваивает
+    /// значение, — в рантайме это прерванный прогон, а не подстановка пустой строки
+    /// (spec §5.3).
     /// </summary>
     public bool IsDefined => SeededByTrigger || Writes.Count > 0;
 
-    /// <summary><c>false</c> for a variable written and never used.</summary>
+    /// <summary><c>false</c> у переменной, которую записали и ни разу не использовали.</summary>
     public bool IsRead => Reads.Count > 0;
 }
 
 /// <summary>
-/// Static "who writes / who reads" over a macro graph — the data behind the variables panel
-/// of mockup 1d.
+/// Статический разбор «кто пишет / кто читает» по графу макроса — данные, на которых стоит
+/// панель переменных из макета 1d.
 ///
-/// <b>Pure, and deliberately in Contracts.</b> It needs the model and nothing else: no
-/// registry, no file IO, no running walk. That makes it testable on its own (which is where
-/// its bugs would be) and usable by the panel, which has no reference to Core and never will.
-/// The live VALUE of a variable is a separate concern and arrives over the run-event stream
-/// as <c>RunEventKind.VariableSet</c>; this class only knows the shape of the graph.
+/// <b>Чистая функция и намеренно в Contracts.</b> Ей нужна только модель и больше ничего: ни
+/// реестра, ни файлового ввода-вывода, ни идущего обхода. Это делает её тестируемой саму по
+/// себе (а именно там её ошибки и жили бы) и пригодной для панели, у которой ссылки на Core
+/// нет и не будет. Живое ЗНАЧЕНИЕ переменной — отдельная забота, оно приезжает потоком событий
+/// прогона как <c>RunEventKind.VariableSet</c>; этот класс знает только форму графа.
 ///
-/// <b>The write set is closed and tiny by design</b> (spec §5.3, §14): the trigger seeds
-/// <c>cursor</c>, and conditional nodes write <c>FoundPointVar</c> / <c>ResultVar</c>. There
-/// is no <c>SetVariableNode</c> and there will not be one, so this analysis cannot go stale
-/// by missing a writer that someone added later — a new writer would be a new node type,
-/// which lands in <see cref="Collect"/>'s switch as a compile-time-visible gap.
+/// <b>Множество пишущих по замыслу закрыто и крошечно</b> (spec §5.3, §14): триггер засевает
+/// <c>cursor</c>, условные ноды пишут <c>FoundPointVar</c> / <c>ResultVar</c>. Никакой
+/// <c>SetVariableNode</c> не существует и не появится, поэтому анализ не может протухнуть,
+/// прозевав пишущего, которого кто-то добавил позже: новый пишущий был бы новым типом ноды, а
+/// тот попадает в switch внутри <see cref="Collect"/> как заметная на компиляции дыра.
 /// </summary>
 public static class MacroVariableAnalysis
 {
     /// <summary>
-    /// Analyses one graph.
+    /// Разбирает один граф.
     ///
-    /// Always contains <see cref="MacroVariableNames.Cursor"/>, whether or not the graph
-    /// mentions it: every run has one, and a panel that only listed mentioned variables would
-    /// hide the single value that is always available to click into a node.
+    /// Всегда содержит <see cref="MacroVariableNames.Cursor"/> независимо от того, упоминает
+    /// ли его граф: он есть в каждом прогоне, а панель, перечисляющая только упомянутые
+    /// переменные, спрятала бы единственное значение, которое всегда доступно, чтобы вставить
+    /// его в ноду.
     /// </summary>
     /// <returns>
-    /// One entry per variable. Ordered so the ones a node WRITES come first, in the order
-    /// their writer appears in <see cref="MacroGraph.Nodes"/>, then the read-only ones —
-    /// which puts the interesting one at the top and <c>cursor</c> at the bottom for the
-    /// typical identify-and-tag graph.
+    /// По записи на переменную. Порядок такой, что сперва идут те, которые нода ПИШЕТ, — в том
+    /// порядке, в каком их писатель встречается в <see cref="MacroGraph.Nodes"/>, — а затем
+    /// только читаемые. Для типичного графа «опознать и повесить тег» это поднимает наверх
+    /// самое интересное, а <c>cursor</c> опускает вниз.
     /// </returns>
     public static IReadOnlyList<MacroVariableInfo> Analyze(MacroGraph macro)
     {
@@ -116,8 +119,9 @@ public static class MacroVariableAnalysis
             Collect(macro.Nodes[index], index, found);
         }
 
-        // The trigger seed. Added last so a graph that also READS it has already recorded
-        // the read (and its ordinal) — this only supplies the "written by the trigger" half.
+        // Сид от триггера. Добавляем последним, чтобы граф, который его ещё и ЧИТАЕТ, успел
+        // записать это чтение (и его порядковый номер): здесь мы дописываем только половинку
+        // «пишет триггер».
         var cursor = Get(found, MacroVariableNames.Cursor, order: macro.Nodes.Count);
         cursor.SeededByTrigger = true;
         cursor.Kind = VariableKind.Point;
@@ -138,8 +142,8 @@ public static class MacroVariableAnalysis
     }
 
     /// <summary>
-    /// Variable names interpolated into <paramref name="template"/>, in order, without
-    /// duplicates. Uses the SAME regex the executor substitutes with — see
+    /// Имена переменных, подставляемых в <paramref name="template"/>, по порядку и без
+    /// повторов. Использует ТУ ЖЕ регулярку, которой подставляет исполнитель, — см.
     /// <see cref="MacroVariableNames.Placeholder"/>.
     /// </summary>
     public static IReadOnlyList<string> PlaceholdersIn(string? template)
@@ -152,7 +156,7 @@ public static class MacroVariableAnalysis
         List<string>? names = null;
         foreach (var match in MacroVariableNames.Placeholder().EnumerateMatches(template))
         {
-            // EnumerateMatches gives no groups, so the name is the span minus the braces.
+            // EnumerateMatches групп не отдаёт, поэтому имя — это диапазон минус фигурные скобки.
             var name = template.Substring(match.Index + 1, match.Length - 2);
             names ??= [];
             if (!names.Contains(name, StringComparer.Ordinal))
@@ -167,7 +171,7 @@ public static class MacroVariableAnalysis
     {
         switch (node)
         {
-            // ---- writers: the closed set of spec §5.3 -----------------------------------
+            // ---- пишущие: закрытый набор из spec §5.3 -----------------------------------
 
             case FindElementNode n:
                 Write(found, n.FoundPointVar, node.Id, VariableSlot.FoundPointVar, VariableKind.Point, order);
@@ -181,10 +185,10 @@ public static class MacroVariableAnalysis
                 Write(found, n.ResultVar, node.Id, VariableSlot.ResultVar, VariableKind.Text, order);
                 break;
 
-            // ---- readers ----------------------------------------------------------------
+            // ---- читающие ---------------------------------------------------------------
 
             case ClickNode n:
-                // The only read that names a variable outright rather than interpolating it.
+                // Единственное чтение, которое называет переменную прямо, а не подставляет её.
                 Read(found, n.PointVar, node.Id, VariableSlot.PointVar, VariableKind.Point, order);
                 break;
 
@@ -205,8 +209,8 @@ public static class MacroVariableAnalysis
                 break;
 
             default:
-                // KeyPressNode and DelayNode touch no variables. A NEW node type lands here
-                // silently, which is the one thing to remember when the catalogue grows.
+                // KeyPressNode и DelayNode переменных не касаются. НОВЫЙ тип ноды попадёт сюда
+                // молча — единственное, о чём стоит помнить, когда каталог разрастётся.
                 break;
         }
     }
@@ -220,7 +224,7 @@ public static class MacroVariableAnalysis
     {
         foreach (var name in PlaceholdersIn(template))
         {
-            // Interpolation says nothing about the type — everything has a DisplayString.
+            // Подстановка о типе не говорит ничего — строковое представление есть у всего.
             Read(found, name, nodeId, slot, VariableKind.Unknown, order);
         }
     }
@@ -239,7 +243,7 @@ public static class MacroVariableAnalysis
         }
         var entry = Get(found, name, order);
         entry.Writes.Add(new VariableReference(nodeId, slot));
-        // A write is authoritative about the type; a read only guesses.
+        // Запись о типе говорит достоверно; чтение — только догадывается.
         entry.Kind = kind;
     }
 
@@ -273,12 +277,12 @@ public static class MacroVariableAnalysis
         return entry;
     }
 
-    // Mutable while collecting; projected to the immutable record at the end.
+    // Мутабельно, пока идёт сбор; в конце проецируется в неизменяемую запись.
     private sealed class Entry(string name, int order)
     {
         public string Name { get; } = name;
 
-        /// <summary>Index of the node that first mentioned it — the display order.</summary>
+        /// <summary>Индекс ноды, которая упомянула переменную первой, — он же порядок показа.</summary>
         public int Order { get; } = order;
 
         public VariableKind Kind { get; set; } = VariableKind.Unknown;

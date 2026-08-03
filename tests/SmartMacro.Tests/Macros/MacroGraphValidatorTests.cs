@@ -69,7 +69,7 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.Message.Contains("Duplicate"))).IsTrue();
+        await Assert.That(Errors(issues).Any(i => i.Message.Contains("Дубликат"))).IsTrue();
     }
 
     [Test]
@@ -94,7 +94,7 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.NodeId == "c" && i.Message.Contains("exactly one"))).IsTrue();
+        await Assert.That(Errors(issues).Any(i => i.NodeId == "c" && i.Message.Contains("ровно одно"))).IsTrue();
     }
 
     [Test]
@@ -105,7 +105,7 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.NodeId == "c" && i.Message.Contains("exactly one"))).IsTrue();
+        await Assert.That(Errors(issues).Any(i => i.NodeId == "c" && i.Message.Contains("ровно одно"))).IsTrue();
     }
 
     [Test]
@@ -116,7 +116,7 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.NodeId == "f" && i.Message.Contains("context"))).IsTrue();
+        await Assert.That(Errors(issues).Any(i => i.NodeId == "f" && i.Message.Contains("контекстное окно"))).IsTrue();
     }
 
     [Test]
@@ -138,7 +138,7 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.NodeId == "k" && i.Message.Contains("context"))).IsTrue();
+        await Assert.That(Errors(issues).Any(i => i.NodeId == "k" && i.Message.Contains("контекстное окно"))).IsTrue();
     }
 
     // W0.2b relaxation: a graph with NO triggers can only be entered via RunMacroNode or
@@ -177,7 +177,7 @@ public class MacroGraphValidatorTests
         var triggered = Graph("k", [Hotkey], nodes);
 
         await Assert.That(Errors(MacroGraphValidator.Validate(libraryOnly))).Count().IsEqualTo(0);
-        await Assert.That(Errors(MacroGraphValidator.Validate(triggered)).Any(i => i.Message.Contains("context"))).IsTrue();
+        await Assert.That(Errors(MacroGraphValidator.Validate(triggered)).Any(i => i.Message.Contains("контекстное окно"))).IsTrue();
     }
 
     [Test]
@@ -192,7 +192,7 @@ public class MacroGraphValidatorTests
         await Assert.That(Errors(issues)).Count().IsEqualTo(0);
         var unreachable = Warnings(issues).Where(i => i.NodeId == "f").ToList();
         await Assert.That(unreachable).Count().IsEqualTo(1);
-        await Assert.That(unreachable[0].Message).Contains("unreachable");
+        await Assert.That(unreachable[0].Message).Contains("недостижима");
     }
 
     [Test]
@@ -204,7 +204,7 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Warnings(issues).Any(i => i.NodeId == "остров" && i.Message.Contains("unreachable"))).IsTrue();
+        await Assert.That(Warnings(issues).Any(i => i.NodeId == "остров" && i.Message.Contains("недостижима"))).IsTrue();
     }
 
     [Test]
@@ -216,7 +216,7 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Warnings(issues).Any(i => i.Message.Contains("hot loop"))).IsTrue();
+        await Assert.That(Warnings(issues).Any(i => i.Message.Contains("вхолостую"))).IsTrue();
     }
 
     [Test]
@@ -227,7 +227,7 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Warnings(issues).Any(i => i.Message.Contains("hot loop"))).IsTrue();
+        await Assert.That(Warnings(issues).Any(i => i.Message.Contains("вхолостую"))).IsTrue();
     }
 
     [Test]

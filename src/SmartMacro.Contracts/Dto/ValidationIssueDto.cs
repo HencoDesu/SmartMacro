@@ -3,30 +3,31 @@ using SmartMacro.Macros.Validation;
 namespace SmartMacro.Contracts.Dto;
 
 /// <summary>
-/// Wire form of a <see cref="ValidationIssue"/>. <see cref="Severity"/> is a plain string
-/// rather than the enum so that a daemon which learns a new severity doesn't break an
-/// older UI on deserialization — the UI renders unknown severities verbatim.
+/// Проводная форма <see cref="ValidationIssue"/>. <see cref="Severity"/> — обычная строка, а
+/// не перечисление, чтобы демон, научившийся новой степени серьёзности, не ломал на
+/// десериализации более старый интерфейс: незнакомые значения интерфейс просто показывает как
+/// есть.
 /// </summary>
-/// <param name="Severity">Severity name, e.g. <c>"Warning"</c> / <c>"Error"</c>.</param>
-/// <param name="NodeId">The offending node, or <c>null</c> for graph-level issues.</param>
-/// <param name="Message">Human-readable description.</param>
+/// <param name="Severity">Имя степени серьёзности, например <c>"Warning"</c> / <c>"Error"</c>.</param>
+/// <param name="NodeId">Провинившаяся нода или <c>null</c> для проблем уровня всего графа.</param>
+/// <param name="Message">Человекочитаемое описание.</param>
 public sealed record ValidationIssueDto(string Severity, string? NodeId, string Message);
 
 /// <summary>
-/// Mapping between <see cref="ValidationIssue"/> and <see cref="ValidationIssueDto"/>.
-/// Lives in Contracts (unlike the window/run mappers, which have to live in Core) because
-/// both sides of this conversion are Contracts types.
+/// Отображение между <see cref="ValidationIssue"/> и <see cref="ValidationIssueDto"/>. Живёт
+/// в Contracts (в отличие от мапперов окон и прогонов, которым положено жить в Core), потому
+/// что обе стороны этого преобразования — типы из Contracts.
 /// </summary>
 public static class ValidationIssueDtoMappers
 {
-    /// <summary>Projects a validation issue onto its wire form.</summary>
+    /// <summary>Проецирует проблему валидации в её проводную форму.</summary>
     public static ValidationIssueDto ToDto(this ValidationIssue issue)
     {
         ArgumentNullException.ThrowIfNull(issue);
         return new ValidationIssueDto(issue.Severity.ToString(), issue.NodeId, issue.Message);
     }
 
-    /// <summary>Projects a list of validation issues onto their wire form.</summary>
+    /// <summary>Проецирует список проблем валидации в их проводную форму.</summary>
     public static IReadOnlyList<ValidationIssueDto> ToDto(this IEnumerable<ValidationIssue> issues)
     {
         ArgumentNullException.ThrowIfNull(issues);
@@ -34,10 +35,10 @@ public static class ValidationIssueDtoMappers
     }
 
     /// <summary>
-    /// Parses a wire issue back into the domain type. An unrecognized
-    /// <see cref="ValidationIssueDto.Severity"/> is read as
-    /// <see cref="ValidationSeverity.Error"/> — an issue we can't classify is the one we
-    /// least want to silently downgrade to a warning.
+    /// Разбирает проводную проблему обратно в доменный тип. Незнакомая
+    /// <see cref="ValidationIssueDto.Severity"/> читается как
+    /// <see cref="ValidationSeverity.Error"/>: проблему, которую мы не смогли
+    /// классифицировать, меньше всего хочется молча понизить до предупреждения.
     /// </summary>
     public static ValidationIssue ToIssue(this ValidationIssueDto dto)
     {

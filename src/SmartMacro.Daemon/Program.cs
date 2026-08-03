@@ -20,26 +20,27 @@ using SmartMacro.Windows;
 
 namespace SmartMacro.Daemon;
 
-// The resident half of SmartMacro: a windowless WinExe that hosts the whole engine —
-// process monitoring, the macro library, hotkey registration, vision, input dispatch — plus
-// a Win32 tray icon. No Avalonia, no XAML, no render loop; the UI is a separate process the
-// tray launches on demand and the user can close again without stopping automation.
+// Резидентная половина SmartMacro: WinExe без окон, в котором живёт весь движок — слежение за
+// процессами, библиотека макросов, регистрация горячих клавиш, машинное зрение, отправка
+// ввода — плюс иконка в трее на голом Win32. Ни Avalonia, ни XAML, ни цикла отрисовки;
+// интерфейс — отдельный процесс, который трей запускает по требованию и который пользователь
+// может закрыть, не останавливая автоматизацию.
 //
-// This is the ONLY process that hosts an engine. Stage 3 stripped SmartMacro.App down to an
-// IPC client with no SmartMacro.Core reference at all, which retired the stage-2A hazard of
-// two composition roots fighting over RegisterHotKey, the mouse hook and the game windows.
+// Это ЕДИНСТВЕННЫЙ процесс, в котором живёт движок. Стадия 3 ужала SmartMacro.App до
+// IPC-клиента вообще без ссылки на SmartMacro.Core, чем сняла опасность стадии 2A — два корня
+// композиции, дерущиеся за RegisterHotKey, хук мыши и окна игры.
 //
-// The control endpoint is the whole interface: IpcServer listens on the named pipe
-// "smartmacro-control" (JSON Lines, multi-client) and exposes the engine to the panel —
-// window/tag snapshots and pushes, macro CRUD and runs, hotkey suspend/resume, capture
-// dumps, activate-the-panel, shutdown. Anything the UI needs is a message type here, not a
-// second copy of the engine there.
+// Управляющая точка и есть весь интерфейс: IpcServer слушает named pipe «smartmacro-control»
+// (JSON Lines, много клиентов) и открывает движок панели — снимки окон и тегов и пуши о них,
+// CRUD и запуск макросов, приостановка и возобновление горячих клавиш, сброс снимков экрана,
+// «выведи панель на передний план», завершение работы. Всё, что нужно интерфейсу, — это тип
+// сообщения здесь, а не вторая копия движка там.
 internal static class Program
 {
     public static int Main(string[] args)
     {
-        // Claim single-instance BEFORE anything expensive: a second daemon would double every
-        // global side effect this process has (hotkeys, hooks, input).
+        // Заявляем права единственного экземпляра ДО всего дорогого: второй демон удвоил бы
+        // каждый глобальный побочный эффект этого процесса (горячие клавиши, хуки, ввод).
         using var instance = SingleInstanceGuard.TryAcquire(SingleInstanceGuard.DaemonMutexName);
 
         var bootstrapConfiguration = new ConfigurationBuilder()
@@ -97,31 +98,31 @@ internal static class Program
     private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<AgentOptions>(configuration.GetSection("Agent"));
-        // "ProcessProfiles" is a raw JSON array, so bind it into the wrapper's list.
+        // «ProcessProfiles» — голый массив JSON, поэтому привязываем его к списку внутри обёртки.
         services.AddOptions<ProcessProfileOptions>()
             .Configure(options => configuration.GetSection(ProcessProfileOptions.SectionName).Bind(options.Profiles));
         services.Configure<ClassMatcherOptions>(configuration.GetSection("Vision:ClassMatcher"));
         services.Configure<WindowVisionOptions>(configuration.GetSection("Vision:Window"));
 
-        // GameWindowFactory bakes in the input-strategy choice (PostMessage + WM_ACTIVATEAPP
-        // wake-up) so neither DI nor the orchestrator has to know about Native types.
-        // Win32NativeWindowSystem is a static class — no DI registration needed.
+        // GameWindowFactory зашивает в себя выбор стратегии ввода (PostMessage + пробуждение
+        // через WM_ACTIVATEAPP), чтобы ни DI, ни оркестратору не нужно было знать о типах из
+        // Native. Win32NativeWindowSystem — статический класс, регистрировать в DI нечего.
         services.AddSingleton<IGameWindowFactory, GameWindowFactory>();
 
-        // Sole owner of window tags AND the hwnd → IGameWindow lookup — everything
-        // (agents, macro primitives, and from stage 2B the IPC layer) reads window state
-        // from here.
+        // Единственный владелец тегов окон И поиска hwnd → IGameWindow: всё остальное —
+        // агенты, примитивы макросов, а со стадии 2B и слой IPC — читает состояние окон
+        // отсюда.
         services.AddSingleton<WindowRegistry>();
 
         services.AddSingleton<IClassMatcher, ClassMatcher>();
         services.AddSingleton<TemplateSetProvider>();
-        // NOTE: ICoordinateReader/TesseractCoordinateReader is deliberately NOT registered
-        // (stage 4B). Nothing in the daemon injects it, and its constructor eagerly opens a
-        // TesseractEngine — so the registration only ever cost a leptonica+tesseract native
-        // load and a 4 MB eng.traineddata read to the first component that asked for it. The
-        // reader itself is parked for future stuck-detection work and still runs under
-        // tools/VisionSampleRunner; un-parking it means restoring this line AND dropping the
-        // PrivateAssets guard on the Tesseract package in SmartMacro.Core.csproj.
+        // ВНИМАНИЕ: ICoordinateReader/TesseractCoordinateReader намеренно НЕ регистрируется
+        // (стадия 4B). В демоне его никто не внедряет, а конструктор жадно открывает
+        // TesseractEngine — то есть регистрация стоила бы первому же запросившему компоненту
+        // загрузки нативных leptonica и tesseract плюс чтения 4 МБ eng.traineddata. Сам
+        // читатель отложен до будущей работы над детектом застреваний и по-прежнему
+        // запускается в tools/VisionSampleRunner; расконсервировать его — значит вернуть эту
+        // строку И снять защиту PrivateAssets с пакета Tesseract в SmartMacro.Core.csproj.
         services.AddSingleton<WindowIconService>();
         services.AddSingleton<AgentInputDispatcher>();
         services.AddSingleton<CursorPositionProvider>();
@@ -129,77 +130,79 @@ internal static class Program
         services.AddSingleton<Win32HotkeyMonitor>();
         services.AddSingleton<Win32MouseHookMonitor>();
 
-        // Macro engine. The store is the library of record: it resolves sub-macros for
-        // RunMacroNode, supplies HotkeyListener's bindings, and tells the orchestrator
-        // which graphs a new process should boot. On first run it migrates a legacy
-        // macros.json and/or seeds the PW example set.
+        // Движок макросов. Хранилище — библиотека-первоисточник: оно разрешает подмакросы для
+        // RunMacroNode, снабжает HotkeyListener привязками и подсказывает оркестратору, какие
+        // графы должен «загрузить» новый процесс. При первом запуске оно мигрирует старый
+        // macros.json и/или засевает набор примеров для PW.
         services.AddSingleton<MacroGraphStore>();
         services.AddSingleton<IMacroGraphResolver>(sp => sp.GetRequiredService<MacroGraphStore>());
         services.AddSingleton<IMacroPrimitives, MacroPrimitives>();
         services.AddSingleton<MacroExecutor>();
         services.AddSingleton<MacroRunRegistry>();
 
-        // Wave D3b: the executor's progress channel. Registered before Orchestrator because
-        // Orchestrator takes it as an optional dependency and puts it in every run context.
-        // It is inert until a panel subscribes — see the class comment for why that matters
-        // to a daemon that spends most of its life with no UI attached.
+        // Волна D3b: канал прогресса исполнителя. Регистрируется до Orchestrator, потому что
+        // тот берёт его необязательной зависимостью и кладёт в каждый контекст прогона. Он
+        // инертен, пока панель не подпишется, — почему это важно демону, который бо́льшую часть
+        // жизни проводит без подключённого интерфейса, см. в комментарии к классу.
         services.AddSingleton<RunEventPublisher>();
         services.AddSingleton<IMacroRunObserver>(sp => sp.GetRequiredService<RunEventPublisher>());
 
-        // Wave D5: the debugger's control channel, the sibling of the publisher's reporting
-        // one. Also inert until a panel attaches — and attaching is the SAME edge as
-        // subscribing to run events (see IpcServer.ClientConnection), which is what keeps a
-        // paused walk from outliving the only process that could resume it.
+        // Волна D5: управляющий канал отладчика — брат-близнец отчётного канала публикатора.
+        // Тоже инертен, пока не подключится панель, — а подключение здесь ТО ЖЕ САМОЕ событие,
+        // что и подписка на события прогона (см. IpcServer.ClientConnection), и именно это не
+        // даёт приостановленному обходу пережить единственный процесс, способный его отпустить.
         services.AddSingleton<MacroDebugSession>();
         services.AddSingleton<IMacroDebugger>(sp => sp.GetRequiredService<MacroDebugSession>());
 
-        // ProcessMonitor and HotkeyListener are registered first because Orchestrator
-        // subscribes to their events during construction. DI resolves them before
-        // Orchestrator regardless of registration order, but listing them first reads
-        // naturally.
+        // ProcessMonitor и HotkeyListener зарегистрированы первыми, потому что Orchestrator
+        // подписывается на их события прямо в конструкторе. DI разрешит их раньше
+        // Orchestrator при любом порядке регистрации, но перечислить их первыми просто
+        // естественнее читается.
         services.AddSingleton<ProcessMonitor>();
         services.AddHostedService(sp => sp.GetRequiredService<ProcessMonitor>());
 
-        // Hotkey bindings come from the macro library itself (each graph's HotkeyTriggers),
-        // so the listener re-registers whenever the library changes. No hotkeys.json.
+        // Привязки горячих клавиш берутся из самой библиотеки макросов (HotkeyTrigger'ы каждого
+        // графа), поэтому слушатель перерегистрируется при любом изменении библиотеки. Никакого
+        // hotkeys.json.
         services.AddSingleton<HotkeyListener>();
         services.AddHostedService(sp => sp.GetRequiredService<HotkeyListener>());
 
-        // Single Orchestrator instance, also drives the dispatch-loop lifecycle via IHostedService.
+        // Единственный экземпляр Orchestrator; он же ведёт жизненный цикл цикла диспетчеризации
+        // через IHostedService.
         services.AddSingleton<Orchestrator>();
         services.AddHostedService(sp => sp.GetRequiredService<Orchestrator>());
 
-        // --- IPC (stage 2B) ----------------------------------------------------------
+        // --- IPC (стадия 2B) ----------------------------------------------------------
         //
-        // The two narrow seams the dispatcher needs. Both resolve to the singletons above:
-        // the interfaces exist so the request handlers can be unit-tested without a live
-        // engine, not because there is a second implementation.
+        // Два узких стыка, которые нужны диспетчеру. Оба разрешаются в синглтоны выше:
+        // интерфейсы существуют затем, чтобы обработчики запросов можно было покрыть
+        // модульными тестами без живого движка, а не потому, что есть вторая реализация.
         services.AddSingleton<IMacroRunner>(sp => sp.GetRequiredService<Orchestrator>());
         services.AddSingleton<IHotkeyRegistration>(sp => sp.GetRequiredService<HotkeyListener>());
         services.AddSingleton<CaptureDumpService>();
         services.AddSingleton<IpcRequestDispatcher>();
         services.AddSingleton<IpcServer>();
-        // Event fan-out as a capability, for the tray's "the panel is already up — bring it
-        // forward" path. (The dispatcher gets the same object handed to it by the server's
-        // constructor instead, because server → dispatcher → server would be a DI cycle.)
+        // Рассылка событий как отдельная возможность — ради трейного сценария «панель уже
+        // открыта, выведи её вперёд». (Диспетчеру тот же объект вручает конструктор сервера,
+        // потому что сервер → диспетчер → сервер было бы циклом в DI.)
         services.AddSingleton<IIpcBroadcaster>(sp => sp.GetRequiredService<IpcServer>());
 
-        // Registered AFTER the engine and BEFORE the tray, which pins both ends of its
-        // lifetime: hosted services start in registration order, so the pipe only appears
-        // once ProcessMonitor/HotkeyListener/Orchestrator are up and a client connecting the
-        // instant it sees the pipe gets a live registry; they stop in REVERSE order, so the
-        // pipe is torn down early — right after the tray icon, before agents and hotkeys
-        // unwind — and the panel learns the daemon is going away instead of hanging on a
-        // half-dead engine.
-        // The batching pump, started before the pipe so a client that subscribes the instant
-        // it connects has something draining its queue.
+        // Зарегистрировано ПОСЛЕ движка и ДО трея, и это закрепляет оба конца его жизни:
+        // hosted-сервисы стартуют в порядке регистрации, поэтому канал появляется только
+        // когда ProcessMonitor/HotkeyListener/Orchestrator уже подняты, и клиент, подключившийся
+        // в ту же секунду, как увидел канал, получает живой реестр; останавливаются же они в
+        // ОБРАТНОМ порядке, поэтому канал сворачивается рано — сразу за иконкой в трее, до того
+        // как начнут разбираться агенты и горячие клавиши, — и панель узнаёт, что демон
+        // уходит, а не висит на полумёртвом движке.
+        // Насос пакетирования запускается до канала, чтобы у клиента, подписавшегося сразу
+        // после подключения, было кому разбирать его очередь.
         services.AddHostedService(sp => sp.GetRequiredService<RunEventPublisher>());
 
         services.AddHostedService(sp => sp.GetRequiredService<IpcServer>());
 
-        // Tray last: hosted services stop in reverse registration order, so the icon is the
-        // first thing to disappear when the user picks "Выход" — no stale icon hanging around
-        // while agents and hotkeys drain.
+        // Трей последним: hosted-сервисы останавливаются в обратном порядке регистрации,
+        // поэтому иконка исчезает первой, когда пользователь выбирает «Выход», — никакой
+        // мёртвой иконки, висящей в трее, пока доигрывают агенты и горячие клавиши.
         services.AddSingleton<Win32TrayIcon>();
         services.AddHostedService<TrayController>();
     }

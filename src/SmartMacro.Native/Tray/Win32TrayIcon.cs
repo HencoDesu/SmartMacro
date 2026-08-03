@@ -6,41 +6,44 @@ using SmartMacro.Native.Internal;
 
 namespace SmartMacro.Native.Tray;
 
-// A notification-area ("tray") icon built straight on Shell_NotifyIcon — no Avalonia, no
-// WinForms, no UI framework of any kind. That's the whole point: the daemon is a windowless
-// background process, and pulling in a toolkit just to draw one 16×16 icon would cost it
-// tens of megabytes of managed heap plus a render loop it never uses.
+// Иконка в области уведомлений («в трее»), построенная напрямую на Shell_NotifyIcon — без
+// Avalonia, без WinForms, без какого бы то ни было UI-фреймворка. В этом весь смысл: демон —
+// фоновый процесс без окон, и притащить целый тулкит ради одной иконки 16×16 стоило бы ему
+// десятков мегабайт управляемой кучи плюс цикл отрисовки, которым он никогда не пользуется.
 //
-// Structure mirrors Win32HotkeyMonitor, because the constraint is the same: Shell_NotifyIcon
-// posts its mouse notifications to a window, and window messages are delivered only to the
-// thread that created the window. So this component owns a dedicated background thread that:
-//   1. Registers a private window class and creates a message-only window (HWND_MESSAGE
-//      parent — never shown, never enumerated, never given input focus)
-//   2. Builds the popup menu and adds the icon (NIM_ADD)
-//   3. Runs a GetMessage loop, translating the icon's callback message into ItemClicked
-//   4. Exits cleanly when Stop() posts WM_QUIT to its message queue, tearing the icon,
-//      menu, window and class back down in its finally block
+// Устройство повторяет Win32HotkeyMonitor, потому что ограничение то же: Shell_NotifyIcon
+// шлёт свои уведомления о мыши в окно, а оконные сообщения доставляются только тому потоку,
+// который это окно создал. Поэтому компонент владеет отдельным фоновым потоком, который:
+//   1. Регистрирует приватный оконный класс и создаёт окно только для сообщений (родитель
+//      HWND_MESSAGE — никогда не показывается, не попадает в перечисления, не получает фокус
+//      ввода)
+//   2. Собирает всплывающее меню и добавляет иконку (NIM_ADD)
+//   3. Крутит цикл GetMessage, превращая callback-сообщение иконки в ItemClicked
+//   4. Аккуратно выходит, когда Stop() кладёт WM_QUIT в его очередь сообщений, и в блоке
+//      finally разбирает обратно иконку, меню, окно и класс
 //
-// ⚠ ItemClicked is raised ON THE PUMP THREAD, from inside the menu's own modal loop.
-// Handlers must return immediately — anything slow (process launch, host shutdown, I/O)
-// belongs on the thread pool. A blocking handler freezes the tray icon and, because
-// TrackPopupMenuEx is still on the stack, can wedge the shell's input processing.
+// ⚠ ItemClicked поднимается В ПОТОКЕ НАСОСА, изнутри собственного модального цикла меню.
+// Обработчики обязаны возвращать управление немедленно — всё медленное (запуск процесса,
+// остановка хоста, ввод-вывод) место в пуле потоков. Блокирующий обработчик подвешивает
+// иконку в трее и, поскольку TrackPopupMenuEx всё ещё на стеке, может заклинить обработку
+// ввода в самой оболочке.
 [SupportedOSPlatform("windows")]
 public sealed partial class Win32TrayIcon : IDisposable
 {
-    // Private callback message. Shell_NotifyIcon reserves WM_APP..0xBFFF for exactly this;
-    // the mouse event that triggered it arrives in the low word of lParam.
+    // Приватное callback-сообщение. Shell_NotifyIcon резервирует WM_APP..0xBFFF ровно под
+    // это; вызвавшее его событие мыши приходит в младшем слове lParam.
     private const uint WM_TRAY_CALLBACK = User32Native.WM_APP + 1;
 
-    // Single icon per instance, so a constant id is enough to address it in NIM_MODIFY /
-    // NIM_DELETE.
+    // На экземпляр приходится одна иконка, поэтому константного id хватает, чтобы адресовать
+    // её в NIM_MODIFY / NIM_DELETE.
     private const uint TrayIconId = 1;
 
     private const int StopTimeoutSeconds = 5;
 
-    // Shell_NotifyIcon(NIM_ADD) fails while the shell isn't accepting registrations — the
-    // normal case when the daemon autostarts ahead of explorer.exe. Retry briefly rather
-    // than dying: the tray is the only way for a user to quit a windowless process.
+    // Shell_NotifyIcon(NIM_ADD) падает, пока оболочка не принимает регистрации, — обычное
+    // дело, когда демон стартует автоматически раньше explorer.exe. Вместо того чтобы
+    // умирать, недолго повторяем: трей — единственный способ для пользователя выйти из
+    // процесса без окон.
     private const int AddIconAttempts = 5;
     private const int AddIconRetryDelayMs = 500;
 
@@ -50,7 +53,7 @@ public sealed partial class Win32TrayIcon : IDisposable
     private Thread? _pumpThread;
     private uint _pumpThreadId;
 
-    // Owned by the pump thread once it starts; only touched from there.
+    // Со старта принадлежат потоку насоса; трогаются только оттуда.
     private IntPtr _hwnd;
     private IntPtr _menu;
     private IntPtr _icon;
@@ -64,13 +67,14 @@ public sealed partial class Win32TrayIcon : IDisposable
     private string _activeTooltip = string.Empty;
 
     /// <summary>
-    /// Raised with the <see cref="TrayMenuItem.Id"/> of the chosen entry (or of the default
-    /// entry on a double-click of the icon).
+    /// Поднимается с <see cref="TrayMenuItem.Id"/> выбранного пункта (или пункта по
+    /// умолчанию — при двойном клике по иконке).
     /// </summary>
     /// <remarks>
-    /// Invoked on the tray's message-pump thread while the menu's modal loop is still on the
-    /// stack. Handlers MUST return promptly — queue real work elsewhere. Exceptions escaping
-    /// a handler are caught and logged rather than killing the pump.
+    /// Вызывается в потоке насоса сообщений трея, пока модальный цикл меню ещё на стеке.
+    /// Обработчики ОБЯЗАНЫ быстро возвращать управление — настоящую работу ставьте в очередь
+    /// в другом месте. Исключения, вылетевшие из обработчика, ловятся и пишутся в лог, а не
+    /// убивают насос.
     /// </remarks>
     public event Action<string>? ItemClicked;
 
@@ -79,22 +83,23 @@ public sealed partial class Win32TrayIcon : IDisposable
         _logger = logger;
     }
 
-    /// <summary>Whether the pump thread is currently running.</summary>
+    /// <summary>Работает ли сейчас поток насоса.</summary>
     public bool IsRunning => Volatile.Read(ref _pumpThread) is not null;
 
     /// <summary>
-    /// Spawns the pump thread, creates the message-only window and shows the icon. Blocks
-    /// until the icon is live (or the pump failed, in which case its exception is rethrown
-    /// here).
+    /// Поднимает поток насоса, создаёт окно только для сообщений и показывает иконку.
+    /// Блокируется, пока иконка не появится (или пока насос не упадёт — тогда его исключение
+    /// перебрасывается сюда).
     /// </summary>
-    /// <param name="tooltip">Hover text; truncated to 127 characters, the Win32 limit.</param>
+    /// <param name="tooltip">Текст всплывающей подсказки; обрезается до 127 символов — это предел Win32.</param>
     /// <param name="iconPath">
-    /// Path to a <c>.ico</c> file. Missing or unreadable files fall back to the stock
-    /// <c>IDI_APPLICATION</c> icon with a warning — a broken icon must never stop the daemon
-    /// from having a tray presence, since that's the only way to quit it.
+    /// Путь к файлу <c>.ico</c>. Если файла нет или он не читается, с предупреждением берётся
+    /// стандартная иконка <c>IDI_APPLICATION</c>: сломанная иконка ни при каких условиях не
+    /// должна лишать демона присутствия в трее, потому что это единственный способ его
+    /// закрыть.
     /// </param>
-    /// <param name="items">Context-menu entries, in display order.</param>
-    /// <exception cref="InvalidOperationException">Already started.</exception>
+    /// <param name="items">Пункты контекстного меню в порядке отображения.</param>
+    /// <exception cref="InvalidOperationException">Уже запущено.</exception>
     public void Start(string tooltip, string iconPath, IReadOnlyList<TrayMenuItem> items)
     {
         ArgumentNullException.ThrowIfNull(items);
@@ -109,9 +114,9 @@ public sealed partial class Win32TrayIcon : IDisposable
 
             ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            // Start parameters travel through the closure rather than through fields: a
-            // Stop() racing this Start() would otherwise be able to null the shared TCS
-            // before the pump ever read it, leaving the line below waiting forever.
+            // Параметры запуска едут через замыкание, а не через поля: иначе Stop(),
+            // гоняющийся с этим Start(), успел бы обнулить общий TCS до того, как насос его
+            // прочитает, и строка ниже ждала бы вечно.
             var tooltipCopy = tooltip ?? string.Empty;
             var iconPathCopy = iconPath ?? string.Empty;
             _pumpThread = new Thread(() => MessageLoop(ready, tooltipCopy, iconPathCopy, items))
@@ -119,22 +124,22 @@ public sealed partial class Win32TrayIcon : IDisposable
                 IsBackground = true,
                 Name = "SmartMacro-TrayLoop",
             };
-            // The shell's notification area is COM/OLE territory; an STA pump is the
-            // conventional (and safest) home for a notify icon.
+            // Область уведомлений оболочки — территория COM/OLE; насос в STA-апартаменте
+            // для notify-иконки самый привычный (и самый безопасный) дом.
             _pumpThread.SetApartmentState(ApartmentState.STA);
             _pumpThread.Start();
         }
 
-        // The pump always completes this: with a result once the icon is added, with an
-        // exception on failure, or cancelled by its finally block if it somehow unwound
-        // before signalling. So this can't hang on a dead thread.
+        // Насос всегда доводит этот TCS до завершения: результатом — как только иконка
+        // добавлена, исключением — при неудаче, отменой из блока finally — если он всё же
+        // размотался, не подав сигнала. Так что зависнуть на мёртвом потоке здесь нельзя.
         ready.Task.GetAwaiter().GetResult();
     }
 
     /// <summary>
-    /// Posts <c>WM_QUIT</c> to the pump and waits for it to tear everything down (icon
-    /// removed, window destroyed, class unregistered). Safe to call repeatedly and from any
-    /// thread; a second call while stopped is a no-op.
+    /// Кладёт насосу <c>WM_QUIT</c> и ждёт, пока тот всё разберёт (иконка снята, окно
+    /// уничтожено, класс разрегистрирован). Вызывать можно повторно и из любого потока;
+    /// второй вызов на остановленном объекте ничего не делает.
     /// </summary>
     public void Stop()
     {
@@ -159,8 +164,8 @@ public sealed partial class Win32TrayIcon : IDisposable
 
         if (!thread.Join(TimeSpan.FromSeconds(StopTimeoutSeconds)))
         {
-            // Daemonised thread (IsBackground = true) — process exit reaps it, and the shell
-            // drops orphaned icons when their owning process dies.
+            // Поток фоновый (IsBackground = true) — его подберёт выход из процесса, а
+            // осиротевшие иконки оболочка сама убирает, когда владеющий ими процесс умирает.
             LogStopTimedOut(StopTimeoutSeconds);
             return;
         }
@@ -170,7 +175,7 @@ public sealed partial class Win32TrayIcon : IDisposable
 
     public void Dispose() => Stop();
 
-    // ─── Pump thread ───
+    // ─── Поток насоса сообщений ───
 
     private void MessageLoop(
         TaskCompletionSource ready,
@@ -181,9 +186,9 @@ public sealed partial class Win32TrayIcon : IDisposable
         var threadId = Kernel32Native.GetCurrentThreadId();
         lock (_lifecycleLock)
         {
-            // Stop() may already have raced past us and cleared _pumpThread. Publishing the
-            // id anyway would let a later Stop() post WM_QUIT to a thread that has moved on;
-            // instead we leave it zero and unwind through the finally below.
+            // Stop() мог уже обогнать нас в гонке и обнулить _pumpThread. Опубликуй мы id
+            // всё равно — более поздний Stop() отправил бы WM_QUIT потоку, который давно
+            // занят другим; вместо этого оставляем ноль и разматываемся через finally ниже.
             if (_pumpThread is not null)
             {
                 _pumpThreadId = threadId;
@@ -197,8 +202,8 @@ public sealed partial class Win32TrayIcon : IDisposable
             BuildMenu(items);
             _activeTooltip = tooltip;
 
-            // Registered before the first NIM_ADD so we can't miss the broadcast while
-            // retrying against a shell that's still coming up.
+            // Регистрируем до первого NIM_ADD, чтобы не пропустить широковещательное
+            // сообщение, пока повторяем попытки на ещё поднимающейся оболочке.
             _taskbarCreatedMessage = User32Native.RegisterWindowMessage("TaskbarCreated");
 
             AddNotifyIconWithRetry();
@@ -219,8 +224,8 @@ public sealed partial class Win32TrayIcon : IDisposable
         }
         finally
         {
-            // Backstop: guarantees Start() never blocks forever if the pump unwound before
-            // signalling. No-op once the TCS is already completed.
+            // Страховка: гарантирует, что Start() не заблокируется навсегда, если насос
+            // размотался, не подав сигнала. На уже завершённом TCS ничего не делает.
             ready.TrySetCanceled();
             Cleanup();
         }
@@ -230,13 +235,14 @@ public sealed partial class Win32TrayIcon : IDisposable
     {
         var hInstance = Kernel32Native.GetModuleHandle(null);
 
-        // Class names are process-global. A GUID suffix keeps two instances (or a restart
-        // racing its own cleanup) from colliding on ERROR_CLASS_ALREADY_EXISTS.
+        // Имена классов глобальны в пределах процесса. Суффикс-GUID не даёт двум экземплярам
+        // (или перезапуску, гоняющемуся с собственной уборкой) столкнуться на
+        // ERROR_CLASS_ALREADY_EXISTS.
         _className = $"SmartMacroTray_{Guid.NewGuid():N}";
         _classNamePtr = Marshal.StringToHGlobalUni(_className);
 
-        // Rooted in a field for the lifetime of the class registration — Windows holds a
-        // raw thunk pointer and knows nothing about the GC.
+        // Держим ссылку в поле всё время, пока класс зарегистрирован: Windows хранит сырой
+        // указатель на thunk и о существовании GC не подозревает.
         _wndProc = WindowProc;
 
         var descriptor = new WNDCLASSEXW
@@ -293,7 +299,8 @@ public sealed partial class Win32TrayIcon : IDisposable
             LogIconMissing(iconPath);
         }
 
-        // Stock icons are shared system resources — never DestroyIcon them.
+        // Стандартные иконки — разделяемые системные ресурсы, DestroyIcon для них не
+        // вызывают никогда.
         _ownsIcon = false;
         return User32Native.LoadIcon(IntPtr.Zero, User32Native.IDI_APPLICATION);
     }
@@ -306,8 +313,8 @@ public sealed partial class Win32TrayIcon : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), "CreatePopupMenu failed for the tray menu.");
         }
 
-        // Command ids are 1-based: TrackPopupMenuEx with TPM_RETURNCMD reports 0 for
-        // "dismissed without choosing", so 0 can't be a real item.
+        // Идентификаторы команд начинаются с 1: TrackPopupMenuEx с TPM_RETURNCMD возвращает 0
+        // в значении «закрыли, ничего не выбрав», так что 0 не может быть настоящим пунктом.
         var map = new Dictionary<int, string>(items.Count);
         var command = 1;
         _defaultCommand = 0;
@@ -332,7 +339,7 @@ public sealed partial class Win32TrayIcon : IDisposable
 
         if (_defaultCommand != 0)
         {
-            // fByPos = 0 ⇒ uItem is a command id, not an index.
+            // fByPos = 0 ⇒ uItem — это id команды, а не индекс.
             User32Native.SetMenuDefaultItem(_menu, (uint)_defaultCommand, 0);
         }
     }
@@ -398,15 +405,17 @@ public sealed partial class Win32TrayIcon : IDisposable
         destination[length] = '\0';
     }
 
-    // Runs on the pump thread, called by Windows. Must never let an exception cross back
-    // into native code — that's an immediate process kill, not a catchable failure.
+    // Выполняется в потоке насоса, вызывается самой Windows. Ни в коем случае нельзя выпускать
+    // исключение обратно в нативный код — это мгновенное убийство процесса, а не сбой,
+    // который можно поймать.
     private IntPtr WindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
         try
         {
-            // Not a compile-time constant (RegisterWindowMessage assigns it at runtime), so
-            // it can't be a switch label. Explorer restarting wipes every icon in the
-            // notification area; this broadcast is the shell telling owners to re-add theirs.
+            // Не константа времени компиляции (RegisterWindowMessage выдаёт значение в
+            // рантайме), поэтому меткой switch быть не может. Перезапуск Explorer стирает все
+            // иконки в области уведомлений; эта широковещательная рассылка — способ оболочки
+            // сказать владельцам, чтобы добавили свои заново.
             if (msg != 0 && msg == _taskbarCreatedMessage)
             {
                 LogTaskbarRecreated(TryAddNotifyIcon());
@@ -416,7 +425,7 @@ public sealed partial class Win32TrayIcon : IDisposable
             switch (msg)
             {
                 case WM_TRAY_CALLBACK:
-                    // The originating mouse message lives in the low word of lParam.
+                    // Исходное мышиное сообщение лежит в младшем слове lParam.
                     var mouseMessage = (uint)(lParam.ToInt64() & 0xFFFF);
                     switch (mouseMessage)
                     {
@@ -460,8 +469,9 @@ public sealed partial class Win32TrayIcon : IDisposable
             return;
         }
 
-        // KB135788, half one: without foreground ownership the menu never receives the
-        // click that should dismiss it and hangs around after the user clicks away.
+        // KB135788, первая половина: без владения передним планом меню так и не получит клик,
+        // который должен его закрыть, и остаётся висеть после того, как пользователь щёлкнул
+        // в стороне.
         User32Native.SetForegroundWindow(_hwnd);
 
         var command = User32Native.TrackPopupMenuEx(
@@ -473,8 +483,8 @@ public sealed partial class Win32TrayIcon : IDisposable
             _hwnd,
             IntPtr.Zero);
 
-        // KB135788, half two: a dummy message so the menu's internal modal loop notices it
-        // should exit.
+        // KB135788, вторая половина: фиктивное сообщение, чтобы внутренний модальный цикл
+        // меню заметил, что пора выходить.
         User32Native.PostMessage(_hwnd, User32Native.WM_NULL, IntPtr.Zero, IntPtr.Zero);
 
         if (command > 0)
@@ -502,9 +512,9 @@ public sealed partial class Win32TrayIcon : IDisposable
         }
     }
 
-    // Everything the pump allocated, released in reverse order. Runs in the pump thread's
-    // finally block, so it also covers a mid-startup failure (each step is guarded by its
-    // own handle check).
+    // Всё, что насос выделил, освобождается в обратном порядке. Выполняется в блоке finally
+    // потока насоса, поэтому покрывает и падение на полпути к запуску (каждый шаг прикрыт
+    // собственной проверкой хендла).
     private void Cleanup()
     {
         if (_hwnd != IntPtr.Zero)

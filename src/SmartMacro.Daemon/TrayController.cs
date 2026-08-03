@@ -7,18 +7,18 @@ using SmartMacro.Native.Tray;
 
 namespace SmartMacro.Daemon;
 
-// The daemon's only user-facing surface: a tray icon with two commands.
+// Единственная обращённая к пользователю поверхность демона: иконка в трее с двумя командами.
 //
-//   Открыть панель — launches SmartMacro.App.exe from our own output directory.
-//   Выход          — asks the host to shut down, which drains the hosted services
-//                    (macro runs cancelled → agents stopped → hotkeys unregistered →
-//                    this controller's StopAsync tears the icon back down).
+//   Открыть панель — запускает SmartMacro.App.exe из нашего же выходного каталога.
+//   Выход          — просит хост завершиться, что расчищает hosted-сервисы (прогоны макросов
+//                    отменяются → агенты останавливаются → горячие клавиши
+//                    разрегистрируются → StopAsync этого контроллера разбирает иконку).
 //
-// Win32TrayIcon raises ItemClicked on its message-pump thread, from inside the popup menu's
-// modal loop. Both handlers therefore do nothing but hand the work to the thread pool: a
-// blocking Process.Start (UAC consent can sit there for minutes) or a synchronous host
-// shutdown would freeze the tray and, worse, wedge the shell's input processing while
-// TrackPopupMenuEx is still on the stack.
+// Win32TrayIcon поднимает ItemClicked в потоке своего насоса сообщений, изнутри модального
+// цикла всплывающего меню. Поэтому оба обработчика не делают ничего, кроме передачи работы в
+// пул потоков: блокирующий Process.Start (запрос UAC может простоять минутами) или синхронная
+// остановка хоста подвесили бы трей и, что хуже, заклинили бы обработку ввода в оболочке,
+// пока TrackPopupMenuEx ещё на стеке.
 internal sealed partial class TrayController : IHostedService, IDisposable
 {
     private const string OpenPanelItemId = "open-panel";
@@ -33,10 +33,10 @@ internal sealed partial class TrayController : IHostedService, IDisposable
     private readonly ILogger<TrayController> _logger;
     private readonly Lock _uiProcessLock = new();
 
-    // The UI process we spawned, while it's alive. A second click on "Открыть панель" does
-    // not start a second copy (single-instance is also enforced UI-side by a named mutex) —
-    // it pushes ActivateWindow at every connected client, and the panel already on screen
-    // brings itself forward.
+    // Процесс интерфейса, который мы породили, — пока он жив. Второй клик по «Открыть панель»
+    // не запускает вторую копию (единственность экземпляра дополнительно обеспечена со стороны
+    // интерфейса именованным мьютексом): он рассылает ActivateWindow всем подключённым
+    // клиентам, и панель, уже открытая на экране, сама выходит на передний план.
     private Process? _uiProcess;
 
     public TrayController(
@@ -81,7 +81,7 @@ internal sealed partial class TrayController : IHostedService, IDisposable
         }
     }
 
-    // Pump thread — return immediately, always.
+    // Поток насоса сообщений — возвращать управление немедленно, всегда.
     private void OnItemClicked(string itemId)
     {
         switch (itemId)
@@ -107,9 +107,10 @@ internal sealed partial class TrayController : IHostedService, IDisposable
         {
             if (_uiProcess is { HasExited: false })
             {
-                // It may be hidden behind the game's full-screen clients; the panel listens
-                // for this and surfaces itself. Fire-and-forget by design — Broadcast never
-                // blocks and never throws, and there is no acknowledgement worth waiting for.
+                // Панель может быть закрыта полноэкранными клиентами игры; она слушает это
+                // событие и всплывает сама. «Отправил и забыл» — по замыслу: Broadcast никогда
+                // не блокируется и не бросает исключений, а подтверждения, которого стоило бы
+                // ждать, тут нет.
                 LogPanelAlreadyRunning(_uiProcess.Id);
                 _broadcaster.Broadcast(new IpcEvent(IpcMessageTypes.ActivateWindow));
                 return;
@@ -127,10 +128,11 @@ internal sealed partial class TrayController : IHostedService, IDisposable
 
             try
             {
-                // UseShellExecute = true so the child inherits elevation the clean way: the
-                // shell honours the App's requireAdministrator manifest instead of us
-                // hand-rolling a token. (Both processes are elevated today — QUESTIONABLE,
-                // see app.manifest.) It also sets a sane working directory by default.
+                // UseShellExecute = true, чтобы дочерний процесс получил повышение прав чистым
+                // путём: оболочка сама учтёт манифест App с requireAdministrator, и нам не
+                // придётся вручную мастерить токен. (Сегодня оба процесса идут с повышенными
+                // правами — СОМНИТЕЛЬНО, см. app.manifest.) Заодно так по умолчанию
+                // выставляется вменяемый рабочий каталог.
                 _uiProcess = Process.Start(new ProcessStartInfo(path)
                 {
                     UseShellExecute = true,
@@ -147,8 +149,9 @@ internal sealed partial class TrayController : IHostedService, IDisposable
             }
             catch (Exception ex)
             {
-                // A refused UAC prompt lands here as Win32Exception(ERROR_CANCELLED). Not
-                // fatal — the daemon keeps running and the user can try again.
+                // Отклонённый запрос UAC приходит сюда как Win32Exception(ERROR_CANCELLED).
+                // Не фатально: демон продолжает работать, а пользователь может попробовать
+                // снова.
                 LogPanelStartFailed(ex, path);
                 _uiProcess = null;
             }

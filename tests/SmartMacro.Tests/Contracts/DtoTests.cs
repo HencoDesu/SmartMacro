@@ -46,12 +46,12 @@ public class DtoTests
     [Test]
     public async Task ValidationIssueDto_RoundTrips()
     {
-        var reloaded = RoundTrip(new ValidationIssueDto("Error", "click1", "ClickNode must set exactly one of Point / PointVar."));
+        var reloaded = RoundTrip(new ValidationIssueDto("Error", "click1", "У ClickNode должно быть задано ровно одно из Point / PointVar."));
 
         await Assert.That(reloaded.Severity).IsEqualTo("Error");
         await Assert.That(reloaded.NodeId).IsEqualTo("click1");
 
-        var graphLevel = RoundTrip(new ValidationIssueDto("Warning", null, "Node is unreachable from StartNodeId."));
+        var graphLevel = RoundTrip(new ValidationIssueDto("Warning", null, "Нода недостижима из StartNodeId."));
         await Assert.That(graphLevel.NodeId).IsNull();
     }
 

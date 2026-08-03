@@ -1,12 +1,12 @@
 namespace SmartMacro.Contracts.Dto;
 
 /// <summary>
-/// Wire form of one running macro. Mirror of Core's <c>MacroRunSnapshot</c>;
-/// <see cref="StartedUtc"/> is a <see cref="DateTimeOffset"/> so the offset survives JSON
-/// instead of relying on the reader to guess <c>DateTimeKind</c>.
+/// Проводная форма одного идущего прогона макроса. Зеркало <c>MacroRunSnapshot</c> из Core;
+/// <see cref="StartedUtc"/> — это <see cref="DateTimeOffset"/>, чтобы смещение пережило JSON,
+/// а не зависело от того, угадает ли читатель <c>DateTimeKind</c>.
 /// </summary>
-/// <param name="RunId">Unique id of the run. Passed back in <c>StopMacro</c>.</param>
-/// <param name="MacroName">Name of the macro being run.</param>
-/// <param name="StartedUtc">When the run began (UTC).</param>
-/// <param name="CurrentNodeId">Id of the node the walker last entered; <c>null</c> before the first node.</param>
+/// <param name="RunId">Уникальный id прогона. Возвращается обратно в <c>StopMacro</c>.</param>
+/// <param name="MacroName">Имя запущенного макроса.</param>
+/// <param name="StartedUtc">Момент начала прогона (UTC).</param>
+/// <param name="CurrentNodeId">Id ноды, в которую walker вошёл последней; <c>null</c> до первой ноды.</param>
 public sealed record RunningMacroDto(Guid RunId, string MacroName, DateTimeOffset StartedUtc, string? CurrentNodeId);

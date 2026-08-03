@@ -1,13 +1,14 @@
 namespace SmartMacro.Native;
 
-// Sends a single key (down→hold→up) to a target window. Implementations differ in the
-// underlying mechanism (PostMessage / SendMessage / SendInput) and trade focus requirements
-// against compatibility with games that ignore window messages.
+// Отправляет одну клавишу (нажатие → удержание → отпускание) в целевое окно. Реализации
+// отличаются механизмом доставки (PostMessage / SendMessage / SendInput) и по-разному
+// разменивают требования к фокусу на совместимость с играми, которые игнорируют оконные
+// сообщения.
 public interface IKeyboardInput
 {
     /// <summary>
-    /// Sends a single key as a <c>WM_KEYDOWN</c> → hold → <c>WM_KEYUP</c> pair to the
-    /// given window handle.
+    /// Отправляет одну клавишу в указанное окно парой <c>WM_KEYDOWN</c> → удержание →
+    /// <c>WM_KEYUP</c>.
     /// </summary>
     Task SendKeyAsync(IntPtr hwnd, VirtualKey key, CancellationToken cancellationToken = default);
 }

@@ -1,6 +1,6 @@
 namespace SmartMacro.Native;
 
-// Values match Win32 fsModifiers for RegisterHotKey — keep this enum 1:1 with the API.
+// Значения совпадают с fsModifiers из Win32 RegisterHotKey — перечисление держим 1:1 с API.
 [Flags]
 public enum HotkeyModifiers : uint
 {

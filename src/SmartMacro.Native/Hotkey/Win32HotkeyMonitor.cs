@@ -5,16 +5,17 @@ using SmartMacro.Native.Internal;
 
 namespace SmartMacro.Native.Hotkey;
 
-// Registers global hotkeys via Win32 RegisterHotKey and raises HotkeyPressed when one fires.
+// Регистрирует глобальные горячие клавиши через Win32 RegisterHotKey и поднимает
+// HotkeyPressed при срабатывании.
 //
-// RegisterHotKey delivers WM_HOTKEY only to the thread that registered the hotkey, so this
-// component owns a dedicated background thread that:
-//   1. Registers all provided bindings on itself
-//   2. Runs a GetMessage loop, raising HotkeyPressed(id) on each WM_HOTKEY
-//   3. Exits cleanly when StopAsync posts WM_QUIT to its message queue
+// RegisterHotKey доставляет WM_HOTKEY только тому потоку, который зарегистрировал горячую
+// клавишу, поэтому компонент владеет отдельным фоновым потоком, который:
+//   1. Регистрирует на себе все переданные привязки
+//   2. Крутит цикл GetMessage, поднимая HotkeyPressed(id) на каждом WM_HOTKEY
+//   3. Аккуратно выходит, когда StopAsync кладёт WM_QUIT в его очередь сообщений
 //
-// Event handlers run on this monitor's message-loop thread — subscribers should keep work
-// short (or marshal to another context).
+// Обработчики события выполняются в потоке цикла сообщений этого монитора — подписчикам
+// стоит держать работу короткой (или перебрасывать её в другой контекст).
 [SupportedOSPlatform("windows")]
 public sealed partial class Win32HotkeyMonitor : IDisposable
 {
@@ -27,9 +28,9 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
     private volatile IReadOnlyList<HotkeyDescriptor> _rejected = [];
 
     /// <summary>
-    /// Raised on the message-loop thread when any registered hotkey fires. Subscribers
-    /// receive the binding's <c>Id</c> (the value they passed when registering) and are
-    /// responsible for resolving it back to their semantic meaning.
+    /// Поднимается в потоке цикла сообщений, когда срабатывает любая зарегистрированная
+    /// горячая клавиша. Подписчики получают <c>Id</c> привязки (то самое значение, которое
+    /// передали при регистрации) и сами отвечают за то, чтобы сопоставить его со смыслом.
     /// </summary>
     public event Action<int>? HotkeyPressed;
 
@@ -39,25 +40,26 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
     }
 
     /// <summary>
-    /// Bindings the last <see cref="StartAsync"/> could NOT register, because Windows
-    /// already had that chord — another application, another window of ours, or a
-    /// combination the shell reserves (Win+L and friends).
+    /// Привязки, которые последний <see cref="StartAsync"/> зарегистрировать НЕ смог,
+    /// потому что этот аккорд у Windows уже занят — другим приложением, другим нашим окном
+    /// или это комбинация, зарезервированная оболочкой (Win+L и ей подобные).
     ///
-    /// Exposed because a failure here is otherwise perfectly silent from the user's side:
-    /// the UI shows a bound hotkey and the key simply never does anything. Written on the
-    /// message-loop thread before the ready signal, so it is final by the time
-    /// <see cref="StartAsync"/>'s task completes; NOT cleared by <see cref="StopAsync"/>,
-    /// so a suspended listener can still report what was wrong when it last ran.
+    /// Выставлено наружу, потому что иначе такая неудача для пользователя абсолютно
+    /// беззвучна: интерфейс показывает привязанную горячую клавишу, а клавиша просто
+    /// никогда ничего не делает. Список пишется в потоке цикла сообщений до сигнала
+    /// готовности, поэтому к моменту завершения задачи <see cref="StartAsync"/> он уже
+    /// окончательный; <see cref="StopAsync"/> его НЕ очищает, так что приостановленный
+    /// слушатель по-прежнему может рассказать, что было не так в прошлый запуск.
     /// </summary>
     public IReadOnlyList<HotkeyDescriptor> RejectedBindings => _rejected;
 
     /// <summary>
-    /// Spawns a dedicated message-loop thread, registers each binding with
-    /// <c>RegisterHotKey</c>, and returns when the thread signals it's ready to receive
-    /// hotkey events. Cancellable via <paramref name="cancellationToken"/> while waiting
-    /// for the ready signal.
+    /// Поднимает отдельный поток с циклом сообщений, регистрирует каждую привязку через
+    /// <c>RegisterHotKey</c> и возвращает управление, когда поток сообщает о готовности
+    /// принимать события горячих клавиш. Ожидание сигнала готовности можно прервать через
+    /// <paramref name="cancellationToken"/>.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown when the monitor is already started.</exception>
+    /// <exception cref="InvalidOperationException">Монитор уже запущен.</exception>
     public Task StartAsync(IReadOnlyList<HotkeyDescriptor> bindings, CancellationToken cancellationToken = default)
     {
         if (_messageLoopThread is not null)
@@ -70,7 +72,7 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
         _messageLoopThread = new Thread(MessageLoop)
         {
             IsBackground = true,
-            Name = "PWAgent-HotkeyLoop",
+            Name = "SmartMacro-HotkeyLoop",
         };
         _messageLoopThread.Start();
 
@@ -78,9 +80,9 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
     }
 
     /// <summary>
-    /// Signals the message-loop thread to exit (posts <c>WM_QUIT</c>) and waits for it
-    /// to drain. Registered hotkeys are unregistered in the thread's <c>finally</c> block.
-    /// Safe to call when already stopped.
+    /// Сигнализирует потоку цикла сообщений о выходе (кладёт <c>WM_QUIT</c>) и ждёт, пока он
+    /// доработает. Зарегистрированные горячие клавиши снимаются в блоке <c>finally</c> этого
+    /// потока. Вызывать на уже остановленном мониторе безопасно.
     /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
@@ -100,8 +102,8 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Shutdown deadline expired — thread is daemonized (IsBackground=true), it'll be
-            // killed when the process exits.
+            // Срок на завершение вышел — поток фоновый (IsBackground=true), его прибьёт при
+            // выходе из процесса.
         }
         finally
         {
@@ -147,8 +149,8 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
                 }
             }
 
-            // Published before the ready signal so StartAsync's caller can read a settled
-            // list the instant its task completes.
+            // Публикуем до сигнала готовности, чтобы вызвавший StartAsync мог прочитать уже
+            // устоявшийся список ровно в тот момент, когда его задача завершится.
             _rejected = rejected;
             LogStarted(registeredIds.Count);
             _ready?.TrySetResult();

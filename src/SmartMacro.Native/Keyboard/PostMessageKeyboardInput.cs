@@ -3,14 +3,15 @@ using SmartMacro.Native.Internal;
 
 namespace SmartMacro.Native.Keyboard;
 
-// Asynchronous message-queue input. Targets a specific hwnd without requiring focus.
-// Most likely to work with cooperative apps; many DirectInput/Raw Input games may ignore it.
+// Асинхронный ввод через очередь сообщений. Бьёт в конкретный hwnd, фокус не требуется.
+// Скорее всего сработает с кооперативными приложениями; многие игры на DirectInput/Raw Input
+// его проигнорируют.
 //
-// ⚠️ NOT WIRED, and deliberately not the default: GameWindowFactory picks
-// SendMessageKeyboardInput because post'd keys were observed being dropped by frozen
-// background PW clients (1-2 of 9 windows at random — the queue never got pumped). This
-// class stays as the alternative strategy for a cooperative, non-freezing target process;
-// do not swap it in for PW without re-testing in game.
+// ⚠️ НЕ ПОДКЛЮЧЕН и намеренно не является вариантом по умолчанию: GameWindowFactory выбирает
+// SendMessageKeyboardInput, потому что наблюдалось, как post'нутые клавиши теряются на
+// замороженных фоновых клиентах PW (случайные 1–2 окна из 9 — очередь просто никто не
+// прокачивал). Класс оставлен как альтернативная стратегия для кооперативного, не
+// замораживающегося целевого процесса; не подставляйте его для PW, не перепроверив в игре.
 [SupportedOSPlatform("windows")]
 public sealed class PostMessageKeyboardInput : IKeyboardInput
 {

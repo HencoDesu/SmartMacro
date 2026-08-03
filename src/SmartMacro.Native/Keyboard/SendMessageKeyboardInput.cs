@@ -3,21 +3,22 @@ using SmartMacro.Native.Internal;
 
 namespace SmartMacro.Native.Keyboard;
 
-// Synchronous keyboard input via SendMessage. Each WM_KEYDOWN/UP blocks until the
-// target window's WndProc returns — guaranteeing PW has actually handled the keypress
-// before we proceed. Trade-off vs PostMessage:
+// Синхронный ввод с клавиатуры через SendMessage. Каждое WM_KEYDOWN/UP блокирует нас, пока
+// WndProc целевого окна не вернёт управление, — то есть гарантирует, что PW действительно
+// обработал нажатие, прежде чем мы пойдём дальше. Размен по сравнению с PostMessage:
 //
-//   * GOOD: no queue-ordering subtleties, no "did PW dequeue this yet?" races. If PW
-//     has a "process keys only when active" check inside its WndProc, the activation
-//     state set by our (synchronous) WM_ACTIVATEAPP propagates before the key arrives.
-//   * BAD: blocks our task thread for the duration of PW's handler. Under heavy load
-//     (PW mid-render) a key send could take dozens of milliseconds. PostMessage is
-//     fire-and-forget.
+//   * ХОРОШО: нет тонкостей с порядком в очереди, нет гонок «а PW уже вынул это из очереди?».
+//     Если внутри WndProc у PW есть проверка «обрабатывать клавиши только когда активен», то
+//     состояние активации, выставленное нашим (синхронным) WM_ACTIVATEAPP, успеет
+//     распространиться до прихода клавиши.
+//   * ПЛОХО: блокирует наш поток задачи на всё время работы обработчика PW. Под нагрузкой
+//     (PW в середине отрисовки) отправка клавиши может занять десятки миллисекунд. PostMessage
+//     же работает по принципу «отправил и забыл».
 //
-// This is the strategy GameWindowFactory bakes in for every keypress: post'd keys were
-// observed getting dropped by frozen background clients (1-2 of 9 windows at random).
-// Mouse input stays on PostMessage since clicks already reach PW reliably and SendMessage
-// adds blocking overhead for no observed gain.
+// Именно эту стратегию GameWindowFactory зашивает для каждого нажатия клавиши: наблюдалось,
+// что post'нутые клавиши теряются на замороженных фоновых клиентах (случайные 1–2 окна из 9).
+// Мышь остаётся на PostMessage: клики и так доходят до PW надёжно, а SendMessage добавил бы
+// блокировку без видимого выигрыша.
 [SupportedOSPlatform("windows")]
 public sealed class SendMessageKeyboardInput : IKeyboardInput
 {

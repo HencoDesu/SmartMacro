@@ -1,17 +1,17 @@
 namespace SmartMacro.Macros.Validation;
 
-/// <summary>Severity of a <see cref="ValidationIssue"/>.</summary>
+/// <summary>Степень серьёзности <see cref="ValidationIssue"/>.</summary>
 public enum ValidationSeverity
 {
-    /// <summary>Suspicious but runnable (unreachable node, hot loop). Surface in the editor, allow saving.</summary>
+    /// <summary>Подозрительно, но работоспособно (недостижимая нода, цикл без пауз). Показать в редакторе, сохранять разрешить.</summary>
     Warning,
 
-    /// <summary>The graph is broken and a run would abort (or never start correctly).</summary>
+    /// <summary>Граф сломан: прогон прервётся (или вообще не стартует как надо).</summary>
     Error,
 }
 
-/// <summary>One finding of <see cref="MacroGraphValidator.Validate"/>.</summary>
-/// <param name="Severity">Whether this blocks the graph or is merely suspicious.</param>
-/// <param name="NodeId">The offending node, or <c>null</c> for graph-level issues (bad StartNodeId).</param>
-/// <param name="Message">Human-readable description.</param>
+/// <summary>Одна находка <see cref="MacroGraphValidator.Validate"/>.</summary>
+/// <param name="Severity">Блокирует ли это граф или просто выглядит подозрительно.</param>
+/// <param name="NodeId">Провинившаяся нода или <c>null</c> для проблем уровня графа (плохой StartNodeId).</param>
+/// <param name="Message">Человекочитаемое описание.</param>
 public sealed record ValidationIssue(ValidationSeverity Severity, string? NodeId, string Message);

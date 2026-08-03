@@ -1,136 +1,138 @@
 namespace SmartMacro.Contracts.Dto;
 
 /// <summary>
-/// What a <see cref="RunEventDto"/> reports. The set is deliberately open-ended: wave D5's
-/// debugger (pause / step / run-to-node / breakpoints) added members here rather than new
-/// message types, so the subscription, the batching and the client's demultiplexer all stayed
-/// exactly as they were.
+/// О чём сообщает <see cref="RunEventDto"/>. Набор намеренно открыт к расширению: отладчик
+/// волны D5 (пауза / шаг / до ноды / точки останова) добавил члены сюда, а не новые типы
+/// сообщений, поэтому подписка, пакетирование и демультиплексор на клиенте остались ровно
+/// такими, какими были.
 ///
-/// <b>An unknown kind must degrade, never break.</b> The panel's tracker ignores kinds it
-/// does not recognise and its outcome renderer falls through to the raw symbol, so a panel
-/// older than its daemon loses a feature instead of the log. Anything added here has to keep
-/// that property.
+/// <b>Незнакомый вид должен деградировать, а не ломать.</b> Трекер панели игнорирует виды,
+/// которых не знает, а её отрисовщик исходов проваливается на сырой символ, так что панель
+/// старше своего демона теряет одну возможность, а не весь лог. Всё, что сюда добавляют,
+/// обязано это свойство сохранять.
 /// </summary>
 public enum RunEventKind
 {
-    /// <summary>A walk began. <see cref="RunEventDto.Walk"/> describes it; this is the only kind that carries it.</summary>
+    /// <summary>Обход начался. Описывает его <see cref="RunEventDto.Walk"/>; это единственный вид, который его несёт.</summary>
     WalkStarted,
 
-    /// <summary>The walker entered a node. No outcome yet — the node is running.</summary>
+    /// <summary>Walker вошёл в ноду. Исхода ещё нет — нода работает.</summary>
     NodeEntered,
 
-    /// <summary>The node finished. Carries its outcome, its detail line and its duration.</summary>
+    /// <summary>Нода отработала. Несёт исход, строку подробностей и длительность.</summary>
     NodeExited,
 
-    /// <summary>The walk ended. <see cref="RunEventDto.Outcome"/> says how; <see cref="RunEventDto.Detail"/> carries the error, if any.</summary>
+    /// <summary>Обход закончился. <see cref="RunEventDto.Outcome"/> говорит как; <see cref="RunEventDto.Detail"/> несёт ошибку, если она была.</summary>
     WalkFinished,
 
-    // ------------------------------------------------------------------- debugger (D5)
+    // ------------------------------------------------------------------- отладчик (D5)
 
     /// <summary>
-    /// The walk parked BEFORE <see cref="RunEventDto.NodeId"/> and is waiting to be released.
-    /// <see cref="RunEventDto.Detail"/> says why in Russian («пауза», «шаг», «до курсора»).
+    /// Обход припарковался ПЕРЕД <see cref="RunEventDto.NodeId"/> и ждёт, когда его отпустят.
+    /// <see cref="RunEventDto.Detail"/> по-русски объясняет причину («пауза», «шаг», «до
+    /// курсора»).
     ///
-    /// Parked between two nodes, never inside one: every game window an input or vision node
-    /// wakes is re-frozen before that node returns, so a pause here cannot strand a woken
-    /// client. See <c>MacroExecutor</c>'s gate.
+    /// Парковка происходит между двумя нодами и никогда внутри ноды: любое игровое окно,
+    /// которое разбудила нода ввода или зрения, замораживается обратно до её выхода, поэтому
+    /// пауза здесь не может оставить клиент разбуженным. См. затвор в <c>MacroExecutor</c>.
     /// </summary>
     Paused,
 
     /// <summary>
-    /// The same thing as <see cref="Paused"/>, but the reason was a breakpoint on
-    /// <see cref="RunEventDto.NodeId"/>. A separate kind rather than a reason code because
-    /// this is the one pause the panel renders differently — the red pill of mockup 1d.
+    /// То же самое, что <see cref="Paused"/>, но причиной была точка останова на
+    /// <see cref="RunEventDto.NodeId"/>. Отдельный вид, а не код причины, потому что это
+    /// единственная пауза, которую панель рисует иначе — красной «таблеткой» из макета 1d.
     /// </summary>
     BreakpointHit,
 
     /// <summary>
-    /// The walk was released and is about to run <see cref="RunEventDto.NodeId"/>.
+    /// Обход отпустили, и он вот-вот выполнит <see cref="RunEventDto.NodeId"/>.
     ///
-    /// Not redundant with the next <see cref="NodeExited"/>: a released walk can sit inside a
-    /// 60-second <c>WaitForElement</c>, and without this the toolbar would keep saying
-    /// «на паузе» for a minute after the user pressed resume.
+    /// Это не дубликат следующего <see cref="NodeExited"/>: отпущенный обход может застрять
+    /// внутри шестидесятисекундного <c>WaitForElement</c>, и без этого события панель ещё
+    /// минуту писала бы «на паузе» после того, как пользователь нажал «продолжить».
     /// </summary>
     Resumed,
 
     /// <summary>
-    /// A run variable got a value. <see cref="RunEventDto.Variable"/> is its name and
-    /// <see cref="RunEventDto.Detail"/> its display string; <see cref="RunEventDto.NodeId"/>
-    /// is the node that wrote it, or <c>null</c> for the trigger's <c>cursor</c> seed, which
-    /// is reported once at the head of every walk.
+    /// Переменная прогона получила значение. <see cref="RunEventDto.Variable"/> — её имя,
+    /// <see cref="RunEventDto.Detail"/> — строка для показа; <see cref="RunEventDto.NodeId"/> —
+    /// нода, которая записала значение, или <c>null</c> для сида <c>cursor</c> от триггера,
+    /// о котором сообщается один раз в начале каждого обхода.
     ///
-    /// <b>Why not read the value out of a <see cref="NodeExited"/> detail.</b> The detail of a
-    /// <c>RecognizeTag</c> reads <c>"classes → Жрец"</c>: extracting the value would mean the
-    /// panel parsing a free-form string whose shape is the daemon's business, and it would
-    /// still never see <c>cursor</c>, which no node ever reports. The rate is not a concern —
-    /// this is a handful of events per walk, not two per node.
+    /// <b>Почему не вычитывать значение из подробностей <see cref="NodeExited"/>.</b>
+    /// Подробности <c>RecognizeTag</c> выглядят как <c>"classes → Жрец"</c>: доставать оттуда
+    /// значение означало бы, что панель разбирает свободную строку, формат которой — дело
+    /// демона, и при этом она всё равно никогда не увидела бы <c>cursor</c>, о котором не
+    /// сообщает ни одна нода. Частота тут не проблема — это несколько событий на обход, а не
+    /// два на каждую ноду.
     /// </summary>
     VariableSet,
 }
 
 /// <summary>
-/// The closed set of <see cref="RunEventDto.Outcome"/> values.
+/// Закрытый набор значений <see cref="RunEventDto.Outcome"/>.
 ///
-/// Symbolic, not Russian, unlike <see cref="RunEventDto.Detail"/>: an outcome drives the
-/// panel's colour and its wording, so the daemon must not be the one deciding either. The
-/// names mirror the graph model's own edge names (<c>Found</c> / <c>NotFound</c> /
-/// <c>Matched</c> / <c>Timeout</c>) — the outcome IS which edge was taken.
+/// Символьные, не русские, в отличие от <see cref="RunEventDto.Detail"/>: исход определяет и
+/// цвет, и формулировку в панели, а значит решать ни то, ни другое демон не должен. Имена
+/// повторяют имена рёбер самой модели графа (<c>Found</c> / <c>NotFound</c> / <c>Matched</c> /
+/// <c>Timeout</c>) — исход И ЕСТЬ то, по какому ребру пошли.
 /// </summary>
 public static class RunOutcomes
 {
-    /// <summary>An action node did its work. The only outcome an action node can have.</summary>
+    /// <summary>Нода действия сделала свою работу. Единственный исход, который у ноды действия бывает.</summary>
     public const string Ok = "ok";
 
-    /// <summary><c>FindElementNode</c> / <c>WaitForElementNode</c> matched.</summary>
+    /// <summary><c>FindElementNode</c> / <c>WaitForElementNode</c> нашли совпадение.</summary>
     public const string Found = "found";
 
-    /// <summary><c>FindElementNode</c> did not match (a single shot, so not a timeout).</summary>
+    /// <summary><c>FindElementNode</c> совпадения не нашла (это один выстрел, поэтому не таймаут).</summary>
     public const string NotFound = "notFound";
 
-    /// <summary><c>WaitForElementNode</c> gave up.</summary>
+    /// <summary><c>WaitForElementNode</c> сдалась по таймауту.</summary>
     public const string Timeout = "timeout";
 
-    /// <summary><c>RecognizeTagNode</c> recognised a tag.</summary>
+    /// <summary><c>RecognizeTagNode</c> опознала тег.</summary>
     public const string Matched = "matched";
 
-    /// <summary><c>RecognizeTagNode</c> recognised nothing.</summary>
+    /// <summary><c>RecognizeTagNode</c> не опознала ничего.</summary>
     public const string NotMatched = "notMatched";
 
-    /// <summary>The node threw: a bad variable, a missing context window, an unknown sub-macro.</summary>
+    /// <summary>Нода бросила исключение: плохая переменная, нет контекстного окна, неизвестный подмакрос.</summary>
     public const string Error = "error";
 
-    /// <summary>Walk-level: the walker reached a null edge and stopped cleanly.</summary>
+    /// <summary>Уровень обхода: walker дошёл до <c>null</c>-ребра и чисто остановился.</summary>
     public const string Completed = "completed";
 
-    /// <summary>Walk-level: a node failed and took the walk down with it. <see cref="RunEventDto.Detail"/> has the reason.</summary>
+    /// <summary>Уровень обхода: нода упала и утянула обход за собой. Причина — в <see cref="RunEventDto.Detail"/>.</summary>
     public const string Aborted = "aborted";
 
-    /// <summary>Node- or walk-level: the run's token fired (Stop, or the daemon shutting down).</summary>
+    /// <summary>Уровень ноды или обхода: сработал токен прогона (Стоп либо завершение работы демона).</summary>
     public const string Cancelled = "cancelled";
 }
 
 /// <summary>
-/// One WALK — a single pass of <c>MacroExecutor</c> over one graph.
+/// Один ОБХОД — единственный проход <c>MacroExecutor</c> по одному графу.
 ///
-/// Not the same thing as a run. One <c>RunningMacroDto</c> can contain many walks: a
-/// <c>RunMacroNode</c> with a tag selector forks one walk per matching window, all sharing
-/// the parent's <see cref="RunId"/>. That is exactly the case the canvas has to disambiguate
-/// — ten windows booting through <c>pw-identify-one</c> are ten walks of ONE graph, and
-/// lighting a node for each of them would light nine boxes at once. The panel therefore
-/// picks a walk and follows it; <see cref="Hwnd"/> is what the picker labels it with, which
-/// is why the mockup's run chip reads <c>0x140804</c>.
+/// Это не то же самое, что прогон. В одном <c>RunningMacroDto</c> может быть много обходов:
+/// <c>RunMacroNode</c> с селектором по тегам порождает по обходу на каждое подходящее окно, и
+/// все они делят <see cref="RunId"/> родителя. Ровно этот случай канве и приходится
+/// различать: десять окон, загружающихся через <c>pw-identify-one</c>, — это десять обходов
+/// ОДНОГО графа, и подсветить ноду для каждого значило бы зажечь девять коробок разом.
+/// Поэтому панель выбирает один обход и следит за ним; подписывает выбор в списке
+/// <see cref="Hwnd"/> — отсюда и <c>0x140804</c> на «чипе» прогона в макете.
 /// </summary>
-/// <param name="WalkId">Identity of this walk. Every event correlates on it.</param>
-/// <param name="RunId">The tracked run this walk belongs to; matches <c>RunningMacroDto.RunId</c>. Shared by a parent and all its sub-walks.</param>
-/// <param name="MacroName">Graph being walked. Sub-walks name the SUB-macro, not the parent.</param>
-/// <param name="Hwnd">Context window, or <c>0</c> when there is none (a hotkey run's root walk routes by selector only).</param>
-/// <param name="Depth">Sub-macro nesting: 0 for a trigger-initiated walk, +1 per <c>RunMacroNode</c> level.</param>
-/// <param name="StartedUtc">When the walk began.</param>
+/// <param name="WalkId">Идентичность этого обхода. По ней коррелируется каждое событие.</param>
+/// <param name="RunId">Отслеживаемый прогон, которому принадлежит обход; совпадает с <c>RunningMacroDto.RunId</c>. Общий у родителя и всех его подобходов.</param>
+/// <param name="MacroName">Граф, по которому идёт обход. Подобходы называют ПОДмакрос, а не родителя.</param>
+/// <param name="Hwnd">Контекстное окно или <c>0</c>, если его нет (корневой обход прогона по горячей клавише маршрутизируется только селекторами).</param>
+/// <param name="Depth">Вложенность подмакросов: 0 у обхода, начатого триггером, +1 на каждый уровень <c>RunMacroNode</c>.</param>
+/// <param name="StartedUtc">Момент начала обхода.</param>
 /// <param name="FromStart">
-/// <c>false</c> when the subscriber joined after the walk had already begun, so its node log
-/// is missing an unknown number of leading rows. The panel must SAY so rather than render a
-/// partial log as if it were complete. Always <c>false</c> for the walks returned by
-/// <c>SubscribeRunEvents</c> and always <c>true</c> for a <see cref="RunEventKind.WalkStarted"/>.
+/// <c>false</c>, если подписчик подключился, когда обход уже шёл, и в его логе нод не хватает
+/// неизвестного числа первых строк. Панель обязана СКАЗАТЬ об этом, а не выдавать неполный лог
+/// за полный. Для обходов, возвращённых из <c>SubscribeRunEvents</c>, всегда <c>false</c>;
+/// для <see cref="RunEventKind.WalkStarted"/> — всегда <c>true</c>.
 /// </param>
 public sealed record RunWalkDto(
     Guid WalkId,
@@ -142,28 +144,29 @@ public sealed record RunWalkDto(
     bool FromStart);
 
 /// <summary>
-/// One thing that happened inside a walk.
+/// Одно событие, случившееся внутри обхода.
 ///
-/// <b><see cref="Detail"/> is free-form and may be Russian; <see cref="Outcome"/> never
-/// is.</b> A detail is data the daemon alone can produce (the point a click actually
-/// resolved to, the template it matched, how many windows a selector hit) and the panel
-/// renders it verbatim — duplicating that formatting on the UI side would mean shipping
-/// node-type knowledge into a process that deliberately has none. An outcome, by contrast,
-/// is a closed enumeration (<see cref="RunOutcomes"/>) precisely so the panel owns its
-/// wording and its colour.
+/// <b><see cref="Detail"/> — свободный текст и может быть русским; <see cref="Outcome"/> —
+/// никогда.</b> Подробности — это данные, которые способен произвести только демон (точка, в
+/// которую в итоге разрешился клик; сработавший шаблон; сколько окон зацепил селектор), и
+/// панель показывает их дословно: продублировать это форматирование на стороне интерфейса
+/// значило бы затащить знание о типах нод в процесс, который его намеренно лишён. Исход,
+/// наоборот, — закрытое перечисление (<see cref="RunOutcomes"/>) именно затем, чтобы и
+/// формулировка, и цвет принадлежали панели.
 /// </summary>
-/// <param name="WalkId">Walk this belongs to. See <see cref="RunWalkDto"/> for why this is not the run id.</param>
-/// <param name="Kind">What happened.</param>
-/// <param name="ElapsedMs">Milliseconds since the walk began — the log strip's left column.</param>
-/// <param name="NodeId">Node involved; <c>null</c> for the walk-level kinds.</param>
-/// <param name="Outcome">One of <see cref="RunOutcomes"/>; <c>null</c> for <see cref="RunEventKind.NodeEntered"/> and <see cref="RunEventKind.WalkStarted"/>.</param>
-/// <param name="Detail">Human-readable specifics, or <c>null</c>.</param>
-/// <param name="DurationMs">How long the node took. <c>0</c> for anything but <see cref="RunEventKind.NodeExited"/>.</param>
-/// <param name="Walk">Set on <see cref="RunEventKind.WalkStarted"/> and nowhere else.</param>
+/// <param name="WalkId">Обход, которому принадлежит событие. Почему это не id прогона — см. <see cref="RunWalkDto"/>.</param>
+/// <param name="Kind">Что произошло.</param>
+/// <param name="ElapsedMs">Миллисекунды с начала обхода — левая колонка полосы лога.</param>
+/// <param name="NodeId">Задействованная нода; <c>null</c> у видов уровня обхода.</param>
+/// <param name="Outcome">Одно из <see cref="RunOutcomes"/>; <c>null</c> для <see cref="RunEventKind.NodeEntered"/> и <see cref="RunEventKind.WalkStarted"/>.</param>
+/// <param name="Detail">Человекочитаемые подробности или <c>null</c>.</param>
+/// <param name="DurationMs">Сколько нода отработала. <c>0</c> для всего, кроме <see cref="RunEventKind.NodeExited"/>.</param>
+/// <param name="Walk">Заполняется у <see cref="RunEventKind.WalkStarted"/> и больше нигде.</param>
 /// <param name="Variable">
-/// Set on <see cref="RunEventKind.VariableSet"/> and nowhere else: the variable's name, with
-/// its value in <see cref="Detail"/>. Appended AFTER <paramref name="Walk"/> so every
-/// positional construction that predates D5 still compiles and still means what it did.
+/// Заполняется у <see cref="RunEventKind.VariableSet"/> и больше нигде: имя переменной, а её
+/// значение — в <see cref="Detail"/>. Добавлено ПОСЛЕ <paramref name="Walk"/>, чтобы всякая
+/// позиционная конструкция, написанная до D5, по-прежнему компилировалась и означала то же,
+/// что раньше.
 /// </param>
 public sealed record RunEventDto(
     Guid WalkId,
@@ -177,20 +180,20 @@ public sealed record RunEventDto(
     string? Variable = null);
 
 /// <summary>
-/// Payload of the <c>RunEvents</c> push: everything that happened since the last flush.
+/// Полезная нагрузка пуша <c>RunEvents</c>: всё, что случилось с прошлого сброса.
 ///
-/// Batched rather than one event per envelope, because the burst is the whole problem. A
-/// hotkey run fans out to ten windows, each walk crosses a dozen nodes, and every node is
-/// two events — several hundred envelopes in a few hundred milliseconds, against a
-/// per-connection queue of 256 that DROPS the client when it overflows. Coalescing turns
-/// that into a handful of envelopes, which is the difference between a live log and a panel
-/// that disconnects exactly when the user is watching it.
+/// Пачками, а не по событию на конверт, потому что вся проблема и есть всплеск. Прогон по
+/// горячей клавише разветвляется на десять окон, каждый обход проходит с десяток нод, а
+/// каждая нода — это два события: несколько сотен конвертов за пару сотен миллисекунд против
+/// очереди в 256 на соединение, которая при переполнении ОТКЛЮЧАЕТ клиента. Склейка
+/// превращает это в горстку конвертов — а это и есть разница между живым логом и панелью,
+/// которая отваливается ровно тогда, когда пользователь на неё смотрит.
 /// </summary>
-/// <param name="Events">Events in the order the engine produced them.</param>
+/// <param name="Events">События в том порядке, в каком их произвёл движок.</param>
 /// <param name="Dropped">
-/// How many events were discarded before this batch because the daemon's own queue was
-/// full. Non-zero means the log has a hole in it — the panel must say so. Reported rather
-/// than hidden, and the engine is never blocked to prevent it: a macro drives a live game
-/// and must not wait on a UI.
+/// Сколько событий выбросили до этой пачки из-за того, что собственная очередь демона была
+/// полна. Ненулевое значение означает дыру в логе — и панель обязана об этом сказать. О таком
+/// сообщают, а не скрывают, и движок ради этого никогда не блокируют: макрос ведёт живую игру
+/// и ждать интерфейс не должен.
 /// </param>
 public sealed record RunEventBatch(IReadOnlyList<RunEventDto> Events, int Dropped);
