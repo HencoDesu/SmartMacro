@@ -230,9 +230,8 @@ public sealed partial class IpcRequestDispatcher
                 // законно ставят и на несохранённый черновик, а набор ключуется по имени —
                 // и в тот момент, когда черновик сохранят под этим именем, она начнёт кусаться.
                 //
-                // `?? []` не избыточен, что бы ни говорил анализатор: NodeIds размечен как
-                // ненулевой, но приезжает из JSON, и клиент, не положивший это поле, отдаст
-                // сюда null. Аннотация врёт, а нагрузка из провода — нет.
+                // NodeIds размечен nullable — см. пояснение у SetBreakpointsRequest: поле
+                // приезжает из JSON, и клиент вправе его не положить.
                 _debug.SetBreakpoints(payload.MacroName, payload.NodeIds ?? []);
                 return Ok(request);
             }
@@ -268,8 +267,10 @@ public sealed partial class IpcRequestDispatcher
 
             case IpcMessageTypes.GetHotkeyFailures:
                 // Материализуем в массив, чтобы ответ был JSON-массивом даже тогда, когда
-                // реализация отдаёт пустой список только для чтения.
-                return Ok(request, IpcJson.Write<HotkeyFailureDto[]>([.. _hotkeys.Failures ?? []]));
+                // реализация отдаёт пустой список только для чтения. Защиты `?? []` здесь,
+                // в отличие от SetBreakpoints, нет и не нужно: список приходит не из провода,
+                // а от реализации в этом же процессе, и интерфейс обещает его ненулевым.
+                return Ok(request, IpcJson.Write<HotkeyFailureDto[]>([.. _hotkeys.Failures]));
 
             // ------------------------------------------------------------ диагностика
 

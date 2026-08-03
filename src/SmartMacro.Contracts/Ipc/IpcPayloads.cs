@@ -55,7 +55,14 @@ public sealed record WindowClosedEvent(long Hwnd);
 /// </summary>
 /// <param name="MacroName">Граф, которому принадлежат точки останова. Макрос может ещё не существовать — их может нести несохранённый черновик.</param>
 /// <param name="NodeIds">Ноды, на которых обход должен останавливаться. ПУСТОЙ массив снимает у макроса все точки останова.</param>
-public sealed record SetBreakpointsRequest(string MacroName, IReadOnlyList<string> NodeIds);
+/// <param name="NodeIds">
+/// Ноды, на которых стоят точки останова. <b>Помечено nullable намеренно.</b> Тип пришёл
+/// бы сюда ненулевым, но нагрузка приезжает из JSON: клиент, не положивший это поле,
+/// отдаёт <c>null</c> — и ненулевая аннотация просто соврала бы, а анализатор поверх неё
+/// начал бы советовать снять защиту у получателя. Пустой список и отсутствующее поле
+/// значат одно и то же — «точек останова у этого макроса нет».
+/// </param>
+public sealed record SetBreakpointsRequest(string MacroName, IReadOnlyList<string>? NodeIds);
 
 /// <summary>Нагрузка <see cref="IpcMessageTypes.DebugCommand"/>.</summary>
 /// <param name="WalkId">Обход, к которому применяется команда, из <c>RunWalkDto.WalkId</c>. На неизвестный (завершившийся) обход приходит <c>Accepted = false</c>.</param>
