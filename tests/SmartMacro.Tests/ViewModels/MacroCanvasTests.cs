@@ -2,6 +2,7 @@ using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
 using SmartMacro.App.ViewModels.Canvas;
 using SmartMacro.App.ViewModels.Nodes;
+using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
@@ -19,6 +20,13 @@ public class MacroCanvasTests
 {
     private static MacroEditorViewModel CreateEditor(FakeIpcClient? client = null) =>
         new(client ?? new FakeIpcClient(), null, null, ImmediateUiDispatcher.Instance, @"C:\smartmacro\macros");
+
+    /// <summary>Same, but hands back the fake daemon so a test can push run events at it.</summary>
+    private static MacroEditorViewModel CreateEditor(out FakeIpcClient daemon)
+    {
+        daemon = new FakeIpcClient();
+        return CreateEditor(daemon);
+    }
 
     /// <summary>The shape of pw-boot: a chain with one branch, and no coordinates anywhere.</summary>
     private static MacroGraph BootLike() => new()
@@ -524,17 +532,19 @@ public class MacroCanvasTests
     // ---- the surface wave D3b has to fill ----------------------------------------------------
 
     [Test]
-    public async Task RunLog_IsEmpty_AndTheCanvasHighlightIsOff()
+    public async Task RunLog_IsEmptyUntilTheDaemonReportsAnything()
     {
         using var vm = CreateEditor();
         vm.LoadGraph(BootLike());
 
-        // D3a reserves the strip and the highlight; nothing feeds either yet, and inventing
-        // rows here would be a lie the next wave has to delete.
         await Assert.That(vm.RunLog).IsEmpty();
         await Assert.That(vm.HasRunLog).IsFalse();
+        await Assert.That(vm.HasRuns).IsFalse();
         await Assert.That(vm.ExecutingNodeId).IsNull();
         await Assert.That(vm.Nodes.Any(node => node.IsExecuting)).IsFalse();
+        // The empty text distinguishes "nothing ran" from "nothing is being recorded" — the
+        // strip is only fed while «Макросы» holds the subscription.
+        await Assert.That(vm.RunLogEmptyText).IsEqualTo("лог пишется, пока открыт режим «Макросы»");
     }
 
     [Test]
@@ -552,6 +562,248 @@ public class MacroCanvasTests
 
         vm.ExecutingNodeId = null;
         await Assert.That(vm.Nodes.Any(node => node.IsExecuting)).IsFalse();
+    }
+
+    [Test]
+    public async Task ARealRunFillsTheStripAndWalksTheHighlightAcrossTheCanvas()
+    {
+        using var vm = CreateEditor(out var daemon);
+        vm.LoadGraph(BootLike());
+        var walk = RunEvents.Walk("pw-boot", hwnd: 0x140804);
+
+        daemon.Push(RunEvents.Started(walk));
+        await Assert.That(vm.HasRuns).IsTrue();
+        await Assert.That(vm.RunChipText).IsEqualTo("0x140804");
+        await Assert.That(vm.SelectedRunIsLive).IsTrue();
+
+        // Entering a node opens a row and lights the box; the row has no outcome yet.
+        daemon.Push(RunEvents.Entered(walk, 0, "wait-server"));
+        await Assert.That(vm.RunLog).Count().IsEqualTo(1);
+        await Assert.That(vm.RunLog[0].Outcome).IsEqualTo(RunLogRowViewModel.PendingOutcome);
+        await Assert.That(vm.RunLog[0].IsCurrent).IsTrue();
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo("wait-server");
+        await Assert.That(vm.Nodes.Single(node => node.IsExecuting).NodeId).IsEqualTo("wait-server");
+
+        // Leaving it completes the SAME row in place — the strip must not flicker a new one.
+        var openRow = vm.RunLog[0];
+        daemon.Push(RunEvents.Exited(walk, 1200, "wait-server", RunOutcomes.Found, "A @ 1190,1802", 1200));
+        await Assert.That(vm.RunLog).Count().IsEqualTo(1);
+        await Assert.That(ReferenceEquals(vm.RunLog[0], openRow)).IsTrue();
+        await Assert.That(openRow.Elapsed).IsEqualTo("0:00.0");
+        await Assert.That(openRow.Outcome).IsEqualTo("нашёл");
+        await Assert.That(openRow.OutcomeIsAccent).IsTrue();
+        await Assert.That(openRow.Detail).IsEqualTo("A @ 1190,1802 · 1.2 с");
+        await Assert.That(openRow.IsCurrent).IsFalse();
+
+        // The highlight follows the walker, one box at a time.
+        daemon.Push(RunEvents.Entered(walk, 1200, "click-server"));
+        await Assert.That(vm.Nodes.Where(node => node.IsExecuting).Select(node => node.NodeId))
+            .IsEquivalentTo(new[] { "click-server" });
+        await Assert.That(vm.CanvasEdges.Single(edge => edge.Source.NodeId == "click-server").IsActive).IsTrue();
+        daemon.Push(RunEvents.Exited(walk, 1240, "click-server", RunOutcomes.Ok, "PostMessage 1192,1805", 40));
+        await Assert.That(vm.RunLog[1].Detail).IsEqualTo("PostMessage 1192,1805 · 40 мс");
+        await Assert.That(vm.RunLog[1].Outcome).IsEqualTo("ок");
+        await Assert.That(vm.RunLog[1].OutcomeIsAccent).IsFalse();
+        await Assert.That(vm.RunLog[1].Elapsed).IsEqualTo("0:01.2");
+
+        // The run ends: the log stays for reading, the canvas goes dark.
+        daemon.Push(RunEvents.Finished(walk, 1300, RunOutcomes.Completed));
+        await Assert.That(vm.ExecutingNodeId).IsNull();
+        await Assert.That(vm.Nodes.Any(node => node.IsExecuting)).IsFalse();
+        await Assert.That(vm.RunLog).Count().IsEqualTo(2);
+        await Assert.That(vm.SelectedRunIsLive).IsFalse();
+    }
+
+    [Test]
+    public async Task AFanOutOverTenWindows_LightsOneBox_AndThePickerReachesTheRest()
+    {
+        using var vm = CreateEditor(out var daemon);
+        vm.LoadGraph(BootLike());
+
+        // The case the picker exists for: one graph, ten walks, ten different nodes live.
+        var walks = Enumerable.Range(0, 10)
+            .Select(i => RunEvents.Walk("pw-boot", hwnd: 0x100 + i))
+            .ToList();
+        var nodes = new[] { "wait-server", "click-server", "wait-char", "click-char", "open-stats" };
+        foreach (var (walk, i) in walks.Select((w, i) => (w, i)))
+        {
+            daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, i * 10, nodes[i % nodes.Length]));
+        }
+
+        await Assert.That(vm.Runs).Count().IsEqualTo(10);
+        // Exactly one — nine lit boxes on one graph is the noise this wave had to avoid.
+        await Assert.That(vm.Nodes.Count(node => node.IsExecuting)).IsEqualTo(1);
+
+        // The first walk keeps the selection: a live run is never stolen by a newer sibling.
+        await Assert.That(vm.RunChipText).IsEqualTo("0x100");
+        await Assert.That(vm.RunPositionText).IsEqualTo("1 / 10");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo("wait-server");
+
+        vm.SelectNextRun();
+        await Assert.That(vm.RunChipText).IsEqualTo("0x101");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo("click-server");
+        await Assert.That(vm.Nodes.Count(node => node.IsExecuting)).IsEqualTo(1);
+        await Assert.That(vm.RunLog).Count().IsEqualTo(1);
+
+        // ◂ from the first entry wraps to the last rather than dead-ending.
+        vm.SelectPreviousRun();
+        vm.SelectPreviousRun();
+        await Assert.That(vm.RunChipText).IsEqualTo("0x109");
+        await Assert.That(vm.RunPositionText).IsEqualTo("10 / 10");
+    }
+
+    [Test]
+    public async Task AFinishedSelectionStepsAsideForANewRun_ButALiveOneDoesNot()
+    {
+        using var vm = CreateEditor(out var daemon);
+        vm.LoadGraph(BootLike());
+
+        var first = RunEvents.Walk("pw-boot", hwnd: 0x1);
+        daemon.Push(RunEvents.Started(first), RunEvents.Entered(first, 0, "wait-server"));
+        await Assert.That(vm.RunChipText).IsEqualTo("0x1");
+
+        // A live selection holds against a newcomer.
+        var second = RunEvents.Walk("pw-boot", hwnd: 0x2);
+        daemon.Push(RunEvents.Started(second));
+        await Assert.That(vm.RunChipText).IsEqualTo("0x1");
+
+        // Once it is finished, the next run takes over — the user is otherwise left
+        // watching a log that has stopped moving.
+        daemon.Push(RunEvents.Finished(first, 100, RunOutcomes.Completed));
+        var third = RunEvents.Walk("pw-boot", hwnd: 0x3);
+        daemon.Push(RunEvents.Started(third), RunEvents.Entered(third, 0, "open-stats"));
+        await Assert.That(vm.RunChipText).IsEqualTo("0x3");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo("open-stats");
+    }
+
+    [Test]
+    public async Task OpeningAnotherMacroMidRun_SwapsTheLogAndComesBackToIt()
+    {
+        using var vm = CreateEditor(out var daemon);
+        vm.LoadGraph(BootLike());
+
+        var boot = RunEvents.Walk("pw-boot", hwnd: 0xA);
+        var other = RunEvents.Walk("pw-assist", hwnd: 0xB);
+        daemon.Push(
+            RunEvents.Started(boot), RunEvents.Entered(boot, 0, "recognize"),
+            RunEvents.Started(other), RunEvents.Entered(other, 0, "n1"));
+
+        // Walks of another graph are tracked but change nothing on screen.
+        await Assert.That(vm.Runs).Count().IsEqualTo(1);
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo("recognize");
+
+        vm.LoadGraph(new MacroGraph
+        {
+            Name = "pw-assist",
+            StartNodeId = "n1",
+            Nodes = [new DelayNode { Id = "n1", Ms = 5 }],
+        });
+        await Assert.That(vm.RunChipText).IsEqualTo("0xB");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo("n1");
+        await Assert.That(vm.Nodes.Single(node => node.IsExecuting).NodeId).IsEqualTo("n1");
+
+        // Back again: the first walk's log survived rather than being discarded.
+        vm.LoadGraph(BootLike());
+        await Assert.That(vm.RunChipText).IsEqualTo("0xA");
+        await Assert.That(vm.RunLog).Count().IsEqualTo(1);
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo("recognize");
+    }
+
+    [Test]
+    public async Task APartialLogSaysSo_WhetherItJoinedLateOrTheDaemonDroppedEvents()
+    {
+        var client = new FakeIpcClient()
+            .Respond(IpcMessageTypes.SubscribeRunEvents, new[]
+            {
+                // What the daemon answers with: walks already in flight, flagged as such.
+                new RunWalkDto(Guid.NewGuid(), Guid.NewGuid(), "pw-boot", 0x140804, 0, DateTimeOffset.UtcNow, FromStart: false),
+            });
+        using var vm = CreateEditor(client);
+        vm.LoadGraph(BootLike());
+
+        await vm.SetRunEventSubscriptionAsync(true);
+
+        await Assert.That(vm.HasRuns).IsTrue();
+        await Assert.That(vm.HasRunLogNotice).IsTrue();
+        await Assert.That(vm.RunLogNotice).IsEqualTo("начало прогона не записано");
+        await Assert.That(vm.RunLogEmptyText).IsEqualTo("прогонов ещё не было");
+
+        // A dropped batch is reported too — the alternative is a log with an invisible hole.
+        // Both reasons stack: the selection is still the mid-run walk (a live one is never
+        // stolen), so its head is missing AND the daemon has since discarded events.
+        var walk = RunEvents.Walk("pw-boot", hwnd: 0x2);
+        client.RaiseEvent(IpcMessageTypes.RunEvents, new RunEventBatch([RunEvents.Started(walk)], Dropped: 12));
+        await Assert.That(vm.RunLogNotice).IsEqualTo("начало прогона не записано · пропущено событий: 12");
+    }
+
+    [Test]
+    public async Task ReconnectDropsTheHistory_AndReSubscribes()
+    {
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.SubscribeRunEvents, Array.Empty<RunWalkDto>());
+        using var vm = CreateEditor(client);
+        vm.LoadGraph(BootLike());
+        await vm.SetRunEventSubscriptionAsync(true);
+
+        var walk = RunEvents.Walk("pw-boot", hwnd: 0x7);
+        client.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "wait-server"));
+        await Assert.That(vm.HasRunLog).IsTrue();
+
+        client.RaiseConnected();
+
+        // The daemon forgets a subscription with its connection, and the gap is unknowable —
+        // so the panel re-asks and starts from nothing rather than resuming a broken log.
+        await Assert.That(vm.HasRunLog).IsFalse();
+        await Assert.That(vm.HasRuns).IsFalse();
+        await Assert.That(vm.ExecutingNodeId).IsNull();
+        await Assert.That(client.CountOf(IpcMessageTypes.SubscribeRunEvents)).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task AnEventForAnUnknownWalkIsIgnoredRatherThanInventingARun()
+    {
+        using var vm = CreateEditor(out var daemon);
+        vm.LoadGraph(BootLike());
+
+        // Only possible when the WalkStarted was in a batch the daemon had to discard. A run
+        // synthesised here would have no macro name and could not be filed under a graph.
+        var orphan = RunEvents.Walk("pw-boot", hwnd: 0x9);
+        daemon.Push(RunEvents.Entered(orphan, 0, "wait-server"));
+
+        await Assert.That(vm.HasRuns).IsFalse();
+        await Assert.That(vm.ExecutingNodeId).IsNull();
+    }
+
+    [Test]
+    public async Task ClearRunLog_ForgetsEverythingWithoutStoppingAnything()
+    {
+        using var vm = CreateEditor(out var daemon);
+        vm.LoadGraph(BootLike());
+        var walk = RunEvents.Walk("pw-boot", hwnd: 0x5);
+        daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "wait-server"));
+
+        vm.ClearRunLog();
+
+        await Assert.That(vm.HasRuns).IsFalse();
+        await Assert.That(vm.RunLog).IsEmpty();
+        await Assert.That(vm.ExecutingNodeId).IsNull();
+    }
+
+    [Test]
+    public async Task ALogCappedAtItsRowLimitDropsTheOldestRows()
+    {
+        using var vm = CreateEditor(out var daemon);
+        vm.LoadGraph(BootLike());
+        var walk = RunEvents.Walk("pw-boot", hwnd: 0x6);
+        daemon.Push(RunEvents.Started(walk));
+
+        // A macro that loops must not grow the panel without bound.
+        for (var i = 0; i < MacroRunViewModel.MaxRows + 25; i++)
+        {
+            daemon.Push(RunEvents.Entered(walk, i, "await-stats"), RunEvents.Exited(walk, i, "await-stats", RunOutcomes.Ok, null, 1));
+        }
+
+        await Assert.That(vm.RunLog).Count().IsEqualTo(MacroRunViewModel.MaxRows);
+        await Assert.That(vm.RunLog[0].Elapsed).IsEqualTo(RunLogRowViewModel.FormatElapsed(25));
     }
 
     // ---- box chrome --------------------------------------------------------------------------

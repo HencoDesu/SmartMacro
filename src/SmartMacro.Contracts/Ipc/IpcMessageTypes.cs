@@ -53,6 +53,24 @@ public static class IpcMessageTypes
     /// <summary>Request: <see cref="DeleteMacroRequest"/> → Response: —. Deletes the macro file.</summary>
     public const string DeleteMacro = "DeleteMacro";
 
+    /// <summary>
+    /// Request: <see cref="SubscribeRunEventsRequest"/> → Response: <c>RunWalkDto[]</c>.
+    /// Turns the <see cref="RunEvents"/> stream on or off FOR THIS CONNECTION.
+    ///
+    /// <b>Opt-in on purpose.</b> With nobody subscribed the executor emits nothing at all —
+    /// no timing, no detail strings, no serialisation — so the resident daemon costs the
+    /// same whether or not a panel exists. This is the load-bearing half of the flooding
+    /// answer; the other half is that the events are batched (see <c>RunEventBatch</c>).
+    ///
+    /// The response is the set of walks ALREADY in flight, each with
+    /// <c>FromStart = false</c>: a subscriber that arrives mid-run has missed rows nobody
+    /// can reconstruct, and the protocol says so rather than letting the panel show a
+    /// partial log as a complete one. Subscriptions do NOT survive a reconnect — the
+    /// daemon forgets a connection's flag with the connection — so a client must re-send
+    /// this on every <c>Connected</c>.
+    /// </summary>
+    public const string SubscribeRunEvents = "SubscribeRunEvents";
+
     // --------------------------------------------------------------- requests: hotkeys
 
     /// <summary>
@@ -102,6 +120,18 @@ public static class IpcMessageTypes
 
     /// <summary>Payload: <c>RunningMacroDto[]</c>. The run registry changed; carries the new snapshot.</summary>
     public const string RunningMacrosChanged = "RunningMacrosChanged";
+
+    /// <summary>
+    /// Payload: <c>RunEventBatch</c>. What the executor did since the last flush — nodes
+    /// entered and left, walks started and finished.
+    ///
+    /// Sent ONLY to connections that asked via <see cref="SubscribeRunEvents"/>, and only
+    /// in coalesced batches. Both properties are deliberate: this is the one event whose
+    /// natural rate (hundreds per second during a fan-out) exceeds what a per-connection
+    /// queue of 256 can absorb, and a dropped panel mid-run is precisely the failure the
+    /// user would be watching.
+    /// </summary>
+    public const string RunEvents = "RunEvents";
 
     /// <summary>
     /// Payload: —. Someone asked for the panel to come to the foreground: the tray's

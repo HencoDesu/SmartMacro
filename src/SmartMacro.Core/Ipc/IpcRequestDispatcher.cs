@@ -41,6 +41,7 @@ public sealed partial class IpcRequestDispatcher
     private readonly IHotkeyRegistration _hotkeys;
     private readonly CaptureDumpService _captures;
     private readonly IHostApplicationLifetime _lifetime;
+    private readonly RunEventPublisher _runEvents;
     private readonly ILogger<IpcRequestDispatcher> _logger;
 
     // Set by IpcServer's constructor, not by DI — see AttachBroadcaster. Null in the
@@ -56,6 +57,7 @@ public sealed partial class IpcRequestDispatcher
         IHotkeyRegistration hotkeys,
         CaptureDumpService captures,
         IHostApplicationLifetime lifetime,
+        RunEventPublisher runEvents,
         ILogger<IpcRequestDispatcher> logger)
     {
         _windows = windows;
@@ -65,6 +67,7 @@ public sealed partial class IpcRequestDispatcher
         _hotkeys = hotkeys;
         _captures = captures;
         _lifetime = lifetime;
+        _runEvents = runEvents;
         _logger = logger;
     }
 
@@ -75,15 +78,30 @@ public sealed partial class IpcRequestDispatcher
     /// </summary>
     public void AttachBroadcaster(IIpcBroadcaster broadcaster) => _broadcaster = broadcaster;
 
-    /// <summary>Routes one request to its handler and produces the reply.</summary>
+    /// <summary>
+    /// Routes one request to its handler and produces the reply, with no connection behind
+    /// it. Everything in the catalogue except <c>SubscribeRunEvents</c> is per-engine rather
+    /// than per-client and works fine this way; that one handler rejects politely.
+    /// </summary>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> fired; the connection is closing.</exception>
-    public async Task<IpcResponse> DispatchAsync(IpcRequest request, CancellationToken cancellationToken = default)
+    public Task<IpcResponse> DispatchAsync(IpcRequest request, CancellationToken cancellationToken = default) =>
+        DispatchAsync(request, session: null, cancellationToken);
+
+    /// <summary>Routes one request on behalf of a particular connection.</summary>
+    /// <param name="request">The parsed envelope.</param>
+    /// <param name="session">
+    /// Per-connection protocol state, or <c>null</c> when there is no connection (tests).
+    /// See <see cref="IIpcSession"/> for why exactly one handler needs it.
+    /// </param>
+    /// <param name="cancellationToken">Fires when the connection is closing.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> fired; the connection is closing.</exception>
+    public async Task<IpcResponse> DispatchAsync(IpcRequest request, IIpcSession? session, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         try
         {
-            return await HandleAsync(request, cancellationToken).ConfigureAwait(false);
+            return await HandleAsync(request, session, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -104,7 +122,7 @@ public sealed partial class IpcRequestDispatcher
         }
     }
 
-    private async Task<IpcResponse> HandleAsync(IpcRequest request, CancellationToken cancellationToken)
+    private async Task<IpcResponse> HandleAsync(IpcRequest request, IIpcSession? session, CancellationToken cancellationToken)
     {
         switch (request.Type)
         {
@@ -174,6 +192,23 @@ public sealed partial class IpcRequestDispatcher
                 // false = no such file. A no-op by contract, not an error.
                 await _macros.DeleteAsync(payload.Name, cancellationToken).ConfigureAwait(false);
                 return Ok(request);
+            }
+
+            case IpcMessageTypes.SubscribeRunEvents:
+            {
+                var payload = Require<SubscribeRunEventsRequest>(request);
+                var connection = session
+                                 ?? throw new IpcRequestRejectedException("Подписка на события прогона возможна только по соединению.");
+                connection.SetRunEventSubscription(payload.Enabled);
+
+                // The live walks, so a panel that arrived mid-run knows a run exists at all.
+                // Each is flagged FromStart = false: its leading node rows happened before
+                // anyone was recording and cannot be reconstructed, and the panel is
+                // required to say so rather than render the tail as a whole log. Turning the
+                // subscription OFF answers with an empty list — there is nothing to follow.
+                return Ok(request, IpcJson.Write(payload.Enabled
+                    ? _runEvents.LiveWalks()
+                    : Array.Empty<RunWalkDto>()));
             }
 
             // ------------------------------------------------------------------ hotkeys

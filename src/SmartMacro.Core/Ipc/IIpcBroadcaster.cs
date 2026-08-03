@@ -20,4 +20,14 @@ public interface IIpcBroadcaster
     /// throws — a client that cannot keep up is dropped, not reported back to the caller.
     /// </summary>
     void Broadcast(IpcEvent evt);
+
+    /// <summary>
+    /// Queues <paramref name="evt"/> only on connections that asked for the run-event
+    /// stream via <c>SubscribeRunEvents</c>.
+    ///
+    /// Separate from <see cref="Broadcast"/> because this is the one high-rate event in the
+    /// protocol: sending it to a client that never asked would hand it a burst it has no
+    /// reason to drain, and the penalty for not draining is being disconnected.
+    /// </summary>
+    void BroadcastToRunSubscribers(IpcEvent evt);
 }

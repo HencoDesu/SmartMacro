@@ -46,6 +46,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
         Lifetime = A.Fake<IHostApplicationLifetime>();
 
         Captures = new CaptureDumpService(_baseDirectory, Windows, Matcher, NullLogger<CaptureDumpService>.Instance);
+        RunEvents = new RunEventPublisher(NullLogger<RunEventPublisher>.Instance);
 
         Dispatcher = new IpcRequestDispatcher(
             Windows,
@@ -55,6 +56,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
             Hotkeys,
             Captures,
             Lifetime,
+            RunEvents,
             NullLogger<IpcRequestDispatcher>.Instance);
     }
 
@@ -74,6 +76,9 @@ internal sealed class IpcDispatcherHarness : IDisposable
 
     public CaptureDumpService Captures { get; }
 
+    /// <summary>Real: the run-event pump is what <c>SubscribeRunEvents</c> answers from.</summary>
+    public RunEventPublisher RunEvents { get; }
+
     public IpcRequestDispatcher Dispatcher { get; }
 
     /// <summary>Folder the store writes <c>macros/</c> and the dump service writes <c>debug/</c> under.</summary>
@@ -82,11 +87,12 @@ internal sealed class IpcDispatcherHarness : IDisposable
     /// <summary>Path of the file a macro of this name would occupy.</summary>
     public string MacroFile(string name) => Path.Combine(_baseDirectory, MacroGraphStore.FolderName, $"{name}.json");
 
-    public Task<IpcResponse> DispatchAsync(string type, object? payload = null, int id = 1) =>
-        Dispatcher.DispatchAsync(new IpcRequest(id, type, payload is null ? null : IpcJson.Write(payload)));
+    public Task<IpcResponse> DispatchAsync(string type, object? payload = null, int id = 1, IIpcSession? session = null) =>
+        Dispatcher.DispatchAsync(new IpcRequest(id, type, payload is null ? null : IpcJson.Write(payload)), session);
 
     public void Dispose()
     {
+        RunEvents.DisposeAsync().AsTask().GetAwaiter().GetResult();
         Macros.Dispose();
         Runs.Dispose();
         try

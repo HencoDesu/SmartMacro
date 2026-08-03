@@ -68,6 +68,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     private readonly WindowRegistry _windows;
     private readonly MacroGraphStore _macros;
     private readonly MacroRunRegistry _runs;
+    private readonly RunEventPublisher _runEvents;
     private readonly ILogger<IpcServer> _logger;
 
     private readonly ConcurrentDictionary<ClientConnection, byte> _clients = new();
@@ -83,12 +84,14 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         WindowRegistry windows,
         MacroGraphStore macros,
         MacroRunRegistry runs,
+        RunEventPublisher runEvents,
         ILogger<IpcServer> logger)
     {
         _dispatcher = dispatcher;
         _windows = windows;
         _macros = macros;
         _runs = runs;
+        _runEvents = runEvents;
         _logger = logger;
 
         // Hand ourselves to the dispatcher so RequestActivate has something to broadcast
@@ -96,6 +99,9 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         // (server → dispatcher → server) and this is the end of it that already holds the
         // other object.
         dispatcher.AttachBroadcaster(this);
+        // Same cycle, same resolution: the run-event pump pushes through us, and we hold it
+        // so each connection can flip its own subscription on and off.
+        runEvents.AttachBroadcaster(this);
     }
 
     /// <summary>Number of clients currently connected. Diagnostics and tests.</summary>
@@ -300,7 +306,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);
 
-        var client = new ClientConnection(new IpcConnection(input, output, leaveOpen: true));
+        var client = new ClientConnection(new IpcConnection(input, output, leaveOpen: true), _runEvents);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             _stopping.Token,
@@ -319,6 +325,9 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         finally
         {
             _clients.TryRemove(client, out _);
+            // Before anything else: a client that died without unsubscribing must not leave
+            // the executor instrumented for the rest of the daemon's life.
+            client.SetRunEventSubscription(false);
             client.CompleteEvents();
             // The pump may be parked in a write to a pipe nobody is reading; cancelling is
             // what unblocks it, and the WhenAny guards the case where even that doesn't.
@@ -383,7 +392,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     {
         try
         {
-            var response = await _dispatcher.DispatchAsync(request, cancellationToken).ConfigureAwait(false);
+            var response = await _dispatcher.DispatchAsync(request, client, cancellationToken).ConfigureAwait(false);
             await client.Connection.WriteAsync(response, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -432,13 +441,44 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
 
         foreach (var client in _clients.Keys)
         {
-            if (client.TryEnqueue(evt))
-            {
-                continue;
-            }
-            LogClientBacklogged(evt.Type, EventQueueCapacity);
-            client.Drop();
+            Deliver(client, evt);
         }
+    }
+
+    /// <summary>
+    /// Queues <paramref name="evt"/> on the connections that asked for the run-event stream
+    /// and on no others.
+    ///
+    /// The filter is the point, not an optimisation: <c>RunEvents</c> is the only event in
+    /// the protocol whose natural rate can outrun a connection's queue, and the penalty for
+    /// a full queue is being dropped. A second panel — or a debug console — that never
+    /// subscribed must not be exposed to that.
+    /// </summary>
+    public void BroadcastToRunSubscribers(IpcEvent evt)
+    {
+        ArgumentNullException.ThrowIfNull(evt);
+        if (_clients.IsEmpty)
+        {
+            return;
+        }
+
+        foreach (var client in _clients.Keys)
+        {
+            if (client.WantsRunEvents)
+            {
+                Deliver(client, evt);
+            }
+        }
+    }
+
+    private void Deliver(ClientConnection client, IpcEvent evt)
+    {
+        if (client.TryEnqueue(evt))
+        {
+            return;
+        }
+        LogClientBacklogged(evt.Type, EventQueueCapacity);
+        client.Drop();
     }
 
     // Payload construction is deferred so a daemon running with no panel attached doesn't
@@ -507,11 +547,12 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     }
 
     /// <summary>
-    /// One connected client: the framed stream plus its own event queue and its own
-    /// cancellation source. Dropping a client cancels only that source, which is why one
-    /// dead peer cannot take the accept loop or its siblings down with it.
+    /// One connected client: the framed stream plus its own event queue, its own
+    /// cancellation source and its own subscription state. Dropping a client cancels only
+    /// that source, which is why one dead peer cannot take the accept loop or its siblings
+    /// down with it.
     /// </summary>
-    private sealed class ClientConnection : IAsyncDisposable
+    private sealed class ClientConnection : IAsyncDisposable, IIpcSession
     {
         private readonly Channel<IpcEvent> _events = Channel.CreateBounded<IpcEvent>(
             new BoundedChannelOptions(EventQueueCapacity)
@@ -523,13 +564,59 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
                 SingleReader = true,
             });
 
-        public ClientConnection(IpcConnection connection) => Connection = connection;
+        private readonly RunEventPublisher _runEvents;
+        private readonly Lock _subscriptionLock = new();
+        private bool _wantsRunEvents;
+
+        public ClientConnection(IpcConnection connection, RunEventPublisher runEvents)
+        {
+            Connection = connection;
+            _runEvents = runEvents;
+        }
 
         public IpcConnection Connection { get; }
 
         public CancellationTokenSource Cts { get; } = new();
 
         public ChannelReader<IpcEvent> Events => _events.Reader;
+
+        /// <inheritdoc />
+        public bool WantsRunEvents
+        {
+            get
+            {
+                lock (_subscriptionLock)
+                {
+                    return _wantsRunEvents;
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public void SetRunEventSubscription(bool enabled)
+        {
+            // Locked and edge-triggered: the publisher gates the whole executor on a
+            // subscriber COUNT, so a double subscribe (or a disconnect racing an explicit
+            // unsubscribe) leaking a reference would leave the engine instrumented with
+            // nobody watching.
+            lock (_subscriptionLock)
+            {
+                if (_wantsRunEvents == enabled)
+                {
+                    return;
+                }
+                _wantsRunEvents = enabled;
+            }
+
+            if (enabled)
+            {
+                _runEvents.Acquire();
+            }
+            else
+            {
+                _runEvents.Release();
+            }
+        }
 
         public bool TryEnqueue(IpcEvent evt) => _events.Writer.TryWrite(evt);
 

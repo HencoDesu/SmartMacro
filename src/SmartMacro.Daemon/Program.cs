@@ -139,6 +139,13 @@ internal static class Program
         services.AddSingleton<MacroExecutor>();
         services.AddSingleton<MacroRunRegistry>();
 
+        // Wave D3b: the executor's progress channel. Registered before Orchestrator because
+        // Orchestrator takes it as an optional dependency and puts it in every run context.
+        // It is inert until a panel subscribes — see the class comment for why that matters
+        // to a daemon that spends most of its life with no UI attached.
+        services.AddSingleton<RunEventPublisher>();
+        services.AddSingleton<IMacroRunObserver>(sp => sp.GetRequiredService<RunEventPublisher>());
+
         // ProcessMonitor and HotkeyListener are registered first because Orchestrator
         // subscribes to their events during construction. DI resolves them before
         // Orchestrator regardless of registration order, but listing them first reads
@@ -177,6 +184,10 @@ internal static class Program
         // pipe is torn down early — right after the tray icon, before agents and hotkeys
         // unwind — and the panel learns the daemon is going away instead of hanging on a
         // half-dead engine.
+        // The batching pump, started before the pipe so a client that subscribes the instant
+        // it connects has something draining its queue.
+        services.AddHostedService(sp => sp.GetRequiredService<RunEventPublisher>());
+
         services.AddHostedService(sp => sp.GetRequiredService<IpcServer>());
 
         // Tray last: hosted services stop in reverse registration order, so the icon is the

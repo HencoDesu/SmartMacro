@@ -1,4 +1,6 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging;
+using SmartMacro.Contracts.Dto;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
 using SmartMacro.Windows;
@@ -24,6 +26,13 @@ namespace SmartMacro.Macros.Execution;
 ///
 /// Stateless and registry-agnostic — safe as a singleton; run bookkeeping lives in
 /// <see cref="MacroRunRegistry"/>, wired up by the caller via <see cref="MacroRunContext.OnNodeEntered"/>.
+///
+/// <b>Tracing (wave D3b).</b> Every call to <see cref="RunAsync"/> is one WALK with its own
+/// id and its own clock, reported to <see cref="MacroRunContext.Observer"/>. The walk, not
+/// the run, is the unit: a <see cref="RunMacroNode"/> fan-out forks one walk per window, and
+/// they are only distinguishable downstream because each got its own id here. Node-level
+/// events — and the detail strings that go with them — are produced ONLY while the observer
+/// says someone is listening, so an unwatched daemon pays one flag read per node.
 /// </summary>
 public sealed partial class MacroExecutor
 {
@@ -56,28 +65,49 @@ public sealed partial class MacroExecutor
         ArgumentNullException.ThrowIfNull(macro);
         ArgumentNullException.ThrowIfNull(context);
 
+        // Opened before the first node and closed in every exit path below, so the observer's
+        // roster of live walks can never leak an entry — that roster is what a panel
+        // connecting mid-run is shown.
+        var trace = MacroWalkTrace.Begin(
+            context.Observer,
+            context.RunId,
+            macro.Name,
+            context.ContextWindow,
+            context.Depth);
+
+        MacroRunResult result;
         try
         {
-            return await RunCoreAsync(macro, context, ct).ConfigureAwait(false);
+            result = await RunCoreAsync(macro, context, trace, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             LogCancelled(macro.Name);
-            return MacroRunResult.Cancelled;
+            result = MacroRunResult.Cancelled;
         }
         catch (MacroVariableException ex)
         {
             LogAborted(macro.Name, ex.Message);
-            return MacroRunResult.Aborted(ex.Message);
+            result = MacroRunResult.Aborted(ex.Message);
         }
         catch (MacroRunAbortException ex)
         {
             LogAborted(macro.Name, ex.Message);
-            return MacroRunResult.Aborted(ex.Message);
+            result = MacroRunResult.Aborted(ex.Message);
         }
+
+        trace.Finished(WalkOutcome(result.Status), result.Error);
+        return result;
     }
 
-    private async Task<MacroRunResult> RunCoreAsync(MacroGraph macro, MacroRunContext context, CancellationToken ct)
+    private static string WalkOutcome(MacroRunStatus status) => status switch
+    {
+        MacroRunStatus.Completed => RunOutcomes.Completed,
+        MacroRunStatus.Cancelled => RunOutcomes.Cancelled,
+        _ => RunOutcomes.Aborted,
+    };
+
+    private async Task<MacroRunResult> RunCoreAsync(MacroGraph macro, MacroRunContext context, MacroWalkTrace trace, CancellationToken ct)
     {
         var nodesById = new Dictionary<string, MacroNode>(StringComparer.Ordinal);
         foreach (var node in macro.Nodes)
@@ -103,18 +133,51 @@ public sealed partial class MacroExecutor
             }
 
             context.OnNodeEntered?.Invoke(node.Id);
-            currentId = await ExecuteNodeAsync(macro, node, context, callChain, ct).ConfigureAwait(false);
+            trace.NodeEntered(node.Id);
+            var nodeStart = MacroWalkTrace.Now;
+
+            NodeStep step;
+            try
+            {
+                step = await ExecuteNodeAsync(macro, node, context, callChain, trace, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (trace.IsTracing)
+            {
+                // The walk is over either way — this only makes the log say WHICH node ended
+                // it, which is the first thing anyone reading the strip wants to know. The
+                // filter keeps the whole branch off the path when nobody is watching.
+                trace.NodeExited(
+                    node.Id,
+                    ex is OperationCanceledException ? RunOutcomes.Cancelled : RunOutcomes.Error,
+                    ex is OperationCanceledException ? null : ex.Message,
+                    nodeStart);
+                throw;
+            }
+
+            trace.NodeExited(node.Id, step.Outcome, step.Detail, nodeStart);
+            currentId = step.Next;
         }
 
         LogCompleted(macro.Name);
         return MacroRunResult.Completed;
     }
 
-    private async Task<string?> ExecuteNodeAsync(
+    /// <summary>
+    /// What one node did: where to go next, which way it went, and (only when traced) a
+    /// line describing it. A readonly struct so an untraced walk allocates nothing per node.
+    /// </summary>
+    private readonly record struct NodeStep(string? Next, string Outcome, string? Detail = null)
+    {
+        /// <summary>An action node: exactly one way out.</summary>
+        public static NodeStep Done(string? next, string? detail) => new(next, RunOutcomes.Ok, detail);
+    }
+
+    private async Task<NodeStep> ExecuteNodeAsync(
         MacroGraph macro,
         MacroNode node,
         MacroRunContext context,
         IReadOnlyList<string> callChain,
+        MacroWalkTrace trace,
         CancellationToken ct)
     {
         switch (node)
@@ -123,14 +186,16 @@ public sealed partial class MacroExecutor
             {
                 var targets = ResolveTargets(n.Id, n.Target, context);
                 await Task.WhenAll(targets.Select(hwnd => _primitives.PressKeyAsync(hwnd, n.Key, ct))).ConfigureAwait(false);
-                return n.Next;
+                return NodeStep.Done(n.Next, Detail(trace, () => Fanout(n.Key.ToString(), targets.Count)));
             }
             case ClickNode n:
             {
                 var point = ResolveClickPoint(n, context.Variables);
                 var targets = ResolveTargets(n.Id, n.Target, context);
                 await Task.WhenAll(targets.Select(hwnd => _primitives.ClickAsync(hwnd, point, n.DoubleClick, ct))).ConfigureAwait(false);
-                return n.Next;
+                return NodeStep.Done(n.Next, Detail(trace, () => Fanout(
+                    n.DoubleClick ? $"{point.X},{point.Y} dbl" : $"{point.X},{point.Y}",
+                    targets.Count)));
             }
             case DelayNode n:
             {
@@ -138,35 +203,37 @@ public sealed partial class MacroExecutor
                 {
                     await Task.Delay(n.Ms, ct).ConfigureAwait(false);
                 }
-                return n.Next;
+                return NodeStep.Done(n.Next, Detail(trace, () => $"{n.Ms} мс"));
             }
             case AddTagNode n:
             {
                 var tag = context.Variables.Interpolate(n.Tag);
-                foreach (var hwnd in ResolveTargets(n.Id, n.Target, context))
+                var targets = ResolveTargets(n.Id, n.Target, context);
+                foreach (var hwnd in targets)
                 {
                     _windows.AddTag(hwnd, tag);
                 }
-                return n.Next;
+                return NodeStep.Done(n.Next, Detail(trace, () => Fanout($"+{tag}", targets.Count)));
             }
             case RemoveTagNode n:
             {
                 var tag = context.Variables.Interpolate(n.Tag);
-                foreach (var hwnd in ResolveTargets(n.Id, n.Target, context))
+                var targets = ResolveTargets(n.Id, n.Target, context);
+                foreach (var hwnd in targets)
                 {
                     _windows.RemoveTag(hwnd, tag);
                 }
-                return n.Next;
+                return NodeStep.Done(n.Next, Detail(trace, () => Fanout($"−{tag}", targets.Count)));
             }
             case SetIconNode n:
             {
                 var iconPath = context.Variables.Interpolate(n.IconPath);
                 var targets = ResolveTargets(n.Id, n.Target, context);
                 await Task.WhenAll(targets.Select(hwnd => _primitives.SetIconAsync(hwnd, iconPath, ct))).ConfigureAwait(false);
-                return n.Next;
+                return NodeStep.Done(n.Next, Detail(trace, () => Fanout(FileNameOf(iconPath), targets.Count)));
             }
             case RunMacroNode n:
-                return await ExecuteRunMacroAsync(macro, n, context, callChain, ct).ConfigureAwait(false);
+                return await ExecuteRunMacroAsync(macro, n, context, callChain, trace, ct).ConfigureAwait(false);
             case FindElementNode n:
             {
                 var hwnd = RequireContext(n.Id, context);
@@ -177,9 +244,9 @@ public sealed partial class MacroExecutor
                     {
                         context.Variables.Set(n.FoundPointVar, point);
                     }
-                    return n.Found;
+                    return new NodeStep(n.Found, RunOutcomes.Found, Detail(trace, () => $"{n.Template} @ {point.X},{point.Y}"));
                 }
-                return n.NotFound;
+                return new NodeStep(n.NotFound, RunOutcomes.NotFound, Detail(trace, () => n.Template));
             }
             case WaitForElementNode n:
             {
@@ -191,9 +258,9 @@ public sealed partial class MacroExecutor
                     {
                         context.Variables.Set(n.FoundPointVar, point);
                     }
-                    return n.Found;
+                    return new NodeStep(n.Found, RunOutcomes.Found, Detail(trace, () => $"{n.Template} @ {point.X},{point.Y}"));
                 }
-                return n.Timeout;
+                return new NodeStep(n.Timeout, RunOutcomes.Timeout, Detail(trace, () => $"{n.Template} · лимит {n.TimeoutMs} мс"));
             }
             case RecognizeTagNode n:
             {
@@ -206,20 +273,47 @@ public sealed partial class MacroExecutor
                     {
                         _windows.AddTag(hwnd, tag);
                     }
-                    return n.Matched;
+                    return new NodeStep(n.Matched, RunOutcomes.Matched, Detail(trace, () => $"{n.TemplateSet} → {tag}"));
                 }
-                return n.NotMatched;
+                return new NodeStep(n.NotMatched, RunOutcomes.NotMatched, Detail(trace, () => n.TemplateSet));
             }
             default:
                 throw new MacroRunAbortException($"Macro '{macro.Name}': node '{node.Id}' has unsupported type {node.GetType().Name}.");
         }
     }
 
-    private async Task<string?> ExecuteRunMacroAsync(
+    // Detail strings exist only for the log strip, so they are built only when something is
+    // reading it. Everything above passes a lambda rather than a string for that reason —
+    // the interpolations are the one genuinely per-node allocation this class would
+    // otherwise make on every run of every macro, watched or not.
+    private static string? Detail(MacroWalkTrace trace, Func<string> build) => trace.IsTracing ? build() : null;
+
+    // "C" for the ordinary one-window case, "C ×7" for a selector fan-out, "C ×0" for a
+    // selector that matched nothing — which is a legal no-op and exactly the thing someone
+    // reading the log is trying to find out.
+    private static string Fanout(string what, int targets) =>
+        targets == 1 ? what : string.Create(CultureInfo.InvariantCulture, $"{what} ×{targets}");
+
+    private static string FileNameOf(string path)
+    {
+        try
+        {
+            return Path.GetFileName(path) is { Length: > 0 } name ? name : path;
+        }
+        catch (ArgumentException)
+        {
+            // An interpolated variable can put anything in here, including invalid path
+            // characters. The raw string is a perfectly good log line.
+            return path;
+        }
+    }
+
+    private async Task<NodeStep> ExecuteRunMacroAsync(
         MacroGraph macro,
         RunMacroNode node,
         MacroRunContext context,
         IReadOnlyList<string> callChain,
+        MacroWalkTrace trace,
         CancellationToken ct)
     {
         var name = context.Variables.Interpolate(node.MacroName);
@@ -277,7 +371,9 @@ public sealed partial class MacroExecutor
             _ = ObserveDetachedSubRunsAsync(name, subRuns);
         }
 
-        return node.Next;
+        return NodeStep.Done(node.Next, Detail(trace, () => Fanout(
+            node.Await ? name : $"{name} (без ожидания)",
+            childContexts.Count)));
     }
 
     private static MacroRunContext BuildChildContext(MacroRunContext parent, IReadOnlyList<string> callChain, IntPtr contextWindow)
@@ -288,7 +384,13 @@ public sealed partial class MacroExecutor
             Variables = parent.Variables.Clone(),
             Depth = parent.Depth + 1,
             CallChain = callChain,
+            RunId = parent.RunId,
             OnNodeEntered = parent.OnNodeEntered,
+            // Inherited, not per-child: the observer is a singleton and the CHILD WALK's own
+            // identity comes from MacroWalkTrace.Begin inside the child's RunAsync. That is
+            // what makes a ten-window fan-out ten separately followable walks that still
+            // report one RunId.
+            Observer = parent.Observer,
         };
     }
 

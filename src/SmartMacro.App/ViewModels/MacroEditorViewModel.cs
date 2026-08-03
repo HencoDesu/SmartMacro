@@ -198,11 +198,16 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private string? _errorMessage;
     private string? _statusMessage;
 
+    private readonly MacroRunTracker _runs = new();
+
     private string _librarySearch = string.Empty;
     private double _zoom = 1;
     private double _panX = MinPan;
     private double _panY = MinPan;
     private string? _executingNodeId;
+    private MacroRunViewModel? _selectedRun;
+    private bool _wantsRunEvents;
+    private int _droppedRunEvents;
     // Edge geometry is rebuilt from the nodes; while a batch of structural edits is in
     // flight (a load, a delete that repoints edges) the rebuild is deferred to the end so
     // the canvas is not routed against a half-updated graph.
@@ -444,9 +449,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Node the executor is standing on, or <c>null</c>. <b>Nothing sets this yet</b> —
-    /// wave D3b feeds it from the run-event stream, and it is declared here so the canvas
-    /// highlight and the log strip have one source between them.
+    /// Node the executor is standing on, or <c>null</c>. Follows <see cref="SelectedRun"/>,
+    /// which is the whole reason there is a run picker: a graph can be walked by ten windows
+    /// at once and only one of them may light a box.
+    ///
+    /// Settable from outside because the canvas tests drive it directly; in the live panel
+    /// only <see cref="SyncExecutingNode"/> writes it.
     /// </summary>
     public string? ExecutingNodeId
     {
@@ -469,18 +477,127 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
+    // ---- run log --------------------------------------------------------------------
+
     /// <summary>
-    /// The run-log strip under the canvas. <b>Empty by design in D3a</b>: the engine has no
-    /// structured run-event stream and the protocol has no message to carry one, so the
-    /// strip shows <see cref="RunLogEmptyText"/> rather than invented rows. D3b fills it.
+    /// The run-log strip under the canvas: the rows of <see cref="SelectedRun"/>.
+    ///
+    /// A projection, not a store — every walk keeps its own rows in
+    /// <see cref="MacroRunViewModel.Log"/>, so switching the picker (or opening another
+    /// macro and coming back) shows that walk's history rather than a log that was thrown
+    /// away.
     /// </summary>
     public ObservableCollection<RunLogRowViewModel> RunLog { get; } = [];
 
     /// <summary><c>true</c> once there is anything to show in the strip.</summary>
     public bool HasRunLog => RunLog.Count > 0;
 
-    /// <summary>What the strip says while it has never seen a run.</summary>
-    public string RunLogEmptyText => "прогонов ещё не было";
+    /// <summary>
+    /// What the strip says when it has no rows. Distinguishes "nothing has run" from
+    /// "nothing is being recorded", because those call for different reactions from the user.
+    /// </summary>
+    public string RunLogEmptyText => _wantsRunEvents
+        ? "прогонов ещё не было"
+        : "лог пишется, пока открыт режим «Макросы»";
+
+    /// <summary>
+    /// Walks of the OPEN macro, oldest first — what the run chip pages through. Empty
+    /// whenever the open graph has never been run while the panel was watching.
+    /// </summary>
+    public ObservableCollection<MacroRunViewModel> Runs { get; } = [];
+
+    /// <summary><c>true</c> when there is a run chip to draw at all.</summary>
+    public bool HasRuns => Runs.Count > 0;
+
+    /// <summary>
+    /// The walk the canvas and the log strip follow. Assigning it re-points both.
+    /// </summary>
+    public MacroRunViewModel? SelectedRun
+    {
+        get => _selectedRun;
+        set
+        {
+            if (ReferenceEquals(_selectedRun, value))
+            {
+                return;
+            }
+            _selectedRun = value;
+            OnPropertyChanged(nameof(SelectedRun));
+            OnPropertyChanged(nameof(RunChipText));
+            OnPropertyChanged(nameof(RunPositionText));
+            OnPropertyChanged(nameof(SelectedRunIsLive));
+            RebuildRunLog();
+            SyncExecutingNode();
+        }
+    }
+
+    /// <summary>Chip label: the context window as <c>0x140804</c>, or the macro name when there is none.</summary>
+    public string RunChipText => _selectedRun?.Label ?? string.Empty;
+
+    /// <summary>"2 / 10" while a fan-out is in flight; empty when there is only one walk.</summary>
+    public string RunPositionText
+    {
+        get
+        {
+            if (_selectedRun is null || Runs.Count < 2)
+            {
+                return string.Empty;
+            }
+            return string.Create(CultureInfo.InvariantCulture, $"{Runs.IndexOf(_selectedRun) + 1} / {Runs.Count}");
+        }
+    }
+
+    /// <summary>Drives the live dot beside the chip.</summary>
+    public bool SelectedRunIsLive => _selectedRun?.IsLive == true;
+
+    /// <summary>
+    /// Why the strip may not be telling the whole truth: the panel joined mid-run, or the
+    /// daemon had to discard events. <c>null</c> when the log is complete.
+    ///
+    /// This exists because the alternative — rendering a partial log exactly like a full one
+    /// — turns "the click never happened" and "you weren't watching when it did" into the
+    /// same picture.
+    /// </summary>
+    public string? RunLogNotice
+    {
+        get
+        {
+            var parts = new List<string>(2);
+            if (_selectedRun is { FromStart: false })
+            {
+                parts.Add("начало прогона не записано");
+            }
+            if (_droppedRunEvents > 0)
+            {
+                parts.Add(string.Create(CultureInfo.CurrentCulture, $"пропущено событий: {_droppedRunEvents}"));
+            }
+            return parts.Count == 0 ? null : string.Join(" · ", parts);
+        }
+    }
+
+    /// <summary><c>true</c> when <see cref="RunLogNotice"/> has something to say.</summary>
+    public bool HasRunLogNotice => RunLogNotice is not null;
+
+    /// <summary>Selects the previous walk of this macro (the chip's ◂).</summary>
+    public void SelectPreviousRun() => StepRun(-1);
+
+    /// <summary>Selects the next walk of this macro (the chip's ▸).</summary>
+    public void SelectNextRun() => StepRun(+1);
+
+    /// <summary>
+    /// Drops every recorded walk (the strip's «очистить»). Live walks reappear as soon as
+    /// they report their next node, because the daemon keeps sending — this clears the
+    /// PANEL's history, it does not stop anything.
+    /// </summary>
+    public void ClearRunLog()
+    {
+        _runs.Clear();
+        _droppedRunEvents = 0;
+        SelectedRun = null;
+        RebuildRuns();
+        OnPropertyChanged(nameof(RunLogNotice));
+        OnPropertyChanged(nameof(HasRunLogNotice));
+    }
 
     /// <summary>Re-places every node on the grid (the «Авто-раскладка» button).</summary>
     public void AutoLayout()
@@ -962,6 +1079,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         ErrorMessage = null;
         StatusMessage = null;
         SyncCurrentFlags();
+
+        // Last, because it can light a box: the picker is re-derived for THIS graph, and if
+        // it is being walked right now the canvas picks the run up mid-flight.
+        RebuildRuns();
     }
 
     // ---- hotkey suspension ----------------------------------------------------------
@@ -975,6 +1096,46 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     /// <summary>Restores global hotkeys from the (possibly just-edited) library.</summary>
     public Task ResumeHotkeysAsync() => _hotkeys?.ResumeAsync() ?? Task.CompletedTask;
+
+    // ---- run-event subscription -----------------------------------------------------
+
+    /// <summary>
+    /// Asks the daemon to start (or stop) streaming run events to this connection.
+    ///
+    /// Scoped by the shell to the «Макросы» mode being on screen, exactly like hotkey
+    /// suspension: the stream is the only high-rate thing in the protocol, and the daemon
+    /// produces nothing at all while nobody is subscribed. A panel sitting in «Окна» must
+    /// not make the engine format a detail string for every node of every macro.
+    ///
+    /// The reply is the set of walks ALREADY in flight. They are adopted with
+    /// <c>FromStart = false</c>, which is what puts «начало прогона не записано» on the
+    /// strip instead of quietly showing a beheaded log.
+    /// </summary>
+    public async Task SetRunEventSubscriptionAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        _wantsRunEvents = enabled;
+        // Marshalled: the reconnect path calls this from the client's thread-pool thread,
+        // and a property raise from there reaches a binding off the UI thread.
+        _dispatcher.Post(() => OnPropertyChanged(nameof(RunLogEmptyText)));
+
+        try
+        {
+            var live = await _client
+                .RequestAsync<RunWalkDto[]>(
+                    IpcMessageTypes.SubscribeRunEvents,
+                    new SubscribeRunEventsRequest(enabled),
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            _dispatcher.Post(() => AdoptLiveWalks(live ?? []));
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        {
+            // A canvas without a live highlight is still a usable editor, so this is a
+            // warning rather than a visible failure.
+            Log.Warning(ex, "Не удалось {Action} поток событий прогона", enabled ? "включить" : "выключить");
+        }
+    }
 
     public void Dispose()
     {
@@ -991,12 +1152,37 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private MacroGraph? TryGet(string name) =>
         _library.FirstOrDefault(macro => string.Equals(macro.Name, name, StringComparison.Ordinal));
 
-    private void OnConnected() => _ = RefreshAsync();
+    private void OnConnected()
+    {
+        _ = RefreshAsync();
+
+        // Subscriptions do NOT survive a reconnect — the daemon forgets a connection's flag
+        // with the connection — and whatever ran during the gap is unrecoverable. So the
+        // history goes, and the subscription is re-sent.
+        _dispatcher.Post(ClearRunLog);
+        if (_wantsRunEvents)
+        {
+            _ = SetRunEventSubscriptionAsync(true);
+        }
+    }
 
     private void OnEventReceived(IpcEvent evt)
     {
         switch (evt.Type)
         {
+            case IpcMessageTypes.RunEvents:
+            {
+                // Read off the reader thread, applied on the UI thread: the payload is a
+                // batch precisely so this happens a handful of times per run rather than
+                // hundreds.
+                var batch = IpcJson.Read<RunEventBatch>(evt.Payload);
+                if (batch is not null)
+                {
+                    _dispatcher.Post(() => ApplyRunEvents(batch));
+                }
+                break;
+            }
+
             case IpcMessageTypes.MacrosChanged:
                 // Payloadless by protocol — the library can be large, so the daemon says
                 // "something changed" and we go and get it.
@@ -1016,6 +1202,155 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 break;
         }
     }
+
+    // ---- run events -----------------------------------------------------------------
+
+    /// <summary>
+    /// Applies one batch. Everything here runs on the UI thread and touches only walks —
+    /// the graph itself is never modified by a run.
+    /// </summary>
+    private void ApplyRunEvents(RunEventBatch batch)
+    {
+        if (batch.Dropped > 0)
+        {
+            _droppedRunEvents += batch.Dropped;
+            OnPropertyChanged(nameof(RunLogNotice));
+            OnPropertyChanged(nameof(HasRunLogNotice));
+        }
+
+        var listChanged = false;
+        foreach (var evt in batch.Events)
+        {
+            var run = _runs.Apply(evt);
+            if (run is null || !IsOpenMacro(run.MacroName))
+            {
+                // A walk of some OTHER graph — tracked (so opening that graph shows its log)
+                // but nothing on screen changes.
+                continue;
+            }
+            if (evt.Kind == RunEventKind.WalkStarted)
+            {
+                listChanged = true;
+            }
+            if (ReferenceEquals(run, _selectedRun))
+            {
+                SyncSelectedRunState(evt);
+            }
+        }
+
+        if (listChanged)
+        {
+            RebuildRuns();
+        }
+    }
+
+    // The selected walk moved: mirror its log into the strip and its position onto the canvas.
+    private void SyncSelectedRunState(RunEventDto evt)
+    {
+        switch (evt.Kind)
+        {
+            case RunEventKind.NodeEntered:
+                RebuildRunLog();
+                SyncExecutingNode();
+                break;
+            case RunEventKind.NodeExited:
+                // The row object is mutated in place, so the strip already shows it; only
+                // the current-node highlight can be affected, and only by the walk ending.
+                break;
+            case RunEventKind.WalkFinished:
+                SyncExecutingNode();
+                OnPropertyChanged(nameof(SelectedRunIsLive));
+                break;
+            default:
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Takes over the walks that were already running when we subscribed. They are the
+    /// daemon's answer to <c>SubscribeRunEvents</c> and carry no log at all, which is
+    /// exactly what <c>FromStart = false</c> is there to admit.
+    /// </summary>
+    private void AdoptLiveWalks(IReadOnlyList<RunWalkDto> live)
+    {
+        if (live.Count == 0)
+        {
+            return;
+        }
+        foreach (var walk in live)
+        {
+            _runs.Add(walk);
+        }
+        RebuildRuns();
+    }
+
+    /// <summary>
+    /// Re-derives the picker for the open macro and re-applies the selection rule. Called
+    /// whenever the set of walks changes or a different graph is opened.
+    /// </summary>
+    private void RebuildRuns()
+    {
+        var forMacro = _runs.For(_loadedName);
+
+        Runs.Clear();
+        foreach (var run in forMacro)
+        {
+            Runs.Add(run);
+        }
+        OnPropertyChanged(nameof(HasRuns));
+
+        // Keep the selection when it is still valid; otherwise follow whatever is alive —
+        // and never steal the selection off a walk that is still running.
+        if (_selectedRun is not null && Runs.Contains(_selectedRun) && _selectedRun.IsLive)
+        {
+            OnPropertyChanged(nameof(RunPositionText));
+            return;
+        }
+
+        var newest = Runs.LastOrDefault(run => run.IsLive) ?? Runs.LastOrDefault();
+        if (!ReferenceEquals(newest, _selectedRun))
+        {
+            SelectedRun = newest;
+            return;
+        }
+        OnPropertyChanged(nameof(RunPositionText));
+    }
+
+    private void RebuildRunLog()
+    {
+        RunLog.Clear();
+        if (_selectedRun is not null)
+        {
+            foreach (var row in _selectedRun.Log)
+            {
+                RunLog.Add(row);
+            }
+        }
+        OnPropertyChanged(nameof(HasRunLog));
+        OnPropertyChanged(nameof(RunLogNotice));
+        OnPropertyChanged(nameof(HasRunLogNotice));
+    }
+
+    private void SyncExecutingNode() => ExecutingNodeId = _selectedRun?.CurrentNodeId;
+
+    private void StepRun(int delta)
+    {
+        if (Runs.Count == 0 || _selectedRun is null)
+        {
+            return;
+        }
+        var index = Runs.IndexOf(_selectedRun);
+        if (index < 0)
+        {
+            return;
+        }
+        // Wraps: with ten walks in a fan-out, paging off one end and having to turn around
+        // is the wrong feel for a two-arrow chip.
+        SelectedRun = Runs[((index + delta) % Runs.Count + Runs.Count) % Runs.Count];
+    }
+
+    private bool IsOpenMacro(string macroName) =>
+        _loadedName is not null && string.Equals(_loadedName, macroName, StringComparison.Ordinal);
 
     private async Task ReloadLibraryAsync()
     {
@@ -1173,6 +1508,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         SelectedNode = null;
         RebuildChoices();
         SyncCurrentFlags();
+        // No graph open ⇒ no walk to follow. The walks themselves stay tracked, so
+        // re-opening the macro brings its log back.
+        RebuildRuns();
     }
 
     private void AttachNode(NodeRowViewModel row)

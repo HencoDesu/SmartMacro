@@ -12,7 +12,9 @@
       labelled rows along its own bottom edge, which is what makes «в конец» readable
       without a terminal node: an unwired outcome says "→ конец" in its own row and draws
       no line at all.
-    · the RUN LOG, reserved and empty. D3b feeds it; see MacroEditorViewModel.RunLog.
+    · the RUN LOG (D3b), fed by the daemon's RunEvents stream. Its header carries the run
+      picker — one graph can be walked by ten windows at once, and both the strip and the
+      canvas highlight follow exactly one of them.
     · the INSPECTOR. Single click on a box fills it; double click expands the box in place
       (1e) and both edit the same view-model, so they can never disagree.
 
@@ -845,18 +847,79 @@
                                 Padding="12,0"
                                 BorderThickness="0,0,0,1"
                                 BorderBrush="{DynamicResource NocturnePanelDeepDividerBrush}">
-                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                <TextBlock FontSize="10.5"
+                            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+                                <TextBlock Grid.Column="0"
+                                           FontSize="10.5"
                                            FontWeight="Medium"
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource NocturneNeutral300Brush}"
                                            Text="Лог прогона" />
-                                <TextBlock Classes="hint"
+
+                                <!-- The run picker. One graph can be walked by ten windows at
+                                     once, so the strip and the canvas highlight follow ONE of
+                                     them and this is how it is chosen. -->
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            Spacing="6"
+                                            Margin="10,0,0,0"
+                                            VerticalAlignment="Center"
+                                            IsVisible="{Binding HasRuns}">
+                                    <Ellipse Width="5" Height="5"
+                                             VerticalAlignment="Center"
+                                             IsVisible="{Binding SelectedRunIsLive}"
+                                             Fill="{DynamicResource NocturneAccentBrush}" />
+                                    <TextBlock FontSize="10"
+                                               VerticalAlignment="Center"
+                                               FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                               Foreground="{DynamicResource NocturneTextMutedBrush}"
+                                               Text="{Binding RunChipText}" />
+                                    <TextBlock Classes="hint"
+                                               Text="{Binding RunPositionText}" />
+                                    <!-- U+25C2/U+25B8, not U+25C0/U+25B6: D1 found the large
+                                         triangles get emoji presentation and arrive white,
+                                         ignoring Foreground entirely. -->
+                                    <Button Classes="ghost" Padding="5,0" FontSize="11"
+                                            Content="&#x25C2;"
+                                            ToolTip.Tip="Предыдущий прогон"
+                                            Click="OnPreviousRunClicked" />
+                                    <Button Classes="ghost" Padding="5,0" FontSize="11"
+                                            Content="&#x25B8;"
+                                            ToolTip.Tip="Следующий прогон"
+                                            Click="OnNextRunClicked" />
+                                </StackPanel>
+
+                                <!-- Never let a partial log look complete. -->
+                                <Border Grid.Column="2"
+                                        Margin="10,0,0,0"
+                                        Padding="7,1"
+                                        VerticalAlignment="Center"
+                                        CornerRadius="9"
+                                        Background="{DynamicResource NocturneWarningSurfaceBrush}"
+                                        BorderBrush="{DynamicResource NocturneWarningBorderBrush}"
+                                        BorderThickness="1"
+                                        IsVisible="{Binding HasRunLogNotice}">
+                                    <TextBlock FontSize="9.5"
+                                               Foreground="{DynamicResource NocturneWarningBrush}"
+                                               Text="{Binding RunLogNotice}" />
+                                </Border>
+
+                                <TextBlock Grid.Column="3"
+                                           Classes="hint"
+                                           Margin="10,0,0,0"
+                                           TextTrimming="CharacterEllipsis"
                                            Text="нода · исход · деталь · длительность" />
-                            </StackPanel>
+
+                                <Button Grid.Column="4"
+                                        Classes="ghost"
+                                        Padding="6,0"
+                                        FontSize="10"
+                                        Content="очистить"
+                                        ToolTip.Tip="Забыть записанные прогоны"
+                                        IsVisible="{Binding HasRuns}"
+                                        Click="OnClearRunLogClicked" />
+                            </Grid>
                         </Border>
 
-                        <!-- Empty by design: nothing produces run events yet (wave D3b). -->
                         <TextBlock Grid.Row="1"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"

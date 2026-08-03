@@ -164,6 +164,14 @@ public partial class MacrosView : UserControl
 
     private void OnAutoLayoutClicked(object? sender, RoutedEventArgs e) => Vm?.AutoLayout();
 
+    // ---- run picker ---------------------------------------------------------------------
+
+    private void OnPreviousRunClicked(object? sender, RoutedEventArgs e) => Vm?.SelectPreviousRun();
+
+    private void OnNextRunClicked(object? sender, RoutedEventArgs e) => Vm?.SelectNextRun();
+
+    private void OnClearRunLogClicked(object? sender, RoutedEventArgs e) => Vm?.ClearRunLog();
+
     private void OnOpenFolderClicked(object? sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm)

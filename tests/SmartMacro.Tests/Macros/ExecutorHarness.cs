@@ -114,16 +114,96 @@ internal sealed class ExecutorHarness
     public MacroRunContext Context(
         IntPtr? window = null,
         MacroVariables? variables = null,
-        Action<string>? onNodeEntered = null)
+        Action<string>? onNodeEntered = null,
+        IMacroRunObserver? observer = null,
+        Guid runId = default)
     {
         return new MacroRunContext
         {
             ContextWindow = window,
             Variables = variables ?? new MacroVariables(),
             OnNodeEntered = onNodeEntered,
+            Observer = observer,
+            RunId = runId,
         };
     }
 
     public static MacroGraph Graph(string name, string startId, params MacroNode[] nodes) =>
         new() { Name = name, StartNodeId = startId, Nodes = [.. nodes] };
+}
+
+/// <summary>
+/// Recording <see cref="IMacroRunObserver"/> for the tracing tests.
+///
+/// <see cref="IsEnabled"/> is settable because the flag is the whole flooding mitigation:
+/// the walker is supposed to skip timing and detail formatting when it is off, and the only
+/// way to assert that is to turn it off and check that nothing arrives.
+/// </summary>
+internal sealed class RecordingObserver : IMacroRunObserver
+{
+    /// <summary>One reported event, flattened.</summary>
+    /// <param name="Kind">walk-start / enter / exit / walk-end.</param>
+    /// <param name="WalkId">Which walk it belongs to.</param>
+    /// <param name="NodeId">Node, or <c>null</c> for the walk-level kinds.</param>
+    /// <param name="Outcome">A <c>RunOutcomes</c> constant, or <c>null</c>.</param>
+    /// <param name="Detail">The log line, or <c>null</c>.</param>
+    internal sealed record Entry(string Kind, Guid WalkId, string? NodeId, string? Outcome, string? Detail);
+
+    private readonly Lock _lock = new();
+    private readonly List<Entry> _entries = [];
+    private readonly List<MacroWalkStart> _walks = [];
+
+    public bool IsEnabled { get; set; } = true;
+
+    public IReadOnlyList<Entry> Entries
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _entries];
+            }
+        }
+    }
+
+    /// <summary>Every walk that was announced, in order.</summary>
+    public IReadOnlyList<MacroWalkStart> Walks
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _walks];
+            }
+        }
+    }
+
+    /// <summary>Entries of one kind, in order.</summary>
+    public IReadOnlyList<Entry> OfKind(string kind) => [.. Entries.Where(e => e.Kind == kind)];
+
+    public void WalkStarted(MacroWalkStart walk)
+    {
+        lock (_lock)
+        {
+            _walks.Add(walk);
+            _entries.Add(new Entry("walk", walk.WalkId, null, null, walk.MacroName));
+        }
+    }
+
+    public void NodeEntered(Guid walkId, int elapsedMs, string nodeId) =>
+        Add(new Entry("enter", walkId, nodeId, null, null));
+
+    public void NodeExited(Guid walkId, int elapsedMs, string nodeId, string outcome, string? detail, int durationMs) =>
+        Add(new Entry("exit", walkId, nodeId, outcome, detail));
+
+    public void WalkFinished(Guid walkId, int elapsedMs, string outcome, string? detail) =>
+        Add(new Entry("end", walkId, null, outcome, detail));
+
+    private void Add(Entry entry)
+    {
+        lock (_lock)
+        {
+            _entries.Add(entry);
+        }
+    }
 }

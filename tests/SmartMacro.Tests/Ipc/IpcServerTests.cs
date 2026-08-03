@@ -28,6 +28,7 @@ public class IpcServerTests
                 Engine.Windows,
                 Engine.Macros,
                 Engine.Runs,
+                Engine.RunEvents,
                 NullLogger<IpcServer>.Instance);
             Server.SubscribeToEngine();
         }

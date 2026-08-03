@@ -33,6 +33,14 @@ public sealed record SaveMacroRequest(MacroGraph Macro);
 /// <param name="Name">Macro to delete. Deleting a macro that isn't there is a no-op, not an error.</param>
 public sealed record DeleteMacroRequest(string Name);
 
+/// <summary>Payload of <see cref="IpcMessageTypes.SubscribeRunEvents"/>.</summary>
+/// <param name="Enabled">
+/// <c>true</c> starts the stream for THIS connection, <c>false</c> stops it. Per-connection
+/// and not global: a second client that never asked must not be handed the burst, and a
+/// daemon nobody is watching must not pay for the events at all.
+/// </param>
+public sealed record SubscribeRunEventsRequest(bool Enabled);
+
 /// <summary>Payload of the <see cref="IpcMessageTypes.WindowClosed"/> event.</summary>
 /// <param name="Hwnd">Handle of the window that went away. No other data survives it.</param>
 public sealed record WindowClosedEvent(long Hwnd);

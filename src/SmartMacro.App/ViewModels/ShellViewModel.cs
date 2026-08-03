@@ -127,7 +127,8 @@ public sealed class TagSummaryItemViewModel
 /// <see cref="WorkspaceViewModel.WindowsChanged"/>, which fires on a <c>WindowTagsChanged</c>
 /// push — so tagging a window updates the roster instantly with no round trip.
 ///
-/// <b>Hotkey suspension is scoped to the «Макросы» mode.</b> See <see cref="ApplyHotkeyScope"/>.
+/// <b>Hotkey suspension and the run-event stream are scoped to the «Макросы» mode.</b>
+/// See <see cref="ApplyMacrosModeScope"/>.
 /// </summary>
 public sealed class ShellViewModel : ObservableObject, IDisposable
 {
@@ -142,6 +143,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private readonly IMacroLauncher? _launcher;
     private ShellModeViewModel _selectedMode;
     private bool _hotkeysSuspended;
+    private bool _runEventsSubscribed;
 
     public ShellViewModel(WorkspaceViewModel workspace, MacroEditorViewModel editor, IMacroLauncher? launcher = null)
     {
@@ -215,7 +217,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsTemplatesMode));
             OnPropertyChanged(nameof(IsLogMode));
 
-            ApplyHotkeyScope();
+            ApplyMacrosModeScope();
         }
     }
 
@@ -311,26 +313,44 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     // ---- internals ------------------------------------------------------------------------
 
     /// <summary>
-    /// Global hotkeys go down for as long as «Макросы» is on screen.
+    /// Two things are bracketed by «Макросы» being on screen: global hotkeys go down, and
+    /// the run-event stream comes up.
     ///
-    /// Win32 <c>RegisterHotKey</c> swallows presses of a chord it already owns, so a chord
-    /// currently bound to a macro would never reach the picker — precisely the chord a user
-    /// is most likely to be re-binding. Before D2 the bracket was the dialog's lifetime;
-    /// with the editor becoming a mode, the mode's activation is the nearest equivalent. It
-    /// is deliberately NOT scoped to "a picker is armed": arming happens on a click and the
-    /// suspend is a round trip, so the very first keypress could still race the daemon.
+    /// <b>Hotkeys.</b> Win32 <c>RegisterHotKey</c> swallows presses of a chord it already
+    /// owns, so a chord currently bound to a macro would never reach the picker — precisely
+    /// the chord a user is most likely to be re-binding. Before D2 the bracket was the
+    /// dialog's lifetime; with the editor becoming a mode, the mode's activation is the
+    /// nearest equivalent. It is deliberately NOT scoped to "a picker is armed": arming
+    /// happens on a click and the suspend is a round trip, so the very first keypress could
+    /// still race the daemon.
+    ///
+    /// <b>Run events (D3b).</b> Same bracket for a different reason: the canvas is the only
+    /// thing that renders them, the stream is the only high-rate message in the protocol,
+    /// and the daemon produces nothing while nobody is subscribed. Leaving it on for the
+    /// whole life of the panel would mean the engine formats a log line for every node of
+    /// every macro while the user is looking at a list of windows.
     /// </summary>
-    private void ApplyHotkeyScope()
+    private void ApplyMacrosModeScope()
     {
-        var shouldSuspend = CurrentMode == ShellMode.Macros;
-        if (shouldSuspend == _hotkeysSuspended)
+        var inMacros = CurrentMode == ShellMode.Macros;
+
+        // Two independent latches, deliberately not one: the hotkey one is released early by
+        // ResumeHotkeysIfSuspendedAsync on the way out of the process, and sharing a flag
+        // would make that release swallow the unsubscribe of a later mode switch.
+        if (inMacros != _runEventsSubscribed)
+        {
+            _runEventsSubscribed = inMacros;
+            _ = SafeAsync(Editor.SetRunEventSubscriptionAsync(inMacros), "run-events");
+        }
+
+        if (inMacros == _hotkeysSuspended)
         {
             return;
         }
 
-        _hotkeysSuspended = shouldSuspend;
+        _hotkeysSuspended = inMacros;
         OnPropertyChanged(nameof(HotkeysSuspended));
-        _ = shouldSuspend
+        _ = inMacros
             ? SafeAsync(Editor.SuspendHotkeysAsync(), "suspend")
             : SafeAsync(Editor.ResumeHotkeysAsync(), "resume");
     }
