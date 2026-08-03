@@ -1,5 +1,7 @@
+using System.Globalization;
 using SmartMacro.Macros.Model;
 
+// ReSharper disable once CheckNamespace — имена SmartMacro.Macros.* достались валидатору от жизни в Core.
 namespace SmartMacro.Macros.Validation;
 
 /// <summary>
@@ -7,11 +9,11 @@ namespace SmartMacro.Macros.Validation;
 /// раньше, чем исполнителю придётся прерываться в рантайме.
 ///
 /// Ошибки: несуществующий или пустой StartNodeId; дубликаты id нод; рёбра в несуществующие
-/// ноды; ClickNode, у которого заданы оба или ни одного из Point/PointVar; и правило
-/// контекста — макрос, способный ЗАПУСТИТЬСЯ САМ без контекстного окна (то есть у него есть
-/// триггеры, но нет <see cref="ProcessAppearedTrigger"/>), не имеет права содержать
-/// ДОСТИЖИМУЮ условную ноду или ноду действия без селектора (упрощённое правило по §0.2
-/// плана; подпрогоны RunMacro с Target, которые контекст всё же дали бы, намеренно не
+/// ноды; ClickNode, у которого заданы оба или ни одного из Point/PointVar; порог совпадения вне
+/// диапазона (0; 1]; и правило контекста — макрос, способный ЗАПУСТИТЬСЯ САМ без контекстного
+/// окна (то есть у него есть триггеры, но нет <see cref="ProcessAppearedTrigger"/>), не имеет
+/// права содержать ДОСТИЖИМУЮ условную ноду или ноду действия без селектора (упрощённое правило
+/// по §0.2 плана; подпрогоны RunMacro с Target, которые контекст всё же дали бы, намеренно не
 /// моделируются).
 ///
 /// Макрос СОВСЕМ без триггеров от правила контекста освобождён: он библиотечный, попасть в
@@ -22,7 +24,13 @@ namespace SmartMacro.Macros.Validation;
 ///
 /// Предупреждения: недостижимые ноды; циклы, внутри которых нет ни <see cref="DelayNode"/>,
 /// ни <see cref="WaitForElementNode"/> (крутятся вхолостую — ищутся по сильно связным
-/// компонентам достижимого подграфа).
+/// компонентам достижимого подграфа); повторяющиеся подписи нод.
+///
+/// <b>Дубликат подписи — предупреждение, а дубликат id — ошибка.</b> Подпись ни на что не
+/// влияет, кроме читаемости: граф с двумя нодами «Клик» исполняется совершенно однозначно.
+/// Но строка лога «0:01.2 · Клик · ок», встретившаяся дважды, читателю уже ни о чём не говорит —
+/// на канве неоднозначность снимет подсветка, а в тексте снять её нечем. Поэтому сказать надо, а
+/// запрещать — нет.
 /// </summary>
 public static class MacroGraphValidator
 {
@@ -35,30 +43,44 @@ public static class MacroGraphValidator
 
         // Дубликаты id. byId оставляет ПЕРВОЕ вхождение — дальнейшие правила работают по этой
         // карте.
-        var byId = new Dictionary<string, MacroNode>(StringComparer.Ordinal);
+        var byId = new Dictionary<Guid, MacroNode>();
         foreach (var node in macro.Nodes)
         {
             if (!byId.TryAdd(node.Id, node))
             {
-                issues.Add(Error(node.Id, $"Дубликат id ноды: «{node.Id}»."));
+                issues.Add(Error(node, "Дубликат id ноды: две ноды графа несут один и тот же идентификатор."));
+            }
+        }
+
+        // Дубликаты подписей — только предупреждение, см. комментарий к классу.
+        foreach (var group in macro.Nodes
+                     .GroupBy(MacroNodeNames.Display, StringComparer.Ordinal)
+                     .Where(group => group.Count() > 1))
+        {
+            foreach (var node in group)
+            {
+                issues.Add(Warning(node,
+                    $"Имя «{group.Key}» носит больше одной ноды — в логе прогона их будет не различить."));
             }
         }
 
         // Стартовая нода.
-        var startIsValid = !string.IsNullOrWhiteSpace(macro.StartNodeId) && byId.ContainsKey(macro.StartNodeId);
+        var startIsValid = macro.StartNodeId != Guid.Empty && byId.ContainsKey(macro.StartNodeId);
         if (!startIsValid)
         {
-            issues.Add(Error(null, $"StartNodeId «{macro.StartNodeId}» не указывает ни на одну ноду."));
+            issues.Add(new ValidationIssue(ValidationSeverity.Error, null, null,
+                "Стартовая нода не задана или не найдена в графе."));
         }
 
-        // Сломанные рёбра.
-        foreach (var (id, node) in byId)
+        // Сломанные рёбра. Целевой id не называем: ноды с таким id в графе нет, а голый guid
+        // читателю ничего не сообщит — важно, ЧЕЙ исход повис.
+        foreach (var node in byId.Values)
         {
             foreach (var (edgeName, targetId) in OutgoingEdges(node))
             {
-                if (targetId is not null && !byId.ContainsKey(targetId))
+                if (targetId is { } target && !byId.ContainsKey(target))
                 {
-                    issues.Add(Error(id, $"Ребро {edgeName} ведёт в несуществующую ноду «{targetId}»."));
+                    issues.Add(Error(node, $"Ребро {edgeName} ведёт в ноду, которой в графе нет."));
                 }
             }
         }
@@ -68,7 +90,18 @@ public static class MacroGraphValidator
         {
             if (node.Point is null == node.PointVar is null)
             {
-                issues.Add(Error(node.Id, "У ClickNode должно быть задано ровно одно из Point / PointVar."));
+                issues.Add(Error(node, "У ClickNode должно быть задано ровно одно из Point / PointVar."));
+            }
+        }
+
+        // Порог совпадения. Ноль означал бы «совпадает что угодно», выше единицы — «не совпадёт
+        // никогда»: и то и другое не настройка точности, а выключенная нода.
+        foreach (var node in byId.Values)
+        {
+            if (MatchThresholdOf(node) is { } threshold && (threshold <= 0 || threshold > 1))
+            {
+                issues.Add(Error(node,
+                    $"Порог совпадения {threshold.ToString("0.###", CultureInfo.InvariantCulture)} вне диапазона (0; 1]."));
             }
         }
 
@@ -85,12 +118,13 @@ public static class MacroGraphValidator
                 switch (byId[id])
                 {
                     case FindElementNode or WaitForElementNode or RecognizeTagNode:
-                        issues.Add(Error(id,
+                        issues.Add(Error(byId[id],
                             "Условной ноде нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса)."));
                         break;
                     case KeyPressNode { Target: null } or ClickNode { Target: null } or AddTagNode { Target: null }
-                        or RemoveTagNode { Target: null } or SetIconNode { Target: null } or RunMacroNode { Target: null }:
-                        issues.Add(Error(id,
+                        or RemoveTagNode { Target: null } or SetIconNode { Target: null }
+                        or RunMacroNode { Target: null }:
+                        issues.Add(Error(byId[id],
                             "Ноде действия без селектора Target нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса)."));
                         break;
                 }
@@ -98,11 +132,11 @@ public static class MacroGraphValidator
         }
 
         // Недостижимые ноды.
-        foreach (var (id, _) in byId)
+        foreach (var (id, node) in byId)
         {
             if (!reachable.Contains(id))
             {
-                issues.Add(Warning(id, "Нода недостижима из StartNodeId."));
+                issues.Add(Warning(node, "Нода недостижима из стартовой."));
             }
         }
 
@@ -115,23 +149,33 @@ public static class MacroGraphValidator
             {
                 continue;
             }
+
             if (!component.Any(id => byId[id] is DelayNode or WaitForElementNode))
             {
-                issues.Add(Warning(component[0],
-                    $"Цикл без ноды Delay/WaitForElement — будет крутиться вхолостую: {string.Join(" → ", component)}."));
+                var names = component.Select(id => MacroNodeNames.Display(byId[id]));
+                issues.Add(Warning(byId[component[0]],
+                    $"Цикл без ноды Delay/WaitForElement — будет крутиться вхолостую: {string.Join(" → ", names)}."));
             }
         }
 
         return issues;
     }
 
-    private static ValidationIssue Error(string? nodeId, string message) =>
-        new(ValidationSeverity.Error, nodeId, message);
+    private static ValidationIssue Error(MacroNode node, string message) =>
+        new(ValidationSeverity.Error, node.Id, MacroNodeNames.Display(node), message);
 
-    private static ValidationIssue Warning(string? nodeId, string message) =>
-        new(ValidationSeverity.Warning, nodeId, message);
+    private static ValidationIssue Warning(MacroNode node, string message) =>
+        new(ValidationSeverity.Warning, node.Id, MacroNodeNames.Display(node), message);
 
-    private static IEnumerable<(string EdgeName, string? TargetId)> OutgoingEdges(MacroNode node) => node switch
+    private static double? MatchThresholdOf(MacroNode node) => node switch
+    {
+        FindElementNode n => n.MatchThreshold,
+        WaitForElementNode n => n.MatchThreshold,
+        RecognizeTagNode n => n.MatchThreshold,
+        _ => null,
+    };
+
+    private static IEnumerable<(string EdgeName, Guid? TargetId)> OutgoingEdges(MacroNode node) => node switch
     {
         KeyPressNode n => [("Next", n.Next)],
         ClickNode n => [("Next", n.Next)],
@@ -146,15 +190,15 @@ public static class MacroGraphValidator
         _ => [],
     };
 
-    private static HashSet<string> ComputeReachable(MacroGraph macro, Dictionary<string, MacroNode> byId, bool startIsValid)
+    private static HashSet<Guid> ComputeReachable(MacroGraph macro, Dictionary<Guid, MacroNode> byId, bool startIsValid)
     {
-        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var visited = new HashSet<Guid>();
         if (!startIsValid)
         {
             return visited;
         }
 
-        var stack = new Stack<string>();
+        var stack = new Stack<Guid>();
         stack.Push(macro.StartNodeId);
         while (stack.Count > 0)
         {
@@ -163,30 +207,32 @@ public static class MacroGraphValidator
             {
                 continue;
             }
+
             foreach (var (_, targetId) in OutgoingEdges(byId[id]))
             {
-                if (targetId is not null && byId.ContainsKey(targetId))
+                if (targetId is { } target && byId.ContainsKey(target))
                 {
-                    stack.Push(targetId);
+                    stack.Push(target);
                 }
             }
         }
+
         return visited;
     }
 
-    private static bool HasSelfLoop(string id, Dictionary<string, MacroNode> byId) =>
-        OutgoingEdges(byId[id]).Any(edge => string.Equals(edge.TargetId, id, StringComparison.Ordinal));
+    private static bool HasSelfLoop(Guid id, Dictionary<Guid, MacroNode> byId) =>
+        OutgoingEdges(byId[id]).Any(edge => edge.TargetId == id);
 
     // Алгоритм Тарьяна. Рекурсия здесь нормальна: графы макросов пишет человек, и они крошечные.
-    private static List<List<string>> StronglyConnectedComponents(
-        HashSet<string> reachable,
-        Dictionary<string, MacroNode> byId)
+    private static List<List<Guid>> StronglyConnectedComponents(
+        HashSet<Guid> reachable,
+        Dictionary<Guid, MacroNode> byId)
     {
-        var index = new Dictionary<string, int>(StringComparer.Ordinal);
-        var lowLink = new Dictionary<string, int>(StringComparer.Ordinal);
-        var onStack = new HashSet<string>(StringComparer.Ordinal);
-        var stack = new Stack<string>();
-        var components = new List<List<string>>();
+        var index = new Dictionary<Guid, int>();
+        var lowLink = new Dictionary<Guid, int>();
+        var onStack = new HashSet<Guid>();
+        var stack = new Stack<Guid>();
+        var components = new List<List<Guid>>();
         var nextIndex = 0;
 
         foreach (var id in reachable)
@@ -196,20 +242,22 @@ public static class MacroGraphValidator
                 StrongConnect(id);
             }
         }
+
         return components;
 
-        void StrongConnect(string v)
+        void StrongConnect(Guid v)
         {
             index[v] = lowLink[v] = nextIndex++;
             stack.Push(v);
             onStack.Add(v);
 
-            foreach (var (_, w) in OutgoingEdges(byId[v]))
+            foreach (var (_, target) in OutgoingEdges(byId[v]))
             {
-                if (w is null || !reachable.Contains(w))
+                if (target is not { } w || !reachable.Contains(w))
                 {
                     continue;
                 }
+
                 if (!index.ContainsKey(w))
                 {
                     StrongConnect(w);
@@ -223,14 +271,15 @@ public static class MacroGraphValidator
 
             if (lowLink[v] == index[v])
             {
-                var component = new List<string>();
-                string member;
+                var component = new List<Guid>();
+                Guid member;
                 do
                 {
                     member = stack.Pop();
                     onStack.Remove(member);
                     component.Add(member);
-                } while (!string.Equals(member, v, StringComparison.Ordinal));
+                } while (member != v);
+
                 components.Add(component);
             }
         }

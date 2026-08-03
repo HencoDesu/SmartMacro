@@ -17,7 +17,7 @@ public class MacroTemplateAnalysisTests
     private static MacroGraph Macro(string name, params MacroNode[] nodes) => new()
     {
         Name = name,
-        StartNodeId = nodes.Length > 0 ? nodes[0].Id : "n1",
+        StartNodeId = nodes.Length > 0 ? nodes[0].Id : Ids.Of("n1"),
         Nodes = [.. nodes],
     };
 
@@ -28,9 +28,9 @@ public class MacroTemplateAnalysisTests
         [
             Macro(
                 "pw-boot",
-                new FindElementNode { Id = "find", Template = "ServerSelectButton" },
-                new WaitForElementNode { Id = "wait", Template = "CharacterSelectButton", TimeoutMs = 1000 }),
-            Macro("pw-identify", new RecognizeTagNode { Id = "recognize", TemplateSet = "classes", Region = Region }),
+                new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "ServerSelectButton" },
+                new WaitForElementNode { Id = Ids.Of("wait"), DisplayName = "wait", Template = "CharacterSelectButton", TimeoutMs = 1000 }),
+            Macro("pw-identify", new RecognizeTagNode { Id = Ids.Of("recognize"), DisplayName = "recognize", TemplateSet = "classes", Region = Region }),
         ]);
 
         // Наборы первыми, дальше по имени: раздел «наборы» в браузере идёт над одиночными.
@@ -45,14 +45,14 @@ public class MacroTemplateAnalysisTests
         [
             Macro(
                 "pw-boot",
-                new FindElementNode { Id = "find", Template = "Кнопка" },
-                new WaitForElementNode { Id = "wait", Template = "Кнопка", TimeoutMs = 1000 }),
-            Macro("pw-relog", new FindElementNode { Id = "again", Template = "Кнопка" }),
+                new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "Кнопка" },
+                new WaitForElementNode { Id = Ids.Of("wait"), DisplayName = "wait", Template = "Кнопка", TimeoutMs = 1000 }),
+            Macro("pw-relog", new FindElementNode { Id = Ids.Of("again"), DisplayName = "again", Template = "Кнопка" }),
         ]);
 
         var button = usage.Single(u => u.Name == "Кнопка");
 
-        await Assert.That(button.References.Select(r => $"{r.MacroName}/{r.NodeId}"))
+        await Assert.That(button.References.Select(r => $"{r.MacroName}/{r.NodeName}"))
             .IsEquivalentTo(new[] { "pw-boot/find", "pw-boot/wait", "pw-relog/again" });
         await Assert.That(button.References.Select(r => r.Slot))
             .IsEquivalentTo(new[] { TemplateSlot.FindTemplate, TemplateSlot.WaitTemplate, TemplateSlot.FindTemplate });
@@ -68,8 +68,8 @@ public class MacroTemplateAnalysisTests
         [
             Macro(
                 "оба",
-                new FindElementNode { Id = "find", Template = "classes" },
-                new RecognizeTagNode { Id = "recognize", TemplateSet = "classes", Region = Region }),
+                new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "classes" },
+                new RecognizeTagNode { Id = Ids.Of("recognize"), DisplayName = "recognize", TemplateSet = "classes", Region = Region }),
         ]);
 
         await Assert.That(usage).Count().IsEqualTo(2);
@@ -85,7 +85,7 @@ public class MacroTemplateAnalysisTests
         // который сообщал бы про чтение переменной, врал бы о поведении движка — ровно та же
         // ошибка, что бейдж целей, расходящийся с SelectorEvaluator.
         var usage = MacroTemplateAnalysis.Analyze(
-            [Macro("подстановки-нет", new FindElementNode { Id = "find", Template = "иконка-{tag}" })]);
+            [Macro("подстановки-нет", new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "иконка-{tag}" })]);
 
         await Assert.That(usage).Count().IsEqualTo(1);
         await Assert.That(usage[0].Name).IsEqualTo("иконка-{tag}");
@@ -100,8 +100,8 @@ public class MacroTemplateAnalysisTests
         [
             Macro(
                 "пусто",
-                new FindElementNode { Id = "find", Template = "   " },
-                new DelayNode { Id = "delay", Ms = 10 }),
+                new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "   " },
+                new DelayNode { Id = Ids.Of("delay"), DisplayName = "delay", Ms = 10 }),
         ]);
 
         await Assert.That(usage).IsEmpty();

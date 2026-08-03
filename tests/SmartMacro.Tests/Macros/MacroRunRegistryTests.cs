@@ -22,7 +22,7 @@ public class MacroRunRegistryTests
         await Assert.That(snapshot).Count().IsEqualTo(1);
         await Assert.That(snapshot[0].MacroName).IsEqualTo("иммунка");
         await Assert.That(snapshot[0].RunId).IsEqualTo(handle!.RunId);
-        await Assert.That(snapshot[0].CurrentNodeId).IsNull();
+        await Assert.That(snapshot[0].CurrentNodeName).IsNull();
     }
 
     [Test]
@@ -70,14 +70,14 @@ public class MacroRunRegistryTests
     }
 
     [Test]
-    public async Task CurrentNodeId_UpdatesFlowIntoSnapshots()
+    public async Task CurrentNodeName_UpdatesFlowIntoSnapshots()
     {
         using var registry = NewRegistry();
         var handle = registry.TryBegin("иммунка")!;
 
-        handle.CurrentNodeId = "delay-1";
+        handle.CurrentNodeName = "delay-1";
 
-        await Assert.That(registry.Snapshot()[0].CurrentNodeId).IsEqualTo("delay-1");
+        await Assert.That(registry.Snapshot()[0].CurrentNodeName).IsEqualTo("delay-1");
     }
 
     [Test]
@@ -101,11 +101,11 @@ public class MacroRunRegistryTests
         var h = new ExecutorHarness();
         var handle = registry.TryBegin("длинный")!;
         var enteredDelay = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var graph = ExecutorHarness.Graph("длинный", "d",
-            new DelayNode { Id = "d", Ms = 60_000, Next = null });
+        var graph = ExecutorHarness.Graph("длинный", Ids.Of("d"),
+            new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 60_000, Next = null });
         var context = h.Context(ExecutorHarness.Window, onNodeEntered: id =>
         {
-            handle.CurrentNodeId = id;
+            handle.CurrentNodeName = id;
             enteredDelay.TrySetResult();
         });
 
@@ -124,7 +124,7 @@ public class MacroRunRegistryTests
         });
 
         await enteredDelay.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Assert.That(registry.Snapshot()[0].CurrentNodeId).IsEqualTo("d");
+        await Assert.That(registry.Snapshot()[0].CurrentNodeName).IsEqualTo("d");
 
         // StopAsync завершается только после того, как исполняющая сторона отчиталась через
         // Complete.
@@ -140,8 +140,8 @@ public class MacroRunRegistryTests
     {
         using var registry = NewRegistry();
         var h = new ExecutorHarness();
-        var graph = ExecutorHarness.Graph("общий", "d",
-            new DelayNode { Id = "d", Ms = 60_000, Next = null });
+        var graph = ExecutorHarness.Graph("общий", Ids.Of("d"),
+            new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 60_000, Next = null });
 
         var runTasks = new List<Task<MacroRunResult>>();
         var enteredCount = 0;

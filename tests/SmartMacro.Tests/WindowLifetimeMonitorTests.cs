@@ -1,8 +1,8 @@
 using FakeItEasy;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using SmartMacro.Config;
+using SmartMacro.Contracts.Settings;
 using SmartMacro.GameWindows;
+using SmartMacro.Tests.Settings;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Tests;
@@ -23,7 +23,10 @@ public class WindowLifetimeMonitorTests
         {
             Monitor = new WindowLifetimeMonitor(
                 Registry,
-                Options.Create(new AgentOptions { AgentPollIntervalSeconds = pollIntervalSeconds }),
+                new FakeSettingsSource(AppSettings.Default with
+                {
+                    Watch = new WatchSettings { WindowPollIntervalSeconds = pollIntervalSeconds },
+                }),
                 NullLogger<WindowLifetimeMonitor>.Instance);
         }
 

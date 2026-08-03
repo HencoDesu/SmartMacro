@@ -513,7 +513,7 @@ public partial class MacrosView : UserControl
             // прогона», и это полноправный ответ, а не отменённый жест: именно так исход
             // ОТключают, и макет настаивает, что терминальной ноды при этом появляться не должно.
             var target = NodeAt(ToCanvas(e.GetPosition(Viewport)));
-            vm.RewireEdge(_draggedEdge, target?.NodeId);
+            vm.RewireEdge(_draggedEdge, target?.Id);
         }
 
         _gesture = Gesture.None;

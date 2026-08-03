@@ -1,4 +1,5 @@
 using SmartMacro.Contracts.Dto;
+using SmartMacro.Contracts.Settings;
 using SmartMacro.Macros.Model;
 
 namespace SmartMacro.Contracts.Ipc;
@@ -89,10 +90,34 @@ public sealed record WindowClosedEvent(long Hwnd);
 /// из JSON: клиент, не положивший это поле, отдаёт <c>null</c>, и ненулевая аннотация просто
 /// соврала бы — а анализатор поверх неё начал бы советовать снять защиту у получателя.
 /// </param>
-public sealed record SetBreakpointsRequest(string MacroName, IReadOnlyList<string>? NodeIds);
+public sealed record SetBreakpointsRequest(string MacroName, IReadOnlyList<Guid>? NodeIds);
 
 /// <summary>Нагрузка <see cref="IpcMessageTypes.DebugCommand"/>.</summary>
 /// <param name="WalkId">Обход, к которому применяется команда, из <c>RunWalkDto.WalkId</c>. На неизвестный (завершившийся) обход приходит <c>Accepted = false</c>.</param>
 /// <param name="Command">Что сделать.</param>
 /// <param name="NodeId">Целевая нода для <see cref="DebugCommand.RunToNode"/>; в остальных случаях игнорируется.</param>
-public sealed record DebugCommandRequest(Guid WalkId, DebugCommand Command, string? NodeId = null);
+public sealed record DebugCommandRequest(Guid WalkId, DebugCommand Command, Guid? NodeId = null);
+
+/// <summary>
+/// Нагрузка <see cref="IpcMessageTypes.SaveSettings"/>. Настройки едут ЦЕЛИКОМ, а не дельтой:
+/// панель всегда держит весь снимок, а полная замена убирает целый класс ошибок вида «две
+/// правки приехали не в том порядке» — ровно та же логика, что у
+/// <see cref="SetBreakpointsRequest"/>.
+/// </summary>
+/// <param name="Settings">
+/// Новое содержимое файла настроек.
+///
+/// <b>Помечено nullable по той же причине, что <c>NodeIds</c> выше:</b> нагрузка приезжает из
+/// JSON, клиент вправе поля не положить, и ненулевая аннотация просто соврала бы. Демон
+/// отвечает на это отказом, а не падением.
+/// </param>
+public sealed record SaveSettingsRequest(AppSettings? Settings);
+
+/// <summary>
+/// Нагрузка <see cref="IpcMessageTypes.SetLogLevel"/>.
+/// </summary>
+/// <param name="Level">
+/// Новый минимальный уровень журнала демона. Не сохраняется никуда: живёт до перезапуска демона,
+/// потому что постоянный уровень намеренно остался в <c>appsettings.json</c> — см. каталог.
+/// </param>
+public sealed record SetLogLevelRequest(LogLevelDto Level);

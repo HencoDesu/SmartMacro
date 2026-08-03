@@ -168,16 +168,27 @@ public sealed record RunWalkDto(
 /// позиционная конструкция, написанная до D5, по-прежнему компилировалась и означала то же,
 /// что раньше.
 /// </param>
+/// <param name="NodeName">
+/// Подпись <paramref name="NodeId"/> в том виде, в каком она была на момент события, — то, что
+/// печатает полоса лога.
+///
+/// <b>Едет по проводу, а не резолвится панелью.</b> Панель могла бы поискать имя в открытом
+/// графе, но открыт может быть другой макрос (обходы чужих графов панель всё равно
+/// отслеживает), а открытый может быть ГРЯЗНЫМ: переименовав ноду и не сохранив, пользователь
+/// переписал бы себе историю уже случившегося прогона. Демон присылает то имя, под которым он
+/// эту ноду и выполнил.
+/// </param>
 public sealed record RunEventDto(
     Guid WalkId,
     RunEventKind Kind,
     int ElapsedMs,
-    string? NodeId = null,
+    Guid? NodeId = null,
     string? Outcome = null,
     string? Detail = null,
     int DurationMs = 0,
     RunWalkDto? Walk = null,
-    string? Variable = null);
+    string? Variable = null,
+    string? NodeName = null);
 
 /// <summary>
 /// Полезная нагрузка пуша <c>RunEvents</c>: всё, что случилось с прошлого сброса.

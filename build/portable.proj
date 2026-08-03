@@ -1,0 +1,179 @@
+<!--
+  Портативная поставка: ОБА исполняемых файла в одну папку.
+
+  Собрать:   dotnet msbuild build\portable.proj
+  Zip:       dotnet msbuild build\portable.proj -t:Package
+  Отладочная сборка в ту же раскладку: -p:Configuration=Debug
+
+  ─────────────────────────────────────────────────────────────────────────────────────────
+  ПОЧЕМУ ОДНА ПАПКА
+
+  Демон и панель — framework-dependent, win-x64, и делят часть зависимостей: Contracts, Native,
+  System.Drawing, ядро Serilog, часть Microsoft.Extensions. В раздельных выхлопах это 26
+  одинаковых файлов в двух копиях (153 файла / 118.0 МБ суммарно); в общей папке дубликаты
+  исчезают сами — 127 файлов / 115.0 МБ. Три мегабайта из ста восемнадцати: выигрыш здесь не в
+  размере, а в раскладке. Вес сидит в непересекающихся нативах — OpenCV у демона,
+  Skia/HarfBuzz у панели.
+
+  Побочная выгода — исчезает асимметрия поиска соседнего exe. В поставке два файла просто
+  соседи, и первый же кандидат PeerExecutableLocator'а (рядом с собой) попадает в цель; второй
+  кандидат — подмена сегмента SmartMacro.App ⇄ SmartMacro.Daemon — остаётся нужен ТОЛЬКО дереву
+  разработки, где каждый проект собирается в свой bin\. См. комментарий там.
+
+  ПОЧЕМУ ДВА EXE, А НЕ ОДИН С КЛЮЧОМ РЕЖИМА (daemon / panel)
+  (двойной дефис перед ключами здесь не написать: XML-комментарий его не допускает)
+
+  Соблазн понятный: в одной папке разница между «двумя программами» и «одной с двумя режимами»
+  выглядит косметической. Но манифест привязан к БИНАРНИКУ, а не к режиму запуска. Демону нужен
+  requireAdministrator (UIPI режет ввод и PrintWindow в elevated-клиенты игры, §7 спеки), и
+  единый exe унаследовал бы повышение в оба режима — панель начала бы всегда спрашивать UAC,
+  а снять с неё elevation стало бы невозможно в принципе. Разделение на два файла — ровно то,
+  что оставляет эту дверь открытой: панель ничем не управляет, она IPC-клиент, и в будущем
+  вполне может ходить с обычными правами. НЕ СЛИВАТЬ.
+
+  ПОЧЕМУ ЦЕЛЬ MSBUILD, А НЕ СКРИПТ
+
+  Публикаций всё равно две (`dotnet publish` умеет один проект за раз), значит порядок и общий
+  PublishDir надо где-то записать. Скрипту на PowerShell пришлось бы дублировать набор свойств,
+  который MSBuild и так знает из csproj (Configuration, RID, SelfContained), и он не смог бы
+  спросить у проекта СПИСОК файлов публикации — а именно на этом списке стоит проверка
+  столкновений ниже. Плюс одна точка входа для CLI, Rider и любого CI, без политик исполнения
+  скриптов.
+
+  ПОЧЕМУ НЕ SINGLE-FILE
+
+  У демона нативные блобы OpenCV. Single-file распаковывает их во временный каталог при старте:
+  медленнее, и отладка мутнее — стек показывает пути, которых на диске нет. Не надо.
+-->
+<Project DefaultTargets="Publish">
+
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
+    <RepoRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..'))</RepoRoot>
+    <!-- Лишний уровень (dist\portable\) не украшение: ZipDirectory кладёт в архив СОДЕРЖИМОЕ
+         исходной папки, а раздача условлена как «zip с папкой». Значит, зипуем родителя, и
+         родитель обязан не содержать ничего, кроме неё, — сам архив поэтому лежит уровнем
+         выше. -->
+    <PortableStage Condition="'$(PortableStage)' == ''">$([MSBuild]::NormalizeDirectory('$(RepoRoot)dist', 'portable'))</PortableStage>
+    <PortableDir Condition="'$(PortableDir)' == ''">$([MSBuild]::NormalizeDirectory('$(PortableStage)', 'SmartMacro'))</PortableDir>
+    <PortableZip Condition="'$(PortableZip)' == ''">$(RepoRoot)dist\SmartMacro-$(Configuration).zip</PortableZip>
+    <DaemonProject>$(RepoRoot)src\SmartMacro.Daemon\SmartMacro.Daemon.csproj</DaemonProject>
+    <AppProject>$(RepoRoot)src\SmartMacro.App\SmartMacro.App.csproj</AppProject>
+  </PropertyGroup>
+
+  <!--
+    Восстановление отдельным вызовом MSBuild, а не Targets="Restore;Publish" в одном: проект
+    вычисляется один раз, ДО того как restore запишет project.assets.json, и второй целью
+    публикация ушла бы со старым (или отсутствующим) файлом активов. Нужно ради свежего клона —
+    без этого точка входа работала бы только после `dotnet build`.
+  -->
+  <Target Name="Restore">
+    <MSBuild Projects="$(DaemonProject);$(AppProject)"
+             Targets="Restore"
+             Properties="Configuration=$(Configuration)" />
+  </Target>
+
+  <!--
+    Демон первым: он крупнее и приносит почти все общие зависимости, так что снимок для проверки
+    столкновений делается один раз по большей половине, а панель кладётся на готовое.
+  -->
+  <Target Name="Publish" DependsOnTargets="Restore;Clean;PublishDaemon;VerifyNoClobber;PublishPanel">
+    <ItemGroup>
+      <_PortableFile Include="$(PortableDir)**\*" />
+    </ItemGroup>
+    <Message Importance="high" Text="Портативная папка: $(PortableDir) — файлов: @(_PortableFile->Count())" />
+  </Target>
+
+  <Target Name="PublishDaemon">
+    <MSBuild Projects="$(DaemonProject)"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(PortableDir)" />
+  </Target>
+
+  <Target Name="PublishPanel">
+    <MSBuild Projects="$(AppProject)"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(PortableDir)" />
+  </Target>
+
+  <!--
+    26 файлов из 153 демон и панель кладут в папку ОБА. Если их содержимое совпадает — это ровно
+    тот выигрыш, ради которого всё затевалось. Если РАЗОЙДЁТСЯ — один из процессов уедет к
+    пользователю с чужой сборкой, и сломается это не здесь, а у него, в произвольный момент.
+
+    ⚠️ Проверять «затёрло ли» НЕДОСТАТОЧНО, и это выяснилось на живом примере. Файлы из пакетов
+    приезжают с CopyToPublishDirectory=PreserveNewest, а «newer» сравнивается с УЖЕ ЛЕЖАЩИМ в
+    папке файлом, который вторая публикация только что застала свежее своего источника из кэша
+    NuGet. То есть вторая публикация такие файлы просто ПРОПУСКАЕТ, затирания не происходит
+    вовсе, и проверка «до/после» показывает чистоту при живом расхождении. Первый же реальный
+    случай был именно такой: демон тянет Microsoft.Extensions.Configuration.Binder 10.0.8 через
+    Microsoft.Extensions.Hosting, панель — 10.0.0 через Serilog.Settings.Configuration, и в общей
+    папке молча побеждал тот, кто публиковался первым.
+
+    Поэтому сравниваются ИСТОЧНИК панели и то, что уже лежит в папке от демона. Список файлов
+    публикации возвращает build/publish-file-list.targets — штатная ComputeFilesToPublish в SDK
+    объявлена без Returns и через TargetOutputs отдаёт пустоту (проверено).
+
+    Цель стоит МЕЖДУ двумя публикациями: к моменту ошибки папка ещё содержит только выхлоп
+    демона, а не половину неправильной поставки.
+  -->
+  <Target Name="VerifyNoClobber">
+    <MSBuild Projects="$(AppProject)"
+             Targets="SmartMacroReturnPublishFiles"
+             Properties="Configuration=$(Configuration);PublishDir=$(PortableDir);CustomAfterMicrosoftCommonTargets=$(MSBuildThisFileDirectory)publish-file-list.targets">
+      <Output TaskParameter="TargetOutputs" ItemName="_PanelPublishFile" />
+    </MSBuild>
+
+    <!-- Пустой список означал бы, что проверка молча ничего не проверила, — исход хуже, чем её
+         отсутствие. -->
+    <Error Condition="'@(_PanelPublishFile)' == ''"
+           Text="Не удалось получить список файлов публикации панели — проверка столкновений не выполнена." />
+
+    <ItemGroup>
+      <_Overlap Include="@(_PanelPublishFile)"
+                Condition="Exists('$(PortableDir)%(_PanelPublishFile.RelativePath)')" />
+    </ItemGroup>
+
+    <GetFileHash Files="@(_Overlap)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_OverlapHashed" />
+    </GetFileHash>
+
+    <ItemGroup>
+      <!-- Хеш источника переименовываем: следующий GetFileHash перезапишет метаданное FileHash
+           хешем демонской копии, и сравнивать станет нечего. Соединять два списка по ключу
+           MSBuild не умеет, а так пара «источник/приёмник» едет на одном элементе. -->
+      <_OverlapHashed>
+        <PanelHash>%(FileHash)</PanelHash>
+      </_OverlapHashed>
+      <_OverlapTarget Include="@(_OverlapHashed->'$(PortableDir)%(RelativePath)')" />
+    </ItemGroup>
+
+    <GetFileHash Files="@(_OverlapTarget)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_OverlapChecked" />
+    </GetFileHash>
+
+    <Error Condition="'%(_OverlapChecked.FileHash)' != '%(_OverlapChecked.PanelHash)'"
+           Text="Столкновение в общей папке поставки: '%(_OverlapChecked.RelativePath)' у демона и у панели РАЗНЫЙ. Две версии в одну папку не лягут — выровняйте версии пакетов в двух csproj (обычно достаточно явного PackageReference на ту, что старше) или разведите имена файлов." />
+  </Target>
+
+  <!--
+    Чистая папка — часть Publish, а не отдельный ритуал, по двум причинам сразу. Артефакт обязан
+    собираться с нуля, иначе в архив уедет файл, удалённый из проекта три волны назад. И
+    проверка столкновений сравнивает содержимое папки до и после второй публикации: остатки
+    прошлого прогона (тот же SmartMacro.App.dll позапрошлой сборки) дали бы ложную тревогу.
+
+    Следствие, о котором надо знать: dist\ — ВЫХЛОП СБОРКИ, а не установка. Если запустить
+    демона оттуда, его macros\, logs\ и debug\ исчезнут при следующей публикации. Рабочая
+    установка — распакованный zip где-нибудь ещё.
+  -->
+  <Target Name="Clean">
+    <RemoveDir Directories="$(PortableDir)" />
+  </Target>
+
+  <Target Name="Package" DependsOnTargets="Publish">
+    <Delete Files="$(PortableZip)" />
+    <ZipDirectory SourceDirectory="$(PortableStage)" DestinationFile="$(PortableZip)" />
+    <Message Importance="high" Text="Архив: $(PortableZip)" />
+  </Target>
+
+</Project>

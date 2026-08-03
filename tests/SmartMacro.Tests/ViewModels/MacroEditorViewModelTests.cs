@@ -70,7 +70,7 @@ public class MacroEditorViewModelTests
             var issues = new List<ValidationIssue>(MacroGraphValidator.Validate(request.Macro));
             if (NameError(request.Macro.Name) is { } nameError)
             {
-                issues.Add(new ValidationIssue(ValidationSeverity.Error, null, nameError));
+                issues.Add(new ValidationIssue(ValidationSeverity.Error, null, null, nameError));
             }
 
             if (issues.Any(issue => issue.Severity == ValidationSeverity.Error))
@@ -113,12 +113,12 @@ public class MacroEditorViewModelTests
     private static MacroGraph Chain(string name = "цепочка") => new()
     {
         Name = name,
-        StartNodeId = "a",
+        StartNodeId = Ids.Of("a"),
         Nodes =
         [
-            new DelayNode { Id = "a", Ms = 100, Next = "b" },
-            new DelayNode { Id = "b", Ms = 200, Next = "c" },
-            new DelayNode { Id = "c", Ms = 300 },
+            new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 100, Next = Ids.Of("b") },
+            new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 200, Next = Ids.Of("c") },
+            new DelayNode { Id = Ids.Of("c"), DisplayName = "c", Ms = 300 },
         ],
     };
 
@@ -130,12 +130,12 @@ public class MacroEditorViewModelTests
         using var vm = CreateEditor(new DaemonLibraryStub());
         vm.LoadGraph(Chain());
 
-        vm.DeleteNode(vm.Nodes.Single(n => n.NodeId == "b"));
+        vm.DeleteNode(vm.Nodes.Single(n => n.DisplayName == "b"));
 
         var graph = vm.BuildGraph();
         await Assert.That(graph.Nodes).Count().IsEqualTo(2);
         await Assert.That(((DelayNode)graph.Nodes[0]).Next).IsNull();
-        await Assert.That(graph.StartNodeId).IsEqualTo("a");
+        await Assert.That(graph.StartNodeId).IsEqualTo(Ids.Of("a"));
     }
 
     [Test]
@@ -144,10 +144,10 @@ public class MacroEditorViewModelTests
         using var vm = CreateEditor(new DaemonLibraryStub());
         vm.LoadGraph(Chain());
 
-        vm.DeleteNode(vm.Nodes.Single(n => n.NodeId == "a"));
+        vm.DeleteNode(vm.Nodes.Single(n => n.DisplayName == "a"));
 
-        await Assert.That(vm.StartNodeId).IsEqualTo("b");
-        await Assert.That(vm.BuildGraph().StartNodeId).IsEqualTo("b");
+        await Assert.That(vm.StartNodeId).IsEqualTo(Ids.Of("b"));
+        await Assert.That(vm.BuildGraph().StartNodeId).IsEqualTo(Ids.Of("b"));
     }
 
     [Test]
@@ -161,50 +161,60 @@ public class MacroEditorViewModelTests
             vm.DeleteNode(vm.Nodes[0]);
         }
 
-        await Assert.That(vm.StartNodeId).IsEqualTo(string.Empty);
+        await Assert.That(vm.StartNodeId).IsEqualTo(Guid.Empty);
         await Assert.That(vm.BuildGraph().Nodes).IsEmpty();
     }
 
     [Test]
-    public async Task RenamingANode_RepointsInboundEdgesAndTheStartNode()
+    public async Task RenamingANode_ChangesTheLabelAndNothingElse()
     {
         using var vm = CreateEditor(new DaemonLibraryStub());
         vm.LoadGraph(Chain());
 
-        vm.Nodes.Single(n => n.NodeId == "a").NodeId = "начало";
-        vm.Nodes.Single(n => n.NodeId == "b").NodeId = "середина";
+        vm.Nodes.Single(n => n.DisplayName == "a").DisplayName = "начало";
+        vm.Nodes.Single(n => n.DisplayName == "b").DisplayName = "середина";
 
+        // Прежде это была операция НАД ГРАФОМ: редактор ловил старое значение и перенацеливал
+        // каждое входящее ребро и стартовую ноду. Теперь связь идёт по Id, и переименование их не
+        // касается — граф до и после совпадает всюду, кроме подписей.
         var graph = vm.BuildGraph();
-        await Assert.That(graph.StartNodeId).IsEqualTo("начало");
-        await Assert.That(((DelayNode)graph.Nodes[0]).Next).IsEqualTo("середина");
-        await Assert.That(((DelayNode)graph.Nodes[1]).Next).IsEqualTo("c");
+        await Assert.That(graph.StartNodeId).IsEqualTo(Ids.Of("a"));
+        await Assert.That(((DelayNode)graph.Nodes[0]).Next).IsEqualTo(Ids.Of("b"));
+        await Assert.That(((DelayNode)graph.Nodes[1]).Next).IsEqualTo(Ids.Of("c"));
+        await Assert.That(graph.Nodes.Select(node => node.DisplayName))
+            .IsEquivalentTo(new[] { "начало", "середина", "c" });
     }
 
     [Test]
-    public async Task BlankNodeId_IsRejected()
+    public async Task BlankDisplayName_IsRejected()
     {
         using var vm = CreateEditor(new DaemonLibraryStub());
         vm.LoadGraph(Chain());
 
-        vm.Nodes[0].NodeId = "   ";
+        // Безымянная нода читалась бы в полосе лога как пропущенная строка.
+        vm.Nodes[0].DisplayName = "   ";
 
-        await Assert.That(vm.Nodes[0].NodeId).IsEqualTo("a");
+        await Assert.That(vm.Nodes[0].DisplayName).IsEqualTo("a");
     }
 
     [Test]
-    public async Task AddNode_GeneratesUniqueIds_AndSeedsTheStartOfAnEmptyGraph()
+    public async Task AddNode_NamesNodesAfterTheirType_AndSeedsTheStartOfAnEmptyGraph()
     {
         using var vm = CreateEditor(new DaemonLibraryStub());
-        vm.LoadGraph(new MacroGraph { Name = "пусто", StartNodeId = string.Empty, Nodes = [] });
+        vm.LoadGraph(new MacroGraph { Name = "пусто", StartNodeId = Guid.Empty, Nodes = [] });
 
         var first = vm.AddNode(MacroNodeKind.KeyPress);
         var second = vm.AddNode(MacroNodeKind.Click);
 
-        await Assert.That(first.NodeId).IsEqualTo("n1");
-        await Assert.That(second.NodeId).IsEqualTo("n2");
-        await Assert.That(vm.StartNodeId).IsEqualTo("n1");
-        // Каждому ребру обязаны предлагаться оба новых id плюс запись «конец прогона».
-        await Assert.That(vm.NodeIdChoices).IsEquivalentTo(new[] { string.Empty, "n1", "n2" });
+        // Имя от ТИПА, а не «n1»/«n2»: полоса лога прогона обязана читаться сразу, без того чтобы
+        // автор сперва переименовал каждую ноду руками. Номер сквозной по графу, поэтому он ещё и
+        // говорит, в каком порядке ноды заводили.
+        await Assert.That(first.DisplayName).IsEqualTo("key-1");
+        await Assert.That(second.DisplayName).IsEqualTo("click-2");
+        await Assert.That(vm.StartNodeId).IsEqualTo(first.Id);
+        // Каждому ребру обязаны предлагаться обе новые ноды плюс запись «конец прогона».
+        await Assert.That(vm.NodeChoices.Select(choice => choice.Display))
+            .IsEquivalentTo(new[] { "— конец —", "key-1", "click-2" });
     }
 
     // ---- что не пускает сохранить ------------------------------------------------------------
@@ -237,8 +247,8 @@ public class MacroEditorViewModelTests
         {
             Name = "битый",
             Triggers = [new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F13)],
-            StartNodeId = "find",
-            Nodes = [new FindElementNode { Id = "find", Template = "Btn" }],
+            StartNodeId = Ids.Of("find"),
+            Nodes = [new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "Btn" }],
         });
         // Правка — чтобы утверждение «после отказа правки всё ещё не сохранены» можно было
         // наблюдать.
@@ -295,11 +305,11 @@ public class MacroEditorViewModelTests
         vm.LoadGraph(new MacroGraph
         {
             Name = "с-предупреждением",
-            StartNodeId = "a",
+            StartNodeId = Ids.Of("a"),
             Nodes =
             [
-                new DelayNode { Id = "a", Ms = 100 },
-                new DelayNode { Id = "orphan", Ms = 100 },
+                new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 100 },
+                new DelayNode { Id = Ids.Of("orphan"), DisplayName = "orphan", Ms = 100 },
             ],
         });
 
@@ -352,7 +362,7 @@ public class MacroEditorViewModelTests
             .IsEqualTo(MacroGraphJson.Serialize(WithoutLayout(original)));
         await Assert.That(received!.Nodes.All(node => node.Editor is not null)).IsTrue();
         // …а нода, у которой координаты уже были, сохраняет ровно те, что были.
-        await Assert.That(received.Nodes.Single(node => node.Id == "key").Editor)
+        await Assert.That(received.Nodes.Single(node => node.Id == Ids.Of("key")).Editor)
             .IsEqualTo(new NodeEditorInfo(12.5, -40));
     }
 
@@ -448,8 +458,8 @@ public class MacroEditorViewModelTests
         daemon.WriteExternally(new MacroGraph
         {
             Name = "живой",
-            StartNodeId = "only",
-            Nodes = [new DelayNode { Id = "only", Ms = 5000 }],
+            StartNodeId = Ids.Of("only"),
+            Nodes = [new DelayNode { Id = Ids.Of("only"), DisplayName = "only", Ms = 5000 }],
         });
 
         await Assert.That(vm.ChangedOnDisk).IsFalse();
@@ -469,8 +479,8 @@ public class MacroEditorViewModelTests
         daemon.WriteExternally(new MacroGraph
         {
             Name = "живой",
-            StartNodeId = "only",
-            Nodes = [new DelayNode { Id = "only", Ms = 5000 }],
+            StartNodeId = Ids.Of("only"),
+            Nodes = [new DelayNode { Id = Ids.Of("only"), DisplayName = "only", Ms = 5000 }],
         });
 
         await Assert.That(vm.ChangedOnDisk).IsTrue();
@@ -610,20 +620,22 @@ public class MacroEditorViewModelTests
         vm.LoadGraph(new MacroGraph
         {
             Name = "подсветка",
-            StartNodeId = "a",
+            StartNodeId = Ids.Of("a"),
             Nodes =
             [
-                new DelayNode { Id = "a", Ms = 1 },
-                new DelayNode { Id = "orphan", Ms = 1 },
+                new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 1 },
+                new DelayNode { Id = Ids.Of("orphan"), DisplayName = "orphan", Ms = 1 },
             ],
         });
 
         await vm.SaveAsync();
-        var issue = vm.Issues.Single(i => i.NodeId == "orphan");
+        var issue = vm.Issues.Single(i => i.NodeId == Ids.Of("orphan"));
         vm.SelectIssue(issue);
 
-        await Assert.That(vm.SelectedNode?.NodeId).IsEqualTo("orphan");
-        await Assert.That(vm.Nodes.Single(n => n.NodeId == "orphan").IsSelected).IsTrue();
+        // Замечание адресуется по id, а печатается по подписи — редактор пользуется первым.
+        await Assert.That(issue.Display).Contains("[orphan]");
+        await Assert.That(vm.SelectedNode?.DisplayName).IsEqualTo("orphan");
+        await Assert.That(vm.Nodes.Single(n => n.DisplayName == "orphan").IsSelected).IsTrue();
     }
 
     [Test]

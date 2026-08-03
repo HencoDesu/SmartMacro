@@ -20,8 +20,6 @@
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
-    <!-- LibraryImport source generators emit unsafe ref-handling code (Win32MessageBox). -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -35,6 +33,13 @@
          AppServices rather than by a container. -->
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.8" />
+    <!-- Транзитивный пакет, выписанный явно РАДИ ОБЩЕЙ ПАПКИ ПОСТАВКИ. Сюда он приезжает через
+         Serilog.Settings.Configuration (зависимость >= 10.0.0), а к демону — через
+         Microsoft.Extensions.Hosting (>= 10.0.8), и NuGet честно даёт каждому свой минимум. Пока
+         выхлопы были раздельные, разница никого не трогала; в одной папке физически лежит одна
+         копия, и молча побеждала та, что публиковалась первой. Пин выравнивает обе стороны;
+         расхождение здесь и ловит VerifyNoClobber в build/portable.proj. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.8" />
     <PackageReference Include="Serilog" Version="4.3.0" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
@@ -52,13 +57,16 @@
 
   <ItemGroup>
     <!-- Serilog only. Every engine knob (Agent / ProcessProfiles / Vision) lives in the
-         daemon's appsettings.json — this process has nothing to configure. -->
-    <None Update="appsettings.json">
+         daemon's appsettings.json — this process has nothing to configure.
+         Имя с суффиксом «panel» — из-за портативной раскладки: оба exe публикуются в одну
+         папку, и второй одноимённый appsettings.json просто затёр бы первый. Подробности —
+         в комментарии на месте чтения, App/Program.cs. -->
+    <None Update="appsettings.panel.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="appsettings.local.json">
+    <None Update="appsettings.panel.local.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <DependentUpon>appsettings.json</DependentUpon>
+      <DependentUpon>appsettings.panel.json</DependentUpon>
     </None>
   </ItemGroup>
 

@@ -27,8 +27,16 @@ public sealed partial class MacroGraphStore
     partial void LogDeleted(string name, string path);
 
     [LoggerMessage(LogLevel.Error,
-        "Ошибка валидации макроса '{Name}' на ноде {NodeId}: {Message} — сохранён всё равно, прогон на ней оборвётся")]
-    partial void LogValidationError(string name, string nodeId, string message);
+        "Ошибка валидации макроса '{Name}' на ноде {NodeName}: {Message} — сохранён всё равно, прогон на ней оборвётся")]
+    partial void LogValidationError(string name, string nodeName, string message);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Файл макроса {Path} не разбирается моделью этой версии и отодвинут в {MovedTo} — он не пропал, но в библиотеку не попадёт")]
+    partial void LogFileMovedAside(string path, string movedTo);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Не удалось отодвинуть непарсимый файл {Path} — он останется и будет пропускаться при каждой загрузке")]
+    partial void LogMoveAsideFailed(Exception ex, string path);
 
     [LoggerMessage(LogLevel.Information, "Библиотека перечитана после внешнего изменения: графов {Count}")]
     partial void LogReloadedExternally(int count);

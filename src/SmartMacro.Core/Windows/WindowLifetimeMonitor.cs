@@ -1,12 +1,13 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using SmartMacro.Config;
+using SmartMacro.Settings;
 
 namespace SmartMacro.Windows;
 
-// Одна служба на все окна: раз в «Agent:AgentPollIntervalSeconds» обходит снимок
-// WindowRegistry и снимает с регистрации те окна, чьих клиентов больше нет.
+// Одна служба на все окна: раз в «Watch.WindowPollIntervalSeconds» обходит снимок
+// WindowRegistry и снимает с регистрации те окна, чьих клиентов больше нет. Интервал читается
+// перед каждой паузой, а не запоминается при создании, — правка настройки применяется со
+// следующего тика.
 //
 // Зачем опрос вообще нужен: мёртвый hwnd, оставшийся в реестре, продолжает подходить под
 // теговые селекторы, и каждое разветвление будет впустую тратить на него цикл
@@ -29,7 +30,7 @@ namespace SmartMacro.Windows;
 public sealed partial class WindowLifetimeMonitor : IHostedService, IDisposable
 {
     private readonly WindowRegistry _registry;
-    private readonly TimeSpan _pollInterval;
+    private readonly ISettingsSource _settings;
     private readonly ILogger<WindowLifetimeMonitor> _logger;
 
     private CancellationTokenSource? _cts;
@@ -37,13 +38,15 @@ public sealed partial class WindowLifetimeMonitor : IHostedService, IDisposable
 
     public WindowLifetimeMonitor(
         WindowRegistry registry,
-        IOptions<AgentOptions> options,
+        ISettingsSource settings,
         ILogger<WindowLifetimeMonitor> logger)
     {
         _registry = registry;
-        _pollInterval = TimeSpan.FromSeconds(options.Value.AgentPollIntervalSeconds);
+        _settings = settings;
         _logger = logger;
     }
+
+    private TimeSpan PollInterval => TimeSpan.FromSeconds(_settings.Current.Watch.WindowPollIntervalSeconds);
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -54,7 +57,7 @@ public sealed partial class WindowLifetimeMonitor : IHostedService, IDisposable
 
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => LoopAsync(_cts.Token), _cts.Token);
-        LogStarted(_pollInterval);
+        LogStarted(PollInterval);
         return Task.CompletedTask;
     }
 
@@ -151,7 +154,7 @@ public sealed partial class WindowLifetimeMonitor : IHostedService, IDisposable
 
             try
             {
-                await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -175,7 +178,8 @@ public sealed partial class WindowLifetimeMonitor : IHostedService, IDisposable
     [LoggerMessage(LogLevel.Information, "Слежение за временем жизни окон остановлено")]
     partial void LogStopped();
 
-    [LoggerMessage(LogLevel.Information, "Окно hwnd=0x{Hwnd:X} процесса '{ProcessName}' больше не живо — снимаем с регистрации")]
+    [LoggerMessage(LogLevel.Information,
+        "Окно hwnd=0x{Hwnd:X} процесса '{ProcessName}' больше не живо — снимаем с регистрации")]
     partial void LogWindowGone(long hwnd, string processName);
 
     [LoggerMessage(LogLevel.Error, "Проход по окнам не удался; цикл продолжается")]

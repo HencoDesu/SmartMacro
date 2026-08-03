@@ -2,7 +2,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
-using SmartMacro.Config;
+using Serilog.Core;
+using Serilog.Events;
 using SmartMacro.Daemon.Logging;
 using SmartMacro.GameWindows;
 using SmartMacro.Hotkeys;
@@ -10,11 +11,13 @@ using SmartMacro.Input;
 using SmartMacro.Ipc;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Storage;
+using SmartMacro.Native.Dialogs;
 using SmartMacro.Native.Hotkey;
 using SmartMacro.Native.Tray;
 using SmartMacro.Orchestration;
 using SmartMacro.Presentation;
 using SmartMacro.ProcessMonitoring;
+using SmartMacro.Settings;
 using SmartMacro.Vision;
 using SmartMacro.Windows;
 
@@ -43,6 +46,27 @@ internal static class Program
         // каждый глобальный побочный эффект этого процесса (горячие клавиши, хуки, ввод).
         using var instance = SingleInstanceGuard.TryAcquire(SingleInstanceGuard.DaemonMutexName);
 
+        // Проба пера сразу за мьютексом и ДО конфигурации с логгером — иначе сообщать не через
+        // что. Раскладка портативная: macros\, logs\ и debug\ живут рядом с exe, так что
+        // нераспакованный в пишущееся место архив (C:\Program Files, сетевая шара) ломает всё
+        // сразу и молча. Молча — потому что сток File у Serilog глотает отказ, а строить логгер
+        // раньше пробы нельзя ещё и технически: он сам первым делом полезет создавать logs\.
+        //
+        // Единственный доступный в этой точке канал — нативное окно: консоли у WinExe нет,
+        // журнала ещё нет. Строка в stderr — не дубликат, а подстраховка для `dotnet run`, где
+        // консоль как раз есть.
+        //
+        // Отвергнутый второй экземпляр тоже проходит пробу: две файловые операции, и они дешевле
+        // условия, которое пришлось бы объяснять. Имена проб разведены по pid, так что
+        // одновременный запуск двух демонов за одно имя не спорит.
+        if (!BaseDirectoryWriteProbe.TryVerifyWritable(AppContext.BaseDirectory, out var writeFailure))
+        {
+            var message = BaseDirectoryWriteProbe.DescribeFailure(AppContext.BaseDirectory, writeFailure);
+            Console.Error.WriteLine(message);
+            Win32MessageBox.Error("SmartMacro", message);
+            return 2;
+        }
+
         var bootstrapConfiguration = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
@@ -53,6 +77,14 @@ internal static class Program
         Log.Logger = new LoggerConfiguration()
             .ReadFrom.Configuration(bootstrapConfiguration)
             .CreateBootstrapLogger();
+
+        // Рубильник уровня журнала. Заводится ЗДЕСЬ, из appsettings.json, и это принципиально:
+        // уровень намеренно не переехал в settings.json вместе с остальными ручками. Если демон
+        // споткнётся на чтении файла настроек, расследовать это можно будет только тем уровнем,
+        // который был известен ДО чтения; настройка, ломающая диагностику собственной поломки,
+        // не нужна ни в каком виде. Экран настроек двигает этот объект на лету (SetLogLevel),
+        // ничего не переписывая, — и обязан сказать, что до перезапуска демона.
+        var levelSwitch = new LoggingLevelSwitch(ReadConfiguredLevel(bootstrapConfiguration));
 
         if (instance is null)
         {
@@ -87,9 +119,18 @@ internal static class Program
                 // ленту не попадают — проверено глазами, лента начинается со следующей строки,
                 // «Composition root built». Их видно в консоли и в файле, где им и место: панель
                 // не может быть подключена к демону, который ещё не поднял канал.
-                .WriteTo.Sink(new IpcLogSink(sp.GetRequiredService<LogEventPublisher>())));
+                .WriteTo.Sink(new IpcLogSink(sp.GetRequiredService<LogEventPublisher>()))
+                // ПОСЛЕ ReadFrom.Configuration, и порядок здесь значим: тот вызов уже выставил
+                // MinimumLevel из appsettings.json, а этот подменяет его управляемым рубильником,
+                // засеянным тем же значением. Наоборот — и настройка уровня на лету молча
+                // перестала бы работать.
+                //
+                // MinimumLevel:Override из конфига при этом остаются в силе и рубильнику НЕ
+                // подчиняются (у каждого свой переключатель). Так и надо: «Microsoft: Warning»
+                // — это про чужой шум, и опускать его вместе со своим уровнем незачем.
+                .MinimumLevel.ControlledBy(levelSwitch));
 
-            ConfigureServices(builder.Services, builder.Configuration);
+            ConfigureServices(builder.Services, levelSwitch);
 
             using var host = builder.Build();
 
@@ -109,17 +150,47 @@ internal static class Program
         }
     }
 
-    private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
-    {
-        services.Configure<AgentOptions>(configuration.GetSection("Agent"));
-        // «ProcessProfiles» — голый массив JSON, поэтому привязываем его к списку внутри обёртки.
-        services.AddOptions<ProcessProfileOptions>()
-            .Configure(options => configuration.GetSection(ProcessProfileOptions.SectionName).Bind(options.Profiles));
-        services.Configure<ClassMatcherOptions>(configuration.GetSection("Vision:ClassMatcher"));
-        services.Configure<WindowVisionOptions>(configuration.GetSection("Vision:Window"));
+    /// <summary>
+    /// Начальный уровень для рубильника — тот, что записан в <c>appsettings.json</c>.
+    ///
+    /// Читается строкой, а не через <c>ReadFrom.Configuration</c>, потому что рубильник нужен
+    /// ДО сборки конвейера: он в него и вставляется. Незнакомое или отсутствующее значение даёт
+    /// <see cref="LogEventLevel.Information"/> — то же, что подставил бы Serilog.
+    /// </summary>
+    private static LogEventLevel ReadConfiguredLevel(IConfiguration configuration) =>
+        Enum.TryParse<LogEventLevel>(configuration["Serilog:MinimumLevel:Default"], ignoreCase: true, out var level)
+            ? level
+            : LogEventLevel.Information;
 
-        // GameWindowFactory зашивает в себя выбор стратегии ввода (PostMessage + пробуждение
-        // через WM_ACTIVATEAPP), чтобы ни DI, ни оркестратору не нужно было знать о типах из
+    private static void ConfigureServices(IServiceCollection services, LoggingLevelSwitch levelSwitch)
+    {
+        // --- Настройки -----------------------------------------------------------------
+        //
+        // Пришли на смену четырём Configure<T> из appsettings.json. Разница не в том, ГДЕ лежат
+        // значения, а в том, что IOptions<T> вычислялся один раз на старте: любая правка требовала
+        // перезапуска демона, и это стояло в CLAUDE.md отдельной ловушкой. Теперь файлом владеет
+        // демон, панель правит его по IPC, наблюдатель подхватывает правку блокнотом, а
+        // потребители читают ISettingsSource.Current В МОМЕНТ ИСПОЛЬЗОВАНИЯ.
+        //
+        // Хранилище зарегистрировано дважды — собой и как ISettingsSource — намеренно: писать
+        // вправе только диспетчер, которому нужен конкретный тип, а читателям достаётся интерфейс
+        // без записи. (Отсюда же двойной Dispose, к которому хранилище готово.)
+        //
+        // В appsettings.json остался ОДИН Serilog. Уровень журнала не переехал сюда сознательно —
+        // см. рубильник в Main.
+        services.AddSingleton<SettingsStore>();
+        services.AddSingleton<ISettingsSource>(sp => sp.GetRequiredService<SettingsStore>());
+        services.AddSingleton<ILogLevelSwitch>(_ => new SerilogLevelSwitch(levelSwitch));
+        services.AddSingleton<SettingsSnapshotProvider>();
+        services.AddSingleton<AutoStartManager>();
+        services.AddSingleton<EnvironmentDiagnostics>();
+
+        // Выбор способа доставки нажатия по настройкам, на каждое нажатие. Синглтон, потому что
+        // держит обе реализации ввода полями: переключение способа не должно ничего выделять.
+        services.AddSingleton<KeyboardInputResolver>();
+
+        // GameWindowFactory зашивает в себя пробуждение через WM_ACTIVATEAPP и то, что мышь
+        // всегда идёт PostMessage, чтобы ни DI, ни оркестратору не нужно было знать о типах из
         // Native. Win32NativeWindowSystem — статический класс, регистрировать в DI нечего.
         services.AddSingleton<IGameWindowFactory, GameWindowFactory>();
 
@@ -145,8 +216,8 @@ internal static class Program
 
         // Движок макросов. Хранилище — библиотека-первоисточник: оно разрешает подмакросы для
         // RunMacroNode, снабжает HotkeyListener привязками и подсказывает оркестратору, какие
-        // графы должен «загрузить» новый процесс. При первом запуске оно мигрирует старый
-        // macros.json и/или засевает набор примеров для PW.
+        // графы должен «загрузить» новый процесс. Создание объекта при этом не пишет на диск
+        // ни одного файла — инвариант вместе с причинами записан на самом MacroGraphStore.
         services.AddSingleton<MacroGraphStore>();
         services.AddSingleton<IMacroGraphResolver>(sp => sp.GetRequiredService<MacroGraphStore>());
         services.AddSingleton<IMacroPrimitives, MacroPrimitives>();
@@ -174,6 +245,13 @@ internal static class Program
         // даёт приостановленному обходу пережить единственный процесс, способный его отпустить.
         services.AddSingleton<MacroDebugSession>();
         services.AddSingleton<IMacroDebugger>(sp => sp.GetRequiredService<MacroDebugSession>());
+
+        // Автозапуск: единственная часть настроек, которая применяется НЕ в процессе. Первой
+        // среди размещённых служб — она ничего не ждёт, зато чинит установку, у которой файл
+        // настроек говорит «запускать при входе», а записи в системе нет (перенесли папку,
+        // прибрался чистильщик, файл принесли с другой машины). Демон обязан уметь это без
+        // панели: панель по требованию, её может не быть сутками.
+        services.AddHostedService<StartupReconciler>();
 
         // ProcessMonitor и HotkeyListener зарегистрированы первыми, потому что Orchestrator
         // подписывается на их события прямо в конструкторе. DI разрешит их раньше

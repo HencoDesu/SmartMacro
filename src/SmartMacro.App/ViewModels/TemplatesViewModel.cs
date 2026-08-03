@@ -128,7 +128,7 @@ public sealed class MissingTemplateViewModel
         UsageText = string.Join(
             ", ",
             usage.References
-                .Select(r => $"{r.MacroName} / {r.NodeId}")
+                .Select(r => $"{r.MacroName} / {r.NodeName}")
                 .Distinct(StringComparer.Ordinal));
         // Ровно то, что произойдёт в прогоне: примитивы не бросают, они возвращают «не нашлось».
         Consequence = usage.IsSet
@@ -279,7 +279,7 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     /// <summary>«pw-boot / find-server» на каждую ссылку выбранного шаблона.</summary>
     public IReadOnlyList<string> SelectedUsages => _selected is null
         ? []
-        : [.. _selected.UsedBy.Select(r => $"{r.MacroName} / {r.NodeId}")];
+        : [.. _selected.UsedBy.Select(r => $"{r.MacroName} / {r.NodeName}")];
 
     /// <summary>Заголовок раздела ссылок в панели превью.</summary>
     public string SelectedUsageHeader => _selected is null

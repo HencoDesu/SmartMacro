@@ -10,8 +10,9 @@ namespace SmartMacro.Contracts.Dto;
 /// </summary>
 /// <param name="Severity">Имя степени серьёзности, например <c>"Warning"</c> / <c>"Error"</c>.</param>
 /// <param name="NodeId">Провинившаяся нода или <c>null</c> для проблем уровня всего графа.</param>
+/// <param name="NodeName">Её подпись — то, что панель печатает; <c>null</c> вместе с <paramref name="NodeId"/>.</param>
 /// <param name="Message">Человекочитаемое описание.</param>
-public sealed record ValidationIssueDto(string Severity, string? NodeId, string Message);
+public sealed record ValidationIssueDto(string Severity, Guid? NodeId, string? NodeName, string Message);
 
 /// <summary>
 /// Отображение между <see cref="ValidationIssue"/> и <see cref="ValidationIssueDto"/>. Живёт
@@ -24,7 +25,7 @@ public static class ValidationIssueDtoMappers
     public static ValidationIssueDto ToDto(this ValidationIssue issue)
     {
         ArgumentNullException.ThrowIfNull(issue);
-        return new ValidationIssueDto(issue.Severity.ToString(), issue.NodeId, issue.Message);
+        return new ValidationIssueDto(issue.Severity.ToString(), issue.NodeId, issue.NodeName, issue.Message);
     }
 
     /// <summary>Проецирует список проблем валидации в их проводную форму.</summary>
@@ -46,6 +47,6 @@ public static class ValidationIssueDtoMappers
         var severity = Enum.TryParse<ValidationSeverity>(dto.Severity, ignoreCase: true, out var parsed)
             ? parsed
             : ValidationSeverity.Error;
-        return new ValidationIssue(severity, dto.NodeId, dto.Message);
+        return new ValidationIssue(severity, dto.NodeId, dto.NodeName, dto.Message);
     }
 }

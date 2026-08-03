@@ -24,19 +24,19 @@ public class MacroDebuggerViewModelTests
     private static MacroGraph Sample() => new()
     {
         Name = "pw-boot",
-        StartNodeId = "a",
+        StartNodeId = Ids.Of("a"),
         Nodes =
         [
-            new DelayNode { Id = "a", Ms = 100, Next = "b" },
-            new DelayNode { Id = "b", Ms = 100, Next = "c" },
+            new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 100, Next = Ids.Of("b") },
+            new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 100, Next = Ids.Of("c") },
             new RecognizeTagNode
             {
-                Id = "c",
+                Id = Ids.Of("c"), DisplayName = "c",
                 TemplateSet = "classes",
                 Region = new ScreenRect(0, 0, 1, 1),
-                Matched = "d",
+                Matched = Ids.Of("d"),
             },
-            new SetIconNode { Id = "d", IconPath = "icons/{tag}.png" },
+            new SetIconNode { Id = Ids.Of("d"), DisplayName = "d", IconPath = "icons/{tag}.png" },
         ],
     };
 
@@ -198,7 +198,7 @@ public class MacroDebuggerViewModelTests
         var walk = RunEvents.Walk("pw-boot", hwnd: 0x1);
         daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "a"), RunEvents.Paused(walk, 0, "a"));
 
-        editor.SelectedNode = editor.Nodes.Single(n => n.NodeId == "c");
+        editor.SelectedNode = editor.Nodes.Single(n => n.DisplayName == "c");
         await editor.StepAsync();
         await editor.RunToCursorAsync();
 
@@ -206,7 +206,7 @@ public class MacroDebuggerViewModelTests
         await Assert.That(sent.Select(r => r.Command)).IsEquivalentTo(new[] { DebugCommand.Step, DebugCommand.RunToNode });
         await Assert.That(sent.All(r => r.WalkId == walk.WalkId)).IsTrue();
         // «До курсора» целится в ноду, выбранную на канве, а не в смещение относительно обхода.
-        await Assert.That(sent[1].NodeId).IsEqualTo("c");
+        await Assert.That(sent[1].NodeId).IsEqualTo(Ids.Of("c"));
     }
 
     [Test]
@@ -294,8 +294,8 @@ public class MacroDebuggerViewModelTests
             RunEvents.Exited(walk, 100, "a", RunOutcomes.Ok, "100 мс", 1200),
             RunEvents.Entered(walk, 100, "b"));
 
-        var a = editor.Nodes.Single(n => n.NodeId == "a");
-        var b = editor.Nodes.Single(n => n.NodeId == "b");
+        var a = editor.Nodes.Single(n => n.DisplayName == "a");
+        var b = editor.Nodes.Single(n => n.DisplayName == "b");
 
         await Assert.That(a.IsPassed).IsTrue();
         await Assert.That(a.PassedTime).IsEqualTo("1.2 с");
@@ -310,7 +310,7 @@ public class MacroDebuggerViewModelTests
     {
         var daemon = Daemon();
         var editor = Opened(daemon);
-        var icon = editor.Nodes.Single(n => n.NodeId == "d");
+        var icon = editor.Nodes.Single(n => n.DisplayName == "d");
         icon.Target!.UseSelector = true;
         await Assert.That(icon.ShowsTargetChip).IsTrue();
 
@@ -335,7 +335,7 @@ public class MacroDebuggerViewModelTests
         daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "b"), RunEvents.Paused(walk, 0, "b"));
 
         await Assert.That(editor.Nodes.Count(n => n.IsPaused)).IsEqualTo(1);
-        await Assert.That(editor.Nodes.Single(n => n.IsPaused).NodeId).IsEqualTo("b");
+        await Assert.That(editor.Nodes.Single(n => n.IsPaused).DisplayName).IsEqualTo("b");
     }
 
     [Test]
@@ -356,8 +356,8 @@ public class MacroDebuggerViewModelTests
 
         // Галочки первого обхода не имеют права задерживаться на графе, который следует уже за
         // вторым.
-        await Assert.That(editor.Nodes.Single(n => n.NodeId == "a").IsPassed).IsFalse();
-        await Assert.That(editor.Nodes.Single(n => n.NodeId == "a").IsExecuting).IsTrue();
+        await Assert.That(editor.Nodes.Single(n => n.DisplayName == "a").IsPassed).IsFalse();
+        await Assert.That(editor.Nodes.Single(n => n.DisplayName == "a").IsExecuting).IsTrue();
     }
 
     [Test]
@@ -380,9 +380,9 @@ public class MacroDebuggerViewModelTests
         var editor = Opened(daemon);
         var walk = RunEvents.Walk("pw-boot", hwnd: 0x1);
         daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "a"));
-        daemon.Push(new RunEventDto(walk.WalkId, (RunEventKind)999, 10, "a"));
+        daemon.Push(new RunEventDto(walk.WalkId, (RunEventKind)999, 10, Ids.Of("a"), NodeName: "a"));
 
-        await Assert.That(editor.Nodes.Single(n => n.NodeId == "a").IsExecuting).IsTrue();
+        await Assert.That(editor.Nodes.Single(n => n.DisplayName == "a").IsExecuting).IsTrue();
         await Assert.That(editor.RunProgressText).IsEqualTo("1 / 4");
     }
 
@@ -394,12 +394,12 @@ public class MacroDebuggerViewModelTests
         var daemon = Daemon();
         var editor = Opened(daemon);
 
-        editor.ToggleBreakpoint(editor.Nodes.Single(n => n.NodeId == "b"));
-        editor.ToggleBreakpoint(editor.Nodes.Single(n => n.NodeId == "d"));
+        editor.ToggleBreakpoint(editor.Nodes.Single(n => n.DisplayName == "b"));
+        editor.ToggleBreakpoint(editor.Nodes.Single(n => n.DisplayName == "d"));
 
         var sent = daemon.PayloadsOf<SetBreakpointsRequest>(IpcMessageTypes.SetBreakpoints);
         await Assert.That(sent[^1].MacroName).IsEqualTo("pw-boot");
-        await Assert.That(sent[^1].NodeIds).IsEquivalentTo(new[] { "b", "d" });
+        await Assert.That(sent[^1].NodeIds).IsEquivalentTo(new[] { Ids.Of("b"), Ids.Of("d") });
     }
 
     [Test]
@@ -407,17 +407,17 @@ public class MacroDebuggerViewModelTests
     {
         // Демон переживает панель, так что это И ЕСТЬ тот самый случай «мои точки останова на
         // месте» — без файла, без сохранения, без диффа.
-        var daemon = Daemon(new BreakpointSetDto("pw-boot", ["c"]));
+        var daemon = Daemon(new BreakpointSetDto("pw-boot", [Ids.Of("c")]));
         var editor = Opened(daemon);
 
-        await Assert.That(editor.Nodes.Single(n => n.NodeId == "c").HasBreakpoint).IsTrue();
+        await Assert.That(editor.Nodes.Single(n => n.DisplayName == "c").HasBreakpoint).IsTrue();
         await Assert.That(editor.Nodes.Count(n => n.HasBreakpoint)).IsEqualTo(1);
     }
 
     [Test]
     public async Task ApplyingTheDaemonsSetDoesNotEchoItStraightBack()
     {
-        var daemon = Daemon(new BreakpointSetDto("pw-boot", ["c"]));
+        var daemon = Daemon(new BreakpointSetDto("pw-boot", [Ids.Of("c")]));
         var editor = Opened(daemon);
 
         await Assert.That(editor.HasBreakpoints).IsTrue();
@@ -427,42 +427,45 @@ public class MacroDebuggerViewModelTests
     [Test]
     public async Task AnotherMacrosBreakpointsAreNotAppliedToThisGraph()
     {
-        var daemon = Daemon(new BreakpointSetDto("pw-assist", ["c"]));
+        var daemon = Daemon(new BreakpointSetDto("pw-assist", [Ids.Of("c")]));
         var editor = Opened(daemon);
 
         await Assert.That(editor.Nodes.Any(n => n.HasBreakpoint)).IsFalse();
     }
 
     [Test]
-    public async Task RenamingANodeCarriesItsBreakpoint()
+    public async Task RenamingANodeDoesNotDisturbItsBreakpoint()
     {
-        var daemon = Daemon(new BreakpointSetDto("pw-boot", ["b"]));
+        var daemon = Daemon(new BreakpointSetDto("pw-boot", [Ids.Of("b")]));
         var editor = Opened(daemon);
+        var before = daemon.PayloadsOf<SetBreakpointsRequest>(IpcMessageTypes.SetBreakpoints).Count;
 
-        editor.Nodes.Single(n => n.NodeId == "b").NodeId = "задержка";
+        editor.Nodes.Single(n => n.DisplayName == "b").DisplayName = "задержка";
 
-        // Набор выводится из СТРОК, поэтому всё работает без всякого учёта переименований, — ради
-        // этого он из строк и выводится.
+        // Точка останова ключуется id ноды, а переименование его не трогает — значит, демону
+        // сообщать нечего и отправлять набор заново не за чем. Раньше здесь был обязательный
+        // повторный push: набор ключевался по строке, которую правил пользователь.
         var sent = daemon.PayloadsOf<SetBreakpointsRequest>(IpcMessageTypes.SetBreakpoints);
-        await Assert.That(sent[^1].NodeIds).IsEquivalentTo(new[] { "задержка" });
+        await Assert.That(sent.Count).IsEqualTo(before);
+        await Assert.That(editor.BreakpointNodeIds).IsEquivalentTo(new[] { Ids.Of("b") });
     }
 
     [Test]
     public async Task DeletingANodeDropsItsBreakpoint()
     {
-        var daemon = Daemon(new BreakpointSetDto("pw-boot", ["b", "d"]));
+        var daemon = Daemon(new BreakpointSetDto("pw-boot", [Ids.Of("b"), Ids.Of("d")]));
         var editor = Opened(daemon);
 
-        editor.DeleteNode(editor.Nodes.Single(n => n.NodeId == "b"));
+        editor.DeleteNode(editor.Nodes.Single(n => n.DisplayName == "b"));
 
         var sent = daemon.PayloadsOf<SetBreakpointsRequest>(IpcMessageTypes.SetBreakpoints);
-        await Assert.That(sent[^1].NodeIds).IsEquivalentTo(new[] { "d" });
+        await Assert.That(sent[^1].NodeIds).IsEquivalentTo(new[] { Ids.Of("d") });
     }
 
     [Test]
     public async Task ClearingRemovesThemAll()
     {
-        var daemon = Daemon(new BreakpointSetDto("pw-boot", ["b", "d"]));
+        var daemon = Daemon(new BreakpointSetDto("pw-boot", [Ids.Of("b"), Ids.Of("d")]));
         var editor = Opened(daemon);
 
         editor.ClearBreakpoints();
@@ -501,11 +504,11 @@ public class MacroDebuggerViewModelTests
                 new MacroGraph
                 {
                     Name = "смешанное",
-                    StartNodeId = "click",
+                    StartNodeId = Ids.Of("click"),
                     Nodes =
                     [
-                        new ClickNode { Id = "click", PointVar = "cursor", Next = "tag" },
-                        new AddTagNode { Id = "tag", Tag = "проба-{cursor}" },
+                        new ClickNode { Id = Ids.Of("click"), DisplayName = "click", PointVar = "cursor", Next = Ids.Of("tag") },
+                        new AddTagNode { Id = Ids.Of("tag"), DisplayName = "tag", Tag = "проба-{cursor}" },
                     ],
                 },
             });
@@ -532,7 +535,7 @@ public class MacroDebuggerViewModelTests
             RunEvents.Started(walk),
             RunEvents.Variable(walk, 0, "cursor", "1804, 902"),
             RunEvents.Entered(walk, 0, "c"),
-            RunEvents.Variable(walk, 50, "tag", "Жрец", nodeId: "c"));
+            RunEvents.Variable(walk, 50, "tag", "Жрец", node: "c"));
 
         await Assert.That(editor.Variables.Single(v => v.RawName == "tag").Value).IsEqualTo("Жрец");
         await Assert.That(editor.Variables.Single(v => v.RawName == "cursor").Value).IsEqualTo("1804, 902");
@@ -561,7 +564,7 @@ public class MacroDebuggerViewModelTests
         var editor = Opened(Daemon());
         await Assert.That(editor.Variables.Any(v => v.RawName == "новая")).IsFalse();
 
-        ((SetIconNodeRowViewModel)editor.Nodes.Single(n => n.NodeId == "d")).IconPath = "icons/{новая}.png";
+        ((SetIconNodeRowViewModel)editor.Nodes.Single(n => n.DisplayName == "d")).IconPath = "icons/{новая}.png";
 
         // Набранная подстановка обязана добавить читателя ещё до того, как макрос хоть раз
         // запускали.
@@ -577,9 +580,9 @@ public class MacroDebuggerViewModelTests
 
         editor.HighlightVariable(editor.Variables.Single(v => v.RawName == "tag"));
 
-        await Assert.That(editor.Nodes.Single(n => n.NodeId == "c").IsVariableSource).IsTrue();
-        await Assert.That(editor.Nodes.Single(n => n.NodeId == "d").IsVariableConsumer).IsTrue();
-        await Assert.That(editor.Nodes.Single(n => n.NodeId == "a").IsVariableSource).IsFalse();
+        await Assert.That(editor.Nodes.Single(n => n.DisplayName == "c").IsVariableSource).IsTrue();
+        await Assert.That(editor.Nodes.Single(n => n.DisplayName == "d").IsVariableConsumer).IsTrue();
+        await Assert.That(editor.Nodes.Single(n => n.DisplayName == "a").IsVariableSource).IsFalse();
         await Assert.That(editor.VariableLinks).Count().IsEqualTo(1);
 
         editor.HighlightVariable(null);
@@ -610,11 +613,11 @@ public class MacroDebuggerViewModelTests
         var editor = Opened(daemon);
         await Assert.That(editor.Nodes.Any(n => n.HasBreakpoint)).IsFalse();
 
-        daemon.Respond(IpcMessageTypes.GetBreakpoints, new[] { new BreakpointSetDto("pw-boot", ["b"]) });
+        daemon.Respond(IpcMessageTypes.GetBreakpoints, new[] { new BreakpointSetDto("pw-boot", [Ids.Of("b")]) });
         daemon.RaiseConnected();
 
         // Ни подписки, ни панельная копия набора переподключение не переживают, — а вот собственная
         // копия демона переживает, поэтому точки возвращает именно повторное чтение.
-        await Assert.That(editor.Nodes.Single(n => n.NodeId == "b").HasBreakpoint).IsTrue();
+        await Assert.That(editor.Nodes.Single(n => n.DisplayName == "b").HasBreakpoint).IsTrue();
     }
 }

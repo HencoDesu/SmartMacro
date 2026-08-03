@@ -28,9 +28,9 @@ public class MacroExecutorTracingTests
         var observer = new RecordingObserver { IsEnabled = false };
         var graph = ExecutorHarness.Graph(
             "тихо",
-            "a",
-            new DelayNode { Id = "a", Ms = 0, Next = "b" },
-            new KeyPressNode { Id = "b", Key = VirtualKey.C });
+            Ids.Of("a"),
+            new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 0, Next = Ids.Of("b") },
+            new KeyPressNode { Id = Ids.Of("b"), DisplayName = "b", Key = VirtualKey.C });
 
         await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
             CancellationToken.None);
@@ -52,8 +52,8 @@ public class MacroExecutorTracingTests
         var harness = new ExecutorHarness();
         var graph = ExecutorHarness.Graph(
             "без-наблюдателя",
-            "a",
-            new KeyPressNode { Id = "a", Key = VirtualKey.F1 });
+            Ids.Of("a"),
+            new KeyPressNode { Id = Ids.Of("a"), DisplayName = "a", Key = VirtualKey.F1 });
 
         var result =
             await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window), CancellationToken.None);
@@ -71,15 +71,15 @@ public class MacroExecutorTracingTests
         var observer = new RecordingObserver();
         var graph = ExecutorHarness.Graph(
             "цепочка",
-            "a",
-            new DelayNode { Id = "a", Ms = 0, Next = "b" },
-            new ClickNode { Id = "b", Point = new ScreenPoint(1192, 1805), Next = "c" },
-            new KeyPressNode { Id = "c", Key = VirtualKey.C });
+            Ids.Of("a"),
+            new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 0, Next = Ids.Of("b") },
+            new ClickNode { Id = Ids.Of("b"), DisplayName = "b", Point = new ScreenPoint(1192, 1805), Next = Ids.Of("c") },
+            new KeyPressNode { Id = Ids.Of("c"), DisplayName = "c", Key = VirtualKey.C });
 
         await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
             CancellationToken.None);
 
-        await Assert.That(observer.Entries.Select(e => $"{e.Kind}:{e.NodeId}")).IsEquivalentTo(new[]
+        await Assert.That(observer.Entries.Select(e => $"{e.Kind}:{e.NodeName}")).IsEquivalentTo(new[]
         {
             "walk:", "enter:a", "exit:a", "enter:b", "exit:b", "enter:c", "exit:c", "end:",
         });
@@ -93,15 +93,15 @@ public class MacroExecutorTracingTests
         var observer = new RecordingObserver();
         var graph = ExecutorHarness.Graph(
             "детали",
-            "click",
-            new ClickNode { Id = "click", Point = new ScreenPoint(1192, 1805), Next = "key" },
-            new KeyPressNode { Id = "key", Key = VirtualKey.C, Next = "wait" },
-            new DelayNode { Id = "wait", Ms = 500 });
+            Ids.Of("click"),
+            new ClickNode { Id = Ids.Of("click"), DisplayName = "click", Point = new ScreenPoint(1192, 1805), Next = Ids.Of("key") },
+            new KeyPressNode { Id = Ids.Of("key"), DisplayName = "key", Key = VirtualKey.C, Next = Ids.Of("wait") },
+            new DelayNode { Id = Ids.Of("wait"), DisplayName = "wait", Ms = 500 });
 
         await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
             CancellationToken.None);
 
-        var details = observer.OfKind(Exit).ToDictionary(e => e.NodeId!, e => e.Detail);
+        var details = observer.OfKind(Exit).ToDictionary(e => e.NodeName!, e => e.Detail);
         await Assert.That(details["click"]).IsEqualTo("1192,1805");
         await Assert.That(details["key"]).IsEqualTo("C");
         await Assert.That(details["wait"]).IsEqualTo("500 мс");
@@ -121,15 +121,15 @@ public class MacroExecutorTracingTests
 
         var graph = ExecutorHarness.Graph(
             "веер",
-            "a",
+            Ids.Of("a"),
             new KeyPressNode
-                { Id = "a", Key = VirtualKey.F1, Target = new TargetSelector { RequireTags = ["Жрец"] }, Next = "b" },
+                { Id = Ids.Of("a"), DisplayName = "a", Key = VirtualKey.F1, Target = new TargetSelector { RequireTags = ["Жрец"] }, Next = Ids.Of("b") },
             new KeyPressNode
-                { Id = "b", Key = VirtualKey.F2, Target = new TargetSelector { RequireTags = ["Оборотень"] } });
+                { Id = Ids.Of("b"), DisplayName = "b", Key = VirtualKey.F2, Target = new TargetSelector { RequireTags = ["Оборотень"] } });
 
         await harness.Executor.RunAsync(graph, harness.Context(observer: observer), CancellationToken.None);
 
-        var details = observer.OfKind(Exit).ToDictionary(e => e.NodeId!, e => e.Detail);
+        var details = observer.OfKind(Exit).ToDictionary(e => e.NodeName!, e => e.Detail);
         await Assert.That(details["a"]).IsEqualTo("F1 ×2");
         // Ноль совпадений — законное «ничего не делаем», и увидеть это можно только в логе.
         await Assert.That(details["b"]).IsEqualTo("F2 ×0");
@@ -146,10 +146,10 @@ public class MacroExecutorTracingTests
 
         var graph = ExecutorHarness.Graph(
             "условия",
-            "found",
-            new WaitForElementNode { Id = "found", Template = "ChatPanelButtons", TimeoutMs = 1, Found = "lost" },
-            new WaitForElementNode { Id = "lost", Template = "Nope", TimeoutMs = 1, Timeout = "tag" },
-            new RecognizeTagNode { Id = "tag", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) });
+            Ids.Of("found"),
+            new WaitForElementNode { Id = Ids.Of("found"), DisplayName = "found", Template = "ChatPanelButtons", TimeoutMs = 1, Found = Ids.Of("lost") },
+            new WaitForElementNode { Id = Ids.Of("lost"), DisplayName = "lost", Template = "Nope", TimeoutMs = 1, Timeout = Ids.Of("tag") },
+            new RecognizeTagNode { Id = Ids.Of("tag"), DisplayName = "tag", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) });
 
         await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
             CancellationToken.None);
@@ -169,14 +169,14 @@ public class MacroExecutorTracingTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         // Ни контекстного окна, ни селектора — обходчик прерывается прямо внутри этой ноды.
-        var graph = ExecutorHarness.Graph("падение", "a", new KeyPressNode { Id = "a", Key = VirtualKey.C });
+        var graph = ExecutorHarness.Graph("падение", Ids.Of("a"), new KeyPressNode { Id = Ids.Of("a"), DisplayName = "a", Key = VirtualKey.C });
 
         var result =
             await harness.Executor.RunAsync(graph, harness.Context(observer: observer), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
         var exit = observer.OfKind(Exit).Single();
-        await Assert.That(exit.NodeId).IsEqualTo("a");
+        await Assert.That(exit.NodeName).IsEqualTo("a");
         await Assert.That(exit.Outcome).IsEqualTo(RunOutcomes.Error);
         await Assert.That(exit.Detail).Contains("нет селектора Target");
         await Assert.That(observer.OfKind(WalkEnd).Single().Outcome).IsEqualTo(RunOutcomes.Aborted);
@@ -192,9 +192,9 @@ public class MacroExecutorTracingTests
 
         var graph = ExecutorHarness.Graph(
             "отмена",
-            "a",
-            new KeyPressNode { Id = "a", Key = VirtualKey.C, Next = "b" },
-            new DelayNode { Id = "b", Ms = 5000 });
+            Ids.Of("a"),
+            new KeyPressNode { Id = Ids.Of("a"), DisplayName = "a", Key = VirtualKey.C, Next = Ids.Of("b") },
+            new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 5000 });
 
         var result = await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
             cts.Token);
@@ -221,14 +221,14 @@ public class MacroExecutorTracingTests
 
         harness.Resolver.Add(ExecutorHarness.Graph(
             "pw-identify-one",
-            "press",
-            new KeyPressNode { Id = "press", Key = VirtualKey.C }));
+            Ids.Of("press"),
+            new KeyPressNode { Id = Ids.Of("press"), DisplayName = "press", Key = VirtualKey.C }));
         var parent = ExecutorHarness.Graph(
             "pw-identify",
-            "fan",
+            Ids.Of("fan"),
             new RunMacroNode
             {
-                Id = "fan",
+                Id = Ids.Of("fan"), DisplayName = "fan",
                 MacroName = "pw-identify-one",
                 Target = new TargetSelector { RequireTags = ["клиент"] },
             });
@@ -254,7 +254,7 @@ public class MacroExecutorTracingTests
             .IsEquivalentTo(new long[] { 0x11, 0x12, 0x13 });
 
         // А собственная строка ноды родителя говорит, на кого он развернулся веером.
-        await Assert.That(observer.OfKind(Exit).Single(e => e.NodeId == "fan").Detail)
+        await Assert.That(observer.OfKind(Exit).Single(e => e.NodeName == "fan").Detail)
             .IsEqualTo("pw-identify-one ×3");
     }
 
@@ -270,19 +270,19 @@ public class MacroExecutorTracingTests
 
         harness.Resolver.Add(ExecutorHarness.Graph(
             "sub",
-            "press",
-            new KeyPressNode { Id = "press", Key = VirtualKey.C }));
+            Ids.Of("press"),
+            new KeyPressNode { Id = Ids.Of("press"), DisplayName = "press", Key = VirtualKey.C }));
         var parent = ExecutorHarness.Graph(
             "parent",
-            "fan",
+            Ids.Of("fan"),
             new RunMacroNode
-                { Id = "fan", MacroName = "sub", Target = new TargetSelector { RequireTags = ["клиент"] } });
+                { Id = Ids.Of("fan"), DisplayName = "fan", MacroName = "sub", Target = new TargetSelector { RequireTags = ["клиент"] } });
 
         await harness.Executor.RunAsync(parent, harness.Context(observer: observer), CancellationToken.None);
 
         // Сообщено о двух нодах 'press' под РАЗНЫМИ id обходов — иначе панель не отличила бы друг
         // от друга десять загрузок партии.
-        var presses = observer.OfKind(Enter).Where(e => e.NodeId == "press").ToList();
+        var presses = observer.OfKind(Enter).Where(e => e.NodeName == "press").ToList();
         await Assert.That(presses).Count().IsEqualTo(2);
         await Assert.That(presses.Select(e => e.WalkId).Distinct()).Count().IsEqualTo(2);
     }
@@ -292,9 +292,9 @@ public class MacroExecutorTracingTests
     {
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver { IsEnabled = false };
-        harness.Resolver.Add(ExecutorHarness.Graph("sub", "press",
-            new KeyPressNode { Id = "press", Key = VirtualKey.C }));
-        var parent = ExecutorHarness.Graph("parent", "call", new RunMacroNode { Id = "call", MacroName = "sub" });
+        harness.Resolver.Add(ExecutorHarness.Graph("sub", Ids.Of("press"),
+            new KeyPressNode { Id = Ids.Of("press"), DisplayName = "press", Key = VirtualKey.C }));
+        var parent = ExecutorHarness.Graph("parent", Ids.Of("call"), new RunMacroNode { Id = Ids.Of("call"), DisplayName = "call", MacroName = "sub" });
 
         await harness.Executor.RunAsync(parent, harness.Context(ExecutorHarness.Window, observer: observer),
             CancellationToken.None);
@@ -312,9 +312,9 @@ public class MacroExecutorTracingTests
         var entered = new List<string>();
         var graph = ExecutorHarness.Graph(
             "оба",
-            "a",
-            new DelayNode { Id = "a", Ms = 0, Next = "b" },
-            new DelayNode { Id = "b", Ms = 0 });
+            Ids.Of("a"),
+            new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 0, Next = Ids.Of("b") },
+            new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 0 });
 
         await harness.Executor.RunAsync(
             graph,

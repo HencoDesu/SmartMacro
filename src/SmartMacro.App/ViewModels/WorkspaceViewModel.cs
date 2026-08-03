@@ -309,7 +309,7 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
             seen.Add(run.RunId);
             if (FindRun(run.RunId) is { } existing)
             {
-                existing.Refresh(now, run.CurrentNodeId);
+                existing.Refresh(now, run.CurrentNodeName);
             }
             else
             {

@@ -43,8 +43,8 @@ public class HotkeyConflictTests
     {
         Name = name,
         Triggers = [.. triggers],
-        StartNodeId = "n1",
-        Nodes = [new DelayNode { Id = "n1", Ms = 100 }],
+        StartNodeId = Ids.Of("n1"),
+        Nodes = [new DelayNode { Id = Ids.Of("n1"), DisplayName = "n1", Ms = 100 }],
     };
 
     private static MacroEditorViewModel CreateEditor(Daemon daemon, IHotkeySuspension? hotkeys = null) =>

@@ -32,6 +32,7 @@ public class LogStreamTests
                 Engine.RunEvents,
                 Engine.Log,
                 Engine.Debug,
+                Engine.SettingsSnapshots,
                 NullLogger<IpcServer>.Instance);
             Server.SubscribeToEngine();
             Engine.Log.StartAsync(CancellationToken.None).GetAwaiter().GetResult();

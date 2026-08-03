@@ -7,7 +7,9 @@ using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Macros.Validation;
+using SmartMacro.Contracts.Settings;
 using SmartMacro.Orchestration;
+using SmartMacro.Settings;
 using SmartMacro.Vision;
 using SmartMacro.Windows;
 
@@ -44,6 +46,9 @@ public sealed partial class IpcRequestDispatcher
     private readonly RunEventPublisher _runEvents;
     private readonly LogEventPublisher _log;
     private readonly MacroDebugSession _debug;
+    private readonly SettingsStore _settingsStore;
+    private readonly SettingsSnapshotProvider _settings;
+    private readonly EnvironmentDiagnostics _diagnostics;
     private readonly ILogger<IpcRequestDispatcher> _logger;
 
     // Проставляется конструктором IpcServer, а не через DI, — см. AttachBroadcaster. Null в
@@ -63,8 +68,14 @@ public sealed partial class IpcRequestDispatcher
         RunEventPublisher runEvents,
         LogEventPublisher log,
         MacroDebugSession debug,
+        SettingsStore settingsStore,
+        SettingsSnapshotProvider settings,
+        EnvironmentDiagnostics diagnostics,
         ILogger<IpcRequestDispatcher> logger)
     {
+        _settingsStore = settingsStore;
+        _settings = settings;
+        _diagnostics = diagnostics;
         _windows = windows;
         _macros = macros;
         _runs = runs;
@@ -307,7 +318,46 @@ public sealed partial class IpcRequestDispatcher
                     : Array.Empty<LogEntryDto>()));
             }
 
+            // --------------------------------------------------------------- настройки
+
+            case IpcMessageTypes.GetSettings:
+                return Ok(request, IpcJson.Write(_settings.Snapshot()));
+
+            case IpcMessageTypes.SaveSettings:
+            {
+                var payload = Require<SaveSettingsRequest>(request);
+                var settings = payload.Settings
+                               ?? throw new IpcRequestRejectedException("SaveSettings: нагрузка без настроек.");
+
+                // Пустой список = записано; непустой = НЕ записано, вот причины. Договорённость
+                // дословно та же, что у SaveMacro. Проверяет хранилище — там же, где пишет, —
+                // чтобы «проверено» и «записано» не могли разъехаться во времени.
+                var issues = await _settingsStore.SaveAsync(settings, cancellationToken).ConfigureAwait(false);
+                return Ok(request, IpcJson.Write<SettingsIssue[]>([.. issues]));
+            }
+
+            case IpcMessageTypes.ResetSettings:
+            {
+                await _settingsStore.ResetAsync(cancellationToken).ConfigureAwait(false);
+                return Ok(request, IpcJson.Write(_settings.Snapshot()));
+            }
+
+            case IpcMessageTypes.SetLogLevel:
+            {
+                var payload = Require<SetLogLevelRequest>(request);
+                // Не сохраняется никуда — см. каталог и ILogLevelSwitch. Ответ несёт весь
+                // снимок, потому что у панели один обработчик и на ответ, и на пуш.
+                _settings.SetLogLevel(payload.Level);
+                return Ok(request, IpcJson.Write(_settings.Snapshot()));
+            }
+
             // ------------------------------------------------------------ диагностика
+
+            case IpcMessageTypes.RunDiagnostics:
+            {
+                var results = await _diagnostics.RunAsync(cancellationToken).ConfigureAwait(false);
+                return Ok(request, IpcJson.Write<DiagnosticDto[]>([.. results]));
+            }
 
             case IpcMessageTypes.DumpCaptures:
             {
@@ -393,7 +443,7 @@ public sealed partial class IpcRequestDispatcher
         // провалившийся запрос.
         if (MacroGraphStore.ValidateName(graph.Name) is { } nameError)
         {
-            issues.Add(new ValidationIssue(ValidationSeverity.Error, null, nameError));
+            issues.Add(new ValidationIssue(ValidationSeverity.Error, null, null, nameError));
         }
 
         if (issues.Any(issue => issue.Severity == ValidationSeverity.Error))

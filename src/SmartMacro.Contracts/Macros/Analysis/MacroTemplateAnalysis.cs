@@ -23,8 +23,9 @@ public enum TemplateSlot
 /// <summary>Одно место, где макрос называет шаблон.</summary>
 /// <param name="MacroName">Граф, в котором это написано.</param>
 /// <param name="NodeId">Нода внутри него.</param>
+/// <param name="NodeName">Её подпись — то, что браузер шаблонов печатает в списке «кому нужен».</param>
 /// <param name="Slot">Какое именно поле этой ноды.</param>
-public sealed record TemplateReference(string MacroName, string NodeId, TemplateSlot Slot);
+public sealed record TemplateReference(string MacroName, Guid NodeId, string NodeName, TemplateSlot Slot);
 
 /// <summary>
 /// Всё, что библиотека макросов говорит про одно имя шаблона.
@@ -83,15 +84,15 @@ public static class MacroTemplateAnalysis
                 switch (node)
                 {
                     case FindElementNode n:
-                        Add(found, n.Template, isSet: false, macro.Name, node.Id, TemplateSlot.FindTemplate);
+                        Add(found, n.Template, isSet: false, macro.Name, node, TemplateSlot.FindTemplate);
                         break;
 
                     case WaitForElementNode n:
-                        Add(found, n.Template, isSet: false, macro.Name, node.Id, TemplateSlot.WaitTemplate);
+                        Add(found, n.Template, isSet: false, macro.Name, node, TemplateSlot.WaitTemplate);
                         break;
 
                     case RecognizeTagNode n:
-                        Add(found, n.TemplateSet, isSet: true, macro.Name, node.Id, TemplateSlot.RecognizeSet);
+                        Add(found, n.TemplateSet, isSet: true, macro.Name, node, TemplateSlot.RecognizeSet);
                         break;
 
                     default:
@@ -116,7 +117,7 @@ public static class MacroTemplateAnalysis
         string? name,
         bool isSet,
         string macroName,
-        string nodeId,
+        MacroNode node,
         TemplateSlot slot)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -131,6 +132,6 @@ public static class MacroTemplateAnalysis
             found[key] = references;
         }
 
-        references.Add(new TemplateReference(macroName, nodeId, slot));
+        references.Add(new TemplateReference(macroName, node.Id, MacroNodeNames.Display(node), slot));
     }
 }

@@ -77,15 +77,15 @@ public class MacroPrimitivesTests
         using var harness = new Harness();
         harness.WriteTemplate(null, "ServerSelectButton", "png-bytes");
         var center = new ScreenPoint(640, 480);
-        A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, A<ScreenRect>._, A<CancellationToken>._))
+        A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, A<ScreenRect>._, A<double?>._, A<CancellationToken>._))
             .Returns(Task.FromResult<ScreenPoint?>(center));
 
         var region = new ScreenRect(10, 20, 30, 40);
-        var found = await harness.Primitives.FindElementAsync(Hwnd, "ServerSelectButton", region, CancellationToken.None);
+        var found = await harness.Primitives.FindElementAsync(Hwnd, "ServerSelectButton", region, matchThreshold: null, CancellationToken.None);
 
         await Assert.That(found).IsEqualTo(center);
         // Область из ноды передаётся дословно — обрезка это забота окна.
-        A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, region, A<CancellationToken>._))
+        A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, region, A<double?>._, A<CancellationToken>._))
             .MustHaveHappenedOnceExactly();
     }
 
@@ -95,9 +95,9 @@ public class MacroPrimitivesTests
         using var harness = new Harness();
         harness.WriteTemplate(null, "Anywhere", "png-bytes");
 
-        await harness.Primitives.FindElementAsync(Hwnd, "Anywhere", region: null, CancellationToken.None);
+        await harness.Primitives.FindElementAsync(Hwnd, "Anywhere", region: null, matchThreshold: null, CancellationToken.None);
 
-        A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, default(ScreenRect), A<CancellationToken>._))
+        A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, default(ScreenRect), A<double?>._, A<CancellationToken>._))
             .MustHaveHappenedOnceExactly();
     }
 
@@ -106,10 +106,10 @@ public class MacroPrimitivesTests
     {
         using var harness = new Harness();
 
-        var found = await harness.Primitives.FindElementAsync(Hwnd, "NoSuchTemplate", null, CancellationToken.None);
+        var found = await harness.Primitives.FindElementAsync(Hwnd, "NoSuchTemplate", null, matchThreshold: null, CancellationToken.None);
 
         await Assert.That(found).IsNull();
-        A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, A<ScreenRect>._, A<CancellationToken>._))
+        A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, A<ScreenRect>._, A<double?>._, A<CancellationToken>._))
             .MustNotHaveHappened();
     }
 
@@ -118,14 +118,13 @@ public class MacroPrimitivesTests
     {
         using var harness = new Harness();
         harness.WriteTemplate(null, "ChatPanelButtons", "png-bytes");
-        A.CallTo(() => harness.Window.WaitForElementAsync(A<byte[]>._, A<ScreenRect>._, A<TimeSpan>._, A<CancellationToken>._))
+        A.CallTo(() => harness.Window.WaitForElementAsync(A<byte[]>._, A<ScreenRect>._, A<TimeSpan>._, A<double?>._, A<CancellationToken>._))
             .Returns(Task.FromResult<ScreenPoint?>(new ScreenPoint(1, 2)));
 
-        var found = await harness.Primitives.WaitForElementAsync(Hwnd, "ChatPanelButtons", null, 1500, CancellationToken.None);
+        var found = await harness.Primitives.WaitForElementAsync(Hwnd, "ChatPanelButtons", null, 1500, matchThreshold: null, CancellationToken.None);
 
         await Assert.That(found).IsEqualTo(new ScreenPoint(1, 2));
-        A.CallTo(() => harness.Window.WaitForElementAsync(
-                A<byte[]>._, A<ScreenRect>._, TimeSpan.FromMilliseconds(1500), A<CancellationToken>._))
+        A.CallTo(() => harness.Window.WaitForElementAsync(A<byte[]>._, A<ScreenRect>._, TimeSpan.FromMilliseconds(1500), A<double?>._, A<CancellationToken>._))
             .MustHaveHappenedOnceExactly();
     }
 
@@ -138,19 +137,19 @@ public class MacroPrimitivesTests
         A.CallTo(() => harness.Window.CaptureScreenshot()).Returns([1, 2, 3]);
 
         IReadOnlyDictionary<string, byte[]>? seen = null;
-        A.CallTo(() => harness.Matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._, A<ScreenRect>._))
-            .Invokes((byte[] _, IReadOnlyDictionary<string, byte[]> templates, ScreenRect _) => seen = templates)
+        A.CallTo(() => harness.Matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._, A<ScreenRect>._, A<double?>._))
+            .Invokes((byte[] _, IReadOnlyDictionary<string, byte[]> templates, ScreenRect _, double? _) => seen = templates)
             .Returns(new TagMatch("Лучник", 0.93));
 
         var region = new ScreenRect(3200, 1060, 160, 35);
-        var tag = await harness.Primitives.RecognizeAsync(Hwnd, TemplateSetProvider.ClassesSetName, region, CancellationToken.None);
+        var tag = await harness.Primitives.RecognizeAsync(Hwnd, TemplateSetProvider.ClassesSetName, region, matchThreshold: null, CancellationToken.None);
 
         await Assert.That(tag).IsEqualTo("Лучник");
         // Имя набора "classes" разрешается в подпапку templates/classes с ключом по
         // основе имени файла — эта основа И ЕСТЬ тег, который навешивает нода.
         await Assert.That(seen).IsNotNull();
         await Assert.That(seen!.Keys.Order().ToList()).IsEquivalentTo(new List<string> { "Жрец", "Лучник" });
-        A.CallTo(() => harness.Matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._, region))
+        A.CallTo(() => harness.Matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._, region, A<double?>._))
             .MustHaveHappenedOnceExactly();
     }
 
@@ -160,10 +159,10 @@ public class MacroPrimitivesTests
         using var harness = new Harness();
         harness.WriteTemplate(TemplateSetProvider.ClassesSetName, "Лучник", "archer-template");
         A.CallTo(() => harness.Window.CaptureScreenshot()).Returns([1]);
-        A.CallTo(() => harness.Matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._, A<ScreenRect>._))
+        A.CallTo(() => harness.Matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._, A<ScreenRect>._, A<double?>._))
             .Returns(null);
 
-        var tag = await harness.Primitives.RecognizeAsync(Hwnd, "classes", new ScreenRect(0, 0, 10, 10), CancellationToken.None);
+        var tag = await harness.Primitives.RecognizeAsync(Hwnd, "classes", new ScreenRect(0, 0, 10, 10), matchThreshold: null, CancellationToken.None);
 
         await Assert.That(tag).IsNull();
     }
@@ -173,7 +172,7 @@ public class MacroPrimitivesTests
     {
         using var harness = new Harness();
 
-        var tag = await harness.Primitives.RecognizeAsync(Hwnd, "no-such-set", new ScreenRect(0, 0, 10, 10), CancellationToken.None);
+        var tag = await harness.Primitives.RecognizeAsync(Hwnd, "no-such-set", new ScreenRect(0, 0, 10, 10), matchThreshold: null, CancellationToken.None);
 
         await Assert.That(tag).IsNull();
         A.CallTo(() => harness.Window.CaptureScreenshot()).MustNotHaveHappened();
@@ -188,8 +187,8 @@ public class MacroPrimitivesTests
         // Веер, попавший в гонку со сносом окна, не имеет права разорвать прогон.
         await harness.Primitives.PressKeyAsync(stranger, VirtualKey.F8, CancellationToken.None);
         await harness.Primitives.ClickAsync(stranger, new ScreenPoint(1, 1), false, CancellationToken.None);
-        var found = await harness.Primitives.FindElementAsync(stranger, "whatever", null, CancellationToken.None);
-        var tag = await harness.Primitives.RecognizeAsync(stranger, "classes", default, CancellationToken.None);
+        var found = await harness.Primitives.FindElementAsync(stranger, "whatever", null, matchThreshold: null, CancellationToken.None);
+        var tag = await harness.Primitives.RecognizeAsync(stranger, "classes", default, matchThreshold: null, CancellationToken.None);
 
         await Assert.That(found).IsNull();
         await Assert.That(tag).IsNull();

@@ -87,9 +87,32 @@ One request (`SubscribeLog`) and one push (`LogEntries`) — the **second subscr
 
 Filtering (level + substring) is **panel-side only**, because moving the filter down must *reveal* what already arrived — something a server-side filter cannot do. The lever that actually reduces wire volume is the daemon's own Serilog `MinimumLevel`; a `LoggingLevelSwitch` for it belongs to a settings screen and is not wired.
 
+### Settings, and the live settings store (D6)
+
+The screen is mockup **2c** (one screen, no scrolling, tiles in the shell, diagnostics as a strip along the bottom), and «Настройки» is a sixth rail row **below a divider, with a gear and no counter** — rail counters answer "how many are there now", and settings have no such number; a red dot for failed diagnostics takes that slot instead.
+
+**The mechanism mattered more than the field list.** Every engine knob used to arrive through `IOptions<T>`, computed once at startup, so any change needed a daemon restart — a trap `CLAUDE.md` documented separately. A settings screen on top of that would have been more annoying than Notepad. So `Agent`, `ProcessProfiles` and `Vision` left `appsettings.json` for `Core/Settings/SettingsStore` — **the `MacroGraphStore` pattern, deliberately, down to the debounced `FileSystemWatcher` and own-write suppression**: the daemon owns `settings.json`, the panel edits it over IPC, the daemon raises `SettingsChanged`, subscribers re-read. `appsettings.json` keeps Serilog and nothing else.
+
+Four facts constrain anything built on it:
+
+- **Consumers read `ISettingsSource.Current` AT THE POINT OF USE and never cache it in a field.** That single rule is what makes the knobs live: poll intervals apply on the next tick, vision thresholds on the next match, input method on the next activation cycle, profiles to newly adopted windows. The snapshot is immutable, so a read is one reference. *Verified live*: a profile added by editing the file in a text editor was picked up by the running daemon, `ProcessMonitor` started watching the new process on its next tick, and the window appeared in «Окна» — no restart anywhere.
+- **`SettingsStore`'s constructor WRITES when the file is missing** — the one deliberate departure from `MacroGraphStore`, whose "constructor writes nothing" is an invariant. The reasoning inverts: the daemon must work without the panel (the panel is on-demand and may be absent for days), so a first launch on a new machine cannot require "open the panel and press Save". An *existing* file is never rewritten, and an **unreadable** one is neither rewritten nor allowed to reset anything — the user put a stray comma in while editing by hand, and "the program silently restored factory defaults" is losing their work.
+- **The log level stays in `appsettings.json`, against the general rule of shrinking it.** If the daemon trips on reading the settings file, the only level that can debug that is the one known BEFORE the read; a setting that breaks the diagnosis of its own breakage is the worst kind. So `SetLogLevel` moves a `LoggingLevelSwitch` and persists nothing, the change lasts until the daemon restarts, and the screen says so. `MinimumLevel.ControlledBy` must come AFTER `ReadFrom.Configuration` — the other order and the knob silently stops working.
+- **The editor stages; the store is live.** Edits accumulate and go on «Применить». Applying per keystroke would mean "12" is briefly "1", and the daemon would honestly work a second at a one-second interval. Live means "no restart needed", not "state changes under your fingers". The log level is the single exception (it is not part of the file). A `SettingsChanged` push — which also fires for a Notepad edit — **does not clobber a half-filled form**; it swaps the baseline so «Отменить» shows the new file.
+
+**`ActivationLParam` is not in the UI at all** — only "есть"/"не нужен". It is a reverse-engineered crutch for one game, not a setting. But its ABSENCE is working semantics ("ordinary process, wake-up skipped"), which non-game profiles depend on, so `KnownActivationSignals` is applied **when a profile is CREATED**, never on read: `elementclient_64` gets 37336 by itself, `notepad` stays without one, and the row carries the value through untouched. Anyone with a build using a different value still has the file.
+
+**Autostart is the only part applied outside the process**, and it is two checkboxes over three mechanisms, the app choosing: nothing / `Run` key in `HKCU` / (no autostart, elevation requested at manual start) / **Scheduled Task with highest privileges** — because the `Run` key cannot elevate. Reconciliation is always FULL, including removing what should not be there, or switching ✓/— → ✓/✓ would leave both and the daemon would launch twice. `StartupReconciler` also reconciles at startup, not only on edit, so an install whose file says "run at logon" but whose registry entry was swept away fixes itself. **Registration can FAIL** (only an administrator can create that task) — and that used to reach a log nobody reads, which is exactly the D4 hotkey defect: box ticked, clean UI, nothing happens. It is now a diagnostic.
+
+**Diagnostics («Проверить сейчас») are six checks, five in the daemon and one in the panel** — the channel round-trip, because the daemon cannot honestly measure its own response time. They exist because almost every failure of this application is environmental and all of them look identical: the macro just doesn't work, and the log is silent. The elevation check is a **real `WM_NULL` send per window**, not an inference from "we are not elevated": if the game is also running unelevated everything works, and a false alarm teaches people to ignore the strip. All checks are read-only; the most "active" one sends `WM_NULL`. Problems are sorted FIRST — a failure card wedged between two green pills is as good as absent.
+
+**`SendInput` has a slot in the model and no implementation, and the UI does not offer it.** Offering an untested input method is worse than not offering one. A value that reaches the file by hand resolves to `SendMessage` with a warning logged once per process — never silently, or the symptom would be "a setting that does nothing". Input-method wording lives once, in `Contracts/Settings/InputMethodInfo`: the default-input list and the per-profile picker both read it, because a copy in markup drifts invisibly.
+
+Found by eye while running it, none of it visible to build or tests: `ScreenRect`'s computed `TopLeft`/`Right`/`Bottom` were being SERIALIZED into every hand-edited file (settings and `macros/*.json` alike) — three fields that look settable and silently do nothing, now `[JsonIgnore]`; a checkbox whose two-line hint sat inside its content put the box next to the *second* line; the change counter had no home in the markup; «1 окон».
+
 ⚠️ **The fixed-height `TextBox` trap.** The theme's field padding is 11.2px vertical and the text sits inside a clipping `ScrollViewer`; a caller-supplied `Height` of 24–26 leaves less room than the line needs and severs descenders exactly at the baseline — letters stay legible, only the tails of «р»/«у»/«д» vanish. Three sites had it (log search, macro name, library search); all now pass `Padding="8,0"` + `VerticalContentAlignment="Center"` alongside their `Height`, and the trap is written up at the theme. Build and tests cannot see this class of defect — it was found by measuring glyph ink rows against a reference `TextBlock`.
 
-**Two executables run elevated** (`requireAdministrator`), so a medium-integrity shell cannot terminate either one — `Stop-Process`/`taskkill` return access denied. A wedged panel has to be closed from an elevated context. It also holds the single-instance mutex and renames locked DLLs to `*.locked<pid>` in its `bin/`; those clear themselves when it finally exits.
+**Two executables run elevated** (`requireAdministrator`) — and they stay two; see «The portable layout» for why merging them is not on the table. A medium-integrity shell cannot terminate either one — `Stop-Process`/`taskkill` return access denied. A wedged panel has to be closed from an elevated context. It also holds the single-instance mutex and renames locked DLLs to `*.locked<pid>` in its `bin/`; those clear themselves when it finally exits.
 
 **The split is live.** `SmartMacro.Daemon.exe` is the resident engine (tray, hooks, vision, macro library, IPC server); `SmartMacro.App.exe` is an on-demand panel that owns nothing and reaches everything over the `smartmacro-control` pipe. Run the daemon; the tray's "Открыть панель" (or launching the App directly) brings the UI up. A second App launch does not open a second window — it asks the daemon to broadcast `ActivateWindow` and exits. If the daemon dies, the panel says so and closes.
 
@@ -101,6 +124,9 @@ dotnet run --project src/SmartMacro.Daemon    # the engine — start this first
 dotnet run --project src/SmartMacro.App       # the panel (also auto-starts the daemon if it isn't up)
 dotnet run --project tools/VisionSampleRunner # vision debugging harness (coord OCR over samples/)
 dotnet run --project tests/SmartMacro.Tests   # TEST GATE — use this one
+
+dotnet msbuild build/portable.proj            # portable layout: BOTH exes into dist/portable/SmartMacro/
+dotnet msbuild build/portable.proj -t:Package # …plus dist/SmartMacro-Release.zip
 ```
 
 `dotnet test` (bare, from the repo root) also works now and reports the full count; note that passing the solution needs `dotnet test --solution SmartMacro.slnx`, not a positional path. `dotnet run` remains the gate of record.
@@ -109,7 +135,7 @@ Build warnings NU1903 (Tmds.DBus.Protocol) are known noise.
 
 **DLL-lock gotcha:** if either executable is running, `dotnet build` fails copying DLLs (MSB3027/MSB3021 with a PID). Close the panel window AND pick "Выход" in the daemon's tray icon, then rebuild — the daemon outlives the panel by design, so closing the window alone is not enough. Code-compile errors vs file-lock errors look similar in output — check before diagnosing.
 
-**Config propagation gotcha:** `appsettings.json` is copied to `bin/Debug/net10.0-windows/` only on build (`PreserveNewest`). Editing the source-tree JSON and restarting the exe without a rebuild does NOT pick up changes. Options are bound once at startup via `IOptions` — every config change requires app restart.
+**Config propagation gotcha — now only for `appsettings.json`:** it is copied to `bin/Debug/net10.0-windows/` only on build (`PreserveNewest`), so editing the source-tree JSON and restarting the exe without a rebuild does NOT pick up changes, and its one remaining section (Serilog) is still read once at startup. **`settings.json` is the opposite in every respect** — it lives next to the exe, is gitignored, is created by the daemon on first run, and is watched: editing it in Notepad applies without a restart. Every engine knob moved there in D6; see «Settings» above.
 
 ## Architecture
 
@@ -175,11 +201,96 @@ The provider has **two read paths on purpose**. `TryGetTemplate`/`GetSet` is the
 
 **Tesseract is parked and no longer ships with the daemon (stage 4B).** `TesseractCoordinateReader` (HUD coordinate OCR) still works and is still exercised by `tools/VisionSampleRunner`, but the daemon does not register `ICoordinateReader` — nothing injected it, and the ctor eagerly builds a `TesseractEngine`. `SmartMacro.Core.csproj` marks the package `PrivateAssets="all" ExcludeAssets="build"`, which keeps both the managed dll and the 12 MB of `x64/`+`x86/` natives out of the daemon's output; `src/SmartMacro.Daemon/tessdata/` is gone and the language pack lives only with the sample runner, which carries its own PackageReference. Daemon output: 107 → 91 MB. Un-parking it for stuck detection = drop those two attributes and restore the DI line. ⚠️ Until then `SmartMacro.Core.dll` ships next to the daemon with a metadata reference to an assembly that is not there — harmless because the CLR resolves it lazily and nothing touches that type.
 
+### The portable layout (one folder, two exes)
+
+Distribution is a **zip containing a folder**, and everything is next to the executables — no
+`%LOCALAPPDATA%`, one path for the whole install. `build/portable.proj` is how that is
+expressed: `dotnet msbuild build\portable.proj` publishes **both** projects into
+`dist\portable\SmartMacro\`, `-t:Package` adds the zip. Four things constrain anything built on
+it:
+
+- **One folder, and the win is layout, not bytes.** Measured: 153 files / 117.97 MB as two
+  outputs (daemon 94 / 90.19, panel 59 / 27.78) against **127 files / 114.97 MB** merged — 26
+  duplicates and 3.0 MB of 118, because the weight is OpenCV natives on one side and
+  Skia/HarfBuzz on the other and those do not overlap. What it does buy is two adjacent exes,
+  one `macros/`, one `logs/`, one shortcut target — and it retires the peer-lookup asymmetry:
+  `PeerExecutableLocator`'s first candidate ("next to me") is the shipped layout and always
+  hits, the project-folder swap is **only** for the dev tree where each project builds into its
+  own `bin/`. Both cases are named at the locator.
+- **The two exes must NOT be merged into one with a `--daemon`/`--panel` switch.** The manifest
+  binds to the BINARY, not the mode: the daemon needs `requireAdministrator` (UIPI), and a
+  single exe would inherit elevation in both modes — the panel would always prompt for UAC and
+  de-elevating it would become impossible. The split is exactly what keeps that door open. The
+  reason is written in `build/portable.proj` because that file is where the temptation lands.
+- **A shared folder means the two publishes can disagree about a file.** `VerifyNoClobber` runs
+  BETWEEN them: it asks the panel for its `ResolvedFileToPublish` list and, for every entry
+  whose destination already exists, SHA-256s the panel's SOURCE against what the daemon put
+  there. Two things make it look the way it does. Getting the list needs
+  `build/publish-file-list.targets` injected via `CustomAfterMicrosoftCommonTargets`, because
+  the SDK's `ComputeFilesToPublish` has **no `Returns`** and hands back nothing through
+  `TargetOutputs` (verified). And ⚠️ **checking "was anything overwritten" is not enough** —
+  package files carry `CopyToPublishDirectory=PreserveNewest`, and "newer" is compared against
+  the file the *first* publish just wrote, so the second publish silently SKIPS them; a
+  before/after hash of the folder reports all-clear while the versions differ. That was not
+  theoretical — it is how the Binder clash below hid.
+- **`Publish` always cleans first**, so `dist/` is a BUILD OUTPUT, not an install: run the
+  daemon from there and its `macros/`, `logs/`, `debug/` and `settings.json` are gone on the
+  next publish.
+
+**Three things the shared folder actually broke**, all found on the first portable build:
+
+1. **Both projects shipped an `appsettings.json`.** The panel's is now
+   **`appsettings.panel.json`** (override `appsettings.panel.local.json`). The daemon winning
+   would have redirected the panel's Serilog into `logs/smartmacro-.log` — both sinks are
+   `"shared": true`, so it would not even have thrown, just interleaved UI lines into the
+   engine log.
+2. **`Microsoft.Extensions.Configuration.Binder` was 10.0.8 for the daemon** (via
+   `Microsoft.Extensions.Hosting`) **and 10.0.0 for the panel** (via
+   `Serilog.Settings.Configuration`). One folder holds one copy, so the shipped version
+   depended on target ordering in the build file. Pinned explicitly in `SmartMacro.App.csproj`;
+   removing the pin makes `VerifyNoClobber` fail by name (verified).
+3. **⚠️ The panel did not start from the shared folder at all** — the expensive one, and the
+   one no file check could have caught. `Serilog.Settings.Configuration`, told nothing about
+   where to look, **scans `Serilog*.dll` in the application directory**. In one folder it finds
+   the daemon's `Serilog.Extensions.Hosting`/`Serilog.Extensions.Logging`, loads them, and
+   trips over dependencies that are the daemon's and absent from `SmartMacro.App.deps.json`.
+   The panel died on `CreateLogger` — before its first log line, and (because `MessageBoxW`
+   returns silently in a non-interactive session) with exit code 1 and no output whatsoever.
+   Fixed by handing `ReadFrom.Configuration` an explicit `ConfigurationReaderOptions` assembly
+   list, which removes the scan. The daemon needs no mirror fix: its Serilog set is a superset
+   of the panel's, so the scan finds it nothing new.
+
+The moral of (3) is bigger than one package: **one folder is one assembly probing directory,
+and anything that scans it starts seeing the other process's dependencies.** `deps.json` stays
+honest — but only for code that loads through it.
+- **No single-file publish.** OpenCV's native blobs get unpacked to a temp folder at start:
+  slower, and stack traces point at paths that are not on disk.
+
+⚠️ One folder does **not** relax "App references Contracts and nothing else". That rule is about
+the PROCESS, not the directory: `OpenCvSharp*` and `SmartMacro.Core.dll` now sit next to the
+panel, but its `SmartMacro.App.deps.json` does not list them and nothing references them, so
+they never enter its address space. The invariant can no longer be checked by listing files in
+the panel's output — check `deps.json`.
+
+**Portability rests on being unzipped somewhere writable**, so the daemon proves it:
+`Daemon/BaseDirectoryWriteProbe` creates a subdirectory and a file in it — **right after the
+single-instance mutex and BEFORE the configuration and the logger**, because the logger's first
+act is to create `logs/`, and by then there is nothing left to report through. Both ACL bits
+are checked (`FILE_ADD_FILE` and `FILE_ADD_SUBDIRECTORY`); the probe name carries the pid; it
+cleans up after itself. **Failure is fatal — there is no read-only mode.** A resident daemon
+exists in order to write (macro library, log, capture dumps), and a live tray icon over an
+engine that cannot save a line is a promise it will not keep. The channel is a native message
+box (`Native/Dialogs/Win32MessageBox` — a WinExe has no console and the logger does not exist
+yet) and the exit code is `2`. The panel has no probe (no shared assembly would take it:
+Contracts forbids file IO, Native is P/Invoke only) but its configuration + logger construction
+is now wrapped in a `try` with the same box — before that it was the one place in the panel
+where a failure had nowhere to go and killed the process silently.
+
 ### Runtime state files (next to the DAEMON exe, gitignored)
 
-`macros/*.json` (one graph per file), `debug/` and `logs/smartmacro-*.log`. `MacroGraphStore` follows the usual store pattern — load on ctor → immutable snapshot → CRUD persists + raises `MacrosChanged` → subscribers (`HotkeyListener`, and the panel via the `MacrosChanged` push) re-register live — plus a debounced `FileSystemWatcher` for external edits, with our own writes suppressed by comparing a folder signature of last-write timestamps. An unparseable file is skipped and logged, never fatal to the load.
+`settings.json` (all engine knobs — see «Settings» above), `macros/*.json` (one graph per file), `debug/` and `logs/smartmacro-*.log`. `MacroGraphStore` follows the usual store pattern — load on ctor → immutable snapshot → CRUD persists + raises `MacrosChanged` → subscribers (`HotkeyListener`, and the panel via the `MacrosChanged` push) re-register live — plus a debounced `FileSystemWatcher` for external edits, with our own writes suppressed by comparing a folder signature of last-write timestamps. An unparseable file is skipped and logged, never fatal to the load.
 
-The panel's own directory holds only `logs/smartmacro-ui-*.log`. Its `appsettings.json` configures Serilog and nothing else — every engine knob (`Agent`, `ProcessProfiles`, `Vision:*`) is the daemon's.
+The panel's own directory holds only `logs/smartmacro-ui-*.log` — and in the shipped layout that *is* the daemon's directory. Its `appsettings.panel.json` configures Serilog and nothing else — every engine knob (`Agent`, `ProcessProfiles`, `Vision:*`) is the daemon's.
 
 `hotkeys.json` and the single `macros.json` are GONE — and so is the one-shot migrator that used to convert them. Backwards compatibility is off: a file in either legacy format is now just an unknown file the store ignores. A hotkey is a `HotkeyTrigger` inside the macro it starts.
 
@@ -188,7 +299,7 @@ The panel's own directory holds only `logs/smartmacro-ui-*.log`. Its `appsetting
 ### Conventions
 
 - Logging via source-generated `[LoggerMessage]` partial methods, usually split into a sibling `*.Logging.cs` partial file.
-- Options classes bind from `appsettings.json` sections in `Program.cs` (`AgentOptions` ← `"Agent"` — poll intervals only now, `ProcessProfileOptions` ← `"ProcessProfiles"`, vision options ← `"Vision:*"`). Coordinates, regions, templates, keys and timeouts belong in macro nodes, NOT in config.
+- Engine knobs live in `settings.json` next to the daemon, owned by `SettingsStore`, and are read through `ISettingsSource.Current` **at the point of use** — never cached in a field, or the knob stops being live. `IOptions<T>` and the `Config/` folder that held `AgentOptions` / `ProcessProfileOptions` / `ClassMatcherOptions` / `WindowVisionOptions` are gone. `appsettings.json` configures Serilog and nothing else. Coordinates, regions, templates, keys and timeouts belong in macro nodes, NOT in settings.
 - `ScreenPoint` / `ScreenRect` record structs (in `Native`) for all pixel coordinates — bind from JSON as `{ "X": .., "Y": .. }` objects.
 - Coordinate discovery workflow: user hovers cursor in-game and triggers a macro; `CursorPositionProvider` logs the client-space point it seeds the `cursor` variable with, which then goes into a node.
 - "Dump captures" in the «Окна» mode header sends `DumpCaptures` (with a generous timeout — it screenshots every client) and opens the folder the daemon replies with: per-agent `debug/*-full.png` and `*-class-bin.png` for tuning vision regions.

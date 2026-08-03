@@ -1034,4 +1034,103 @@
         </Style>
     </ControlTheme>
 
+    <!-- ================================================================
+         SLIDER (волна D6)
+         Единственный контрол, которого макету настроек не хватило в наборе D1. Заведён ради
+         порога совпадения: у величины 0.05..1.00 с шагом 0.01 ползунок отвечает на вопрос
+         «насколько строже стало» лучше, чем поле, — а поле рядом всё равно показывает точное
+         число, потому что порог, случайно сдвинутый мышью на 0.02, ищется потом полдня.
+
+         Только горизонтальный. Вертикального в этом приложении нет и не предвидится, а шаблон,
+         который никто не рисует, — это ровно тот код, который однажды окажется сломанным и
+         никем не замеченным.
+
+         Имена частей (PART_Track, PART_DecreaseButton, PART_IncreaseButton) ищет сам Slider в
+         OnApplyTemplate; переименовать их нельзя. Кнопки прокрутки обязательны: без них щелчок
+         мимо ползунка перестаёт двигать значение.
+         ================================================================ -->
+
+    <ControlTheme x:Key="NocturneSliderThumb" TargetType="Thumb">
+        <Setter Property="Width" Value="12" />
+        <Setter Property="Height" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <!-- Свечение вместо заливки: то же правило акцента, что у точки прогона на
+                     полосе внизу окна. -->
+                <Border Background="{DynamicResource NocturneSurfaceOverlayBrush}"
+                        BorderBrush="{DynamicResource NocturneAccentBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        BoxShadow="{DynamicResource NocturneRunDotGlow}" />
+            </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover /template/ Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent400Brush}" />
+        </Style>
+        <Style Selector="^:pressed /template/ Border">
+            <Setter Property="Background" Value="{DynamicResource NocturneAccent900Brush}" />
+        </Style>
+    </ControlTheme>
+
+    <!-- Пройденная часть дорожки — акцентная линия. Непройденная остаётся разделителем. -->
+    <ControlTheme x:Key="NocturneSliderTrackFilled" TargetType="RepeatButton">
+        <Setter Property="Background" Value="{DynamicResource NocturneAccent700Brush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        CornerRadius="2"
+                        Height="3"
+                        VerticalAlignment="Center" />
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+
+    <ControlTheme x:Key="NocturneSliderTrackEmpty" TargetType="RepeatButton"
+                  BasedOn="{StaticResource NocturneSliderTrackFilled}">
+        <Setter Property="Background" Value="{DynamicResource NocturneDividerBrush}" />
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type Slider}" TargetType="Slider">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="MinHeight" Value="18" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        Padding="{TemplateBinding Padding}">
+                    <Track Name="PART_Track"
+                           Minimum="{TemplateBinding Minimum}"
+                           Maximum="{TemplateBinding Maximum}"
+                           Value="{TemplateBinding Value, Mode=TwoWay}"
+                           Orientation="Horizontal"
+                           Height="18">
+                        <Track.DecreaseButton>
+                            <RepeatButton Name="PART_DecreaseButton"
+                                          Theme="{StaticResource NocturneSliderTrackFilled}"
+                                          Focusable="False" />
+                        </Track.DecreaseButton>
+                        <Track.IncreaseButton>
+                            <RepeatButton Name="PART_IncreaseButton"
+                                          Theme="{StaticResource NocturneSliderTrackEmpty}"
+                                          Focusable="False" />
+                        </Track.IncreaseButton>
+                        <Thumb Theme="{StaticResource NocturneSliderThumb}" />
+                    </Track>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^:disabled">
+            <Style Selector="^ /template/ RepeatButton#PART_DecreaseButton">
+                <Setter Property="Background" Value="{DynamicResource NocturneNeutral800Brush}" />
+            </Style>
+        </Style>
+    </ControlTheme>
+
 </ResourceDictionary>

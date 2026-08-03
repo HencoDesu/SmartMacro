@@ -32,25 +32,25 @@ public class MacroCanvasTests
     private static MacroGraph BootLike() => new()
     {
         Name = "pw-boot",
-        StartNodeId = "wait-server",
+        StartNodeId = Ids.Of("wait-server"),
         Nodes =
         [
-            new WaitForElementNode { Id = "wait-server", Template = "A", TimeoutMs = 1000, Found = "click-server" },
-            new ClickNode { Id = "click-server", Point = new ScreenPoint(1, 2), Next = "wait-char" },
-            new WaitForElementNode { Id = "wait-char", Template = "B", TimeoutMs = 1000, Found = "click-char" },
-            new ClickNode { Id = "click-char", Point = new ScreenPoint(3, 4), Next = "open-stats" },
-            new KeyPressNode { Id = "open-stats", Key = VirtualKey.C, Next = "await-stats" },
-            new DelayNode { Id = "await-stats", Ms = 500, Next = "recognize" },
+            new WaitForElementNode { Id = Ids.Of("wait-server"), DisplayName = "wait-server", Template = "A", TimeoutMs = 1000, Found = Ids.Of("click-server") },
+            new ClickNode { Id = Ids.Of("click-server"), DisplayName = "click-server", Point = new ScreenPoint(1, 2), Next = Ids.Of("wait-char") },
+            new WaitForElementNode { Id = Ids.Of("wait-char"), DisplayName = "wait-char", Template = "B", TimeoutMs = 1000, Found = Ids.Of("click-char") },
+            new ClickNode { Id = Ids.Of("click-char"), DisplayName = "click-char", Point = new ScreenPoint(3, 4), Next = Ids.Of("open-stats") },
+            new KeyPressNode { Id = Ids.Of("open-stats"), DisplayName = "open-stats", Key = VirtualKey.C, Next = Ids.Of("await-stats") },
+            new DelayNode { Id = Ids.Of("await-stats"), DisplayName = "await-stats", Ms = 500, Next = Ids.Of("recognize") },
             new RecognizeTagNode
             {
-                Id = "recognize",
+                Id = Ids.Of("recognize"), DisplayName = "recognize",
                 TemplateSet = "classes",
                 Region = new ScreenRect(0, 0, 160, 35),
-                Matched = "set-icon",
-                NotMatched = "close-stats",
+                Matched = Ids.Of("set-icon"),
+                NotMatched = Ids.Of("close-stats"),
             },
-            new SetIconNode { Id = "set-icon", IconPath = "x.png", Next = "close-stats" },
-            new KeyPressNode { Id = "close-stats", Key = VirtualKey.C },
+            new SetIconNode { Id = Ids.Of("set-icon"), DisplayName = "set-icon", IconPath = "x.png", Next = Ids.Of("close-stats") },
+            new KeyPressNode { Id = Ids.Of("close-stats"), DisplayName = "close-stats", Key = VirtualKey.C },
         ],
     };
 
@@ -64,7 +64,7 @@ public class MacroCanvasTests
     {
         var rows = Rows(BootLike());
 
-        MacroGraphLayout.Apply(rows, "wait-server");
+        MacroGraphLayout.Apply(rows, Ids.Of("wait-server"));
 
         // В глубину от старта, следуя исходам каждой ноды по порядку. Именно это и удерживает
         // цепочку в порядке чтения: pw-boot в макете разложен ровно так.
@@ -76,7 +76,7 @@ public class MacroCanvasTests
         ];
         for (var i = 0; i < expected.Length; i++)
         {
-            var row = rows.Single(node => node.NodeId == expected[i]);
+            var row = rows.Single(node => node.DisplayName == expected[i]);
             await Assert.That(row.X).IsEqualTo((i % 3) * CanvasMetrics.ColumnPitch);
             await Assert.That(row.Y).IsEqualTo((i / 3) * CanvasMetrics.RowPitch);
         }
@@ -88,20 +88,20 @@ public class MacroCanvasTests
         var rows = Rows(new MacroGraph
         {
             Name = "с-сиротой",
-            StartNodeId = "a",
+            StartNodeId = Ids.Of("a"),
             Nodes =
             [
-                new DelayNode { Id = "orphan", Ms = 1 },
-                new DelayNode { Id = "a", Ms = 1, Next = "b" },
-                new DelayNode { Id = "b", Ms = 1 },
+                new DelayNode { Id = Ids.Of("orphan"), DisplayName = "orphan", Ms = 1 },
+                new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("b") },
+                new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 1 },
             ],
         });
 
-        MacroGraphLayout.Apply(rows, "a");
+        MacroGraphLayout.Apply(rows, Ids.Of("a"));
 
-        await Assert.That(rows.Single(r => r.NodeId == "a").X).IsEqualTo(0d);
-        await Assert.That(rows.Single(r => r.NodeId == "b").X).IsEqualTo(CanvasMetrics.ColumnPitch);
-        await Assert.That(rows.Single(r => r.NodeId == "orphan").X).IsEqualTo(CanvasMetrics.ColumnPitch * 2);
+        await Assert.That(rows.Single(r => r.DisplayName == "a").X).IsEqualTo(0d);
+        await Assert.That(rows.Single(r => r.DisplayName == "b").X).IsEqualTo(CanvasMetrics.ColumnPitch);
+        await Assert.That(rows.Single(r => r.DisplayName == "orphan").X).IsEqualTo(CanvasMetrics.ColumnPitch * 2);
     }
 
     [Test]
@@ -109,7 +109,7 @@ public class MacroCanvasTests
     {
         var rows = Rows(BootLike());
 
-        var moved = MacroGraphLayout.EnsurePositions(rows, "wait-server");
+        var moved = MacroGraphLayout.EnsurePositions(rows, Ids.Of("wait-server"));
 
         await Assert.That(moved).IsTrue();
         await Assert.That(rows.All(row => row.HasPosition)).IsTrue();
@@ -121,10 +121,10 @@ public class MacroCanvasTests
     public async Task EnsurePositions_LeavesAFullyPlacedGraphAlone()
     {
         var rows = Rows(BootLike());
-        MacroGraphLayout.Apply(rows, "wait-server");
+        MacroGraphLayout.Apply(rows, Ids.Of("wait-server"));
         var before = rows.Select(row => (row.X, row.Y)).ToList();
 
-        var moved = MacroGraphLayout.EnsurePositions(rows, "wait-server");
+        var moved = MacroGraphLayout.EnsurePositions(rows, Ids.Of("wait-server"));
 
         await Assert.That(moved).IsFalse();
         await Assert.That(rows.Select(row => (row.X, row.Y))).IsEquivalentTo(before);
@@ -136,18 +136,18 @@ public class MacroCanvasTests
         var rows = Rows(new MacroGraph
         {
             Name = "полу-разложенный",
-            StartNodeId = "placed",
+            StartNodeId = Ids.Of("placed"),
             Nodes =
             [
-                new DelayNode { Id = "placed", Ms = 1, Next = "stray", Editor = new NodeEditorInfo(600, 300) },
-                new DelayNode { Id = "stray", Ms = 1 },
+                new DelayNode { Id = Ids.Of("placed"), DisplayName = "placed", Ms = 1, Next = Ids.Of("stray"), Editor = new NodeEditorInfo(600, 300) },
+                new DelayNode { Id = Ids.Of("stray"), DisplayName = "stray", Ms = 1 },
             ],
         });
 
-        MacroGraphLayout.EnsurePositions(rows, "placed");
+        MacroGraphLayout.EnsurePositions(rows, Ids.Of("placed"));
 
-        var placed = rows.Single(row => row.NodeId == "placed");
-        var stray = rows.Single(row => row.NodeId == "stray");
+        var placed = rows.Single(row => row.DisplayName == "placed");
+        var stray = rows.Single(row => row.DisplayName == "stray");
         await Assert.That(placed.X).IsEqualTo(600d);
         await Assert.That(placed.Y).IsEqualTo(300d);
         // Ниже самой нижней из существующих коробок, чтобы не приземлиться поверх какой-нибудь.
@@ -158,7 +158,7 @@ public class MacroCanvasTests
     public async Task NextFreeSlot_FillsTheFirstHoleInTheGrid()
     {
         var rows = Rows(BootLike());
-        MacroGraphLayout.Apply(rows, "wait-server");
+        MacroGraphLayout.Apply(rows, Ids.Of("wait-server"));
         // Девять нод — ряды 0..2 заполнены; следующей коробке место в ряду 3, столбце 0.
         var (x, y) = MacroGraphLayout.NextFreeSlot(rows);
 
@@ -176,8 +176,8 @@ public class MacroCanvasTests
         var rows = Rows(new MacroGraph
         {
             Name = "конец",
-            StartNodeId = "wait",
-            Nodes = [new WaitForElementNode { Id = "wait", Template = "A", TimeoutMs = 1, Found = null, Timeout = null }],
+            StartNodeId = Ids.Of("wait"),
+            Nodes = [new WaitForElementNode { Id = Ids.Of("wait"), DisplayName = "wait", Template = "A", TimeoutMs = 1, Found = null, Timeout = null }],
         });
 
         await Assert.That(CanvasEdgeRouter.BuildAll(rows)).IsEmpty();
@@ -191,8 +191,8 @@ public class MacroCanvasTests
         var rows = Rows(new MacroGraph
         {
             Name = "битая-ссылка",
-            StartNodeId = "a",
-            Nodes = [new DelayNode { Id = "a", Ms = 1, Next = "которого-нет" }],
+            StartNodeId = Ids.Of("a"),
+            Nodes = [new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("которого-нет") }],
         });
 
         await Assert.That(CanvasEdgeRouter.BuildAll(rows)).IsEmpty();
@@ -204,11 +204,11 @@ public class MacroCanvasTests
         var rows = Rows(new MacroGraph
         {
             Name = "пара",
-            StartNodeId = "a",
+            StartNodeId = Ids.Of("a"),
             Nodes =
             [
-                new DelayNode { Id = "a", Ms = 1, Next = "b", Editor = new NodeEditorInfo(0, 0) },
-                new DelayNode { Id = "b", Ms = 1, Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch, 0) },
+                new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("b"), Editor = new NodeEditorInfo(0, 0) },
+                new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 1, Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch, 0) },
             ],
         });
 
@@ -227,11 +227,11 @@ public class MacroCanvasTests
         var rows = Rows(new MacroGraph
         {
             Name = "перенос",
-            StartNodeId = "a",
+            StartNodeId = Ids.Of("a"),
             Nodes =
             [
-                new DelayNode { Id = "a", Ms = 1, Next = "b", Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch * 2, 0) },
-                new DelayNode { Id = "b", Ms = 1, Editor = new NodeEditorInfo(0, CanvasMetrics.RowPitch) },
+                new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("b"), Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch * 2, 0) },
+                new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 1, Editor = new NodeEditorInfo(0, CanvasMetrics.RowPitch) },
             ],
         });
 
@@ -254,12 +254,12 @@ public class MacroCanvasTests
         var rows = Rows(new MacroGraph
         {
             Name = "схождение",
-            StartNodeId = "a",
+            StartNodeId = Ids.Of("a"),
             Nodes =
             [
-                new DelayNode { Id = "a", Ms = 1, Next = "target", Editor = new NodeEditorInfo(0, 0) },
-                new DelayNode { Id = "b", Ms = 1, Next = "target", Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch, 0) },
-                new DelayNode { Id = "target", Ms = 1, Editor = new NodeEditorInfo(0, CanvasMetrics.RowPitch) },
+                new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("target"), Editor = new NodeEditorInfo(0, 0) },
+                new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 1, Next = Ids.Of("target"), Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch, 0) },
+                new DelayNode { Id = Ids.Of("target"), DisplayName = "target", Ms = 1, Editor = new NodeEditorInfo(0, CanvasMetrics.RowPitch) },
             ],
         });
 
@@ -274,7 +274,7 @@ public class MacroCanvasTests
     {
         var row = NodeRowViewModel.FromNode(new WaitForElementNode
         {
-            Id = "wait",
+            Id = Ids.Of("wait"), DisplayName = "wait",
             Template = "A",
             TimeoutMs = 1,
             Editor = new NodeEditorInfo(0, 0),
@@ -363,14 +363,14 @@ public class MacroCanvasTests
     {
         using var vm = CreateEditor();
         vm.LoadGraph(BootLike());
-        var before = vm.CanvasEdges.Single(edge => edge.Source.NodeId == "click-server").Waypoints[0];
+        var before = vm.CanvasEdges.Single(edge => edge.Source.DisplayName == "click-server").Waypoints[0];
 
-        vm.MoveNode(vm.Nodes.Single(node => node.NodeId == "click-server"), 1000, 900);
+        vm.MoveNode(vm.Nodes.Single(node => node.DisplayName == "click-server"), 1000, 900);
 
         await Assert.That(vm.IsDirty()).IsTrue();
-        var after = vm.CanvasEdges.Single(edge => edge.Source.NodeId == "click-server").Waypoints[0];
+        var after = vm.CanvasEdges.Single(edge => edge.Source.DisplayName == "click-server").Waypoints[0];
         await Assert.That(after.X).IsNotEqualTo(before.X);
-        await Assert.That(vm.BuildGraph().Nodes.Single(node => node.Id == "click-server").Editor)
+        await Assert.That(vm.BuildGraph().Nodes.Single(node => node.Id == Ids.Of("click-server")).Editor)
             .IsEqualTo(new NodeEditorInfo(1000, 900));
     }
 
@@ -379,14 +379,14 @@ public class MacroCanvasTests
     {
         using var vm = CreateEditor();
         vm.LoadGraph(BootLike());
-        var delay = vm.Nodes.Single(node => node.NodeId == "await-stats");
+        var delay = vm.Nodes.Single(node => node.DisplayName == "await-stats");
 
-        vm.RewireEdge(delay.Edges[0], "close-stats");
+        vm.RewireEdge(delay.Edges[0], Ids.Of("close-stats"));
 
-        await Assert.That(vm.CanvasEdges.Single(edge => edge.Source.NodeId == "await-stats").Target.NodeId)
+        await Assert.That(vm.CanvasEdges.Single(edge => edge.Source.DisplayName == "await-stats").Target.DisplayName)
             .IsEqualTo("close-stats");
-        await Assert.That(((DelayNode)vm.BuildGraph().Nodes.Single(n => n.Id == "await-stats")).Next)
-            .IsEqualTo("close-stats");
+        await Assert.That(((DelayNode)vm.BuildGraph().Nodes.Single(n => n.Id == Ids.Of("await-stats"))).Next)
+            .IsEqualTo(Ids.Of("close-stats"));
     }
 
     [Test]
@@ -394,13 +394,13 @@ public class MacroCanvasTests
     {
         using var vm = CreateEditor();
         vm.LoadGraph(BootLike());
-        var delay = vm.Nodes.Single(node => node.NodeId == "await-stats");
+        var delay = vm.Nodes.Single(node => node.DisplayName == "await-stats");
 
         vm.RewireEdge(delay.Edges[0], null);
 
         await Assert.That(delay.Edges[0].IsEnd).IsTrue();
-        await Assert.That(vm.CanvasEdges.Any(edge => edge.Source.NodeId == "await-stats")).IsFalse();
-        await Assert.That(((DelayNode)vm.BuildGraph().Nodes.Single(n => n.Id == "await-stats")).Next).IsNull();
+        await Assert.That(vm.CanvasEdges.Any(edge => edge.Source.DisplayName == "await-stats")).IsFalse();
+        await Assert.That(((DelayNode)vm.BuildGraph().Nodes.Single(n => n.Id == Ids.Of("await-stats"))).Next).IsNull();
     }
 
     [Test]
@@ -408,24 +408,34 @@ public class MacroCanvasTests
     {
         using var vm = CreateEditor();
         vm.LoadGraph(BootLike());
-        var delay = vm.Nodes.Single(node => node.NodeId == "await-stats");
+        var delay = vm.Nodes.Single(node => node.DisplayName == "await-stats");
 
-        vm.RewireEdge(delay.Edges[0], "await-stats");
+        vm.RewireEdge(delay.Edges[0], delay.Id);
 
-        await Assert.That(delay.Edges[0].TargetId).IsEqualTo("recognize");
+        await Assert.That(delay.Edges[0].TargetId).IsEqualTo(Ids.Of("recognize"));
     }
 
     [Test]
-    public async Task RenamingANode_KeepsItsEdgesDrawn()
+    public async Task RenamingANode_DoesNotTouchTheGraphAtAll()
     {
         using var vm = CreateEditor();
         vm.LoadGraph(BootLike());
         var before = vm.CanvasEdges.Count;
+        var node = vm.Nodes.Single(n => n.DisplayName == "await-stats");
+        var incoming = vm.CanvasEdges.Where(edge => edge.Target.Id == node.Id).Select(edge => edge.Source.Id).ToList();
 
-        vm.Nodes.Single(node => node.NodeId == "await-stats").NodeId = "пауза";
+        node.DisplayName = "пауза";
 
+        // Раньше это была ОПЕРАЦИЯ НАД ГРАФОМ: редактор ловил старое значение и перенацеливал
+        // каждое входящее ребро, стартовую ноду и набор точек останова. Теперь рёбра ссылаются
+        // по Id, и переименование не двигает ровным счётом ничего — меняется только подпись.
         await Assert.That(vm.CanvasEdges).Count().IsEqualTo(before);
-        await Assert.That(vm.CanvasEdges.Any(edge => edge.Target.NodeId == "пауза")).IsTrue();
+        await Assert.That(vm.CanvasEdges.Where(edge => edge.Target.Id == node.Id).Select(edge => edge.Source.Id))
+            .IsEquivalentTo(incoming);
+        await Assert.That(vm.CanvasEdges.Any(edge => edge.Target.DisplayName == "пауза")).IsTrue();
+        // Элемент выпадающего списка тот же объект, только с новой подписью, — иначе ComboBox
+        // потерял бы выделение, а закрытое поле показывало бы старое имя.
+        await Assert.That(vm.NodeChoices.Any(choice => choice.Display == "пауза")).IsTrue();
     }
 
     [Test]
@@ -434,10 +444,10 @@ public class MacroCanvasTests
         using var vm = CreateEditor();
         vm.LoadGraph(BootLike());
 
-        vm.DeleteNode(vm.Nodes.Single(node => node.NodeId == "await-stats"));
+        vm.DeleteNode(vm.Nodes.Single(node => node.DisplayName == "await-stats"));
 
         await Assert.That(vm.CanvasEdges.Any(edge =>
-            edge.Source.NodeId == "await-stats" || edge.Target.NodeId == "await-stats")).IsFalse();
+            edge.Source.DisplayName == "await-stats" || edge.Target.DisplayName == "await-stats")).IsFalse();
     }
 
     [Test]
@@ -464,8 +474,8 @@ public class MacroCanvasTests
 
         vm.AutoLayout();
 
-        await Assert.That(vm.Nodes.Single(node => node.NodeId == "wait-server").X).IsEqualTo(0d);
-        await Assert.That(vm.Nodes.Single(node => node.NodeId == "wait-server").Y).IsEqualTo(0d);
+        await Assert.That(vm.Nodes.Single(node => node.DisplayName == "wait-server").X).IsEqualTo(0d);
+        await Assert.That(vm.Nodes.Single(node => node.DisplayName == "wait-server").Y).IsEqualTo(0d);
     }
 
     [Test]
@@ -524,7 +534,7 @@ public class MacroCanvasTests
         await Assert.That(vm.HasSelectedNode).IsFalse();
         await Assert.That(vm.InspectorTitle).IsEqualTo("Макрос");
 
-        vm.SelectedNode = vm.Nodes.Single(node => node.NodeId == "await-stats");
+        vm.SelectedNode = vm.Nodes.Single(node => node.DisplayName == "await-stats");
 
         await Assert.That(vm.HasSelectedNode).IsTrue();
         await Assert.That(vm.InspectorTitle).IsEqualTo("Пауза");
@@ -554,11 +564,11 @@ public class MacroCanvasTests
         using var vm = CreateEditor();
         vm.LoadGraph(BootLike());
 
-        vm.ExecutingNodeId = "recognize";
+        vm.ExecutingNodeId = Ids.Of("recognize");
 
-        await Assert.That(vm.Nodes.Where(node => node.IsExecuting).Select(node => node.NodeId))
+        await Assert.That(vm.Nodes.Where(node => node.IsExecuting).Select(node => node.DisplayName))
             .IsEquivalentTo(new[] { "recognize" });
-        await Assert.That(vm.CanvasEdges.Single(edge => edge.Source.NodeId == "recognize" && edge.OutcomeIndex == 0).IsActive)
+        await Assert.That(vm.CanvasEdges.Single(edge => edge.Source.DisplayName == "recognize" && edge.OutcomeIndex == 0).IsActive)
             .IsTrue();
 
         vm.ExecutingNodeId = null;
@@ -582,8 +592,8 @@ public class MacroCanvasTests
         await Assert.That(vm.RunLog).Count().IsEqualTo(1);
         await Assert.That(vm.RunLog[0].Outcome).IsEqualTo(RunLogRowViewModel.PendingOutcome);
         await Assert.That(vm.RunLog[0].IsCurrent).IsTrue();
-        await Assert.That(vm.ExecutingNodeId).IsEqualTo("wait-server");
-        await Assert.That(vm.Nodes.Single(node => node.IsExecuting).NodeId).IsEqualTo("wait-server");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo(Ids.Of("wait-server"));
+        await Assert.That(vm.Nodes.Single(node => node.IsExecuting).DisplayName).IsEqualTo("wait-server");
 
         // Выход из неё достраивает ТУ ЖЕ строку на месте — полоса не имеет права мигнуть новой.
         var openRow = vm.RunLog[0];
@@ -598,9 +608,9 @@ public class MacroCanvasTests
 
         // Подсветка следует за обходчиком, по одной коробке за раз.
         daemon.Push(RunEvents.Entered(walk, 1200, "click-server"));
-        await Assert.That(vm.Nodes.Where(node => node.IsExecuting).Select(node => node.NodeId))
+        await Assert.That(vm.Nodes.Where(node => node.IsExecuting).Select(node => node.DisplayName))
             .IsEquivalentTo(new[] { "click-server" });
-        await Assert.That(vm.CanvasEdges.Single(edge => edge.Source.NodeId == "click-server").IsActive).IsTrue();
+        await Assert.That(vm.CanvasEdges.Single(edge => edge.Source.DisplayName == "click-server").IsActive).IsTrue();
         daemon.Push(RunEvents.Exited(walk, 1240, "click-server", RunOutcomes.Ok, "PostMessage 1192,1805", 40));
         await Assert.That(vm.RunLog[1].Detail).IsEqualTo("PostMessage 1192,1805 · 40 мс");
         await Assert.That(vm.RunLog[1].Outcome).IsEqualTo("ок");
@@ -641,11 +651,11 @@ public class MacroCanvasTests
         // собрат.
         await Assert.That(vm.RunChipText).IsEqualTo("0x100");
         await Assert.That(vm.RunPositionText).IsEqualTo("1 / 10");
-        await Assert.That(vm.ExecutingNodeId).IsEqualTo("wait-server");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo(Ids.Of("wait-server"));
 
         vm.SelectNextRun();
         await Assert.That(vm.RunChipText).IsEqualTo("0x101");
-        await Assert.That(vm.ExecutingNodeId).IsEqualTo("click-server");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo(Ids.Of("click-server"));
         await Assert.That(vm.Nodes.Count(node => node.IsExecuting)).IsEqualTo(1);
         await Assert.That(vm.RunLog).Count().IsEqualTo(1);
 
@@ -677,7 +687,7 @@ public class MacroCanvasTests
         var third = RunEvents.Walk("pw-boot", hwnd: 0x3);
         daemon.Push(RunEvents.Started(third), RunEvents.Entered(third, 0, "open-stats"));
         await Assert.That(vm.RunChipText).IsEqualTo("0x3");
-        await Assert.That(vm.ExecutingNodeId).IsEqualTo("open-stats");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo(Ids.Of("open-stats"));
     }
 
     [Test]
@@ -694,23 +704,23 @@ public class MacroCanvasTests
 
         // Обходы другого графа отслеживаются, но на экране не меняют ничего.
         await Assert.That(vm.Runs).Count().IsEqualTo(1);
-        await Assert.That(vm.ExecutingNodeId).IsEqualTo("recognize");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo(Ids.Of("recognize"));
 
         vm.LoadGraph(new MacroGraph
         {
             Name = "pw-assist",
-            StartNodeId = "n1",
-            Nodes = [new DelayNode { Id = "n1", Ms = 5 }],
+            StartNodeId = Ids.Of("n1"),
+            Nodes = [new DelayNode { Id = Ids.Of("n1"), DisplayName = "n1", Ms = 5 }],
         });
         await Assert.That(vm.RunChipText).IsEqualTo("0xB");
-        await Assert.That(vm.ExecutingNodeId).IsEqualTo("n1");
-        await Assert.That(vm.Nodes.Single(node => node.IsExecuting).NodeId).IsEqualTo("n1");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo(Ids.Of("n1"));
+        await Assert.That(vm.Nodes.Single(node => node.IsExecuting).DisplayName).IsEqualTo("n1");
 
         // Обратно: лог первого обхода уцелел, а не был выброшен.
         vm.LoadGraph(BootLike());
         await Assert.That(vm.RunChipText).IsEqualTo("0xA");
         await Assert.That(vm.RunLog).Count().IsEqualTo(1);
-        await Assert.That(vm.ExecutingNodeId).IsEqualTo("recognize");
+        await Assert.That(vm.ExecutingNodeId).IsEqualTo(Ids.Of("recognize"));
     }
 
     [Test]
@@ -818,8 +828,8 @@ public class MacroCanvasTests
     [Test]
     public async Task ConditionalBoxesAreTallerThanActionBoxes()
     {
-        var action = NodeRowViewModel.FromNode(new DelayNode { Id = "d", Ms = 1 });
-        var conditional = NodeRowViewModel.FromNode(new FindElementNode { Id = "f", Template = "t" });
+        var action = NodeRowViewModel.FromNode(new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 1 });
+        var conditional = NodeRowViewModel.FromNode(new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "t" });
 
         await Assert.That(action.IsConditional).IsFalse();
         await Assert.That(conditional.IsConditional).IsTrue();
@@ -832,7 +842,7 @@ public class MacroCanvasTests
     {
         var row = (RecognizeTagNodeRowViewModel)NodeRowViewModel.FromNode(new RecognizeTagNode
         {
-            Id = "r",
+            Id = Ids.Of("r"), DisplayName = "r",
             TemplateSet = "classes",
             Region = new ScreenRect(0, 0, 160, 35),
         });
@@ -854,7 +864,7 @@ public class MacroCanvasTests
     [Test]
     public async Task TargetSummary_DescribesTheSelectorInWords()
     {
-        var row = NodeRowViewModel.FromNode(new KeyPressNode { Id = "k", Key = VirtualKey.A });
+        var row = NodeRowViewModel.FromNode(new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A });
         await Assert.That(row.Target!.Summary).IsEqualTo("контекст-окно");
 
         row.Target.UseSelector = true;
@@ -870,7 +880,7 @@ public class MacroCanvasTests
     [Test]
     public async Task TargetChip_IsOnlyDrawnWhenTheNodeRoutesByTags()
     {
-        var row = NodeRowViewModel.FromNode(new KeyPressNode { Id = "k", Key = VirtualKey.A });
+        var row = NodeRowViewModel.FromNode(new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A });
         await Assert.That(row.ShowsTargetChip).IsFalse();
 
         var seen = false;
@@ -888,7 +898,7 @@ public class MacroCanvasTests
     private static MacroGraph Graph(string name) => new()
     {
         Name = name,
-        StartNodeId = "n1",
-        Nodes = [new DelayNode { Id = "n1", Ms = 1 }],
+        StartNodeId = Ids.Of("n1"),
+        Nodes = [new DelayNode { Id = Ids.Of("n1"), DisplayName = "n1", Ms = 1 }],
     };
 }

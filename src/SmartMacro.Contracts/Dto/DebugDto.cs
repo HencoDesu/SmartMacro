@@ -32,7 +32,7 @@ public enum DebugCommand
 /// </summary>
 /// <param name="MacroName">Граф, которому принадлежат точки останова.</param>
 /// <param name="NodeIds">Ноды, останавливающие обход. Пустым не бывает — макрос без точек останова просто отсутствует в списке.</param>
-public sealed record BreakpointSetDto(string MacroName, IReadOnlyList<string> NodeIds);
+public sealed record BreakpointSetDto(string MacroName, IReadOnlyList<Guid> NodeIds);
 
 /// <summary>
 /// Ответ отладчика на <c>DebugCommand</c>: что демон теперь думает об этом обходе.

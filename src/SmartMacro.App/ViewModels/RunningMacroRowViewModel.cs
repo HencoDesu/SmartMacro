@@ -13,7 +13,7 @@ namespace SmartMacro.App.ViewModels;
 /// </summary>
 public sealed class RunningMacroRowViewModel : ObservableObject
 {
-    private string? _currentNodeId;
+    private string? _currentNodeName;
     private string _elapsed = "0:00";
 
     public RunningMacroRowViewModel(RunningMacroDto run)
@@ -22,7 +22,7 @@ public sealed class RunningMacroRowViewModel : ObservableObject
         RunId = run.RunId;
         MacroName = run.MacroName;
         StartedUtc = run.StartedUtc;
-        _currentNodeId = run.CurrentNodeId;
+        _currentNodeName = run.CurrentNodeName;
         Refresh(DateTimeOffset.UtcNow);
     }
 
@@ -39,21 +39,21 @@ public sealed class RunningMacroRowViewModel : ObservableObject
     /// </summary>
     public DateTimeOffset StartedUtc { get; }
 
-    /// <summary>Идентификатор ноды, в которую обход вошёл последней; <c>null</c> до первой ноды.</summary>
-    public string? CurrentNodeId
+    /// <summary>Подпись ноды, в которую обход вошёл последней; <c>null</c> до первой ноды.</summary>
+    public string? CurrentNodeName
     {
-        get => _currentNodeId;
+        get => _currentNodeName;
         private set
         {
-            if (SetField(ref _currentNodeId, value))
+            if (SetField(ref _currentNodeName, value))
             {
                 OnPropertyChanged(nameof(CurrentNodeText));
             }
         }
     }
 
-    /// <summary>Отображаемая форма <see cref="CurrentNodeId"/>.</summary>
-    public string CurrentNodeText => string.IsNullOrEmpty(_currentNodeId) ? "—" : _currentNodeId;
+    /// <summary>Отображаемая форма <see cref="CurrentNodeName"/>.</summary>
+    public string CurrentNodeText => string.IsNullOrEmpty(_currentNodeName) ? "—" : _currentNodeName;
 
     /// <summary>Время по часам с начала прогона, как <c>m:ss</c> (или <c>h:mm:ss</c>).</summary>
     public string Elapsed
@@ -66,11 +66,11 @@ public sealed class RunningMacroRowViewModel : ObservableObject
     /// Перерисовывает <see cref="Elapsed"/> и подхватывает последнюю ноду обхода. Вызывается по
     /// тику таймера и всякий раз, когда демон присылает новый снимок прогонов.
     /// </summary>
-    public void Refresh(DateTimeOffset nowUtc, string? currentNodeId = null)
+    public void Refresh(DateTimeOffset nowUtc, string? currentNodeName = null)
     {
-        if (currentNodeId is not null)
+        if (currentNodeName is not null)
         {
-            CurrentNodeId = currentNodeId;
+            CurrentNodeName = currentNodeName;
         }
 
         var elapsed = nowUtc - StartedUtc;

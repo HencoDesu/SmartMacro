@@ -83,6 +83,35 @@
             <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral500Brush}" />
         </Style>
 
+        <!-- «Настройки» под разделителем. Повторяет геометрию и состояния ListBoxItem рейки —
+             акцентная линейка 2px по ведущей кромке поверх 12%-заливки, — но живёт вне списка,
+             чтобы выделение рейки и выделение настроек не спорили. Прозрачная линейка у
+             невыбранного держит текст на месте. -->
+        <Style Selector="ToggleButton.railitem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2,0,0,0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="10,0,12,0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral500Brush}" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="ToggleButton.railitem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneAccentTint08Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.railitem:checked /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.railitem:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource NocturneAccentTint18Brush}" />
+        </Style>
+
         <!-- Надзаголовок капслоком над разделом («ТЕГИ», «НЕ ОПОЗНАНО · 3»). -->
         <Style Selector="TextBlock.eyebrow">
             <Setter Property="FontSize" Value="9.5" />
@@ -165,9 +194,13 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <!-- Сводка по тегам, приколоченная к низу. Пометка дизайнера: это
-                         единственное место, где состав всей пати виден разом. -->
-                    <StackPanel Grid.Row="2" Margin="12,10,12,8" Spacing="6">
+                    <!-- Сводка по тегам, приколоченная к низу, и под ней — «Настройки».
+                         Настройки НЕ шестой элемент того же ListBox: у них нет счётчика
+                         (счётчики отвечают «сколько сейчас есть», а у настроек такого числа
+                         нет), они стоят под разделителем, и выделяться две строки сразу не
+                         должны — поэтому это отдельная кнопка, а выбор рейки при переходе сюда
+                         обнуляется. -->
+                    <StackPanel Grid.Row="2" Margin="0,0,0,0"><StackPanel Margin="12,10,12,8" Spacing="6">
                         <TextBlock Classes="eyebrow" Text="ТЕГИ" />
                         <ItemsControl ItemsSource="{Binding TagSummary}" IsVisible="{Binding HasTagSummary}">
                             <ItemsControl.ItemsPanel>
@@ -203,6 +236,49 @@
                                    TextWrapping="Wrap"
                                    Foreground="{DynamicResource NocturneTextGhostBrush}"
                                    IsVisible="{Binding !HasTagSummary}" />
+                        </StackPanel>
+
+                        <!-- «Настройки» под разделителем. Кнопка, а не ListBoxItem: выбор
+                             рисует сам ListBox, и вторая строка внутри него неизбежно
+                             подсвечивалась бы одновременно с рабочей. Псевдокласс :checked у
+                             ToggleButton даёт ту же акцентную линейку в 2px, что и рейка. -->
+                        <Border BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                BorderThickness="0,1,0,0"
+                                Margin="0,9,0,0"
+                                Padding="0,7,0,0">
+                            <ToggleButton Classes="railitem"
+                                          IsChecked="{Binding SettingsMode.IsSelected, Mode=OneWay}"
+                                          Click="OnSettingsClicked"
+                                          ToolTip.Tip="Настройки демона и диагностика среды">
+                                <Grid ColumnDefinitions="Auto,*,Auto" Height="30">
+                                    <!-- Шестерёнка. Не глиф из шрифта: у ⚙ есть эмодзи-вариант,
+                                         который Windows подаёт из Segoe UI Emoji полноцветным и
+                                         игнорирующим Foreground (ловушка описана в Tokens.axaml). -->
+                                    <Path Grid.Column="0"
+                                          Width="13" Height="13"
+                                          Stretch="Uniform"
+                                          VerticalAlignment="Center"
+                                          Stroke="{DynamicResource NocturneNeutral500Brush}"
+                                          StrokeThickness="1.2"
+                                          Data="M8,5.6 A2.4,2.4 0 1 1 8,10.4 A2.4,2.4 0 1 1 8,5.6 M8,1.5 L8,3.5 M8,12.5 L8,14.5 M1.5,8 L3.5,8 M12.5,8 L14.5,8 M3.4,3.4 L4.8,4.8 M11.2,11.2 L12.6,12.6 M12.6,3.4 L11.2,4.8 M4.8,11.2 L3.4,12.6" />
+                                    <TextBlock Grid.Column="1"
+                                               Margin="9,0,0,0"
+                                               Text="Настройки"
+                                               FontSize="{DynamicResource NocturneFontSizeBody}"
+                                               VerticalAlignment="Center" />
+                                    <!-- Красная точка на месте счётчика: проваленная проверка
+                                         среды. Числа здесь быть не может — «сколько сейчас
+                                         есть» у настроек не бывает. -->
+                                    <Border Grid.Column="2"
+                                            Width="6" Height="6"
+                                            CornerRadius="3"
+                                            VerticalAlignment="Center"
+                                            Background="{DynamicResource NocturneDangerBrush}"
+                                            IsVisible="{Binding HasEnvironmentProblems}"
+                                            ToolTip.Tip="Проверка среды нашла проблему" />
+                                </Grid>
+                            </ToggleButton>
+                        </Border>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -221,6 +297,9 @@
                     </Panel>
                     <Panel IsVisible="{Binding IsLogMode}">
                         <views:LogView DataContext="{Binding Log}" />
+                    </Panel>
+                    <Panel IsVisible="{Binding IsSettingsMode}">
+                        <views:SettingsView DataContext="{Binding Settings}" />
                     </Panel>
                 </Panel>
 

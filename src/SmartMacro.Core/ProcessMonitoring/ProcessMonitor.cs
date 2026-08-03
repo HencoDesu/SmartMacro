@@ -2,24 +2,26 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using SmartMacro.Config;
+using SmartMacro.Settings;
 
 namespace SmartMacro.ProcessMonitoring;
 
 // Опрашивает Process.GetProcessesByName с настраиваемым интервалом и поднимает события
 // ProcessAppeared / ProcessDisappeared на каждое расхождение с предыдущим снимком. Следит за
-// ОБЪЕДИНЕНИЕМ имён процессов из всех ProcessProfiles — по одному перечислению на имя профиля за
-// тик. Задуман дешёвым и терпимым к падениям процессов (исчезнувший процесс — норма, а не
-// ошибка).
+// ОБЪЕДИНЕНИЕМ имён процессов из всех профилей — по одному перечислению на имя профиля за тик.
+// Задуман дешёвым и терпимым к падениям процессов (исчезнувший процесс — норма, а не ошибка).
+//
+// И список имён, и интервал читаются ИЗ НАСТРОЕК НА КАЖДОМ ТИКЕ, а не запоминаются при создании.
+// Отсюда обе живые правки: добавленный профиль начинает отслеживаться со следующего тика, а
+// изменённый интервал — со следующей паузы. Перезапуск демона ради нового профиля был бы ровно
+// тем, от чего уходила эта волна.
 //
 // Монитор — пассивный наблюдатель, он не знает, кто слушает его события. Оркестратор
 // подписывается при создании. Другие потребители (UI, диагностика) тоже могут подписаться, и
 // монитору до этого нет дела.
 public sealed partial class ProcessMonitor : IHostedService, IDisposable
 {
-    private readonly IReadOnlyList<string> _processNames;
-    private readonly TimeSpan _pollInterval;
+    private readonly ISettingsSource _settings;
     private readonly ILogger<ProcessMonitor> _logger;
 
     // Pid'ы, по которым мы уже подняли ProcessAppeared (то есть к моменту, когда мы до них
@@ -52,15 +54,17 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
     /// </summary>
     public event Action<int>? ProcessDisappeared;
 
-    public ProcessMonitor(
-        IOptions<AgentOptions> agentOptions,
-        IOptions<ProcessProfileOptions> profileOptions,
-        ILogger<ProcessMonitor> logger)
+    public ProcessMonitor(ISettingsSource settings, ILogger<ProcessMonitor> logger)
     {
-        _processNames = profileOptions.Value.GetWatchedProcessNames();
-        _pollInterval = TimeSpan.FromSeconds(agentOptions.Value.ProcessPollIntervalSeconds);
+        _settings = settings;
         _logger = logger;
     }
+
+    // Оба читаются по месту — см. заметку у класса. Снимок неизменяемый, так что это одна ссылка,
+    // а не работа.
+    private IReadOnlyList<string> ProcessNames => _settings.Current.WatchedProcessNames();
+
+    private TimeSpan PollInterval => TimeSpan.FromSeconds(_settings.Current.Watch.ProcessPollIntervalSeconds);
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -69,7 +73,8 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
             throw new InvalidOperationException("Monitor already started.");
         }
 
-        if (_processNames.Count == 0)
+        var processNames = ProcessNames;
+        if (processNames.Count == 0)
         {
             // Законно, но почти наверняка ошибка в конфиге: нет профилей — значит, ни одно окно
             // никогда не будет отслежено. Цикл всё равно оставляем крутиться, чтобы
@@ -80,7 +85,7 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
 
         _cts = new CancellationTokenSource();
         _loop = Task.Run(() => LoopAsync(_cts.Token), _cts.Token);
-        LogStarted(string.Join(", ", _processNames), _pollInterval);
+        LogStarted(string.Join(", ", processNames), PollInterval);
         return Task.CompletedTask;
     }
 
@@ -107,13 +112,15 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
             _cts.Dispose();
             _cts = null;
             _loop = null;
-            LogStopped(string.Join(", ", _processNames));
+            LogStopped(string.Join(", ", ProcessNames));
         }
     }
 
     private void Poll()
     {
-        var current = SnapshotAll(_processNames);
+        // Список имён снимается на каждом тике: профиль, добавленный в настройках минуту назад,
+        // обязан начать отслеживаться сам.
+        var current = SnapshotAll(ProcessNames);
 
         var currentPids = current
             .Select(x => x.Pid)
@@ -226,7 +233,7 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
 
             try
             {
-                await Task.Delay(_pollInterval, ct).ConfigureAwait(false);
+                await Task.Delay(PollInterval, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -251,7 +258,7 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
     partial void LogStopped(string processNames);
 
     [LoggerMessage(LogLevel.Warning,
-        "Не настроено ни одного ProcessProfiles — ProcessMonitor'у не за чем следить; добавьте записи в раздел \"ProcessProfiles\" в appsettings.json")]
+        "Не настроено ни одного профиля процесса — ProcessMonitor'у не за чем следить; добавьте профиль в режиме «Настройки» или в settings.json")]
     partial void LogNoProfiles();
 
     [LoggerMessage(LogLevel.Information, "Появился процесс: pid={Pid} имя='{ProcessName}' hwnd=0x{Hwnd:X}")]

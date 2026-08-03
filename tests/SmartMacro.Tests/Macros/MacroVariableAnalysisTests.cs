@@ -14,7 +14,7 @@ namespace SmartMacro.Tests.Macros;
 public class MacroVariableAnalysisTests
 {
     private static MacroGraph Graph(params MacroNode[] nodes) =>
-        new() { Name = "тест", StartNodeId = nodes.Length > 0 ? nodes[0].Id : "n1", Nodes = [.. nodes] };
+        new() { Name = "тест", StartNodeId = nodes.Length > 0 ? nodes[0].Id : Ids.Of("n1"), Nodes = [.. nodes] };
 
     private static MacroVariableInfo Var(MacroGraph graph, string name) =>
         MacroVariableAnalysis.Analyze(graph).Single(v => v.Name == name);
@@ -29,20 +29,20 @@ public class MacroVariableAnalysisTests
         var graph = Graph(
             new RecognizeTagNode
             {
-                Id = "recognize-class",
+                Id = Ids.Of("recognize-class"), DisplayName = "recognize-class",
                 TemplateSet = "classes",
                 Region = new ScreenRect(0, 0, 160, 35),
-                Matched = "set-icon",
+                Matched = Ids.Of("set-icon"),
             },
-            new SetIconNode { Id = "set-icon", IconPath = "Assets/ClassIcons/{tag}.png" });
+            new SetIconNode { Id = Ids.Of("set-icon"), DisplayName = "set-icon", IconPath = "Assets/ClassIcons/{tag}.png" });
 
         var tag = Var(graph, "tag");
 
         await Assert.That(tag.Kind).IsEqualTo(VariableKind.Text);
         await Assert.That(tag.SeededByTrigger).IsFalse();
-        await Assert.That(tag.Writes.Select(w => w.NodeId)).IsEquivalentTo(new[] { "recognize-class" });
+        await Assert.That(tag.Writes.Select(w => w.NodeName)).IsEquivalentTo(new[] { "recognize-class" });
         await Assert.That(tag.Writes[0].Slot).IsEqualTo(VariableSlot.ResultVar);
-        await Assert.That(tag.Reads.Select(r => r.NodeId)).IsEquivalentTo(new[] { "set-icon" });
+        await Assert.That(tag.Reads.Select(r => r.NodeName)).IsEquivalentTo(new[] { "set-icon" });
         await Assert.That(tag.Reads[0].Slot).IsEqualTo(VariableSlot.IconPath);
     }
 
@@ -50,8 +50,8 @@ public class MacroVariableAnalysisTests
     public async Task TagComesBeforeCursor_BecauseSomethingActuallyWritesIt()
     {
         var graph = Graph(
-            new RecognizeTagNode { Id = "recognize", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) },
-            new SetIconNode { Id = "icon", IconPath = "{tag}.png" });
+            new RecognizeTagNode { Id = Ids.Of("recognize"), DisplayName = "recognize", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) },
+            new SetIconNode { Id = Ids.Of("icon"), DisplayName = "icon", IconPath = "{tag}.png" });
 
         // Порядок, в котором рисует панель: переменная с писателем сверху, всегда присутствующая
         // затравка от триггера под ней. Совпадает с макетом и ставит интересную первой.
@@ -64,7 +64,7 @@ public class MacroVariableAnalysisTests
     [Test]
     public async Task CursorIsAlwaysListed_EvenWhenTheGraphNeverMentionsIt()
     {
-        var graph = Graph(new DelayNode { Id = "a", Ms = 10 });
+        var graph = Graph(new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 10 });
 
         var cursor = Var(graph, MacroVariableNames.Cursor);
 
@@ -80,7 +80,7 @@ public class MacroVariableAnalysisTests
     [Test]
     public async Task CursorReadByAClick_IsStillTheTriggerSeed()
     {
-        var graph = Graph(new ClickNode { Id = "click", PointVar = "cursor" });
+        var graph = Graph(new ClickNode { Id = Ids.Of("click"), DisplayName = "click", PointVar = "cursor" });
 
         var cursor = Var(graph, "cursor");
 
@@ -102,8 +102,8 @@ public class MacroVariableAnalysisTests
     public async Task FoundPointVarIsAPointWrite_OnBothConditionals()
     {
         var graph = Graph(
-            new FindElementNode { Id = "find", Template = "X", FoundPointVar = "here", Found = "wait" },
-            new WaitForElementNode { Id = "wait", Template = "Y", TimeoutMs = 1, FoundPointVar = "there" });
+            new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "X", FoundPointVar = "here", Found = Ids.Of("wait") },
+            new WaitForElementNode { Id = Ids.Of("wait"), DisplayName = "wait", Template = "Y", TimeoutMs = 1, FoundPointVar = "there" });
 
         await Assert.That(Var(graph, "here").Kind).IsEqualTo(VariableKind.Point);
         await Assert.That(Var(graph, "here").Writes[0].Slot).IsEqualTo(VariableSlot.FoundPointVar);
@@ -114,10 +114,10 @@ public class MacroVariableAnalysisTests
     public async Task EveryInterpolatedFieldIsARead_WithItsOwnSlot()
     {
         var graph = Graph(
-            new AddTagNode { Id = "add", Tag = "{a}", Next = "remove" },
-            new RemoveTagNode { Id = "remove", Tag = "{b}", Next = "icon" },
-            new SetIconNode { Id = "icon", IconPath = "x/{c}.png", Next = "sub" },
-            new RunMacroNode { Id = "sub", MacroName = "pw-{d}" });
+            new AddTagNode { Id = Ids.Of("add"), DisplayName = "add", Tag = "{a}", Next = Ids.Of("remove") },
+            new RemoveTagNode { Id = Ids.Of("remove"), DisplayName = "remove", Tag = "{b}", Next = Ids.Of("icon") },
+            new SetIconNode { Id = Ids.Of("icon"), DisplayName = "icon", IconPath = "x/{c}.png", Next = Ids.Of("sub") },
+            new RunMacroNode { Id = Ids.Of("sub"), DisplayName = "sub", MacroName = "pw-{d}" });
 
         await Assert.That(Var(graph, "a").Reads[0].Slot).IsEqualTo(VariableSlot.Tag);
         await Assert.That(Var(graph, "b").Reads[0].Slot).IsEqualTo(VariableSlot.Tag);
@@ -129,8 +129,8 @@ public class MacroVariableAnalysisTests
     public async Task KeyAndDelayNodesTouchNothing()
     {
         var graph = Graph(
-            new KeyPressNode { Id = "k", Key = VirtualKey.C, Next = "d" },
-            new DelayNode { Id = "d", Ms = 500 });
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.C, Next = Ids.Of("d") },
+            new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 500 });
 
         // Только затравка от триггера. Имена шаблонов и имена клавиш подстановке НЕ подлежат
         // (спека §5.3), так что шаблон, буквально названный "{x}", не имеет права попасть в отчёт
@@ -142,7 +142,7 @@ public class MacroVariableAnalysisTests
     [Test]
     public async Task ATemplateNameIsNotInterpolated_SoItIsNotARead()
     {
-        var graph = Graph(new FindElementNode { Id = "find", Template = "{tag}Button" });
+        var graph = Graph(new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "{tag}Button" });
 
         await Assert.That(MacroVariableAnalysis.Analyze(graph).Any(v => v.Name == "tag")).IsFalse();
     }
@@ -152,7 +152,7 @@ public class MacroVariableAnalysisTests
     [Test]
     public async Task AReadWithNoWriterIsReportedAsUndefined()
     {
-        var graph = Graph(new SetIconNode { Id = "icon", IconPath = "{ghost}.png" });
+        var graph = Graph(new SetIconNode { Id = Ids.Of("icon"), DisplayName = "icon", IconPath = "{ghost}.png" });
 
         var ghost = Var(graph, "ghost");
 
@@ -165,7 +165,7 @@ public class MacroVariableAnalysisTests
     [Test]
     public async Task AWriteNobodyReadsIsReportedAsUnread()
     {
-        var graph = Graph(new RecognizeTagNode { Id = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) });
+        var graph = Graph(new RecognizeTagNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) });
 
         await Assert.That(Var(graph, "tag").IsRead).IsFalse();
     }
@@ -174,17 +174,17 @@ public class MacroVariableAnalysisTests
     public async Task SeveralReadersOfOneVariableAreAllListed()
     {
         var graph = Graph(
-            new RecognizeTagNode { Id = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1), Matched = "a" },
-            new AddTagNode { Id = "a", Tag = "{tag}-готов", Next = "i" },
-            new SetIconNode { Id = "i", IconPath = "{tag}.png" });
+            new RecognizeTagNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1), Matched = Ids.Of("a") },
+            new AddTagNode { Id = Ids.Of("a"), DisplayName = "a", Tag = "{tag}-готов", Next = Ids.Of("i") },
+            new SetIconNode { Id = Ids.Of("i"), DisplayName = "i", IconPath = "{tag}.png" });
 
-        await Assert.That(Var(graph, "tag").Reads.Select(r => r.NodeId)).IsEquivalentTo(new[] { "a", "i" });
+        await Assert.That(Var(graph, "tag").Reads.Select(r => r.NodeName)).IsEquivalentTo(new[] { "a", "i" });
     }
 
     [Test]
     public async Task TwoPlaceholdersInOneStringAreTwoVariables()
     {
-        var graph = Graph(new SetIconNode { Id = "i", IconPath = "{dir}/{tag}.png" });
+        var graph = Graph(new SetIconNode { Id = Ids.Of("i"), DisplayName = "i", IconPath = "{dir}/{tag}.png" });
 
         await Assert.That(MacroVariableAnalysis.PlaceholdersIn("{dir}/{tag}.png"))
             .IsEquivalentTo(new[] { "dir", "tag" });
@@ -204,8 +204,8 @@ public class MacroVariableAnalysisTests
     public async Task BlankVariableNamesAreIgnored()
     {
         var graph = Graph(
-            new RecognizeTagNode { Id = "r", TemplateSet = "s", Region = new ScreenRect(0, 0, 1, 1), ResultVar = "  " },
-            new ClickNode { Id = "c", PointVar = string.Empty });
+            new RecognizeTagNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "s", Region = new ScreenRect(0, 0, 1, 1), ResultVar = "  " },
+            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", PointVar = string.Empty });
 
         await Assert.That(MacroVariableAnalysis.Analyze(graph).Select(v => v.Name))
             .IsEquivalentTo(new[] { "cursor" });

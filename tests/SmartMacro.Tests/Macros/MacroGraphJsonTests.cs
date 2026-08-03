@@ -27,7 +27,7 @@ public class MacroGraphJsonTests
 
         // Выборочные проверки по типизированной модели.
         await Assert.That(reloaded.Name).IsEqualTo("полный");
-        await Assert.That(reloaded.StartNodeId).IsEqualTo("key");
+        await Assert.That(reloaded.StartNodeId).IsEqualTo(Ids.Of("key"));
         await Assert.That(reloaded.Triggers).Count().IsEqualTo(3);
         await Assert.That(reloaded.Nodes).Count().IsEqualTo(11);
 
@@ -91,10 +91,10 @@ public class MacroGraphJsonTests
             """
             {
               "Name": "м",
-              "StartNodeId": "run",
+              "StartNodeId": "11111111-1111-1111-1111-111111111111",
               "Nodes": [
-                { "$type": "runMacro", "Id": "run", "MacroName": "x" },
-                { "$type": "recognizeTag", "Id": "rec", "TemplateSet": "классы",
+                { "$type": "runMacro", "Id": "11111111-1111-1111-1111-111111111111", "MacroName": "x" },
+                { "$type": "recognizeTag", "Id": "22222222-2222-2222-2222-222222222222", "TemplateSet": "классы",
                   "Region": { "X": 0, "Y": 0, "Width": 10, "Height": 10 } }
               ]
             }
@@ -110,6 +110,11 @@ public class MacroGraphJsonTests
         var recognize = (RecognizeTagNode)graph.Nodes[1];
         await Assert.That(recognize.ApplyTag).IsTrue();
         await Assert.That(recognize.ResultVar).IsEqualTo("tag");
+        // Порог не задан — значит, слой зрения возьмёт своё умолчание, а не ноль.
+        await Assert.That(recognize.MatchThreshold).IsNull();
+        // Подписи в файле нет — показывать ноду будут по имени семейства.
+        await Assert.That(recognize.DisplayName).IsEqualTo(string.Empty);
+        await Assert.That(MacroNodeNames.Display(recognize)).IsEqualTo("recognize");
     }
 
     [Test]
@@ -147,5 +152,56 @@ public class MacroGraphJsonTests
     public async Task NullDocument_ThrowsCleanJsonException()
     {
         await Assert.That(() => MacroGraphJson.Deserialize("null")).Throws<JsonException>();
+    }
+
+    [Test]
+    public async Task Serialize_KeepsCyrillicReadable_InsteadOfEscapingIt()
+    {
+        // По умолчанию STJ экранирует всё за пределами ASCII, и тег «Лучник» уезжал на диск
+        // экранированными последовательностями. Это не порча — тот же сериализатор читает такое
+        // обратно, — но файл, который автор правит руками и смотрит диффом, становился нечитаемым
+        // ровно в тех местах, где написано что-то осмысленное.
+        var graph = new MacroGraph
+        {
+            Name = "тег",
+            StartNodeId = Ids.Of("t"),
+            Nodes = [new AddTagNode { Id = Ids.Of("t"), DisplayName = "добавить", Tag = "Лучник" }],
+        };
+
+        var json = MacroGraphJson.Serialize(graph);
+
+        await Assert.That(json).Contains("\"Лучник\"");
+        await Assert.That(json).Contains("добавить");
+        // Экранируется обратный слэш, а не начинается escape-последовательность: ищем в выводе
+        // ЛИТЕРАЛЬНЫЕ символы \u04, которыми STJ записал бы кириллицу, если бы послабление
+        // Encoder'а не действовало. Без удвоения "\u04" — незавершённая escape-последовательность
+        // и ошибка компиляции.
+        await Assert.That(json).DoesNotContain("\\u04");
+        // И читается обратно — послабление касается только вывода.
+        await Assert.That(((AddTagNode)MacroGraphJson.Deserialize(json).Nodes[0]).Tag).IsEqualTo("Лучник");
+    }
+
+    [Test]
+    public async Task RoundTrip_KeepsThePerNodeMatchThreshold()
+    {
+        var graph = new MacroGraph
+        {
+            Name = "порог",
+            StartNodeId = Ids.Of("r"),
+            Nodes =
+            [
+                new RecognizeTagNode
+                {
+                    Id = Ids.Of("r"), DisplayName = "recognize-1", TemplateSet = "classes",
+                    Region = new ScreenRect(0, 0, 10, 10), MatchThreshold = 0.82,
+                },
+            ],
+        };
+
+        var reloaded = (RecognizeTagNode)MacroGraphJson.Deserialize(MacroGraphJson.Serialize(graph)).Nodes[0];
+
+        await Assert.That(reloaded.MatchThreshold).IsEqualTo(0.82);
+        await Assert.That(reloaded.DisplayName).IsEqualTo("recognize-1");
+        await Assert.That(reloaded.Id).IsEqualTo(Ids.Of("r"));
     }
 }

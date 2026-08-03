@@ -29,22 +29,24 @@ public enum MacroNodeKind
 public sealed record MacroNodeKindOption(MacroNodeKind Kind, string Label);
 
 /// <summary>
-/// Одно исходящее ребро ноды, нарисованное выпадающим списком id нод.
+/// Одно исходящее ребро ноды, нарисованное выпадающим списком нод.
 ///
-/// Пустая строка здесь — полноправное значение и означает «цели нет, на этом исходе прогон
-/// заканчивается», то есть ровно то же самое, что <c>null</c>-ребро в модели. Держать её как
-/// <c>""</c>, а не как <c>null</c>, позволяет обойтись обычным <c>ComboBox</c> из строк (null
-/// в <c>SelectedItem</c> неотличим от «ещё ничего не выбрали»).
+/// Источник истины — <see cref="TargetId"/> (<c>null</c> = конец прогона, ровно как
+/// <c>null</c>-ребро модели); <see cref="Target"/> — то, к чему привязан <c>ComboBox</c>, и
+/// разрешается он по общему на весь редактор списку <see cref="Choices"/>. Два поля, а не одно,
+/// потому что рёбра загружаются раньше, чем список выбора вообще существует: коробки создаются
+/// по графу, и лишь затем редактор собирает <see cref="Choices"/> и зовёт <see cref="Resolve"/>.
 /// </summary>
 public sealed class NodeEdgeViewModel : ObservableObject
 {
-    private string _targetId;
-    private ObservableCollection<string> _choices = [];
+    private Guid? _targetId;
+    private NodeChoiceViewModel? _target;
+    private ObservableCollection<NodeChoiceViewModel> _choices = [];
 
-    public NodeEdgeViewModel(string label, string? targetId)
+    public NodeEdgeViewModel(string label, Guid? targetId)
     {
         Label = label;
-        _targetId = targetId ?? string.Empty;
+        _targetId = targetId;
     }
 
     /// <summary>Название исхода рядом с выпадающим списком («Далее», «Найдено», …).</summary>
@@ -58,44 +60,78 @@ public sealed class NodeEdgeViewModel : ObservableObject
         ? Label
         : string.Concat(char.ToLowerInvariant(Label[0]).ToString(), Label.AsSpan(1));
 
-    /// <summary>Выбранный id ноды; <c>""</c> = конец прогона.</summary>
-    [AllowNull]
-    public string TargetId
+    /// <summary>Нода, в которую ведёт исход; <c>null</c> = конец прогона. Модельная форма ребра.</summary>
+    public Guid? TargetId
     {
         get => _targetId;
-        // ComboBox проталкивает null, когда его SelectedItem выпадает из ItemsSource (например,
-        // список пересобрали после удаления ноды). Нормализация к "" превращает это в
-        // осмысленное «цели нет» вместо null, который рванул бы позже.
         set
         {
-            if (SetField(ref _targetId, value ?? string.Empty))
+            if (_targetId == value)
             {
-                OnPropertyChanged(nameof(IsEnd));
-                OnPropertyChanged(nameof(BoxLabel));
+                return;
             }
+
+            _targetId = value;
+            Resolve();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsEnd));
+            OnPropertyChanged(nameof(BoxLabel));
         }
+    }
+
+    /// <summary>
+    /// Выбранный элемент списка. ComboBox проталкивает сюда <c>null</c>, когда его SelectedItem
+    /// выпадает из ItemsSource (список пересобрали после удаления ноды), и это нормализуется в
+    /// «цели нет» — то же самое, чем такое ребро и стало бы.
+    /// </summary>
+    [AllowNull]
+    public NodeChoiceViewModel Target
+    {
+        get => _target ?? NodeChoiceViewModel.End;
+        set => TargetId = value?.Id;
     }
 
     /// <summary>
     /// <c>true</c>, когда этот исход завершает прогон. Это НЕ ошибка и НЕ нода: canvas говорит
     /// об этом прямо в строке порта, а не рисует ребро в терминальную коробку.
     /// </summary>
-    public bool IsEnd => _targetId.Length == 0;
+    public bool IsEnd => _targetId is null;
 
     /// <summary>Подпись строки порта на свёрнутой коробке: «нашёл» или «таймаут → конец».</summary>
     public string BoxLabel => IsEnd ? $"{ShortLabel} → конец" : ShortLabel;
 
-    /// <summary>Модельная форма <see cref="TargetId"/>.</summary>
-    public string? TargetOrNull => string.IsNullOrEmpty(_targetId) ? null : _targetId;
-
     /// <summary>
-    /// Живой список доступных для выбора id: им владеет редактор, а делят его все рёбра, так
+    /// Живой список нод, доступных для выбора: им владеет редактор, а делят его все рёбра, так
     /// что добавление, переименование или удаление ноды разом обновляет все выпадающие списки.
     /// </summary>
-    public ObservableCollection<string> Choices
+    public ObservableCollection<NodeChoiceViewModel> Choices
     {
         get => _choices;
-        set => SetField(ref _choices, value);
+        set
+        {
+            if (SetField(ref _choices, value))
+            {
+                Resolve();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Заново находит элемент списка по <see cref="TargetId"/>. Зовётся редактором после каждой
+    /// пересборки <see cref="Choices"/>.
+    /// </summary>
+    public void Resolve()
+    {
+        var found = _targetId is null
+            ? NodeChoiceViewModel.End
+            : _choices.FirstOrDefault(choice => choice.Id == _targetId);
+        if (ReferenceEquals(found, _target))
+        {
+            return;
+        }
+
+        _target = found;
+        OnPropertyChanged(nameof(Target));
     }
 }
 
@@ -165,13 +201,13 @@ public sealed class RegionEditorViewModel : ObservableObject
         return rect.Width <= 0 || rect.Height <= 0 ? null : rect;
     }
 
-    public IEnumerable<string> GetInputErrors(string nodeId)
+    public IEnumerable<string> GetInputErrors(string nodeName)
     {
         foreach (var (label, text) in new[] { ("X", _xText), ("Y", _yText), ("W", _widthText), ("H", _heightText) })
         {
             if (NodeInput.ParseInt(text) is null)
             {
-                yield return $"[{nodeId}] регион {label}: «{text}» — не целое число.";
+                yield return $"[{nodeName}] регион {label}: «{text}» — не целое число.";
             }
         }
     }
@@ -223,6 +259,34 @@ internal static class NodeInput
 
         return (int)Math.Round(seconds * 1000.0);
     }
+
+    /// <summary>Порог совпадения в текст; <c>null</c> (взять умолчание) — это пустое поле.</summary>
+    public static string FormatThreshold(double? value) =>
+        value is { } number ? number.ToString("0.###", CultureInfo.InvariantCulture) : string.Empty;
+
+    /// <summary>
+    /// Текст обратно в порог. Пустая строка — это ЗАКОННОЕ <c>null</c> («умолчание слоя
+    /// зрения»), а не ошибка, поэтому успех и значение приходится разделять: у обычного
+    /// <c>TryParse</c> для этого не хватает исходов.
+    /// </summary>
+    public static bool TryParseThreshold(string? text, out double? value)
+    {
+        value = null;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        // Запятая как десятичный разделитель — её выдаёт цифровой блок русской раскладки.
+        var normalized = text.Trim().Replace(',', '.');
+        if (!double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+        {
+            return false;
+        }
+
+        value = number;
+        return true;
+    }
 }
 
 /// <summary>
@@ -243,7 +307,7 @@ internal static class NodeInput
 /// </summary>
 public abstract class NodeRowViewModel : ObservableObject
 {
-    private string _nodeId;
+    private string _displayName;
     private bool _isSelected;
     private double _x;
     private double _y;
@@ -257,9 +321,11 @@ public abstract class NodeRowViewModel : ObservableObject
     private bool _isVariableSource;
     private bool _isVariableConsumer;
 
-    protected NodeRowViewModel(string nodeId, TargetSelectorViewModel? target, params NodeEdgeViewModel[] edges)
+    protected NodeRowViewModel(MacroNode node, TargetSelectorViewModel? target, params NodeEdgeViewModel[] edges)
     {
-        _nodeId = nodeId;
+        ArgumentNullException.ThrowIfNull(node);
+        Id = node.Id;
+        _displayName = MacroNodeNames.Display(node);
         Target = target;
         Edges = edges;
         if (target is not null)
@@ -273,30 +339,41 @@ public abstract class NodeRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Поднимается после изменения <see cref="NodeId"/> и несёт ПРЕЖНИЙ id. Редактор слушает
-    /// это, чтобы перенацелить каждое ребро (и стартовую ноду) на новый id.
+    /// Личность ноды. Не показывается и не редактируется: рёбра, стартовая нода, точки останова
+    /// и подсветка прогона адресуются ею, и больше она ни для чего не нужна.
+    ///
+    /// <b>События <c>IdChanged</c> больше нет.</b> Пока рёбра ссылались на ноду строкой, которую
+    /// правил пользователь, переименование приходилось разносить по графу: редактор ловил старое
+    /// значение и перенацеливал каждое входящее ребро, стартовую ноду и набор точек останова.
+    /// Теперь переименование — это <see cref="DisplayName"/>, и оно не трогает ровным счётом
+    /// ничего.
     /// </summary>
-    public event Action<NodeRowViewModel, string>? IdChanged;
+    public Guid Id { get; }
 
-    /// <summary>Уникальный внутри графа id. Именно по нему рёбра ссылаются на ноды.</summary>
+    /// <summary>
+    /// Подпись ноды: то, что видно в шапке коробки, в полосе лога и в замечаниях валидатора.
+    /// Пустую строку отвергаем — безымянная нода читалась бы в логе как пропущенная строка.
+    /// </summary>
     [AllowNull]
-    public string NodeId
+    public string DisplayName
     {
-        get => _nodeId;
+        get => _displayName;
         set
         {
             var trimmed = (value ?? string.Empty).Trim();
-            if (trimmed.Length == 0 || string.Equals(trimmed, _nodeId, StringComparison.Ordinal))
+            // Имя передаётся ЯВНО: [CallerMemberName] стоит на объявлении базового
+            // OnPropertyChanged, а здесь он перекрыт (см. ниже, ради пересчёта Summary), и у
+            // перекрытия атрибута нет — безаргументный вызов отсюда уехал бы с null, то есть
+            // «изменилось всё», и редактор не узнал бы, что переименовали именно ноду.
+            if (trimmed.Length == 0 || string.Equals(trimmed, _displayName, StringComparison.Ordinal))
             {
-                // Пустой id отвергаем сразу: он осиротил бы каждое ребро, указывающее сюда.
-                OnPropertyChanged();
+                // Отказ тоже надо объявить: поле ввода обязано вернуться к прежнему значению.
+                OnPropertyChanged(nameof(DisplayName));
                 return;
             }
 
-            var previous = _nodeId;
-            _nodeId = trimmed;
-            OnPropertyChanged();
-            IdChanged?.Invoke(this, previous);
+            _displayName = trimmed;
+            OnPropertyChanged(nameof(DisplayName));
         }
     }
 
@@ -652,26 +729,36 @@ public abstract class NodeRowViewModel : ObservableObject
         return row;
     }
 
-    /// <summary>Создаёт пустую строку запрошенного вида с разумными умолчаниями.</summary>
-    public static NodeRowViewModel Create(MacroNodeKind kind, string nodeId) => kind switch
+    /// <summary>
+    /// Создаёт пустую строку запрошенного вида с разумными умолчаниями и свежесгенерированной
+    /// подписью вида <c>click-1</c>.
+    ///
+    /// Имя выдаётся ЗДЕСЬ, а не редактором, потому что правило «от типа ноды» знает
+    /// <see cref="MacroNodeNames.Prefix"/>, а тип нода приобретает ровно в этом switch. Второй
+    /// карты «вид меню → префикс» в панели заводить нельзя — она разошлась бы с моделью на
+    /// первом же новом типе ноды.
+    /// </summary>
+    /// <param name="kind">Что создавать.</param>
+    /// <param name="usedNames">Подписи, уже занятые в графе, — чтобы номер не повторился.</param>
+    public static NodeRowViewModel Create(MacroNodeKind kind, IEnumerable<string> usedNames)
     {
-        MacroNodeKind.KeyPress => new KeyPressNodeRowViewModel(new KeyPressNode { Id = nodeId, Key = VirtualKey.F1 }),
-        MacroNodeKind.Click => new ClickNodeRowViewModel(new ClickNode { Id = nodeId, Point = default(ScreenPoint) }),
-        MacroNodeKind.Delay => new DelayNodeRowViewModel(new DelayNode { Id = nodeId, Ms = 1000 }),
-        MacroNodeKind.AddTag => new AddTagNodeRowViewModel(new AddTagNode { Id = nodeId, Tag = string.Empty }),
-        MacroNodeKind.RemoveTag => new RemoveTagNodeRowViewModel(new RemoveTagNode { Id = nodeId, Tag = string.Empty }),
-        MacroNodeKind.SetIcon => new SetIconNodeRowViewModel(new SetIconNode
-            { Id = nodeId, IconPath = "Assets/ClassIcons/{tag}.png" }),
-        MacroNodeKind.RunMacro => new RunMacroNodeRowViewModel(new RunMacroNode
-            { Id = nodeId, MacroName = string.Empty }),
-        MacroNodeKind.FindElement => new FindElementNodeRowViewModel(new FindElementNode
-            { Id = nodeId, Template = string.Empty }),
-        MacroNodeKind.WaitForElement => new WaitForElementNodeRowViewModel(new WaitForElementNode
-            { Id = nodeId, Template = string.Empty, TimeoutMs = 10_000 }),
-        MacroNodeKind.RecognizeTag => new RecognizeTagNodeRowViewModel(new RecognizeTagNode
-            { Id = nodeId, TemplateSet = string.Empty, Region = default }),
-        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown node kind."),
-    };
+        MacroNode node = kind switch
+        {
+            MacroNodeKind.KeyPress => new KeyPressNode { Key = VirtualKey.F1 },
+            MacroNodeKind.Click => new ClickNode { Point = default(ScreenPoint) },
+            MacroNodeKind.Delay => new DelayNode { Ms = 1000 },
+            MacroNodeKind.AddTag => new AddTagNode { Tag = string.Empty },
+            MacroNodeKind.RemoveTag => new RemoveTagNode { Tag = string.Empty },
+            MacroNodeKind.SetIcon => new SetIconNode { IconPath = "Assets/ClassIcons/{tag}.png" },
+            MacroNodeKind.RunMacro => new RunMacroNode { MacroName = string.Empty },
+            MacroNodeKind.FindElement => new FindElementNode { Template = string.Empty },
+            MacroNodeKind.WaitForElement => new WaitForElementNode { Template = string.Empty, TimeoutMs = 10_000 },
+            MacroNodeKind.RecognizeTag => new RecognizeTagNode { TemplateSet = string.Empty, Region = default },
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown node kind."),
+        };
+
+        return FromNode(node with { DisplayName = MacroNodeNames.Generate(MacroNodeNames.Prefix(node), usedNames) });
+    }
 
     /// <summary>Пункты меню «добавить ноду» во всплывающем списке, в порядке каталога.</summary>
     public static IReadOnlyList<MacroNodeKindOption> Kinds { get; } =

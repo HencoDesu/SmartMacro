@@ -37,8 +37,8 @@ public class HotkeyListenerTests
     {
         Name = name,
         Triggers = [.. triggers],
-        StartNodeId = "n0",
-        Nodes = [new KeyPressNode { Id = "n0", Key = VirtualKey.F1, Target = new TargetSelector() }],
+        StartNodeId = Ids.Of("n0"),
+        Nodes = [new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = VirtualKey.F1, Target = new TargetSelector() }],
     };
 
     private static HotkeyListener CreateListener(MacroGraphStore store) => new(

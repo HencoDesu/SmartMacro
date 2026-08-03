@@ -16,7 +16,9 @@ packages/
 
 ## Local config / secrets
 config.local.json
-appsettings.local.json
+# Оверрайды обоих процессов: appsettings.local.json у демона,
+# appsettings.panel.local.json у панели (имена разошлись из-за общей папки поставки).
+appsettings*.local.json
 .env
 
 ## Logs
@@ -30,3 +32,6 @@ Thumbs.db
 ## Vision-runner scratch outputs (thumbnails, binarised debug dumps)
 samples/.thumbs/
 samples/.debug/
+
+## Портативная поставка: собранная папка и zip (build/portable.proj)
+dist/

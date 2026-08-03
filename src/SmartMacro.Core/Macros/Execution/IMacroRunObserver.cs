@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using SmartMacro.Contracts.Dto;
+using SmartMacro.Macros.Model;
 
 namespace SmartMacro.Macros.Execution;
 
@@ -46,16 +47,22 @@ public interface IMacroRunObserver
     void WalkStarted(MacroWalkStart walk);
 
     /// <summary>Walker вошёл в ноду. Вызывается только при <see cref="IsEnabled"/>.</summary>
-    void NodeEntered(Guid walkId, int elapsedMs, string nodeId);
+    /// <param name="walkId">Обход, к которому относится событие.</param>
+    /// <param name="elapsedMs">Миллисекунд с начала обхода.</param>
+    /// <param name="nodeId">Нода, по которой панель адресует подсветку и точки останова.</param>
+    /// <param name="nodeName">Её подпись — то, что печатает полоса лога.</param>
+    void NodeEntered(Guid walkId, int elapsedMs, Guid nodeId, string nodeName);
 
     /// <summary>Нода отработала. Вызывается только при <see cref="IsEnabled"/>.</summary>
     /// <param name="walkId">Обход, к которому относится событие.</param>
     /// <param name="elapsedMs">Миллисекунд с начала обхода.</param>
     /// <param name="nodeId">Отработавшая нода.</param>
+    /// <param name="nodeName">Её подпись.</param>
     /// <param name="outcome">Одно из <see cref="RunOutcomes"/>.</param>
     /// <param name="detail">Свободные подробности для полосы лога либо <c>null</c>.</param>
     /// <param name="durationMs">Реальное время внутри ноды, включая ожидание под-макросов.</param>
-    void NodeExited(Guid walkId, int elapsedMs, string nodeId, string outcome, string? detail, int durationMs);
+    void NodeExited(Guid walkId, int elapsedMs, Guid nodeId, string nodeName, string outcome, string? detail,
+        int durationMs);
 
     /// <summary>Обход закончился. Вызывается всегда, даже когда <see cref="IsEnabled"/> равно <c>false</c>.</summary>
     /// <param name="walkId">Закончившийся обход.</param>
@@ -78,7 +85,8 @@ public interface IMacroRunObserver
     /// <param name="name">Имя переменной.</param>
     /// <param name="value">Её строка для показа — то, во что развернулось бы <c>{name}</c>.</param>
     /// <param name="nodeId">Нода, которая записала значение, либо <c>null</c> для сида от триггера.</param>
-    void VariableSet(Guid walkId, int elapsedMs, string name, string value, string? nodeId);
+    /// <param name="nodeName">Её подпись, либо <c>null</c> вместе с <paramref name="nodeId"/>.</param>
+    void VariableSet(Guid walkId, int elapsedMs, string name, string value, Guid? nodeId, string? nodeName);
 
     /// <summary>
     /// Обход припарковался перед <paramref name="nodeId"/> и ждёт, когда его отпустят.
@@ -88,14 +96,16 @@ public interface IMacroRunObserver
     /// <param name="walkId">Припаркованный обход.</param>
     /// <param name="elapsedMs">Миллисекунд с начала обхода.</param>
     /// <param name="nodeId">Нода, перед которой встали.</param>
+    /// <param name="nodeName">Её подпись.</param>
     /// <param name="reason">Определяет, какой вид события получит панель и как это будет сформулировано.</param>
-    void WalkPaused(Guid walkId, int elapsedMs, string nodeId, DebugPauseReason reason);
+    void WalkPaused(Guid walkId, int elapsedMs, Guid nodeId, string nodeName, DebugPauseReason reason);
 
     /// <summary>Обход отпустили, и он вот-вот выполнит <paramref name="nodeId"/>. Вызывается только при <see cref="IsEnabled"/>.</summary>
     /// <param name="walkId">Отпущенный обход.</param>
     /// <param name="elapsedMs">Миллисекунд с начала обхода.</param>
     /// <param name="nodeId">Нода, которая сейчас выполнится.</param>
-    void WalkResumed(Guid walkId, int elapsedMs, string nodeId);
+    /// <param name="nodeName">Её подпись.</param>
+    void WalkResumed(Guid walkId, int elapsedMs, Guid nodeId, string nodeName);
 }
 
 /// <summary>
@@ -143,19 +153,19 @@ internal readonly struct MacroWalkTrace
     /// <summary>Миллисекунд с начала обхода.</summary>
     public int ElapsedMs => ToMs(Stopwatch.GetTimestamp() - _startTimestamp);
 
-    public void NodeEntered(string nodeId)
+    public void NodeEntered(MacroNode node)
     {
         if (_observer is { IsEnabled: true } observer)
         {
-            observer.NodeEntered(WalkId, ElapsedMs, nodeId);
+            observer.NodeEntered(WalkId, ElapsedMs, node.Id, MacroNodeNames.Display(node));
         }
     }
 
-    public void NodeExited(string nodeId, string outcome, string? detail, long nodeStartTimestamp)
+    public void NodeExited(MacroNode node, string outcome, string? detail, long nodeStartTimestamp)
     {
         if (_observer is { IsEnabled: true } observer)
         {
-            observer.NodeExited(WalkId, ElapsedMs, nodeId, outcome, detail,
+            observer.NodeExited(WalkId, ElapsedMs, node.Id, MacroNodeNames.Display(node), outcome, detail,
                 ToMs(Stopwatch.GetTimestamp() - nodeStartTimestamp));
         }
     }
@@ -163,27 +173,28 @@ internal readonly struct MacroWalkTrace
     public void Finished(string outcome, string? detail) =>
         _observer?.WalkFinished(WalkId, ElapsedMs, outcome, detail);
 
-    public void VariableSet(string name, string value, string? nodeId)
+    public void VariableSet(string name, string value, MacroNode? node)
     {
         if (_observer is { IsEnabled: true } observer)
         {
-            observer.VariableSet(WalkId, ElapsedMs, name, value, nodeId);
+            observer.VariableSet(WalkId, ElapsedMs, name, value, node?.Id,
+                node is null ? null : MacroNodeNames.Display(node));
         }
     }
 
-    public void Paused(string nodeId, DebugPauseReason reason)
+    public void Paused(Guid nodeId, string nodeName, DebugPauseReason reason)
     {
         if (_observer is { IsEnabled: true } observer)
         {
-            observer.WalkPaused(WalkId, ElapsedMs, nodeId, reason);
+            observer.WalkPaused(WalkId, ElapsedMs, nodeId, nodeName, reason);
         }
     }
 
-    public void Resumed(string nodeId)
+    public void Resumed(Guid nodeId, string nodeName)
     {
         if (_observer is { IsEnabled: true } observer)
         {
-            observer.WalkResumed(WalkId, ElapsedMs, nodeId);
+            observer.WalkResumed(WalkId, ElapsedMs, nodeId, nodeName);
         }
     }
 

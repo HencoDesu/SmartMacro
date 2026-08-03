@@ -302,7 +302,7 @@ public class TargetBadgeTests
     // ---- половина, за которую отвечает редактор -----------------------------------------------
 
     // Каталог принадлежит редактору, и он раздаёт его каждой подключаемой ноде так же, как
-    // раздаёт NodeIdChoices. Без этого бейдж на только что открытом графе висел бы на «нет окон»,
+    // раздаёт NodeChoices. Без этого бейдж на только что открытом графе висел бы на «нет окон»,
     // пока его не тронет что-нибудь ещё.
     [Test]
     public async Task Editor_SeedsTheCatalogue_AndAttachesItToEveryNode()
@@ -320,8 +320,8 @@ public class TargetBadgeTests
         editor.LoadGraph(new MacroGraph
         {
             Name = "тест",
-            StartNodeId = "k",
-            Nodes = [new KeyPressNode { Id = "k", Key = VirtualKey.A, Target = new TargetSelector { ExcludeTags = ["Склад"] } }],
+            StartNodeId = Ids.Of("k"),
+            Nodes = [new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A, Target = new TargetSelector { ExcludeTags = ["Склад"] } }],
         });
 
         var target = editor.Nodes.Single().Target!;

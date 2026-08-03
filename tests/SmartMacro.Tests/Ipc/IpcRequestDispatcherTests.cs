@@ -21,8 +21,8 @@ public class IpcRequestDispatcherTests
     private static MacroGraph SimpleMacro(string name, VirtualKey key = VirtualKey.F1) => new()
     {
         Name = name,
-        StartNodeId = "n0",
-        Nodes = [new KeyPressNode { Id = "n0", Key = key, Target = new TargetSelector() }],
+        StartNodeId = Ids.Of("n0"),
+        Nodes = [new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = key, Target = new TargetSelector() }],
     };
 
     // -------------------------------------------------------------------------- окна
@@ -158,7 +158,7 @@ public class IpcRequestDispatcherTests
     {
         using var harness = new IpcDispatcherHarness();
         var handle = harness.Runs.TryBegin("бут")!;
-        handle.CurrentNodeId = "wait-in-world";
+        handle.CurrentNodeName = "wait-in-world";
 
         var response = await harness.DispatchAsync(IpcMessageTypes.GetRunningMacros);
 
@@ -166,7 +166,7 @@ public class IpcRequestDispatcherTests
         await Assert.That(runs).Count().IsEqualTo(1);
         await Assert.That(runs[0].RunId).IsEqualTo(handle.RunId);
         await Assert.That(runs[0].MacroName).IsEqualTo("бут");
-        await Assert.That(runs[0].CurrentNodeId).IsEqualTo("wait-in-world");
+        await Assert.That(runs[0].CurrentNodeName).IsEqualTo("wait-in-world");
     }
 
     [Test]
@@ -209,10 +209,10 @@ public class IpcRequestDispatcherTests
         {
             Name = "битый",
             // Ребро в ноду, которой в графе нет, — это жёсткая ошибка, а не предупреждение.
-            StartNodeId = "n0",
+            StartNodeId = Ids.Of("n0"),
             Nodes =
             [
-                new KeyPressNode { Id = "n0", Key = VirtualKey.F1, Target = new TargetSelector(), Next = "нетуноды" }
+                new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = VirtualKey.F1, Target = new TargetSelector(), Next = Ids.Of("нетуноды") }
             ],
         };
 
@@ -252,12 +252,12 @@ public class IpcRequestDispatcherTests
         var withUnreachableNode = new MacroGraph
         {
             Name = "спредупреждением",
-            StartNodeId = "n0",
+            StartNodeId = Ids.Of("n0"),
             Nodes =
             [
-                new KeyPressNode { Id = "n0", Key = VirtualKey.F1, Target = new TargetSelector() },
+                new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = VirtualKey.F1, Target = new TargetSelector() },
                 // Сюда ничто не ведёт → недостижима → предупреждение, а не ошибка.
-                new DelayNode { Id = "orphan", Ms = 100 },
+                new DelayNode { Id = Ids.Of("orphan"), DisplayName = "orphan", Ms = 100 },
             ],
         };
 

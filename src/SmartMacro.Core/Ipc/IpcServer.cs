@@ -6,10 +6,12 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Storage;
+using SmartMacro.Settings;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Ipc;
@@ -74,6 +76,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     private readonly RunEventPublisher _runEvents;
     private readonly LogEventPublisher _log;
     private readonly MacroDebugSession _debug;
+    private readonly SettingsSnapshotProvider _settings;
     private readonly ILogger<IpcServer> _logger;
 
     private readonly ConcurrentDictionary<ClientConnection, byte> _clients = new();
@@ -92,6 +95,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         RunEventPublisher runEvents,
         LogEventPublisher log,
         MacroDebugSession debug,
+        SettingsSnapshotProvider settings,
         ILogger<IpcServer> logger)
     {
         _dispatcher = dispatcher;
@@ -101,6 +105,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         _runEvents = runEvents;
         _log = log;
         _debug = debug;
+        _settings = settings;
         _logger = logger;
 
         // Вручаем себя диспетчеру, чтобы у RequestActivate было через что рассылать. Делается
@@ -182,6 +187,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             _windows.WindowClosed += OnWindowClosed;
             _macros.MacrosChanged += OnMacrosChanged;
             _runs.RunsChanged += OnRunsChanged;
+            _settings.Changed += OnSettingsChanged;
         }
     }
 
@@ -201,6 +207,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             _windows.WindowClosed -= OnWindowClosed;
             _macros.MacrosChanged -= OnMacrosChanged;
             _runs.RunsChanged -= OnRunsChanged;
+            _settings.Changed -= OnSettingsChanged;
         }
     }
 
@@ -579,6 +586,16 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     // несёт.
     private void OnRunsChanged() =>
         Broadcast(IpcMessageTypes.RunningMacrosChanged, () => IpcJson.Write(_runs.Snapshot().ToDto()));
+
+    // Снимок настроек едет целиком, как WindowTagsChanged, а не пустым «сходи перечитай», как
+    // MacrosChanged: он маленький (десяток чисел и список профилей), а поднимается это событие,
+    // среди прочего, на правку файла блокнотом — то есть в момент, когда панель ни о чём не
+    // просила и обратный запрос стоил бы лишнего round trip ради килобайта.
+    //
+    // Событие широковещательное, не по подписке: оно редкое (правка настроек — событие
+    // человеческого темпа), и обеим открытым панелям знать о нём одинаково нужно.
+    private void OnSettingsChanged(SettingsSnapshotDto snapshot) =>
+        Broadcast(IpcMessageTypes.SettingsChanged, () => IpcJson.Write(snapshot));
 
     // У IpcMessageTypes.ActivateWindow два производителя, оба вне этого класса и оба идущие
     // через публичную перегрузку Broadcast(IpcEvent) по IIpcBroadcaster: пункт трея «Открыть

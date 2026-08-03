@@ -126,7 +126,7 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
                 ContextWindow = contextWindow,
                 Variables = MacroVariables.ForTrigger(_cursor.Current()),
                 RunId = handle.RunId,
-                OnNodeEntered = nodeId => handle.CurrentNodeId = nodeId,
+                OnNodeEntered = nodeName => handle.CurrentNodeName = nodeName,
                 Observer = _observer,
                 Debugger = _debugger,
             };

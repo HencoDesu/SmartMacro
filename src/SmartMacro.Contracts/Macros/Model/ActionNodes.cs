@@ -1,5 +1,6 @@
 using SmartMacro.Native;
 
+// ReSharper disable once CheckNamespace — имена SmartMacro.Macros.* достались модели от жизни в Core.
 namespace SmartMacro.Macros.Model;
 
 /// <summary>Нажимает <see cref="Key"/> в целевом окне (или окнах).</summary>
@@ -11,8 +12,8 @@ public sealed record KeyPressNode : MacroNode
     /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
-    public string? Next { get; init; }
+    /// <summary>Следующая нода; <c>null</c> = конец прогона.</summary>
+    public Guid? Next { get; init; }
 }
 
 /// <summary>
@@ -36,8 +37,8 @@ public sealed record ClickNode : MacroNode
     /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
-    public string? Next { get; init; }
+    /// <summary>Следующая нода; <c>null</c> = конец прогона.</summary>
+    public Guid? Next { get; init; }
 }
 
 /// <summary>Приостанавливает сценарий на <see cref="Ms"/> миллисекунд. Цели нет — пауза общая для всего прогона.</summary>
@@ -46,8 +47,8 @@ public sealed record DelayNode : MacroNode
     /// <summary>Задержка в миллисекундах. Ноль или отрицательное значение = ничего не делать.</summary>
     public required int Ms { get; init; }
 
-    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
-    public string? Next { get; init; }
+    /// <summary>Следующая нода; <c>null</c> = конец прогона.</summary>
+    public Guid? Next { get; init; }
 }
 
 /// <summary>Добавляет тег <see cref="Tag"/> целевому окну (или окнам) через реестр окон.</summary>
@@ -59,8 +60,8 @@ public sealed record AddTagNode : MacroNode
     /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
-    public string? Next { get; init; }
+    /// <summary>Следующая нода; <c>null</c> = конец прогона.</summary>
+    public Guid? Next { get; init; }
 }
 
 /// <summary>Снимает тег <see cref="Tag"/> с целевого окна (или окон) через реестр окон.</summary>
@@ -72,8 +73,8 @@ public sealed record RemoveTagNode : MacroNode
     /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
-    public string? Next { get; init; }
+    /// <summary>Следующая нода; <c>null</c> = конец прогона.</summary>
+    public Guid? Next { get; init; }
 }
 
 /// <summary>Ставит целевому окну (или окнам) иконку в заголовке и на панели задач из <see cref="IconPath"/>.</summary>
@@ -85,8 +86,8 @@ public sealed record SetIconNode : MacroNode
     /// <summary>Селектор разветвления; <c>null</c> = контекстное окно прогона.</summary>
     public TargetSelector? Target { get; init; }
 
-    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
-    public string? Next { get; init; }
+    /// <summary>Следующая нода; <c>null</c> = конец прогона.</summary>
+    public Guid? Next { get; init; }
 }
 
 /// <summary>
@@ -107,6 +108,6 @@ public sealed record RunMacroNode : MacroNode
     /// <summary><c>true</c> (по умолчанию) = дождаться подпрогонов, прежде чем идти по <see cref="Next"/>; <c>false</c> = запустить и забыть.</summary>
     public bool Await { get; init; } = true;
 
-    /// <summary>Id следующей ноды; <c>null</c> = конец прогона.</summary>
-    public string? Next { get; init; }
+    /// <summary>Следующая нода; <c>null</c> = конец прогона.</summary>
+    public Guid? Next { get; init; }
 }

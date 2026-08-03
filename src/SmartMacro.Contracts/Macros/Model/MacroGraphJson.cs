@@ -1,6 +1,8 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+// ReSharper disable once CheckNamespace — имена SmartMacro.Macros.* достались модели от жизни в Core.
 namespace SmartMacro.Macros.Model;
 
 /// <summary>
@@ -23,6 +25,13 @@ public static class MacroGraphJson
         // Правленные руками файлы не должны ломаться просто потому, что "$type" оказался не
         // первым свойством.
         AllowOutOfOrderMetadataProperties = true,
+        // Кириллица остаётся кириллицей. По умолчанию STJ экранирует всё за пределами ASCII, и
+        // тег «Лучник» уезжал на диск как "Лучник": не порча
+        // (читается обратно тем же сериализатором), но файл, который автор правит руками и
+        // смотрит диффом, становился нечитаемым ровно в тех местах, где написано что-то
+        // осмысленное. Ослабление касается только вывода в файл — HTML-контекста здесь нет ни у
+        // одного потребителя.
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     /// <summary>Сериализует граф в JSON с отступами.</summary>

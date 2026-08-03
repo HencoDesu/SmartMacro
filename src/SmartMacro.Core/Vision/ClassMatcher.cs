@@ -1,15 +1,17 @@
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using OpenCvSharp;
 using SmartMacro.Native;
+using SmartMacro.Settings;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace SmartMacro.Vision;
 
 // Сопоставитель шаблонов на OpenCV для текста значения класса в игровом окне характеристик.
 // Ключи — свободные строки тегов (основы имён файлов шаблонов), настройки — через
-// ClassMatcherOptions (область + пороги в appsettings.json):
+// Vision.ClassMatcher в settings.json (область + пороги), и читаются они НА КАЖДОМ
+// СОПОСТАВЛЕНИИ: порог яркости подбирают ровно тогда, когда распознавание промахивается, и
+// «поправил и перезапустил демон» вместо «поправил и нажал ещё раз» — это худший из двух циклов.
 //   1. Обрезать скриншот по настроенной области со значением класса в окне характеристик.
 //   2. Перевести в полутона и бинаризовать по LuminanceThreshold, чтобы остался только текст.
 //   3. Для каждой пары (тег, шаблон): бинаризовать шаблон так же, запустить Cv2.MatchTemplate с
@@ -18,22 +20,29 @@ namespace SmartMacro.Vision;
 [SupportedOSPlatform("windows")]
 public sealed partial class ClassMatcher : IClassMatcher
 {
-    private readonly Rect _region;
-    private readonly double _luminanceThreshold;
-    private readonly double _matchThreshold;
+    private readonly ISettingsSource _settings;
     private readonly ILogger<ClassMatcher> _logger;
 
-    public ClassMatcher(IOptions<ClassMatcherOptions> options, ILogger<ClassMatcher> logger)
+    public ClassMatcher(ISettingsSource settings, ILogger<ClassMatcher> logger)
     {
-        var v = options.Value;
-        _region = new Rect(v.Region.X, v.Region.Y, v.Region.Width, v.Region.Height);
-        _luminanceThreshold = v.LuminanceThreshold;
-        _matchThreshold = v.MatchThreshold;
+        _settings = settings;
         _logger = logger;
-        LogConfigured(_region.X, _region.Y, _region.Width, _region.Height, _luminanceThreshold, _matchThreshold);
+        var current = settings.Current.Vision.ClassMatcher;
+        // Запись при создании осталась: она отвечает на вопрос «а с чем сопоставитель вообще
+        // поднялся». Живые значения читаются ниже по месту, так что после правки настроек эта
+        // строка устаревает — на то она и «поднялся с», а не «работает с».
+        LogConfigured(current.Region.X, current.Region.Y, current.Region.Width, current.Region.Height,
+            current.LuminanceThreshold, current.MatchThreshold);
     }
 
-    public TagMatch? Match(byte[] screenshot, IReadOnlyDictionary<string, byte[]> templates, ScreenRect region)
+    private ScreenRect ConfiguredRegion => _settings.Current.Vision.ClassMatcher.Region;
+
+    private double LuminanceThreshold => _settings.Current.Vision.ClassMatcher.LuminanceThreshold;
+
+    private double MatchThreshold => _settings.Current.Vision.ClassMatcher.MatchThreshold;
+
+    public TagMatch? Match(byte[] screenshot, IReadOnlyDictionary<string, byte[]> templates, ScreenRect region,
+        double? matchThreshold = null)
     {
         if (templates.Count == 0)
         {
@@ -75,9 +84,14 @@ public sealed partial class ClassMatcher : IClassMatcher
             }
         }
 
-        if (best is null || best.Score < _matchThreshold)
+        // Порог снимается один раз на вердикт и попадает и в сравнение, и в строку лога — иначе
+        // правка ровно между двумя чтениями дала бы запись, противоречащую собственному выводу.
+        // Порог НОДЫ главнее настройки: настройка — это умолчание для тех нод, где автор его не
+        // трогал, а не общий рычаг (см. комментарий у ConditionalNodes).
+        var threshold = matchThreshold ?? MatchThreshold;
+        if (best is null || best.Score < threshold)
         {
-            LogNoMatch(best?.Tag, best?.Score, _matchThreshold);
+            LogNoMatch(best?.Tag, best?.Score, threshold);
             return null;
         }
 
@@ -104,9 +118,10 @@ public sealed partial class ClassMatcher : IClassMatcher
             throw new InvalidOperationException("Failed to decode screenshot bytes.");
         }
 
+        var fallback = ConfiguredRegion;
         var requested = region.Width > 0 && region.Height > 0
             ? new Rect(region.X, region.Y, region.Width, region.Height)
-            : _region;
+            : new Rect(fallback.X, fallback.Y, fallback.Width, fallback.Height);
         var clamped = ClampToImage(requested, full.Size());
         using var crop = new Mat(full, clamped);
         return Binarize(crop);
@@ -128,7 +143,7 @@ public sealed partial class ClassMatcher : IClassMatcher
         var gray = new Mat();
         Cv2.CvtColor(bgr, gray, ColorConversionCodes.BGR2GRAY);
         var binary = new Mat();
-        Cv2.Threshold(gray, binary, _luminanceThreshold, 255, ThresholdTypes.Binary);
+        Cv2.Threshold(gray, binary, LuminanceThreshold, 255, ThresholdTypes.Binary);
         gray.Dispose();
         return binary;
     }

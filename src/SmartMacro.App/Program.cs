@@ -1,9 +1,10 @@
 using Avalonia;
 using Microsoft.Extensions.Configuration;
 using Serilog;
-using SmartMacro.App.Interop;
+using Serilog.Settings.Configuration;
 using SmartMacro.App.Ipc;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Native.Dialogs;
 
 namespace SmartMacro.App;
 
@@ -49,17 +50,67 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-            .AddJsonFile("appsettings.local.json", optional: true, reloadOnChange: true)
-            .AddEnvironmentVariables(prefix: "SMARTMACRO_")
-            .Build();
+        // «panel», а не «appsettings.json», потому что в портативной поставке оба exe лежат в
+        // ОДНОЙ папке, и одноимённые конфиги двух проектов затирали бы друг друга — кто
+        // опубликуется вторым, тот и победил. Победа демона была бы особенно тихой: у него
+        // сток File пишет в logs/smartmacro-.log, так что панель начала бы подмешивать свой
+        // журнал в журнал движка (у обоих "shared": true, то есть даже не упала бы), и режим
+        // «Лог» показывал бы UI-строки как строки демона.
+        //
+        // Это НЕ файл-оверрайд по окружению вроде appsettings.Development.json: слоя окружения
+        // у панели нет вовсе, суффикс здесь просто говорит, чей это конфиг.
+        //
+        // Обёрнуто в try, потому что это ЕДИНСТВЕННОЕ место, падение в котором некуда записать:
+        // журнала ещё нет, а у WinExe нет и консоли — до этой правки отказ здесь выходил
+        // безмолвным крахом процесса. Портативная раскладка сделала такой отказ достижимым:
+        // logs\ панели лежит рядом с её exe, и распакованный в C:\Program Files архив роняет
+        // сток File прямо на CreateLogger. Демон ту же беду ловит пробой пера (см.
+        // BaseDirectoryWriteProbe) — здесь пробы нет намеренно: общей сборки для неё у двух
+        // процессов не нашлось (в Contracts файловый ввод-вывод не заезжает по жёсткому правилу,
+        // а Native — только P/Invoke), а заводить вторую копию ради того, что и так ловится
+        // одним catch, незачем. Заодно сюда же попадает битый appsettings.panel.json.
+        try
+        {
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(AppContext.BaseDirectory)
+                .AddJsonFile("appsettings.panel.json", optional: false, reloadOnChange: true)
+                .AddJsonFile("appsettings.panel.local.json", optional: true, reloadOnChange: true)
+                .AddEnvironmentVariables(prefix: "SMARTMACRO_")
+                .Build();
 
-        Log.Logger = new LoggerConfiguration()
-            .ReadFrom.Configuration(configuration)
-            .Enrich.FromLogContext()
-            .CreateLogger();
+            // ЯВНЫЙ список сборок вместо поиска по папке — требование портативной раскладки, а
+            // не вкусовщина. Serilog.Settings.Configuration, когда ему не сказали, где искать
+            // методы вроде WriteTo.File, перебирает Serilog*.dll РЯДОМ С СОБОЙ. Пока у панели
+            // была своя папка, это было безобидно. В общей папке он находит серилоговские
+            // расширения ДЕМОНА (Serilog.Extensions.Hosting, Serilog.Extensions.Logging),
+            // грузит их и спотыкается: их зависимости есть у демона и отсутствуют в
+            // SmartMacro.App.deps.json, а значит, для этого процесса недоступны. Панель падала
+            // ровно здесь, на CreateLogger, ещё до первой своей строки в журнале.
+            //
+            // Перечисление убирает перебор целиком: читаются только те две сборки, чьи методы
+            // реально названы в appsettings.panel.json. Демону зеркальная защита не нужна — его
+            // набор Serilog'а надмножество панельного, так что перебор не находит у него ничего
+            // нового.
+            Log.Logger = new LoggerConfiguration()
+                .ReadFrom.Configuration(
+                    configuration,
+                    new ConfigurationReaderOptions(
+                        typeof(ConsoleLoggerConfigurationExtensions).Assembly,
+                        typeof(FileLoggerConfigurationExtensions).Assembly))
+                .Enrich.FromLogContext()
+                .CreateLogger();
+        }
+        catch (Exception ex)
+        {
+            Win32MessageBox.Error(
+                "SmartMacro",
+                "Не удалось поднять журнал панели.\n\n" +
+                $"{ex.Message}\n\n" +
+                "Чаще всего это каталог программы, недоступный для записи: SmartMacro хранит " +
+                "журналы и макросы рядом со своими исполняемыми файлами. Распакуйте папку туда, " +
+                "куда можно писать, и запустите ещё раз.");
+            return 1;
+        }
 
         try
         {

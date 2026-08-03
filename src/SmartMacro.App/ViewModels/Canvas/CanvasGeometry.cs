@@ -199,10 +199,10 @@ public static class CanvasEdgeRouter
     {
         ArgumentNullException.ThrowIfNull(nodes);
 
-        var byId = new Dictionary<string, NodeRowViewModel>(StringComparer.Ordinal);
+        var byId = new Dictionary<Guid, NodeRowViewModel>();
         foreach (var node in nodes)
         {
-            byId[node.NodeId] = node;
+            byId[node.Id] = node;
         }
 
         // Проход первый: собираем пары, чтобы веер, сходящийся в ноду, был известен до того, как
@@ -212,8 +212,8 @@ public static class CanvasEdgeRouter
         {
             for (var i = 0; i < node.Edges.Count; i++)
             {
-                var targetId = node.Edges[i].TargetId;
-                if (targetId.Length == 0 || !byId.TryGetValue(targetId, out var target))
+                if (node.Edges[i].TargetId is not { } targetId ||
+                    !byId.TryGetValue(targetId, out var target))
                 {
                     continue;
                 }
@@ -222,7 +222,7 @@ public static class CanvasEdgeRouter
             }
         }
 
-        var fanTotals = new Dictionary<string, int>(StringComparer.Ordinal);
+        var fanTotals = new Dictionary<Guid, int>();
         foreach (var (source, _, target) in pairs)
         {
             if (IsSideEntry(source, target))
@@ -230,10 +230,10 @@ public static class CanvasEdgeRouter
                 continue;
             }
 
-            fanTotals[target.NodeId] = fanTotals.TryGetValue(target.NodeId, out var n) ? n + 1 : 1;
+            fanTotals[target.Id] = fanTotals.TryGetValue(target.Id, out var n) ? n + 1 : 1;
         }
 
-        var fanSeen = new Dictionary<string, int>(StringComparer.Ordinal);
+        var fanSeen = new Dictionary<Guid, int>();
         var edges = new List<CanvasEdgeViewModel>(pairs.Count);
         foreach (var (source, outcome, target) in pairs)
         {
@@ -243,9 +243,9 @@ public static class CanvasEdgeRouter
                 continue;
             }
 
-            var index = fanSeen.TryGetValue(target.NodeId, out var seen) ? seen : 0;
-            fanSeen[target.NodeId] = index + 1;
-            edges.Add(Route(source, outcome, target, index, fanTotals[target.NodeId]));
+            var index = fanSeen.TryGetValue(target.Id, out var seen) ? seen : 0;
+            fanSeen[target.Id] = index + 1;
+            edges.Add(Route(source, outcome, target, index, fanTotals[target.Id]));
         }
 
         return edges;

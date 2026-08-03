@@ -13,8 +13,8 @@ public class MacroExecutorVariableTests
     {
         var h = new ExecutorHarness();
         var variables = MacroVariables.ForTrigger(new ScreenPoint(640, 360));
-        var graph = ExecutorHarness.Graph("м", "c",
-            new ClickNode { Id = "c", PointVar = "cursor", DoubleClick = true, Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("c"),
+            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", PointVar = "cursor", DoubleClick = true, Next = null });
 
         var result =
             await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
@@ -28,8 +28,8 @@ public class MacroExecutorVariableTests
     public async Task Click_WithLiteralPoint_UsesIt()
     {
         var h = new ExecutorHarness();
-        var graph = ExecutorHarness.Graph("м", "c",
-            new ClickNode { Id = "c", Point = new ScreenPoint(11, 22), Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("c"),
+            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", Point = new ScreenPoint(11, 22), Next = null });
 
         await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
@@ -41,8 +41,8 @@ public class MacroExecutorVariableTests
     public async Task Click_MissingPointVar_AbortsRun()
     {
         var h = new ExecutorHarness();
-        var graph = ExecutorHarness.Graph("м", "c",
-            new ClickNode { Id = "c", PointVar = "нет-такой", Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("c"),
+            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", PointVar = "нет-такой", Next = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
@@ -57,8 +57,8 @@ public class MacroExecutorVariableTests
         var h = new ExecutorHarness();
         var variables = new MacroVariables();
         variables.Set("btn", "строка");
-        var graph = ExecutorHarness.Graph("м", "c",
-            new ClickNode { Id = "c", PointVar = "btn", Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("c"),
+            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", PointVar = "btn", Next = null });
 
         var result =
             await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
@@ -72,8 +72,8 @@ public class MacroExecutorVariableTests
     {
         var h = new ExecutorHarness();
         var variables = MacroVariables.ForTrigger(new ScreenPoint(1, 1));
-        var graph = ExecutorHarness.Graph("м", "c",
-            new ClickNode { Id = "c", Point = new ScreenPoint(2, 2), PointVar = "cursor", Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("c"),
+            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", Point = new ScreenPoint(2, 2), PointVar = "cursor", Next = null });
 
         var result =
             await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
@@ -86,7 +86,7 @@ public class MacroExecutorVariableTests
     public async Task Click_NeitherPointNorPointVar_AbortsRun()
     {
         var h = new ExecutorHarness();
-        var graph = ExecutorHarness.Graph("м", "c", new ClickNode { Id = "c", Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("c"), new ClickNode { Id = Ids.Of("c"), DisplayName = "c", Next = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
@@ -101,8 +101,8 @@ public class MacroExecutorVariableTests
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         var variables = new MacroVariables();
         variables.Set("tag", "виз");
-        var graph = ExecutorHarness.Graph("м", "t",
-            new AddTagNode { Id = "t", Tag = "класс-{tag}", Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("t"),
+            new AddTagNode { Id = Ids.Of("t"), DisplayName = "t", Tag = "класс-{tag}", Next = null });
 
         var result =
             await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
@@ -117,8 +117,8 @@ public class MacroExecutorVariableTests
         var h = new ExecutorHarness();
         var variables = new MacroVariables();
         variables.Set("tag", "жрец");
-        var graph = ExecutorHarness.Graph("м", "i",
-            new SetIconNode { Id = "i", IconPath = "icons/{tag}.png", Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("i"),
+            new SetIconNode { Id = Ids.Of("i"), DisplayName = "i", IconPath = "icons/{tag}.png", Next = null });
 
         await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
 
@@ -131,8 +131,8 @@ public class MacroExecutorVariableTests
     {
         var h = new ExecutorHarness();
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
-        var graph = ExecutorHarness.Graph("м", "t",
-            new AddTagNode { Id = "t", Tag = "{неопределённая}", Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("t"),
+            new AddTagNode { Id = Ids.Of("t"), DisplayName = "t", Tag = "{неопределённая}", Next = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
@@ -147,9 +147,9 @@ public class MacroExecutorVariableTests
         // Заглавный приём из плана: Find(FoundPointVar: "btn") →Found→ Click(PointVar: "btn").
         var h = new ExecutorHarness();
         h.Primitives.FindHandler = (_, _, _) => new ScreenPoint(300, 400);
-        var graph = ExecutorHarness.Graph("м", "f",
-            new FindElementNode { Id = "f", Template = "кнопка", FoundPointVar = "btn", Found = "c", NotFound = null },
-            new ClickNode { Id = "c", PointVar = "btn", Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("f"),
+            new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка", FoundPointVar = "btn", Found = Ids.Of("c"), NotFound = null },
+            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", PointVar = "btn", Next = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 

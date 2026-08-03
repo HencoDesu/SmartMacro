@@ -38,6 +38,7 @@ public class DebuggerProtocolTests
                 Engine.RunEvents,
                 Engine.Log,
                 Engine.Debug,
+                Engine.SettingsSnapshots,
                 NullLogger<IpcServer>.Instance);
             Server.SubscribeToEngine();
             Engine.RunEvents.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
@@ -93,12 +94,12 @@ public class DebuggerProtocolTests
     private static MacroGraph Chain() => new()
     {
         Name = "pw-boot",
-        StartNodeId = "a",
+        StartNodeId = Ids.Of("a"),
         Nodes =
         [
-            new KeyPressNode { Id = "a", Key = VirtualKey.F1, Next = "b" },
-            new KeyPressNode { Id = "b", Key = VirtualKey.F2, Next = "c" },
-            new KeyPressNode { Id = "c", Key = VirtualKey.F3 },
+            new KeyPressNode { Id = Ids.Of("a"), DisplayName = "a", Key = VirtualKey.F1, Next = Ids.Of("b") },
+            new KeyPressNode { Id = Ids.Of("b"), DisplayName = "b", Key = VirtualKey.F2, Next = Ids.Of("c") },
+            new KeyPressNode { Id = Ids.Of("c"), DisplayName = "c", Key = VirtualKey.F3 },
         ],
     };
 
@@ -159,7 +160,7 @@ public class DebuggerProtocolTests
             return Events;
         }
 
-        public async Task<DebugAckDto> CommandAsync(int id, Guid walkId, DebugCommand command, string? nodeId = null)
+        public async Task<DebugAckDto> CommandAsync(int id, Guid walkId, DebugCommand command, Guid? nodeId = null)
         {
             var reply = await RequestAsync(id, IpcMessageTypes.DebugCommand,
                 new DebugCommandRequest(walkId, command, nodeId));
@@ -193,13 +194,13 @@ public class DebuggerProtocolTests
 
         // Взвести её до нажатия «Запустить» — это обычный способ ею пользоваться, так что живой
         // обход здесь не требуется, как и сохранённый макрос.
-        await reader.RequestAsync(1, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["b", "c"]));
+        await reader.RequestAsync(1, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("b"), Ids.Of("c")]));
         var reply = await reader.RequestAsync(2, IpcMessageTypes.GetBreakpoints);
 
         var sets = IpcJson.Read<BreakpointSetDto[]>(reply.GetProperty("Payload"))!;
         await Assert.That(sets).Count().IsEqualTo(1);
         await Assert.That(sets[0].MacroName).IsEqualTo("pw-boot");
-        await Assert.That(sets[0].NodeIds).IsEquivalentTo(new[] { "b", "c" });
+        await Assert.That(sets[0].NodeIds).IsEquivalentTo(new[] { Ids.Of("b"), Ids.Of("c") });
 
         client.CloseClient();
         await serve;
@@ -212,7 +213,7 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
 
-        await reader.RequestAsync(1, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["b"]));
+        await reader.RequestAsync(1, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
         await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", []));
         var reply = await reader.RequestAsync(3, IpcMessageTypes.GetBreakpoints);
 
@@ -231,7 +232,7 @@ public class DebuggerProtocolTests
         await using var fixture = new Fixture();
         var (first, firstServe) = await fixture.ConnectAsync();
         await new Reader(first).RequestAsync(1, IpcMessageTypes.SetBreakpoints,
-            new SetBreakpointsRequest("pw-boot", ["b"]));
+            new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
         first.CloseClient();
         await firstServe;
 
@@ -239,7 +240,7 @@ public class DebuggerProtocolTests
         var reply = await new Reader(second).RequestAsync(1, IpcMessageTypes.GetBreakpoints);
 
         await Assert.That(IpcJson.Read<BreakpointSetDto[]>(reply.GetProperty("Payload"))!.Single().NodeIds)
-            .IsEquivalentTo(new[] { "b" });
+            .IsEquivalentTo(new[] { Ids.Of("b") });
 
         second.CloseClient();
         await secondServe;
@@ -254,13 +255,13 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
         await reader.SubscribeAsync(1);
-        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["a"]));
+        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("a")]));
 
         var run = fixture.RunAsync(Chain());
 
         var events = await reader.UntilAsync(all => all.Any(e => e.Kind == RunEventKind.BreakpointHit));
         var hit = events.Single(e => e.Kind == RunEventKind.BreakpointHit);
-        await Assert.That(hit.NodeId).IsEqualTo("a");
+        await Assert.That(hit.NodeName).IsEqualTo("a");
         await Assert.That(hit.Detail).IsEqualTo("брейкпоинт");
         await Assert.That(fixture.Primitives.Calls).IsEmpty();
 
@@ -269,9 +270,9 @@ public class DebuggerProtocolTests
 
         events = await reader.UntilAsync(all => all.Any(e => e.Kind == RunEventKind.Paused));
         var stepped = events.Single(e => e.Kind == RunEventKind.Paused);
-        await Assert.That(stepped.NodeId).IsEqualTo("b");
+        await Assert.That(stepped.NodeName).IsEqualTo("b");
         await Assert.That(stepped.Detail).IsEqualTo("шаг");
-        await Assert.That(events.Any(e => e.Kind == RunEventKind.Resumed && e.NodeId == "a")).IsTrue();
+        await Assert.That(events.Any(e => e.Kind == RunEventKind.Resumed && e.NodeName == "a")).IsTrue();
 
         await reader.CommandAsync(4, hit.WalkId, DebugCommand.Resume);
         var result = await run.WaitAsync(TimeSpan.FromSeconds(5));
@@ -294,12 +295,12 @@ public class DebuggerProtocolTests
         var graph = new MacroGraph
         {
             Name = "pw-identify-one",
-            StartNodeId = "recognize-class",
+            StartNodeId = Ids.Of("recognize-class"),
             Nodes =
             [
                 new RecognizeTagNode
                 {
-                    Id = "recognize-class",
+                    Id = Ids.Of("recognize-class"), DisplayName = "recognize-class",
                     TemplateSet = "classes",
                     Region = new ScreenRect(0, 0, 160, 35),
                     ApplyTag = false,
@@ -319,7 +320,7 @@ public class DebuggerProtocolTests
         await Assert.That(cursor.Detail).IsEqualTo(new ScreenPoint(1804, 902).ToString());
 
         var tag = vars.Single(e => e.Variable == "tag");
-        await Assert.That(tag.NodeId).IsEqualTo("recognize-class");
+        await Assert.That(tag.NodeName).IsEqualTo("recognize-class");
         await Assert.That(tag.Detail).IsEqualTo("Жрец");
 
         client.CloseClient();
@@ -335,7 +336,7 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
         await reader.SubscribeAsync(1);
-        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["b"]));
+        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
 
         var run = fixture.RunAsync(Chain());
         await reader.UntilAsync(all => all.Any(e => e.Kind == RunEventKind.BreakpointHit));
@@ -363,7 +364,7 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
         await reader.SubscribeAsync(1);
-        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["b"]));
+        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
 
         var run = fixture.RunAsync(Chain());
         await reader.UntilAsync(all => all.Any(e => e.Kind == RunEventKind.BreakpointHit));
@@ -405,7 +406,7 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
         await reader.SubscribeAsync(1);
-        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["b"]));
+        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
 
         using var cts = new CancellationTokenSource();
         var run = fixture.RunAsync(Chain(), cts.Token);
@@ -447,7 +448,7 @@ public class DebuggerProtocolTests
         await reader.UntilAsync(all => all.Count > 0);
         control.Stop();
 
-        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["a"]));
+        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("a")]));
 
         // Тот же путь, но событие срочное: оно обязано прервать выдержку, а не досидеть её.
         var mark = reader.Events.Count;

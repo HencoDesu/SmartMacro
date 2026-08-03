@@ -21,21 +21,26 @@ public interface IMacroPrimitives
     /// <summary>
     /// Одноразовое сопоставление шаблона по окну (с обрезкой по <paramref name="region"/>, если
     /// она задана). Возвращает центр совпадения или <c>null</c>, если ничего не нашлось.
+    /// <paramref name="matchThreshold"/> — порог этой ноды; <c>null</c> = умолчание слоя зрения.
     /// </summary>
-    Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, string template, ScreenRect? region, CancellationToken ct);
+    Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, string template, ScreenRect? region, double? matchThreshold,
+        CancellationToken ct);
 
     /// <summary>
     /// Опрашивает окно, пока шаблон не появится или пока не истечёт <paramref name="timeoutMs"/>.
     /// Возвращает центр совпадения или <c>null</c> по таймауту.
+    /// <paramref name="matchThreshold"/> — порог этой ноды; <c>null</c> = умолчание слоя зрения.
     /// </summary>
     Task<ScreenPoint?> WaitForElementAsync(IntPtr hwnd, string template, ScreenRect? region, int timeoutMs,
-        CancellationToken ct);
+        double? matchThreshold, CancellationToken ct);
 
     /// <summary>
     /// Сопоставляет набор шаблонов с областью <paramref name="region"/> окна. Возвращает имя
     /// лучшего по совпадению шаблона (оно же тег) или <c>null</c>, если порог никто не взял.
+    /// <paramref name="matchThreshold"/> — порог этой ноды; <c>null</c> = умолчание сопоставителя.
     /// </summary>
-    Task<string?> RecognizeAsync(IntPtr hwnd, string templateSet, ScreenRect region, CancellationToken ct);
+    Task<string?> RecognizeAsync(IntPtr hwnd, string templateSet, ScreenRect region, double? matchThreshold,
+        CancellationToken ct);
 
     /// <summary>Ставит окну иконку из изображения по пути <paramref name="iconPath"/>.</summary>
     Task SetIconAsync(IntPtr hwnd, string iconPath, CancellationToken ct);

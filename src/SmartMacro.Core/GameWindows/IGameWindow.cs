@@ -106,9 +106,10 @@ public interface IGameWindow
     /// </summary>
     /// <param name="elementTemplate">Изображение искомого элемента интерфейса, закодированное в PNG.</param>
     /// <param name="position">Область обрезки в клиентских координатах. Пустая (Width=0 или Height=0) означает «искать по всей клиентской области».</param>
+    /// <param name="matchThreshold">Порог совпадения, заданный НОДОЙ; <c>null</c> = настроенное умолчание окна.</param>
     /// <param name="cancellationToken">Токен отмены.</param>
     /// <returns>ЦЕНТР совпадения в клиентских координатах или <c>null</c>, если ничто не набрало выше порога (либо захват не удался).</returns>
-    Task<ScreenPoint?> FindElementAsync(byte[] elementTemplate, ScreenRect position,
+    Task<ScreenPoint?> FindElementAsync(byte[] elementTemplate, ScreenRect position, double? matchThreshold = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -120,6 +121,7 @@ public interface IGameWindow
     /// <param name="elementTemplate">Изображение искомого элемента интерфейса, закодированное в PNG.</param>
     /// <param name="position">Область обрезки в клиентских координатах. Пустая (Width=0 или Height=0) означает «искать по всей клиентской области».</param>
     /// <param name="waitDuration">Общий бюджет времени — как только он исчерпан, сдаёмся.</param>
+    /// <param name="matchThreshold">Порог совпадения, заданный НОДОЙ; <c>null</c> = настроенное умолчание окна.</param>
     /// <param name="cancellationToken">Токен отмены.</param>
     /// <returns>
     /// ЦЕНТР совпадения в клиентских координатах в первый же раз, когда оно набирает выше
@@ -127,5 +129,5 @@ public interface IGameWindow
     /// а потом кликнуть по ней» через <c>FoundPointVar</c>.
     /// </returns>
     Task<ScreenPoint?> WaitForElementAsync(byte[] elementTemplate, ScreenRect position, TimeSpan waitDuration,
-        CancellationToken cancellationToken = default);
+        double? matchThreshold = null, CancellationToken cancellationToken = default);
 }

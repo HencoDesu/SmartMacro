@@ -37,29 +37,33 @@ public class DtoTests
         await Assert.That(withNode.RunId).IsEqualTo(runId);
         await Assert.That(withNode.MacroName).IsEqualTo("pw-boot");
         await Assert.That(withNode.StartedUtc).IsEqualTo(started);
-        await Assert.That(withNode.CurrentNodeId).IsEqualTo("wait");
+        await Assert.That(withNode.CurrentNodeName).IsEqualTo("wait");
 
         var beforeFirstNode = RoundTrip(new RunningMacroDto(runId, "pw-boot", started, null));
-        await Assert.That(beforeFirstNode.CurrentNodeId).IsNull();
+        await Assert.That(beforeFirstNode.CurrentNodeName).IsNull();
     }
 
     [Test]
     public async Task ValidationIssueDto_RoundTrips()
     {
-        var reloaded = RoundTrip(new ValidationIssueDto("Error", "click1",
+        var node = Ids.Of("click1");
+        var reloaded = RoundTrip(new ValidationIssueDto("Error", node, "click-1",
             "У ClickNode должно быть задано ровно одно из Point / PointVar."));
 
         await Assert.That(reloaded.Severity).IsEqualTo("Error");
-        await Assert.That(reloaded.NodeId).IsEqualTo("click1");
+        // Нода названа дважды: id — то, по чему редактор её найдёт, имя — то, что он напечатает.
+        await Assert.That(reloaded.NodeId).IsEqualTo(node);
+        await Assert.That(reloaded.NodeName).IsEqualTo("click-1");
 
-        var graphLevel = RoundTrip(new ValidationIssueDto("Warning", null, "Нода недостижима из StartNodeId."));
+        var graphLevel = RoundTrip(new ValidationIssueDto("Warning", null, null, "Нода недостижима из стартовой."));
         await Assert.That(graphLevel.NodeId).IsNull();
+        await Assert.That(graphLevel.NodeName).IsNull();
     }
 
     [Test]
     public async Task ValidationIssue_MapsBothWays()
     {
-        var issue = new ValidationIssue(ValidationSeverity.Warning, "n1", "хот-луп");
+        var issue = new ValidationIssue(ValidationSeverity.Warning, Ids.Of("n1"), "delay-1", "хот-луп");
 
         var dto = issue.ToDto();
         await Assert.That(dto.Severity).IsEqualTo("Warning");
@@ -72,7 +76,7 @@ public class DtoTests
     public async Task ValidationIssue_UnknownSeverity_ReadsAsError()
     {
         // То, что не поддаётся классификации, никогда не понижаем в важности молча.
-        var parsed = new ValidationIssueDto("Catastrophe", null, "?").ToIssue();
+        var parsed = new ValidationIssueDto("Catastrophe", null, null, "?").ToIssue();
 
         await Assert.That(parsed.Severity).IsEqualTo(ValidationSeverity.Error);
     }
@@ -83,8 +87,8 @@ public class DtoTests
         // SaveMacro отвечает массивом замечаний; пустой означает «сохранено».
         IReadOnlyList<ValidationIssue> issues =
         [
-            new(ValidationSeverity.Error, "a", "битая ссылка"),
-            new(ValidationSeverity.Warning, null, "недостижимая нода"),
+            new(ValidationSeverity.Error, Ids.Of("a"), "click-1", "битая ссылка"),
+            new(ValidationSeverity.Warning, null, null, "недостижимая нода"),
         ];
 
         var response = new IpcResponse(1, Ok: true, IpcJson.Write(issues.ToDto()));
@@ -126,7 +130,7 @@ public class DtoTests
         await Assert.That(dto.RunId).IsEqualTo(runId);
         await Assert.That(dto.StartedUtc.Offset).IsEqualTo(TimeSpan.Zero);
         await Assert.That(dto.StartedUtc.UtcDateTime).IsEqualTo(started);
-        await Assert.That(dto.CurrentNodeId).IsEqualTo("delay1");
+        await Assert.That(dto.CurrentNodeName).IsEqualTo("delay1");
     }
 
     [Test]

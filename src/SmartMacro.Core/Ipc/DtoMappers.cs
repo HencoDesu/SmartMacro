@@ -37,7 +37,7 @@ public static class DtoMappers
     public static RunningMacroDto ToDto(this MacroRunSnapshot run)
     {
         ArgumentNullException.ThrowIfNull(run);
-        return new RunningMacroDto(run.RunId, run.MacroName, ToUtcOffset(run.StartedUtc), run.CurrentNodeId);
+        return new RunningMacroDto(run.RunId, run.MacroName, ToUtcOffset(run.StartedUtc), run.CurrentNodeName);
     }
 
     /// <summary>Проецирует последовательность снимков прогонов на их проводную форму.</summary>

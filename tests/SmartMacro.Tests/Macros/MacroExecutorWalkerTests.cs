@@ -14,10 +14,10 @@ public class MacroExecutorWalkerTests
     public async Task Chain_ExecutesNodesInEdgeOrder()
     {
         var h = new ExecutorHarness();
-        var graph = ExecutorHarness.Graph("цепочка", "k1",
-            new KeyPressNode { Id = "k1", Key = VirtualKey.F1, Next = "d" },
-            new DelayNode { Id = "d", Ms = 0, Next = "k2" },
-            new KeyPressNode { Id = "k2", Key = VirtualKey.F2, Next = null });
+        var graph = ExecutorHarness.Graph("цепочка", Ids.Of("k1"),
+            new KeyPressNode { Id = Ids.Of("k1"), DisplayName = "k1", Key = VirtualKey.F1, Next = Ids.Of("d") },
+            new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 0, Next = Ids.Of("k2") },
+            new KeyPressNode { Id = Ids.Of("k2"), DisplayName = "k2", Key = VirtualKey.F2, Next = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
@@ -34,9 +34,9 @@ public class MacroExecutorWalkerTests
     {
         var h = new ExecutorHarness();
         var entered = new List<string>();
-        var graph = ExecutorHarness.Graph("м", "k1",
-            new KeyPressNode { Id = "k1", Key = VirtualKey.F1, Next = "k2" },
-            new KeyPressNode { Id = "k2", Key = VirtualKey.F2, Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("k1"),
+            new KeyPressNode { Id = Ids.Of("k1"), DisplayName = "k1", Key = VirtualKey.F1, Next = Ids.Of("k2") },
+            new KeyPressNode { Id = Ids.Of("k2"), DisplayName = "k2", Key = VirtualKey.F2, Next = null });
 
         await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, onNodeEntered: entered.Add),
             CancellationToken.None);
@@ -50,11 +50,11 @@ public class MacroExecutorWalkerTests
         var h = new ExecutorHarness();
         h.Primitives.FindHandler = (_, _, _) => new ScreenPoint(50, 60);
         var context = h.Context(ExecutorHarness.Window);
-        var graph = ExecutorHarness.Graph("м", "f",
+        var graph = ExecutorHarness.Graph("м", Ids.Of("f"),
             new FindElementNode
-                { Id = "f", Template = "кнопка", FoundPointVar = "btn", Found = "yes", NotFound = "no" },
-            new KeyPressNode { Id = "yes", Key = VirtualKey.F1, Next = null },
-            new KeyPressNode { Id = "no", Key = VirtualKey.F2, Next = null });
+                { Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка", FoundPointVar = "btn", Found = Ids.Of("yes"), NotFound = Ids.Of("no") },
+            new KeyPressNode { Id = Ids.Of("yes"), DisplayName = "yes", Key = VirtualKey.F1, Next = null },
+            new KeyPressNode { Id = Ids.Of("no"), DisplayName = "no", Key = VirtualKey.F2, Next = null });
 
         var result = await h.Executor.RunAsync(graph, context, CancellationToken.None);
 
@@ -68,11 +68,11 @@ public class MacroExecutorWalkerTests
     {
         var h = new ExecutorHarness();
         var context = h.Context(ExecutorHarness.Window);
-        var graph = ExecutorHarness.Graph("м", "f",
+        var graph = ExecutorHarness.Graph("м", Ids.Of("f"),
             new FindElementNode
-                { Id = "f", Template = "кнопка", FoundPointVar = "btn", Found = "yes", NotFound = "no" },
-            new KeyPressNode { Id = "yes", Key = VirtualKey.F1, Next = null },
-            new KeyPressNode { Id = "no", Key = VirtualKey.F2, Next = null });
+                { Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка", FoundPointVar = "btn", Found = Ids.Of("yes"), NotFound = Ids.Of("no") },
+            new KeyPressNode { Id = Ids.Of("yes"), DisplayName = "yes", Key = VirtualKey.F1, Next = null },
+            new KeyPressNode { Id = Ids.Of("no"), DisplayName = "no", Key = VirtualKey.F2, Next = null });
 
         var result = await h.Executor.RunAsync(graph, context, CancellationToken.None);
 
@@ -85,9 +85,9 @@ public class MacroExecutorWalkerTests
     public async Task WaitForElement_Timeout_TakesTimeoutEdge_NullEdgeEndsRun()
     {
         var h = new ExecutorHarness();
-        var graph = ExecutorHarness.Graph("м", "w",
-            new WaitForElementNode { Id = "w", Template = "мир", TimeoutMs = 5000, Found = "yes", Timeout = null },
-            new KeyPressNode { Id = "yes", Key = VirtualKey.F1, Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("w"),
+            new WaitForElementNode { Id = Ids.Of("w"), DisplayName = "w", Template = "мир", TimeoutMs = 5000, Found = Ids.Of("yes"), Timeout = null },
+            new KeyPressNode { Id = Ids.Of("yes"), DisplayName = "yes", Key = VirtualKey.F1, Next = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
@@ -103,9 +103,9 @@ public class MacroExecutorWalkerTests
         var h = new ExecutorHarness();
         h.Primitives.WaitHandler = (_, _, _, _) => new ScreenPoint(7, 8);
         var context = h.Context(ExecutorHarness.Window);
-        var graph = ExecutorHarness.Graph("м", "w",
+        var graph = ExecutorHarness.Graph("м", Ids.Of("w"),
             new WaitForElementNode
-                { Id = "w", Template = "мир", TimeoutMs = 5000, FoundPointVar = "pt", Found = null, Timeout = null });
+                { Id = Ids.Of("w"), DisplayName = "w", Template = "мир", TimeoutMs = 5000, FoundPointVar = "pt", Found = null, Timeout = null });
 
         var result = await h.Executor.RunAsync(graph, context, CancellationToken.None);
 
@@ -120,14 +120,14 @@ public class MacroExecutorWalkerTests
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         h.Primitives.RecognizeHandler = (_, _, _) => "виз";
         var context = h.Context(ExecutorHarness.Window);
-        var graph = ExecutorHarness.Graph("м", "r",
+        var graph = ExecutorHarness.Graph("м", Ids.Of("r"),
             new RecognizeTagNode
             {
-                Id = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 10, 10),
-                ResultVar = "класс", Matched = "hit", NotMatched = "miss",
+                Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 10, 10),
+                ResultVar = "класс", Matched = Ids.Of("hit"), NotMatched = Ids.Of("miss"),
             },
-            new KeyPressNode { Id = "hit", Key = VirtualKey.F1, Next = null },
-            new KeyPressNode { Id = "miss", Key = VirtualKey.F2, Next = null });
+            new KeyPressNode { Id = Ids.Of("hit"), DisplayName = "hit", Key = VirtualKey.F1, Next = null },
+            new KeyPressNode { Id = Ids.Of("miss"), DisplayName = "miss", Key = VirtualKey.F2, Next = null });
 
         var result = await h.Executor.RunAsync(graph, context, CancellationToken.None);
 
@@ -143,13 +143,13 @@ public class MacroExecutorWalkerTests
         var h = new ExecutorHarness();
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         var context = h.Context(ExecutorHarness.Window);
-        var graph = ExecutorHarness.Graph("м", "r",
+        var graph = ExecutorHarness.Graph("м", Ids.Of("r"),
             new RecognizeTagNode
             {
-                Id = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 10, 10),
-                Matched = "hit", NotMatched = null,
+                Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 10, 10),
+                Matched = Ids.Of("hit"), NotMatched = null,
             },
-            new KeyPressNode { Id = "hit", Key = VirtualKey.F1, Next = null });
+            new KeyPressNode { Id = Ids.Of("hit"), DisplayName = "hit", Key = VirtualKey.F1, Next = null });
 
         var result = await h.Executor.RunAsync(graph, context, CancellationToken.None);
 
@@ -166,10 +166,10 @@ public class MacroExecutorWalkerTests
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         h.Primitives.RecognizeHandler = (_, _, _) => "жрец";
         var context = h.Context(ExecutorHarness.Window);
-        var graph = ExecutorHarness.Graph("м", "r",
+        var graph = ExecutorHarness.Graph("м", Ids.Of("r"),
             new RecognizeTagNode
             {
-                Id = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 10, 10),
+                Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 10, 10),
                 ApplyTag = false, Matched = null, NotMatched = null,
             });
 
@@ -189,10 +189,10 @@ public class MacroExecutorWalkerTests
         h.Registry.Register(w2, "elementclient");
         h.Registry.AddTag(w2, "перс");
         h.Registry.Register(w3, "elementclient");
-        var graph = ExecutorHarness.Graph("м", "k",
+        var graph = ExecutorHarness.Graph("м", Ids.Of("k"),
             new KeyPressNode
             {
-                Id = "k", Key = VirtualKey.F8,
+                Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8,
                 Target = new TargetSelector { RequireTags = ["перс"] }, Next = null,
             });
 
@@ -210,13 +210,13 @@ public class MacroExecutorWalkerTests
     public async Task FanOut_ZeroMatches_IsNoOp_RunContinues()
     {
         var h = new ExecutorHarness();
-        var graph = ExecutorHarness.Graph("м", "k",
+        var graph = ExecutorHarness.Graph("м", Ids.Of("k"),
             new KeyPressNode
             {
-                Id = "k", Key = VirtualKey.F8,
-                Target = new TargetSelector { RequireTags = ["нет-таких"] }, Next = "k2",
+                Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8,
+                Target = new TargetSelector { RequireTags = ["нет-таких"] }, Next = Ids.Of("k2"),
             },
-            new KeyPressNode { Id = "k2", Key = VirtualKey.F9, Target = new TargetSelector(), Next = null });
+            new KeyPressNode { Id = Ids.Of("k2"), DisplayName = "k2", Key = VirtualKey.F9, Target = new TargetSelector(), Next = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(window: null), CancellationToken.None);
 
@@ -230,8 +230,8 @@ public class MacroExecutorWalkerTests
         var h = new ExecutorHarness();
         // Другие окна есть — действие без цели НЕ имеет права разворачиваться веером на них.
         h.Registry.Register(new IntPtr(1), "elementclient");
-        var graph = ExecutorHarness.Graph("м", "k",
-            new KeyPressNode { Id = "k", Key = VirtualKey.F8, Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("k"),
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8, Next = null });
 
         await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
@@ -246,8 +246,8 @@ public class MacroExecutorWalkerTests
         var primitives = A.Fake<IMacroPrimitives>();
         var h = new ExecutorHarness();
         var executor = new MacroExecutor(primitives, h.Registry, h.Resolver, NullLogger<MacroExecutor>.Instance);
-        var graph = ExecutorHarness.Graph("м", "k",
-            new KeyPressNode { Id = "k", Key = VirtualKey.F8, Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("k"),
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8, Next = null });
 
         var result = await executor.RunAsync(graph, h.Context(window: null), CancellationToken.None);
 
@@ -260,8 +260,8 @@ public class MacroExecutorWalkerTests
     public async Task ConditionalWithoutContext_Aborts()
     {
         var h = new ExecutorHarness();
-        var graph = ExecutorHarness.Graph("м", "f",
-            new FindElementNode { Id = "f", Template = "кнопка", Found = null, NotFound = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("f"),
+            new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка", Found = null, NotFound = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(window: null), CancellationToken.None);
 
@@ -274,22 +274,24 @@ public class MacroExecutorWalkerTests
     public async Task EdgeToUnknownNode_Aborts()
     {
         var h = new ExecutorHarness();
-        var graph = ExecutorHarness.Graph("м", "k",
-            new KeyPressNode { Id = "k", Key = VirtualKey.F8, Next = "призрак" });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("k"),
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8, Next = Ids.Of("призрак") });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("призрак");
+        // Ноду-призрак назвать нечем: её в графе нет, а голый guid читателю лога ничего не
+        // сообщит. Важно, что обход оборвался и сказал почему.
+        await Assert.That(result.Error!).Contains("ноду, которой в графе нет");
     }
 
     [Test]
     public async Task DuplicateNodeIds_Abort()
     {
         var h = new ExecutorHarness();
-        var graph = ExecutorHarness.Graph("м", "k",
-            new KeyPressNode { Id = "k", Key = VirtualKey.F8, Next = null },
-            new DelayNode { Id = "k", Ms = 1, Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("k"),
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8, Next = null },
+            new DelayNode { Id = Ids.Of("k"), DisplayName = "k", Ms = 1, Next = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
@@ -303,9 +305,9 @@ public class MacroExecutorWalkerTests
         var h = new ExecutorHarness();
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         h.Registry.AddTag(ExecutorHarness.Window, "старый");
-        var graph = ExecutorHarness.Graph("м", "add",
-            new AddTagNode { Id = "add", Tag = "новый", Next = "rm" },
-            new RemoveTagNode { Id = "rm", Tag = "старый", Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("add"),
+            new AddTagNode { Id = Ids.Of("add"), DisplayName = "add", Tag = "новый", Next = Ids.Of("rm") },
+            new RemoveTagNode { Id = Ids.Of("rm"), DisplayName = "rm", Tag = "старый", Next = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
@@ -327,9 +329,9 @@ public class MacroExecutorWalkerTests
                 enteredDelay.TrySetResult();
             }
         });
-        var graph = ExecutorHarness.Graph("м", "d",
-            new DelayNode { Id = "d", Ms = 60_000, Next = "k" },
-            new KeyPressNode { Id = "k", Key = VirtualKey.F8, Next = null });
+        var graph = ExecutorHarness.Graph("м", Ids.Of("d"),
+            new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 60_000, Next = Ids.Of("k") },
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8, Next = null });
 
         var runTask = h.Executor.RunAsync(graph, context, cts.Token);
         await enteredDelay.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -338,5 +340,39 @@ public class MacroExecutorWalkerTests
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Cancelled);
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
+    }
+    // ---- порог совпадения на ноде -------------------------------------------------------------
+
+    [Test]
+    public async Task MatchThreshold_TravelsFromTheNodeToThePrimitives()
+    {
+        // Порог принадлежит НОДЕ, а не конфигу: одна и та же операция в разных местах экрана
+        // требует разной точности. Ходом «null = умолчание слоя зрения» пользуются те ноды, где
+        // автор его не трогал, — и до примитивов он тоже обязан доехать именно как null.
+        var h = new ExecutorHarness();
+        h.Primitives.FindHandler = (_, _, _) => new ScreenPoint(1, 1);
+        h.Primitives.WaitHandler = (_, _, _, _) => new ScreenPoint(1, 1);
+        h.Primitives.RecognizeHandler = (_, _, _) => "Жрец";
+
+        var graph = ExecutorHarness.Graph("пороги", Ids.Of("f"),
+            new FindElementNode
+            {
+                Id = Ids.Of("f"), DisplayName = "find-1", Template = "т", MatchThreshold = 0.9,
+                Found = Ids.Of("w"), NotFound = null,
+            },
+            new WaitForElementNode
+            {
+                Id = Ids.Of("w"), DisplayName = "wait-2", Template = "т", TimeoutMs = 1,
+                Found = Ids.Of("r"), Timeout = null,
+            },
+            new RecognizeTagNode
+            {
+                Id = Ids.Of("r"), DisplayName = "recognize-3", TemplateSet = "classes",
+                Region = new ScreenRect(0, 0, 1, 1), MatchThreshold = 0.55, ApplyTag = false,
+            });
+
+        await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
+
+        await Assert.That(h.Primitives.Thresholds).IsEquivalentTo(new double?[] { 0.9, null, 0.55 });
     }
 }

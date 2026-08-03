@@ -35,15 +35,15 @@ public class NodeRowRoundTripTests
             new HotkeyTrigger(HotkeyModifiers.None, default, MouseButton.XButton1),
             new ProcessAppearedTrigger("elementclient_64"),
         ],
-        StartNodeId = "key",
+        StartNodeId = Ids.Of("key"),
         Nodes =
         [
             new KeyPressNode
             {
-                Id = "key",
+                Id = Ids.Of("key"), DisplayName = "key",
                 Key = VirtualKey.F8,
                 Target = new TargetSelector { RequireTags = ["Лучник", "в бою"], ExcludeTags = ["Шаман"] },
-                Next = "click",
+                Next = Ids.Of("click"),
                 Editor = new NodeEditorInfo(12.5, -40),
             },
             // Селектор есть, но он пустой — это «каждое зарегистрированное окно», и это НЕ то же
@@ -51,64 +51,64 @@ public class NodeRowRoundTripTests
             // UseSelector в редакторе.
             new ClickNode
             {
-                Id = "click",
+                Id = Ids.Of("click"), DisplayName = "click",
                 Point = new ScreenPoint(285, 456),
                 DoubleClick = true,
                 Target = new TargetSelector(),
-                Next = "click-var",
+                Next = Ids.Of("click-var"),
             },
-            new ClickNode { Id = "click-var", PointVar = "cursor", Next = "delay" },
-            new DelayNode { Id = "delay", Ms = 1500, Next = "add" },
+            new ClickNode { Id = Ids.Of("click-var"), DisplayName = "click-var", PointVar = "cursor", Next = Ids.Of("delay") },
+            new DelayNode { Id = Ids.Of("delay"), DisplayName = "delay", Ms = 1500, Next = Ids.Of("add") },
             new AddTagNode
             {
-                Id = "add",
+                Id = Ids.Of("add"), DisplayName = "add",
                 Tag = "Лучник",
                 Target = new TargetSelector { ExcludeTags = ["Шаман"] },
-                Next = "remove",
+                Next = Ids.Of("remove"),
             },
-            new RemoveTagNode { Id = "remove", Tag = "{tag}", Next = "icon" },
+            new RemoveTagNode { Id = Ids.Of("remove"), DisplayName = "remove", Tag = "{tag}", Next = Ids.Of("icon") },
             new SetIconNode
             {
-                Id = "icon",
+                Id = Ids.Of("icon"), DisplayName = "icon",
                 IconPath = "Assets/ClassIcons/{tag}.png",
                 Target = new TargetSelector { RequireTags = ["Жрец"] },
-                Next = "run",
+                Next = Ids.Of("run"),
             },
             new RunMacroNode
             {
-                Id = "run",
+                Id = Ids.Of("run"), DisplayName = "run",
                 MacroName = "pw-identify-one",
                 Await = false,
                 Target = new TargetSelector { ExcludeTags = ["Шаман"] },
-                Next = "find",
+                Next = Ids.Of("find"),
             },
             new FindElementNode
             {
-                Id = "find",
+                Id = Ids.Of("find"), DisplayName = "find",
                 Template = "ServerSelectButton",
                 Region = new ScreenRect(10, 20, 300, 40),
                 FoundPointVar = "btn",
-                Found = "wait",
+                Found = Ids.Of("wait"),
                 NotFound = null,
             },
             // Region намеренно пуст — это форма «искать по всему окну».
             new WaitForElementNode
             {
-                Id = "wait",
+                Id = Ids.Of("wait"), DisplayName = "wait",
                 Template = "ChatPanelButtons",
                 TimeoutMs = 60_000,
-                Found = "recognize",
+                Found = Ids.Of("recognize"),
                 Timeout = null,
             },
             new RecognizeTagNode
             {
-                Id = "recognize",
+                Id = Ids.Of("recognize"), DisplayName = "recognize",
                 TemplateSet = "classes",
                 Region = new ScreenRect(3200, 1060, 160, 35),
                 ApplyTag = false,
                 ResultVar = "cls",
                 Matched = null,
-                NotMatched = "key",
+                NotMatched = Ids.Of("key"),
             },
         ],
     };
@@ -126,8 +126,8 @@ public class NodeRowRoundTripTests
     [Test]
     public async Task NullSelector_And_EmptySelector_StayDistinct()
     {
-        var contextWindow = new KeyPressNode { Id = "n", Key = VirtualKey.A, Target = null };
-        var everyWindow = new KeyPressNode { Id = "n", Key = VirtualKey.A, Target = new TargetSelector() };
+        var contextWindow = new KeyPressNode { Id = Ids.Of("n"), DisplayName = "n", Key = VirtualKey.A, Target = null };
+        var everyWindow = new KeyPressNode { Id = Ids.Of("n"), DisplayName = "n", Key = VirtualKey.A, Target = new TargetSelector() };
 
         var (_, contextAfter) = RoundTrip(contextWindow);
         var (_, everyAfter) = RoundTrip(everyWindow);
@@ -140,7 +140,7 @@ public class NodeRowRoundTripTests
     [Test]
     public async Task CanvasCoordinates_AreCarriedThrough_EvenThoughTheRowsEditorNeverShowsThem()
     {
-        var node = new DelayNode { Id = "d", Ms = 250, Editor = new NodeEditorInfo(700, 42) };
+        var node = new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 250, Editor = new NodeEditorInfo(700, 42) };
 
         var result = (DelayNode)NodeRowViewModel.FromNode(node).ToNode();
 
@@ -162,9 +162,9 @@ public class NodeRowRoundTripTests
     [Test]
     public async Task EdgeLabels_MatchTheNodeFamily()
     {
-        var find = NodeRowViewModel.FromNode(new FindElementNode { Id = "f", Template = "t" });
-        var wait = NodeRowViewModel.FromNode(new WaitForElementNode { Id = "w", Template = "t", TimeoutMs = 1 });
-        var key = NodeRowViewModel.FromNode(new KeyPressNode { Id = "k", Key = VirtualKey.A });
+        var find = NodeRowViewModel.FromNode(new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "t" });
+        var wait = NodeRowViewModel.FromNode(new WaitForElementNode { Id = Ids.Of("w"), DisplayName = "w", Template = "t", TimeoutMs = 1 });
+        var key = NodeRowViewModel.FromNode(new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A });
 
         await Assert.That(find.Edges.Select(e => e.Label)).IsEquivalentTo(new[] { "Найдено", "Не найдено" });
         await Assert.That(wait.Edges.Select(e => e.Label)).IsEquivalentTo(new[] { "Найдено", "Таймаут" });
@@ -180,7 +180,7 @@ public class NodeRowRoundTripTests
     [Arguments(0, "0")]
     public async Task Delay_MsRendersAsSeconds(int ms, string expected)
     {
-        var row = (DelayNodeRowViewModel)NodeRowViewModel.FromNode(new DelayNode { Id = "d", Ms = ms });
+        var row = (DelayNodeRowViewModel)NodeRowViewModel.FromNode(new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = ms });
 
         await Assert.That(row.SecondsText).IsEqualTo(expected);
     }
@@ -195,7 +195,7 @@ public class NodeRowRoundTripTests
     [Arguments("", 0)]
     public async Task Delay_SecondsParseBackToMs(string text, int expected)
     {
-        var row = (DelayNodeRowViewModel)NodeRowViewModel.FromNode(new DelayNode { Id = "d", Ms = 0 });
+        var row = (DelayNodeRowViewModel)NodeRowViewModel.FromNode(new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 0 });
         row.SecondsText = text;
 
         await Assert.That(((DelayNode)row.ToNode()).Ms).IsEqualTo(expected);
@@ -207,7 +207,7 @@ public class NodeRowRoundTripTests
     [Arguments("-1")]
     public async Task Delay_RejectsNonsense(string text)
     {
-        var row = (DelayNodeRowViewModel)NodeRowViewModel.FromNode(new DelayNode { Id = "пауза", Ms = 0 });
+        var row = (DelayNodeRowViewModel)NodeRowViewModel.FromNode(new DelayNode { Id = Ids.Of("пауза"), DisplayName = "пауза", Ms = 0 });
         row.SecondsText = text;
 
         await Assert.That(row.GetInputErrors()).IsNotEmpty();
@@ -219,7 +219,7 @@ public class NodeRowRoundTripTests
     public async Task Click_LiteralPoint_LeavesPointVarUnset()
     {
         var row = (ClickNodeRowViewModel)NodeRowViewModel.FromNode(
-            new ClickNode { Id = "c", PointVar = "cursor" });
+            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", PointVar = "cursor" });
 
         row.UseVariable = false;
         row.XText = "640";
@@ -235,7 +235,7 @@ public class NodeRowRoundTripTests
     public async Task Click_Variable_LeavesPointUnset()
     {
         var row = (ClickNodeRowViewModel)NodeRowViewModel.FromNode(
-            new ClickNode { Id = "c", Point = new ScreenPoint(1, 2) });
+            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", Point = new ScreenPoint(1, 2) });
 
         row.UseVariable = true;
         row.PointVar = "btn";
@@ -250,7 +250,7 @@ public class NodeRowRoundTripTests
     public async Task Click_ReportsUnparseableCoordinates()
     {
         var row = (ClickNodeRowViewModel)NodeRowViewModel.FromNode(
-            new ClickNode { Id = "клик", Point = default(ScreenPoint) });
+            new ClickNode { Id = Ids.Of("клик"), DisplayName = "клик", Point = default(ScreenPoint) });
         row.XText = "сто";
 
         await Assert.That(row.GetInputErrors()).IsNotEmpty();
@@ -262,7 +262,7 @@ public class NodeRowRoundTripTests
     public async Task Region_ZeroSize_MeansWholeWindow()
     {
         var row = (FindElementNodeRowViewModel)NodeRowViewModel.FromNode(
-            new FindElementNode { Id = "f", Template = "t", Region = new ScreenRect(5, 6, 7, 8) });
+            new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "t", Region = new ScreenRect(5, 6, 7, 8) });
 
         row.Region.WidthText = "0";
 
@@ -273,7 +273,7 @@ public class NodeRowRoundTripTests
     public async Task Region_IsMandatoryForRecognize_AndKeepsZeroes()
     {
         var row = (RecognizeTagNodeRowViewModel)NodeRowViewModel.FromNode(
-            new RecognizeTagNode { Id = "r", TemplateSet = "classes", Region = default });
+            new RecognizeTagNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = default });
 
         await Assert.That(((RecognizeTagNode)row.ToNode()).Region).IsEqualTo(default(ScreenRect));
     }
@@ -309,8 +309,11 @@ public class NodeRowRoundTripTests
 
         foreach (var option in NodeRowViewModel.Kinds)
         {
-            var row = NodeRowViewModel.Create(option.Kind, "n1");
-            await Assert.That(row.NodeId).IsEqualTo("n1");
+            // Подпись генерируется от ТИПА ноды; номер — наименьший свободный, а свободен он
+            // сквозным образом по графу, поэтому занятый «click-1» двигает номер и у ноды другого
+            // семейства. Имена без хвоста «-N» (набранные руками) номеров не занимают.
+            var row = NodeRowViewModel.Create(option.Kind, ["click-1"]);
+            await Assert.That(row.DisplayName).IsEqualTo($"{MacroNodeNames.Prefix(row.ToNode())}-2");
             // Только что созданная строка обязана сериализоваться сразу же, иначе «добавить ноду»
             // приводило бы граф в состояние, которое и на диск-то не записать.
             await Assert.That(JsonSerializer.Serialize(row.ToNode(), MacroGraphJson.Options)).IsNotEmpty();

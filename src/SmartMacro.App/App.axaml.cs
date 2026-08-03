@@ -4,9 +4,9 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
-using SmartMacro.App.Interop;
 using SmartMacro.App.Ipc;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Native.Dialogs;
 
 namespace SmartMacro.App;
 

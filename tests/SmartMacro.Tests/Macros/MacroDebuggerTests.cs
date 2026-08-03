@@ -36,10 +36,10 @@ public class MacroDebuggerTests
     // Три клавиши — тогда пауза между второй и третьей однозначна.
     private static MacroGraph Chain(string name = "цепочка") => ExecutorHarness.Graph(
         name,
-        "a",
-        new KeyPressNode { Id = "a", Key = VirtualKey.F1, Next = "b" },
-        new KeyPressNode { Id = "b", Key = VirtualKey.F2, Next = "c" },
-        new KeyPressNode { Id = "c", Key = VirtualKey.F3 });
+        Ids.Of("a"),
+        new KeyPressNode { Id = Ids.Of("a"), DisplayName = "a", Key = VirtualKey.F1, Next = Ids.Of("b") },
+        new KeyPressNode { Id = Ids.Of("b"), DisplayName = "b", Key = VirtualKey.F2, Next = Ids.Of("c") },
+        new KeyPressNode { Id = Ids.Of("c"), DisplayName = "c", Key = VirtualKey.F3 });
 
     /// <summary>Крутится, пока не выполнится <paramref name="condition"/>; роняет тест, а не виснет навсегда.</summary>
     private static async Task WaitFor(Func<bool> condition, string what)
@@ -62,7 +62,7 @@ public class MacroDebuggerTests
     {
         var harness = new ExecutorHarness();
         var session = Session(attached: false);
-        session.SetBreakpoints("цепочка", ["b"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
 
         // Демон резидентен: точка останова, застопорившая обход, за которым никто не смотрит,
         // заклинила бы хоткей макроса до самого перезапуска. Хранение переживает уход панели,
@@ -109,7 +109,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["b"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -123,12 +123,12 @@ public class MacroDebuggerTests
         // начиналась, а значит, никто не разбудил окно игры, которое теперь ждало бы человека.
         await Assert.That(harness.Primitives.Calls).Count().IsEqualTo(1);
         var paused = observer.OfKind(RecordingObserver.PausedKind).Single();
-        await Assert.That(paused.NodeId).IsEqualTo("b");
+        await Assert.That(paused.NodeName).IsEqualTo("b");
         await Assert.That(paused.Outcome).IsEqualTo(nameof(DebugPauseReason.Breakpoint));
 
         // А объявление приходит ПОСЛЕ события входа в ноду, так что к моменту, когда канва скажет
         // «на паузе», она уже подсветила ту коробку, на которой обход и стоит.
-        var kinds = observer.Entries.Select(e => $"{e.Kind}:{e.NodeId}").ToList();
+        var kinds = observer.Entries.Select(e => $"{e.Kind}:{e.NodeName}").ToList();
         await Assert.That(kinds.IndexOf("paused:b")).IsGreaterThan(kinds.IndexOf("enter:b"));
 
         session.Command(await WalkId(observer), DebugCommand.Resume, null);
@@ -141,7 +141,7 @@ public class MacroDebuggerTests
     {
         var harness = new ExecutorHarness();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["b"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
         session.SetBreakpoints("цепочка", []);
 
         var result = await harness.Executor
@@ -158,7 +158,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         // 'b' есть в обоих графах; точка останова принадлежит другому.
         var session = Session();
-        session.SetBreakpoints("другой", ["b"]);
+        session.SetBreakpoints("другой", [Ids.Of("b")]);
 
         var result = await harness.Executor
             .RunAsync(Chain(), harness.Context(ExecutorHarness.Window, debugger: session), CancellationToken.None)
@@ -174,7 +174,7 @@ public class MacroDebuggerTests
         // уходить, прогоны тоже, — а красная точка стоит на месте, пока её кто-нибудь не снимет.
         var harness = new ExecutorHarness();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["c"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("c")]);
 
         for (var attempt = 0; attempt < 2; attempt++)
         {
@@ -190,7 +190,7 @@ public class MacroDebuggerTests
             await run.WaitAsync(TimeSpan.FromSeconds(5));
         }
 
-        await Assert.That(session.Breakpoints().Single().NodeIds).IsEquivalentTo(new[] { "c" });
+        await Assert.That(session.Breakpoints().Single().NodeIds).IsEquivalentTo(new[] { Ids.Of("c") });
     }
 
     // ---- шаг, «до ноды», пауза ---------------------------------------------------------------
@@ -201,7 +201,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["a"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("a")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -218,7 +218,7 @@ public class MacroDebuggerTests
         await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 2, "пауза на ноде b");
         await Assert.That(harness.Primitives.Calls).Count().IsEqualTo(1);
         var second = observer.OfKind(RecordingObserver.PausedKind)[1];
-        await Assert.That(second.NodeId).IsEqualTo("b");
+        await Assert.That(second.NodeName).IsEqualTo("b");
         await Assert.That(second.Outcome).IsEqualTo(nameof(DebugPauseReason.Step));
 
         session.Command(walkId, DebugCommand.Resume, null);
@@ -232,7 +232,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["a"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("a")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -240,11 +240,11 @@ public class MacroDebuggerTests
             CancellationToken.None);
 
         await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на ноде a");
-        session.Command(await WalkId(observer), DebugCommand.RunToNode, "c");
+        session.Command(await WalkId(observer), DebugCommand.RunToNode, Ids.Of("c"));
 
         await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 2, "пауза на ноде c");
         var second = observer.OfKind(RecordingObserver.PausedKind)[1];
-        await Assert.That(second.NodeId).IsEqualTo("c");
+        await Assert.That(second.NodeName).IsEqualTo("c");
         await Assert.That(second.Outcome).IsEqualTo(nameof(DebugPauseReason.Cursor));
         // 'a' и 'b' отработали обе; 'c' — нет.
         await Assert.That(harness.Primitives.Calls).Count().IsEqualTo(2);
@@ -259,7 +259,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["a"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("a")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -267,7 +267,7 @@ public class MacroDebuggerTests
             CancellationToken.None);
 
         await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на ноде a");
-        session.Command(await WalkId(observer), DebugCommand.RunToNode, "не-существует");
+        session.Command(await WalkId(observer), DebugCommand.RunToNode, Ids.Of("не-существует"));
 
         // Ни ошибка, ни зависание: ветка, которая туда так и не заходит, — законный исход.
         var result = await run.WaitAsync(TimeSpan.FromSeconds(5));
@@ -280,7 +280,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["a"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("a")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -337,7 +337,7 @@ public class MacroDebuggerTests
 
         await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на следующей ноде");
         var paused = observer.OfKind(RecordingObserver.PausedKind).Single();
-        await Assert.That(paused.NodeId).IsEqualTo("b");
+        await Assert.That(paused.NodeName).IsEqualTo("b");
         await Assert.That(paused.Outcome).IsEqualTo(nameof(DebugPauseReason.Requested));
 
         session.Command(walkId, DebugCommand.Resume, null);
@@ -369,7 +369,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["b"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -383,7 +383,7 @@ public class MacroDebuggerTests
         // На паузе → распущен → нода и правда отрабатывает. Без события о возобновлении панель
         // инструментов твердила бы «на паузе» всё то время, пока идёт нода, которой законно
         // требуется 60 секунд.
-        var kinds = observer.Entries.Select(e => $"{e.Kind}:{e.NodeId}").ToList();
+        var kinds = observer.Entries.Select(e => $"{e.Kind}:{e.NodeName}").ToList();
         var paused = kinds.IndexOf($"{RecordingObserver.PausedKind}:b");
         var resumed = kinds.IndexOf($"{RecordingObserver.ResumedKind}:b");
         await Assert.That(resumed).IsGreaterThan(paused);
@@ -398,7 +398,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["b"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -425,7 +425,7 @@ public class MacroDebuggerTests
         var observer = new RecordingObserver();
         var session = Session();
         session.Acquire(); // two panels attached
-        session.SetBreakpoints("цепочка", ["b"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -448,7 +448,7 @@ public class MacroDebuggerTests
     {
         var harness = new ExecutorHarness();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["b"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
         session.Release();
 
         var result = await harness.Executor
@@ -458,7 +458,7 @@ public class MacroDebuggerTests
 
         // На месте и для следующей панели: именно потому, что демон переживает панель, хранения
         // в пределах сессии и достаточно.
-        await Assert.That(session.Breakpoints().Single().NodeIds).IsEquivalentTo(new[] { "b" });
+        await Assert.That(session.Breakpoints().Single().NodeIds).IsEquivalentTo(new[] { Ids.Of("b") });
     }
 
     // ---- опасность 3: стоп ---------------------------------------------------------------------
@@ -469,7 +469,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", ["b"]);
+        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
         using var cts = new CancellationTokenSource();
 
         var run = harness.Executor.RunAsync(
@@ -504,14 +504,17 @@ public class MacroDebuggerTests
 
         harness.Resolver.Add(ExecutorHarness.Graph(
             "sub",
-            "press",
-            new KeyPressNode { Id = "press", Key = VirtualKey.C }));
+            Ids.Of("press"),
+            new KeyPressNode { Id = Ids.Of("press"), DisplayName = "press", Key = VirtualKey.C }));
         var parent = ExecutorHarness.Graph(
             "parent",
-            "fan",
+            Ids.Of("fan"),
             new RunMacroNode
-                { Id = "fan", MacroName = "sub", Target = new TargetSelector { RequireTags = ["клиент"] } });
-        session.SetBreakpoints("sub", ["press"]);
+            {
+                Id = Ids.Of("fan"), DisplayName = "fan", MacroName = "sub",
+                Target = new TargetSelector { RequireTags = ["клиент"] }
+            });
+        session.SetBreakpoints("sub", [Ids.Of("press")]);
 
         var run = harness.Executor.RunAsync(
             parent,
@@ -545,7 +548,7 @@ public class MacroDebuggerTests
         var variables = MacroVariables.ForTrigger(new ScreenPoint(1804, 902));
 
         await harness.Executor.RunAsync(
-            ExecutorHarness.Graph("сид", "a", new DelayNode { Id = "a", Ms = 0 }),
+            ExecutorHarness.Graph("сид", Ids.Of("a"), new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 0 }),
             harness.Context(ExecutorHarness.Window, variables: variables, observer: observer),
             CancellationToken.None);
 
@@ -554,7 +557,7 @@ public class MacroDebuggerTests
         var seed = observer.OfKind(RecordingObserver.VariableKind).Single();
         await Assert.That(seed.Outcome).IsEqualTo("cursor");
         await Assert.That(seed.Detail).IsEqualTo(new ScreenPoint(1804, 902).ToString());
-        await Assert.That(seed.NodeId).IsNull();
+        await Assert.That(seed.NodeName).IsNull();
 
         // И сообщается оно до первой ноды, так что у обхода, вставшего на паузу на первой же,
         // оно уже есть.
@@ -571,16 +574,16 @@ public class MacroDebuggerTests
 
         var graph = ExecutorHarness.Graph(
             "запись",
-            "r",
+            Ids.Of("r"),
             new RecognizeTagNode
             {
-                Id = "r",
+                Id = Ids.Of("r"), DisplayName = "r",
                 TemplateSet = "classes",
                 Region = new ScreenRect(0, 0, 1, 1),
                 ApplyTag = false,
-                Matched = "f",
+                Matched = Ids.Of("f"),
             },
-            new FindElementNode { Id = "f", Template = "X", FoundPointVar = "точка" });
+            new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "X", FoundPointVar = "точка" });
 
         await harness.Executor.RunAsync(
             graph,
@@ -591,9 +594,9 @@ public class MacroDebuggerTests
         await Assert.That(observer.OutcomesOf(RecordingObserver.VariableKind))
             .IsEquivalentTo(new[] { "tag", "точка" });
         await Assert.That(writes[0].Detail).IsEqualTo("Жрец");
-        await Assert.That(writes[0].NodeId).IsEqualTo("r");
+        await Assert.That(writes[0].NodeName).IsEqualTo("r");
         await Assert.That(writes[1].Detail).IsEqualTo(new ScreenPoint(1190, 1802).ToString());
-        await Assert.That(writes[1].NodeId).IsEqualTo("f");
+        await Assert.That(writes[1].NodeName).IsEqualTo("f");
     }
 
     [Test]
@@ -606,9 +609,12 @@ public class MacroDebuggerTests
         await harness.Executor.RunAsync(
             ExecutorHarness.Graph(
                 "тихо",
-                "r",
+                Ids.Of("r"),
                 new RecognizeTagNode
-                    { Id = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1), ApplyTag = false }),
+                {
+                    Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1),
+                    ApplyTag = false
+                }),
             harness.Context(ExecutorHarness.Window, variables: MacroVariables.ForTrigger(default), observer: observer),
             CancellationToken.None);
 
@@ -625,16 +631,16 @@ public class MacroDebuggerTests
 
         var graph = ExecutorHarness.Graph(
             "запись-без-наблюдателя",
-            "r",
+            Ids.Of("r"),
             new RecognizeTagNode
             {
-                Id = "r",
+                Id = Ids.Of("r"), DisplayName = "r",
                 TemplateSet = "classes",
                 Region = new ScreenRect(0, 0, 1, 1),
                 ApplyTag = false,
-                Matched = "i",
+                Matched = Ids.Of("i"),
             },
-            new SetIconNode { Id = "i", IconPath = "icons/{tag}.png" });
+            new SetIconNode { Id = Ids.Of("i"), DisplayName = "i", IconPath = "icons/{tag}.png" });
 
         await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window), CancellationToken.None);
 
@@ -648,7 +654,7 @@ public class MacroDebuggerTests
 
         public int ArmCalls { get; private set; }
 
-        public MacroDebugGate? Arm(Guid walkId, string macroName, string nodeId)
+        public MacroDebugGate? Arm(Guid walkId, string macroName, Guid nodeId, string nodeName)
         {
             ArmCalls++;
             return null;

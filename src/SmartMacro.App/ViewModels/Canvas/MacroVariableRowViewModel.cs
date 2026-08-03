@@ -40,10 +40,10 @@ public sealed class MacroVariableRowViewModel : ObservableObject
             ? "триггер (сид)"
             : info.Writes.Count == 0
                 ? "никто"
-                : string.Join(", ", info.Writes.Select(w => w.NodeId));
+                : string.Join(", ", info.Writes.Select(w => w.NodeName));
         ReadBy = info.Reads.Count == 0
             ? "никто"
-            : string.Join(", ", info.Reads.Select(r => r.NodeId));
+            : string.Join(", ", info.Reads.Select(r => r.NodeName));
         // Хвостовое «в пути к иконке» печатается, только если ВСЕ читатели читают переменную в
         // одном и том же поле. При разных слотах однострочная форма была прямо неверной —
         // «step-3, step-5 · в точке клика» утверждала, что нода тега читала точку клика, — так
@@ -52,7 +52,7 @@ public sealed class MacroVariableRowViewModel : ObservableObject
         ReadWhere = slots.Count == 1 ? Describe(slots[0]) : null;
         ReadDetail = info.Reads.Count == 0
             ? null
-            : string.Join("\n", info.Reads.Select(r => $"{r.NodeId} — {Describe(r.Slot)}"));
+            : string.Join("\n", info.Reads.Select(r => $"{r.NodeName} — {Describe(r.Slot)}"));
     }
 
     /// <summary>Анализ, стоящий за этой строкой, — из него выводится подсветка на canvas.</summary>
@@ -67,10 +67,10 @@ public sealed class MacroVariableRowViewModel : ObservableObject
     /// <summary>«точка» / «строка» / «значение».</summary>
     public string KindText { get; }
 
-    /// <summary>Идентификаторы нод, которые её присваивают, либо «триггер (сид)» / «никто».</summary>
+    /// <summary>Подписи нод, которые её присваивают, либо «триггер (сид)» / «никто».</summary>
     public string WrittenBy { get; }
 
-    /// <summary>Идентификаторы нод, которые её потребляют, либо «никто».</summary>
+    /// <summary>Подписи нод, которые её потребляют, либо «никто».</summary>
     public string ReadBy { get; }
 
     /// <summary>

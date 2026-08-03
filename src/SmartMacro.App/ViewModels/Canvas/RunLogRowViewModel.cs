@@ -26,10 +26,11 @@ public sealed class RunLogRowViewModel : ObservableObject
     private bool _isCurrent;
     private bool _outcomeIsAccent;
 
-    internal RunLogRowViewModel(int elapsedMs, string nodeId)
+    internal RunLogRowViewModel(int elapsedMs, Guid? nodeId, string nodeName)
     {
         Elapsed = FormatElapsed(elapsedMs);
         NodeId = nodeId;
+        NodeName = nodeName;
         _outcome = PendingOutcome;
         _detail = string.Empty;
         _isCurrent = true;
@@ -42,8 +43,11 @@ public sealed class RunLogRowViewModel : ObservableObject
     /// <summary>Время с начала обхода, <c>m:ss.f</c>.</summary>
     public string Elapsed { get; }
 
-    /// <summary>Нода, которой принадлежит строка.</summary>
-    public string NodeId { get; }
+    /// <summary>Нода, которой принадлежит строка, — по ней <c>NodeExited</c> находит свою строку входа.</summary>
+    public Guid? NodeId { get; }
+
+    /// <summary>Её подпись — то, что печатается во второй колонке. Приезжает с событием, а не резолвится по графу.</summary>
+    public string NodeName { get; }
 
     /// <summary>Куда нода в итоге пошла, по-русски: <c>ок</c>, <c>нашёл</c>, <c>таймаут</c>, …</summary>
     public string Outcome

@@ -40,59 +40,59 @@ public static class FullMacroGraphFixture
             new HotkeyTrigger(HotkeyModifiers.None, default, MouseButton.XButton1),
             new ProcessAppearedTrigger("elementclient"),
         ],
-        StartNodeId = "key",
+        StartNodeId = Ids.Of("key"),
         Nodes =
         [
             new KeyPressNode
             {
-                Id = "key",
+                Id = Ids.Of("key"), DisplayName = "key",
                 Key = VirtualKey.F8,
                 Target = new TargetSelector { RequireTags = ["перс"], ExcludeTags = ["МАСТЕР"] },
-                Next = "clickLiteral",
+                Next = Ids.Of("clickLiteral"),
                 Editor = new NodeEditorInfo(10.5, -20.25),
             },
             new ClickNode
-                { Id = "clickLiteral", Point = new ScreenPoint(100, 200), DoubleClick = true, Next = "clickVar" },
-            new ClickNode { Id = "clickVar", PointVar = "cursor", Next = "delay" },
-            new DelayNode { Id = "delay", Ms = 250, Next = "addTag" },
-            new AddTagNode { Id = "addTag", Tag = "класс-{tag}", Next = "removeTag" },
+                { Id = Ids.Of("clickLiteral"), DisplayName = "clickLiteral", Point = new ScreenPoint(100, 200), DoubleClick = true, Next = Ids.Of("clickVar") },
+            new ClickNode { Id = Ids.Of("clickVar"), DisplayName = "clickVar", PointVar = "cursor", Next = Ids.Of("delay") },
+            new DelayNode { Id = Ids.Of("delay"), DisplayName = "delay", Ms = 250, Next = Ids.Of("addTag") },
+            new AddTagNode { Id = Ids.Of("addTag"), DisplayName = "addTag", Tag = "класс-{tag}", Next = Ids.Of("removeTag") },
             new RemoveTagNode
             {
-                Id = "removeTag",
+                Id = Ids.Of("removeTag"), DisplayName = "removeTag",
                 Tag = "боевой",
                 Target = new TargetSelector { RequireTags = ["перс"] },
-                Next = "icon",
+                Next = Ids.Of("icon"),
             },
-            new SetIconNode { Id = "icon", IconPath = "icons/{tag}.png", Next = "run" },
+            new SetIconNode { Id = Ids.Of("icon"), DisplayName = "icon", IconPath = "icons/{tag}.png", Next = Ids.Of("run") },
             new RunMacroNode
             {
-                Id = "run",
+                Id = Ids.Of("run"), DisplayName = "run",
                 MacroName = "под-макрос",
                 Target = new TargetSelector { ExcludeTags = ["МАСТЕР"] },
                 Await = false,
-                Next = "find",
+                Next = Ids.Of("find"),
             },
             new FindElementNode
             {
-                Id = "find",
+                Id = Ids.Of("find"), DisplayName = "find",
                 Template = "кнопка",
                 Region = new ScreenRect(1, 2, 3, 4),
                 FoundPointVar = "btn",
-                Found = "wait",
+                Found = Ids.Of("wait"),
                 NotFound = null,
             },
             new WaitForElementNode
             {
-                Id = "wait",
+                Id = Ids.Of("wait"), DisplayName = "wait",
                 Template = "мир",
                 TimeoutMs = 60000,
                 FoundPointVar = "pt",
-                Found = "recognize",
+                Found = Ids.Of("recognize"),
                 Timeout = null,
             },
             new RecognizeTagNode
             {
-                Id = "recognize",
+                Id = Ids.Of("recognize"), DisplayName = "recognize",
                 TemplateSet = "классы",
                 Region = new ScreenRect(5, 6, 7, 8),
                 ApplyTag = false,

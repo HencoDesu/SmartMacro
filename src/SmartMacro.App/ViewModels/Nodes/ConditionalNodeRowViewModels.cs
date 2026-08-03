@@ -10,16 +10,20 @@ namespace SmartMacro.App.ViewModels.Nodes;
 /// </summary>
 public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
 {
+    private string _matchThresholdText;
+
     protected ConditionalNodeRowViewModel(
-        string nodeId,
+        MacroNode node,
+        double? matchThreshold,
         string positiveLabel,
-        string? positiveTarget,
+        Guid? positiveTarget,
         string negativeLabel,
-        string? negativeTarget)
-        : base(nodeId, target: null,
+        Guid? negativeTarget)
+        : base(node, target: null,
             new NodeEdgeViewModel(positiveLabel, positiveTarget),
             new NodeEdgeViewModel(negativeLabel, negativeTarget))
     {
+        _matchThresholdText = NodeInput.FormatThreshold(matchThreshold);
     }
 
     /// <summary>Ребро, по которому уходят при удачной проверке (Found / Matched).</summary>
@@ -27,6 +31,39 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
 
     /// <summary>Ребро на случай неудачи (NotFound / Timeout / NotMatched).</summary>
     public NodeEdgeViewModel NegativeEdge => Edges[1];
+
+    /// <summary>
+    /// Порог совпадения ЭТОЙ ноды, как его набрали. Пустая строка — законное «взять умолчание
+    /// слоя зрения», и именно она в поле по умолчанию.
+    ///
+    /// <b>Подсказка под полем не называет число.</b> Умолчание живёт в настройках ДЕМОНА, а
+    /// панель их не читает; напечатать здесь «0.7» значило бы напечатать значение из коробки, а
+    /// не то, с которым нода на самом деле побежит, — та же ложь, что и бейдж целей, спорящий с
+    /// исполнителем. Поэтому приглушённое поле говорит «из настроек», а число видно там, где оно
+    /// и задаётся.
+    /// </summary>
+    public string MatchThresholdText
+    {
+        get => _matchThresholdText;
+        set => SetField(ref _matchThresholdText, value);
+    }
+
+    /// <summary>Модельная форма порога: <c>null</c>, пока поле пусто.</summary>
+    protected double? MatchThresholdOrNull =>
+        NodeInput.TryParseThreshold(_matchThresholdText, out var value) ? value : null;
+
+    /// <summary>Кусочек сводки коробки: «порог 0.85», когда он задан, иначе ничего.</summary>
+    protected string? DescribeThreshold =>
+        MatchThresholdOrNull is { } value ? $"порог {NodeInput.FormatThreshold(value)}" : null;
+
+    /// <summary>Претензии к полю порога. Диапазон проверяет валидатор графа — здесь только разбор.</summary>
+    protected IEnumerable<string> GetThresholdErrors()
+    {
+        if (!NodeInput.TryParseThreshold(_matchThresholdText, out _))
+        {
+            yield return $"[{DisplayName}] порог: «{_matchThresholdText}» — не число.";
+        }
+    }
 
     /// <summary>
     /// Заводит изменения редактора области в <see cref="NodeRowViewModel.Summary"/>. Область
@@ -56,7 +93,7 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
     private string _foundPointVar;
 
     public FindElementNodeRowViewModel(FindElementNode node)
-        : base(node.Id, "Найдено", node.Found, "Не найдено", node.NotFound)
+        : base(node, node.MatchThreshold, "Найдено", node.Found, "Не найдено", node.NotFound)
     {
         _template = node.Template;
         _foundPointVar = node.FoundPointVar ?? string.Empty;
@@ -66,7 +103,7 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
 
     public override string TypeLabel => "Найти элемент";
 
-    public override string Summary => Join(_template, DescribeRegion(Region));
+    public override string Summary => Join(_template, DescribeRegion(Region), DescribeThreshold);
 
     /// <summary>Основа имени файла шаблона; разрешает её слой примитивов.</summary>
     [AllowNull]
@@ -89,23 +126,30 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
 
     public override MacroNode ToNode() => new FindElementNode
     {
-        Id = NodeId,
+        Id = Id,
+        DisplayName = DisplayName,
         Editor = Editor,
         Template = _template,
         Region = Region.ToOptionalRect(),
+        MatchThreshold = MatchThresholdOrNull,
         FoundPointVar = string.IsNullOrWhiteSpace(_foundPointVar) ? null : _foundPointVar,
-        Found = PositiveEdge.TargetOrNull,
-        NotFound = NegativeEdge.TargetOrNull,
+        Found = PositiveEdge.TargetId,
+        NotFound = NegativeEdge.TargetId,
     };
 
     public override IEnumerable<string> GetInputErrors()
     {
         if (string.IsNullOrWhiteSpace(_template))
         {
-            yield return $"[{NodeId}] шаблон не задан.";
+            yield return $"[{DisplayName}] шаблон не задан.";
         }
 
-        foreach (var error in Region.GetInputErrors(NodeId))
+        foreach (var error in Region.GetInputErrors(DisplayName))
+        {
+            yield return error;
+        }
+
+        foreach (var error in GetThresholdErrors())
         {
             yield return error;
         }
@@ -120,7 +164,7 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
     private string _foundPointVar;
 
     public WaitForElementNodeRowViewModel(WaitForElementNode node)
-        : base(node.Id, "Найдено", node.Found, "Таймаут", node.Timeout)
+        : base(node, node.MatchThreshold, "Найдено", node.Found, "Таймаут", node.Timeout)
     {
         _template = node.Template;
         // Миллисекунды, а не секунды: отведённое на ожидание время — это технический таймаут
@@ -135,7 +179,7 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
     public override string TypeLabel => "Ждать элемент";
 
     public override string Summary =>
-        Join(_template, $"{NodeInput.FormatSeconds(NodeInput.ParseInt(_timeoutMsText) ?? 0)} с");
+        Join(_template, $"{NodeInput.FormatSeconds(NodeInput.ParseInt(_timeoutMsText) ?? 0)} с", DescribeThreshold);
 
     [AllowNull]
     public string Template
@@ -162,29 +206,36 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
 
     public override MacroNode ToNode() => new WaitForElementNode
     {
-        Id = NodeId,
+        Id = Id,
+        DisplayName = DisplayName,
         Editor = Editor,
         Template = _template,
         Region = Region.ToOptionalRect(),
         TimeoutMs = NodeInput.ParseInt(_timeoutMsText) ?? 0,
+        MatchThreshold = MatchThresholdOrNull,
         FoundPointVar = string.IsNullOrWhiteSpace(_foundPointVar) ? null : _foundPointVar,
-        Found = PositiveEdge.TargetOrNull,
-        Timeout = NegativeEdge.TargetOrNull,
+        Found = PositiveEdge.TargetId,
+        Timeout = NegativeEdge.TargetId,
     };
 
     public override IEnumerable<string> GetInputErrors()
     {
         if (string.IsNullOrWhiteSpace(_template))
         {
-            yield return $"[{NodeId}] шаблон не задан.";
+            yield return $"[{DisplayName}] шаблон не задан.";
         }
 
         if (NodeInput.ParseInt(_timeoutMsText) is null)
         {
-            yield return $"[{NodeId}] таймаут: «{_timeoutMsText}» — не целое число миллисекунд.";
+            yield return $"[{DisplayName}] таймаут: «{_timeoutMsText}» — не целое число миллисекунд.";
         }
 
-        foreach (var error in Region.GetInputErrors(NodeId))
+        foreach (var error in Region.GetInputErrors(DisplayName))
+        {
+            yield return error;
+        }
+
+        foreach (var error in GetThresholdErrors())
         {
             yield return error;
         }
@@ -203,7 +254,7 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
     private bool _applyTag;
 
     public RecognizeTagNodeRowViewModel(RecognizeTagNode node)
-        : base(node.Id, "Распознано", node.Matched, "Не распознано", node.NotMatched)
+        : base(node, node.MatchThreshold, "Распознано", node.Matched, "Не распознано", node.NotMatched)
     {
         _templateSet = node.TemplateSet;
         _resultVar = node.ResultVar;
@@ -215,7 +266,7 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
     public override string TypeLabel => "Распознать тег";
 
     public override string Summary =>
-        Join(_templateSet.Length > 0 ? $"набор {_templateSet}" : null, DescribeRegion(Region));
+        Join(_templateSet.Length > 0 ? $"набор {_templateSet}" : null, DescribeRegion(Region), DescribeThreshold);
 
     /// <summary>Имя набора шаблонов; основа имени каждого файла в наборе — кандидат в теги.</summary>
     [AllowNull]
@@ -245,29 +296,36 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
 
     public override MacroNode ToNode() => new RecognizeTagNode
     {
-        Id = NodeId,
+        Id = Id,
+        DisplayName = DisplayName,
         Editor = Editor,
         TemplateSet = _templateSet,
         Region = Region.ToRect(),
+        MatchThreshold = MatchThresholdOrNull,
         ApplyTag = _applyTag,
         ResultVar = _resultVar,
-        Matched = PositiveEdge.TargetOrNull,
-        NotMatched = NegativeEdge.TargetOrNull,
+        Matched = PositiveEdge.TargetId,
+        NotMatched = NegativeEdge.TargetId,
     };
 
     public override IEnumerable<string> GetInputErrors()
     {
         if (string.IsNullOrWhiteSpace(_templateSet))
         {
-            yield return $"[{NodeId}] набор шаблонов не задан.";
+            yield return $"[{DisplayName}] набор шаблонов не задан.";
         }
 
         if (string.IsNullOrWhiteSpace(_resultVar))
         {
-            yield return $"[{NodeId}] имя переменной результата не задано.";
+            yield return $"[{DisplayName}] имя переменной результата не задано.";
         }
 
-        foreach (var error in Region.GetInputErrors(NodeId))
+        foreach (var error in Region.GetInputErrors(DisplayName))
+        {
+            yield return error;
+        }
+
+        foreach (var error in GetThresholdErrors())
         {
             yield return error;
         }

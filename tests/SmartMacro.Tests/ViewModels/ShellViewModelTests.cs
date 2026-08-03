@@ -32,8 +32,8 @@ public class ShellViewModelTests
     private static MacroGraph Macro(string name) => new()
     {
         Name = name,
-        StartNodeId = "n1",
-        Nodes = [new DelayNode { Id = "n1", Ms = 1 }],
+        StartNodeId = Ids.Of("n1"),
+        Nodes = [new DelayNode { Id = Ids.Of("n1"), DisplayName = "n1", Ms = 1 }],
     };
 
     private static ShellViewModel CreateShell(
@@ -46,6 +46,7 @@ public class ShellViewModelTests
                 @"C:\smartmacro\macros"),
             new TemplatesViewModel(client, ImmediateUiDispatcher.Instance),
             new LogViewModel(client, ImmediateUiDispatcher.Instance),
+            new SettingsViewModel(client, ImmediateUiDispatcher.Instance),
             launcher);
 
     private static LogEntryDto Entry(long seq, LogLevelDto level, string message = "строка") =>

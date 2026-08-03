@@ -32,6 +32,7 @@ public class IpcServerTests
                 Engine.RunEvents,
                 Engine.Log,
                 Engine.Debug,
+                Engine.SettingsSnapshots,
                 NullLogger<IpcServer>.Instance);
             Server.SubscribeToEngine();
         }
@@ -194,8 +195,8 @@ public class IpcServerTests
         await fixture.Engine.Macros.SaveAsync(new MacroGraph
         {
             Name = "новый",
-            StartNodeId = "n0",
-            Nodes = [new KeyPressNode { Id = "n0", Key = VirtualKey.F3, Target = new TargetSelector() }],
+            StartNodeId = Ids.Of("n0"),
+            Nodes = [new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = VirtualKey.F3, Target = new TargetSelector() }],
         });
 
         var evt = Parse(await client.ReadLineAsync());

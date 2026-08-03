@@ -24,8 +24,21 @@ public readonly record struct ScreenPoint(int X = 0, int Y = 0)
 /// </summary>
 public readonly record struct ScreenRect(int X = 0, int Y = 0, int Width = 0, int Height = 0)
 {
+    // [JsonIgnore] на всех трёх — не вкусовщина, а починка формата файлов, которые правят руками.
+    // Свойства вычисляемые и БЕЗ СЕТТЕРОВ, поэтому на чтении System.Text.Json их игнорирует и так;
+    // а вот на записи он их прилежно выводил, и каждая область в settings.json и в macros/*.json
+    // получала лишние "TopLeft", "Right" и "Bottom". Для человека, который открыл файл в блокноте,
+    // это три поля, выглядящие настраиваемыми и молча ничего не делающие: поправишь Right —
+    // ширина не изменится, и понять почему нельзя. Найдено глазами, в первом же созданном
+    // settings.json.
+    [System.Text.Json.Serialization.JsonIgnore]
     public ScreenPoint TopLeft => new(X, Y);
+
+    [System.Text.Json.Serialization.JsonIgnore]
     public int Right => X + Width;
+
+    [System.Text.Json.Serialization.JsonIgnore]
     public int Bottom => Y + Height;
+
     public override string ToString() => $"({X},{Y} {Width}x{Height})";
 }

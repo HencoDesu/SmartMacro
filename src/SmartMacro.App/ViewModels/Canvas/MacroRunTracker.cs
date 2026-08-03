@@ -56,7 +56,10 @@ public sealed class MacroRunViewModel : ObservableObject
     public bool FromStart => Walk.FromStart;
 
     /// <summary>Нода, на которой стоит walker, или <c>null</c>, когда обход уже закончился.</summary>
-    public string? CurrentNodeId { get; private set; }
+    public Guid? CurrentNodeId { get; private set; }
+
+    /// <summary>Её подпись — то, что называет пилюля паузы. Приезжает вместе с событием, а не резолвится по графу.</summary>
+    public string? CurrentNodeName { get; private set; }
 
     /// <summary>Обход закончился. Он остаётся в переключателе, чтобы его лог можно было дочитать.</summary>
     public bool IsFinished
@@ -89,7 +92,7 @@ public sealed class MacroRunViewModel : ObservableObject
     /// коробок. Цикл записывает ноду заново, так что отметка всегда от ПОСЛЕДНЕГО прохода — а
     /// именно его и хочет читать тот, кто смотрит на цикл.
     /// </summary>
-    public Dictionary<string, (string Time, string Outcome)> Passed { get; } = new(StringComparer.Ordinal);
+    public Dictionary<Guid, (string Time, string Outcome)> Passed { get; } = [];
 
     /// <summary>
     /// Живое значение каждой переменной прогона, по имени, — правая колонка панели переменных.
@@ -143,6 +146,7 @@ public sealed class MacroRunViewModel : ObservableObject
     internal void Paused(RunEventDto evt)
     {
         CurrentNodeId = evt.NodeId;
+        CurrentNodeName = evt.NodeName;
         IsPaused = true;
         PauseRequested = false;
         PausedAtBreakpoint = evt.Kind == RunEventKind.BreakpointHit;
@@ -173,8 +177,9 @@ public sealed class MacroRunViewModel : ObservableObject
         // Строка для ноды, которая так и не сообщила о своём выходе (обход отменили внутри неё),
         // остаётся неполной, а не дозаполняется догадкой.
         CurrentRow()?.Settle();
-        Log.Add(new RunLogRowViewModel(evt.ElapsedMs, evt.NodeId ?? string.Empty));
+        Log.Add(new RunLogRowViewModel(evt.ElapsedMs, evt.NodeId, evt.NodeName ?? string.Empty));
         CurrentNodeId = evt.NodeId;
+        CurrentNodeName = evt.NodeName;
         NodesEntered++;
         Touch(evt);
         Trim();
@@ -182,7 +187,7 @@ public sealed class MacroRunViewModel : ObservableObject
 
     internal void NodeExited(RunEventDto evt)
     {
-        if (evt.NodeId is { Length: > 0 } nodeId)
+        if (evt.NodeId is { } nodeId)
         {
             Passed[nodeId] = (
                 RunLogRowViewModel.FormatDuration(evt.DurationMs),
@@ -196,7 +201,7 @@ public sealed class MacroRunViewModel : ObservableObject
         for (var i = Log.Count - 1; i >= 0; i--)
         {
             var row = Log[i];
-            if (row.IsCurrent && string.Equals(row.NodeId, evt.NodeId, StringComparison.Ordinal))
+            if (row.IsCurrent && row.NodeId == evt.NodeId)
             {
                 row.Complete(evt.Outcome, evt.Detail, evt.DurationMs);
                 return;
@@ -208,6 +213,7 @@ public sealed class MacroRunViewModel : ObservableObject
     {
         CurrentRow()?.Settle();
         CurrentNodeId = null;
+        CurrentNodeName = null;
         IsFinished = true;
         FinalOutcome = RunLogRowViewModel.DescribeOutcome(evt.Outcome);
         // Завершившийся обход не может стоять на паузе, а оставленный флаг зажёг бы кнопку

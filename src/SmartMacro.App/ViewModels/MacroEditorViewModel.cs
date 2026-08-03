@@ -139,9 +139,11 @@ public sealed class ValidationIssueViewModel
         ArgumentNullException.ThrowIfNull(issue);
         IsError = issue.Severity == ValidationSeverity.Error;
         NodeId = issue.NodeId;
-        Display = issue.NodeId is null
+        // Адресуемся по id, печатаем имя: guid читателю ничего не говорит, а имя может
+        // повторяться (это всего лишь предупреждение), так что одного из двух не хватает.
+        Display = issue.NodeName is null
             ? issue.Message
-            : $"[{issue.NodeId}] {issue.Message}";
+            : $"[{issue.NodeName}] {issue.Message}";
     }
 
     /// <summary>Произвольное сообщение (для ошибок ввода, которых валидатор не видит никогда).</summary>
@@ -155,7 +157,7 @@ public sealed class ValidationIssueViewModel
     public bool IsError { get; }
 
     /// <summary>Нода, к которой относится замечание, если валидатор её назвал.</summary>
-    public string? NodeId { get; }
+    public Guid? NodeId { get; }
 
     /// <summary>Нарисованный текст.</summary>
     public string Display { get; }
@@ -226,7 +228,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private string _diskJson = string.Empty;
 
     private string _macroName = string.Empty;
-    private string _startNodeId = string.Empty;
+    private Guid _startNodeId;
     private bool _hasOpenMacro;
     private bool _changedOnDisk;
     private string? _errorMessage;
@@ -238,7 +240,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private double _zoom = 1;
     private double _panX = MinPan;
     private double _panY = MinPan;
-    private string? _executingNodeId;
+    private Guid? _executingNodeId;
     private MacroRunViewModel? _selectedRun;
     private bool _wantsRunEvents;
 
@@ -412,29 +414,44 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     public ObservableCollection<NodeRowViewModel> Nodes { get; } = [];
 
     /// <summary>
-    /// Выбираемые цели рёбер: пустая строка (= конец прогона), а за ней все id нод. Один общий
-    /// экземпляр, к которому привязан каждый выпадающий список ребра, — так переименование или
-    /// новая нода появляются везде разом.
+    /// Выбираемые цели рёбер: «конец прогона», а за ним все ноды графа. Один общий экземпляр, к
+    /// которому привязан каждый выпадающий список ребра, — так новая нода или переименование
+    /// появляются везде разом.
     /// </summary>
-    public ObservableCollection<string> NodeIdChoices { get; } = [];
+    public ObservableCollection<NodeChoiceViewModel> NodeChoices { get; } = [];
 
-    /// <summary>Id нод для выбора стартовой. Тот же список без пустой записи — стартовая нода обязательна.</summary>
-    public ObservableCollection<string> StartNodeChoices { get; } = [];
+    /// <summary>Ноды для выбора стартовой. Тот же список без записи «конец» — стартовая нода обязательна.</summary>
+    public ObservableCollection<NodeChoiceViewModel> StartNodeChoices { get; } = [];
 
     /// <summary>Имена из библиотеки, которые предлагают выпадающие списки <c>RunMacroNode</c>.</summary>
     public ObservableCollection<string> MacroChoices { get; } = [];
 
-    /// <summary>С чего начинается исполнение. Должна называть одну из <see cref="Nodes"/>.</summary>
-    public string StartNodeId
+    /// <summary>С чего начинается исполнение. Должна указывать на одну из <see cref="Nodes"/>.</summary>
+    public Guid StartNodeId
     {
         get => _startNodeId;
+        private set
+        {
+            if (SetField(ref _startNodeId, value))
+            {
+                OnPropertyChanged(nameof(StartNode));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Стартовая нода в том виде, к какому привязан <c>ComboBox</c>. Экземпляры выбора живут
+    /// дольше пересборок списка, поэтому «SelectedItem выпал из ItemsSource» здесь больше не
+    /// случается; <c>null</c> всё же игнорируем — стереть стартовую ноду мимолётностью нельзя.
+    /// </summary>
+    public NodeChoiceViewModel? StartNode
+    {
+        get => StartNodeChoices.FirstOrDefault(choice => choice.Id == _startNodeId);
         set
         {
-            // ComboBox проталкивает null, пока перетряхивается его ItemsSource; игнорируя это,
-            // мы не даём посторонней пересборке списка стереть вполне живую стартовую ноду.
-            if (!string.IsNullOrEmpty(value))
+            if (value?.Id is { } id)
             {
-                SetField(ref _startNodeId, value);
+                StartNodeId = id;
             }
         }
     }
@@ -545,7 +562,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// Присваивается извне, потому что тесты canvas управляют этим напрямую; в живой панели
     /// пишет сюда только <see cref="SyncExecutingNode"/>.
     /// </summary>
-    public string? ExecutingNodeId
+    public Guid? ExecutingNodeId
     {
         get => _executingNodeId;
         set
@@ -557,8 +574,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
             foreach (var node in Nodes)
             {
-                node.IsExecuting = value is not null
-                                   && string.Equals(node.NodeId, value, StringComparison.Ordinal);
+                node.IsExecuting = value is not null && node.Id == value;
             }
 
             // Рёбра берут свою «живость» у ноды-источника, а слой перерисовывается по изменению
@@ -723,7 +739,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// </summary>
     public string PauseNotice => _selectedRun switch
     {
-        { IsPaused: true, CurrentNodeId: { } node } run => $"{run.PauseReason}: {node}",
+        { IsPaused: true, CurrentNodeName: { } node } run => $"{run.PauseReason}: {node}",
         { PauseRequested: true } => "пауза запрошена — ждём конца ноды",
         _ => string.Empty,
     };
@@ -798,7 +814,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     /// <summary>Гонит выбранный обход до ноды, выделенной на canvas.</summary>
     public Task RunToCursorAsync() => _selectedNode is { } node
-        ? DebugAsync(DebugCommand.RunToNode, node.NodeId)
+        ? DebugAsync(DebugCommand.RunToNode, node.Id)
         : Task.CompletedTask;
 
     /// <summary>
@@ -836,7 +852,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task DebugAsync(DebugCommand command, string? nodeId = null)
+    private async Task DebugAsync(DebugCommand command, Guid? nodeId = null)
     {
         if (_selectedRun is not { } run)
         {
@@ -956,19 +972,19 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// <paramref name="targetId"/> значит «конец прогона»: законное неподключённое состояние, а
     /// не удаление исхода.
     /// </summary>
-    public void RewireEdge(NodeEdgeViewModel edge, string? targetId)
+    public void RewireEdge(NodeEdgeViewModel edge, Guid? targetId)
     {
         ArgumentNullException.ThrowIfNull(edge);
         // До ноды не добраться из её же исхода иначе как бесконечным циклом, который canvas
         // нарисовал бы узлом; правила против этого у валидатора нет, поэтому редактор просто
         // отказывается создавать такое перетаскиванием.
         var owner = Nodes.FirstOrDefault(node => node.Edges.Contains(edge));
-        if (owner is not null && string.Equals(owner.NodeId, targetId, StringComparison.Ordinal))
+        if (owner is not null && targetId is not null && owner.Id == targetId)
         {
             return;
         }
 
-        edge.TargetId = targetId ?? string.Empty;
+        edge.TargetId = targetId;
     }
 
     /// <summary>Раскрывает одну коробку редактором самой себя (1e) и закрывает все прочие.</summary>
@@ -1003,9 +1019,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         row.HasBreakpoint = !row.HasBreakpoint;
     }
 
-    /// <summary>Id тех нод открытого графа, на которых сейчас стоит точка останова, в порядке строк.</summary>
-    public IReadOnlyList<string> BreakpointNodeIds =>
-        [.. Nodes.Where(node => node.HasBreakpoint).Select(node => node.NodeId)];
+    /// <summary>Те ноды открытого графа, на которых сейчас стоит точка останова, в порядке строк.</summary>
+    public IReadOnlyList<Guid> BreakpointNodeIds =>
+        [.. Nodes.Where(node => node.HasBreakpoint).Select(node => node.Id)];
 
     /// <summary><c>true</c>, когда у открытого графа есть хоть одна, — этим включается «снять все».</summary>
     public bool HasBreakpoints => Nodes.Any(node => node.HasBreakpoint);
@@ -1052,17 +1068,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             card.IsHighlighted = ReferenceEquals(card, row);
         }
 
-        var writers = row is null
-            ? []
-            : row.Info.Writes.Select(w => w.NodeId).ToHashSet(StringComparer.Ordinal);
-        var readers = row is null
-            ? []
-            : row.Info.Reads.Select(r => r.NodeId).ToHashSet(StringComparer.Ordinal);
+        var writers = row is null ? [] : row.Info.Writes.Select(w => w.NodeId).ToHashSet();
+        var readers = row is null ? [] : row.Info.Reads.Select(r => r.NodeId).ToHashSet();
 
         foreach (var node in Nodes)
         {
-            node.IsVariableSource = writers.Contains(node.NodeId);
-            node.IsVariableConsumer = readers.Contains(node.NodeId);
+            node.IsVariableSource = writers.Contains(node.Id);
+            node.IsVariableConsumer = readers.Contains(node.Id);
         }
 
         VariableLinks.Clear();
@@ -1071,7 +1083,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var byId = Nodes.ToDictionary(node => node.NodeId, StringComparer.Ordinal);
+        var byId = Nodes.ToDictionary(node => node.Id);
         foreach (var write in row.Info.Writes)
         {
             if (!byId.TryGetValue(write.NodeId, out var from))
@@ -1168,11 +1180,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// </summary>
     public void NewMacro()
     {
+        // Подпись выдаётся здесь, а не через NodeRowViewModel.Create: черновик строится из
+        // модели, а не из строк редактора, — зато выглядит она ровно так же, как у ноды,
+        // добавленной кнопкой.
+        var first = new DelayNode { Ms = 1000, DisplayName = "delay-1" };
         LoadGraph(new MacroGraph
         {
             Name = UniqueDraftName(),
-            StartNodeId = "n1",
-            Nodes = [new DelayNode { Id = "n1", Ms = 1000 }],
+            StartNodeId = first.Id,
+            Nodes = [first],
         });
 
         // У черновика ещё нет файла: сбрасываем дисковую личность, чтобы горячая перезагрузка
@@ -1274,7 +1290,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// <summary>Дописывает ноду заданного вида со свежесгенерированным id.</summary>
     public NodeRowViewModel AddNode(MacroNodeKind kind)
     {
-        var row = NodeRowViewModel.Create(kind, NextNodeId());
+        var row = NodeRowViewModel.Create(kind, Nodes.Select(node => node.DisplayName));
         // Размещаем до того, как она попадёт в список, — так поиск свободного места не увидит
         // саму себя.
         var (x, y) = MacroGraphLayout.NextFreeSlot(Nodes);
@@ -1286,8 +1302,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         // увидит после её добавления, будет ошибка валидации об отсутствующем старте.
         if (Nodes.Count == 1)
         {
-            _startNodeId = row.NodeId;
-            OnPropertyChanged(nameof(StartNodeId));
+            StartNodeId = row.Id;
         }
 
         RebuildChoices();
@@ -1314,18 +1329,17 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         using (SuspendEdgeRebuild())
         {
-            var removedId = row.NodeId;
             foreach (var edge in AllEdges())
             {
-                if (string.Equals(edge.TargetId, removedId, StringComparison.Ordinal))
+                if (edge.TargetId == row.Id)
                 {
-                    edge.TargetId = string.Empty;
+                    edge.TargetId = null;
                 }
             }
 
-            if (string.Equals(_startNodeId, removedId, StringComparison.Ordinal))
+            if (_startNodeId == row.Id)
             {
-                _startNodeId = Nodes.Count > 0 ? Nodes[0].NodeId : string.Empty;
+                _startNodeId = Nodes.Count > 0 ? Nodes[0].Id : Guid.Empty;
             }
 
             if (ReferenceEquals(SelectedNode, row))
@@ -1337,6 +1351,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
 
         OnPropertyChanged(nameof(StartNodeId));
+        OnPropertyChanged(nameof(StartNode));
         // На удалённой ноде могла стоять точка останова, а могла она быть единственным местом,
         // где переменную записывают.
         PushBreakpoints();
@@ -1352,7 +1367,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             return;
         }
 
-        SelectedNode = Nodes.FirstOrDefault(node => string.Equals(node.NodeId, issue.NodeId, StringComparison.Ordinal));
+        SelectedNode = Nodes.FirstOrDefault(node => node.Id == issue.NodeId);
     }
 
     // ---- сохранение ---------------------------------------------------------------------
@@ -1546,6 +1561,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
 
         OnPropertyChanged(nameof(StartNodeId));
+        OnPropertyChanged(nameof(StartNode));
         ResetView();
 
         // Опора для «есть несохранённые правки» — собственный round trip редактора, а не файл:
@@ -2022,7 +2038,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         foreach (var node in Nodes)
         {
             node.IsPaused = paused && node.IsExecuting;
-            if (run is not null && run.Passed.TryGetValue(node.NodeId, out var passed))
+            if (run is not null && run.Passed.TryGetValue(node.Id, out var passed))
             {
                 node.PassedTime = passed.Time;
                 node.PassedOutcome = passed.Outcome;
@@ -2085,7 +2101,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     // Что держит у себя демон, по макросам. Хранится, чтобы открытие графа возвращало его точки
     // без round trip и чтобы переименование не теряло наборы остальных макросов.
-    private readonly Dictionary<string, IReadOnlyList<string>> _breakpoints = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<Guid>> _breakpoints = new(StringComparer.Ordinal);
 
     // Поднят, пока ответ демона переносится на строки, — чтобы его применение не отскочило тут
     // же обратно в виде SetBreakpoints.
@@ -2099,7 +2115,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private void ApplyBreakpointsToRows()
     {
         var wanted = _loadedName is not null && _breakpoints.TryGetValue(_loadedName, out var ids)
-            ? ids.ToHashSet(StringComparer.Ordinal)
+            ? ids.ToHashSet()
             : [];
 
         _applyingBreakpoints = true;
@@ -2107,7 +2123,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             foreach (var node in Nodes)
             {
-                node.HasBreakpoint = wanted.Contains(node.NodeId);
+                node.HasBreakpoint = wanted.Contains(node.Id);
             }
         }
         finally
@@ -2133,7 +2149,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _ = SendBreakpointsAsync(_loadedName, ids);
     }
 
-    private async Task SendBreakpointsAsync(string macroName, IReadOnlyList<string> nodeIds)
+    private async Task SendBreakpointsAsync(string macroName, IReadOnlyList<Guid> nodeIds)
     {
         try
         {
@@ -2357,8 +2373,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _loadedJson = string.Empty;
         _diskJson = string.Empty;
         MacroName = string.Empty;
-        _startNodeId = string.Empty;
+        _startNodeId = Guid.Empty;
         OnPropertyChanged(nameof(StartNodeId));
+        OnPropertyChanged(nameof(StartNode));
         HasOpenMacro = false;
         ChangedOnDisk = false;
         SelectedNode = null;
@@ -2372,11 +2389,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     private void AttachNode(NodeRowViewModel row)
     {
-        row.IdChanged += OnNodeIdChanged;
         row.PropertyChanged += OnNodeRowChanged;
         foreach (var edge in row.Edges)
         {
-            edge.Choices = NodeIdChoices;
+            edge.Choices = NodeChoices;
             // Перенацеливание исхода двигает линию на canvas — сделали ли это выпадающим
             // списком в инспекторе или перетаскиванием порта.
             edge.PropertyChanged += OnEdgeChanged;
@@ -2397,7 +2413,6 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     private void DetachNode(NodeRowViewModel row)
     {
-        row.IdChanged -= OnNodeIdChanged;
         row.PropertyChanged -= OnNodeRowChanged;
         foreach (var edge in row.Edges)
         {
@@ -2435,6 +2450,14 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             case nameof(NodeRowViewModel.HasBreakpoint):
                 PushBreakpoints();
+                break;
+            case nameof(NodeRowViewModel.DisplayName):
+                // Переименование больше НЕ трогает рёбра — они ссылаются по Id, и вся прежняя
+                // механика «перенацелить каждое входящее ребро» отсюда исчезла. Обновить нужно
+                // ровно подписи: элемент выпадающего списка (он живёт дольше пересборок) и
+                // карточки переменных, которые называют ноду по имени.
+                RefreshChoiceLabels();
+                RebuildVariables();
                 break;
             case nameof(NodeRowViewModel.Summary):
                 // Набранный в пути к иконке {tag} добавляет читателя — панель обязана показать
@@ -2520,87 +2543,80 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowEmptyLibraryHint));
     }
 
-    // Переименование ноды обязано утащить за собой входящие в неё рёбра, иначе оно молча
-    // перерубит каждую ведущую в неё связь.
-    private void OnNodeIdChanged(NodeRowViewModel row, string previousId)
-    {
-        foreach (var edge in AllEdges())
-        {
-            if (string.Equals(edge.TargetId, previousId, StringComparison.Ordinal))
-            {
-                edge.TargetId = row.NodeId;
-            }
-        }
-
-        if (string.Equals(_startNodeId, previousId, StringComparison.Ordinal))
-        {
-            _startNodeId = row.NodeId;
-        }
-
-        RebuildChoices();
-        RebuildEdges();
-        OnPropertyChanged(nameof(StartNodeId));
-        // Набор точек останова ключуется по id ноды, поэтому переименование надо отправить
-        // заново, — точка при этом остаётся на строке, и именно ради этого набор выводится из
-        // строк, а не отслеживается отдельно.
-        PushBreakpoints();
-        RebuildVariables();
-    }
-
     private IEnumerable<NodeEdgeViewModel> AllEdges() => Nodes.SelectMany(node => node.Edges);
 
-    // Пересборка общих списков выбора заставляет каждый привязанный ComboBox переоценить своё
-    // выделение, а SelectedItem, на миг выпавший из ItemsSource, возвращается как null. Снимок
-    // задуманных значений вокруг пересборки — а не сравнение списков по разнице — не даёт этой
-    // мимолётности молча переписать рёбра графа.
+    // Один элемент выбора на ноду, переживающий пересборки списка. Кэш и есть то, что позволило
+    // выбросить снимок-и-восстановление значений вокруг RebuildChoices: подмена элементов
+    // выбивала SelectedItem из ItemsSource, а ComboBox отвечал на это null'ом.
+    private readonly Dictionary<Guid, NodeChoiceViewModel> _choiceCache = [];
+
     private void RebuildChoices()
     {
-        var edges = AllEdges().ToList();
-        var targets = edges.Select(edge => edge.TargetId).ToArray();
-        var start = _startNodeId;
+        var live = Nodes.Select(node => Choice(node.Id, node.DisplayName)).ToList();
 
-        var ids = Nodes.Select(node => node.NodeId).ToList();
-
-        var edgeChoices = new List<string>(ids.Count + 2) { string.Empty };
-        edgeChoices.AddRange(ids);
-        // Правленный руками файл способен направить ребро на несуществующую ноду. Оставляем это
-        // значение выбираемым, чтобы редактор показывал правду, а валидатор мог на неё
-        // пожаловаться, — вместо того чтобы тихо переписать её в «конец прогона».
-        foreach (var target in targets)
+        var edgeChoices = new List<NodeChoiceViewModel>(live.Count + 2) { NodeChoiceViewModel.End };
+        edgeChoices.AddRange(live);
+        // Правленный руками файл способен направить ребро (или старт) на несуществующую ноду.
+        // Оставляем такое значение выбираемым, чтобы редактор показывал правду, а валидатор мог
+        // на неё пожаловаться, — вместо того чтобы тихо переписать её в «конец прогона».
+        foreach (var edge in AllEdges())
         {
-            if (target.Length > 0 && !edgeChoices.Contains(target, StringComparer.Ordinal))
+            if (edge.TargetId is { } target && edgeChoices.All(choice => choice.Id != target))
             {
-                edgeChoices.Add(target);
+                edgeChoices.Add(Dangling(target));
             }
         }
 
-        var startChoices = new List<string>(ids);
-        if (start.Length > 0 && !startChoices.Contains(start, StringComparer.Ordinal))
+        var startChoices = new List<NodeChoiceViewModel>(live);
+        if (_startNodeId != Guid.Empty && startChoices.All(choice => choice.Id != _startNodeId))
         {
-            startChoices.Add(start);
+            startChoices.Add(Dangling(_startNodeId));
         }
 
-        Replace(NodeIdChoices, edgeChoices);
+        Replace(NodeChoices, edgeChoices);
         Replace(StartNodeChoices, startChoices);
 
-        for (var i = 0; i < edges.Count; i++)
+        foreach (var edge in AllEdges())
         {
-            edges[i].TargetId = targets[i];
+            edge.Resolve();
         }
 
-        _startNodeId = start;
         OnPropertyChanged(nameof(StartNodeId));
+        OnPropertyChanged(nameof(StartNode));
+
+        NodeChoiceViewModel Choice(Guid id, string display)
+        {
+            if (!_choiceCache.TryGetValue(id, out var choice))
+            {
+                choice = NodeChoiceViewModel.ForNode(id, display);
+                _choiceCache[id] = choice;
+            }
+
+            choice.Display = display;
+            return choice;
+        }
+
+        NodeChoiceViewModel Dangling(Guid id)
+        {
+            if (!_choiceCache.TryGetValue(id, out var choice))
+            {
+                choice = NodeChoiceViewModel.Dangling(id);
+                _choiceCache[id] = choice;
+            }
+
+            return choice;
+        }
     }
 
-    private string NextNodeId()
+    // Переименование меняет ТОЛЬКО подпись элемента выбора — сам элемент остаётся тем же
+    // объектом, поэтому ни один ComboBox не теряет выделения и ни одно ребро не трогается.
+    private void RefreshChoiceLabels()
     {
-        var used = Nodes.Select(node => node.NodeId).ToHashSet(StringComparer.Ordinal);
-        for (var i = 1;; i++)
+        foreach (var node in Nodes)
         {
-            var candidate = string.Create(CultureInfo.InvariantCulture, $"n{i}");
-            if (used.Add(candidate))
+            if (_choiceCache.TryGetValue(node.Id, out var choice))
             {
-                return candidate;
+                choice.Display = node.DisplayName;
             }
         }
     }
@@ -2659,7 +2675,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// «Перечитать», где id до и после ОДИНАКОВЫ) оставляло выбор стартовой ноды пустым.
     /// Пересборка на месте означает, что в обычном случае не поднимается вообще ничего.
     /// </summary>
-    private static void Replace(ObservableCollection<string> target, IReadOnlyList<string> values)
+    private static void Replace<T>(ObservableCollection<T> target, IReadOnlyList<T> values)
+        where T : class
     {
         for (var i = 0; i < values.Count; i++)
         {
@@ -2667,7 +2684,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 target.Add(values[i]);
             }
-            else if (!string.Equals(target[i], values[i], StringComparison.Ordinal))
+            else if (!ReferenceEquals(target[i], values[i]))
             {
                 target[i] = values[i];
             }

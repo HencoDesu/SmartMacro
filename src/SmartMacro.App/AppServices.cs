@@ -61,6 +61,7 @@ internal sealed class AppServices : IAsyncDisposable
             CreateMacroEditorViewModel(),
             CreateTemplatesViewModel(),
             CreateLogViewModel(),
+            CreateSettingsViewModel(),
             MacroLauncher);
 
     /// <summary>Собирает view-model окон и прогонов саму по себе (нужно пути дизайнера).</summary>
@@ -84,6 +85,15 @@ internal sealed class AppServices : IAsyncDisposable
     /// (<c>logs/smartmacro-ui-*.log</c>) — другая история и в ленту не попадает.
     /// </summary>
     public LogViewModel CreateLogViewModel() => new(Client, Dispatcher);
+
+    /// <summary>
+    /// Собирает view-model настроек, стоящую за режимом «Настройки». Своего пути к
+    /// <c>settings.json</c> она, как и две соседки выше, не получает: файлом владеет демон, и
+    /// панель видит его только через <c>GetSettings</c> / <c>SaveSettings</c>. Путь для кнопки
+    /// «Открыть папку» приезжает В ОТВЕТЕ, а не вычисляется здесь, — иначе панель однажды открыла
+    /// бы не ту папку, в которой демон на самом деле живёт.
+    /// </summary>
+    public SettingsViewModel CreateSettingsViewModel() => new(Client, Dispatcher);
 
     public ValueTask DisposeAsync() => _client.DisposeAsync();
 }

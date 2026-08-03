@@ -173,11 +173,13 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
         }
     }
 
-    public void NodeEntered(Guid walkId, int elapsedMs, string nodeId) =>
-        Enqueue(new RunEventDto(walkId, RunEventKind.NodeEntered, elapsedMs, nodeId));
+    public void NodeEntered(Guid walkId, int elapsedMs, Guid nodeId, string nodeName) =>
+        Enqueue(new RunEventDto(walkId, RunEventKind.NodeEntered, elapsedMs, nodeId, NodeName: nodeName));
 
-    public void NodeExited(Guid walkId, int elapsedMs, string nodeId, string outcome, string? detail, int durationMs) =>
-        Enqueue(new RunEventDto(walkId, RunEventKind.NodeExited, elapsedMs, nodeId, outcome, detail, durationMs));
+    public void NodeExited(Guid walkId, int elapsedMs, Guid nodeId, string nodeName, string outcome, string? detail,
+        int durationMs) =>
+        Enqueue(new RunEventDto(walkId, RunEventKind.NodeExited, elapsedMs, nodeId, outcome, detail, durationMs,
+            NodeName: nodeName));
 
     public void WalkFinished(Guid walkId, int elapsedMs, string outcome, string? detail)
     {
@@ -188,8 +190,9 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
         }
     }
 
-    public void VariableSet(Guid walkId, int elapsedMs, string name, string value, string? nodeId) =>
-        Enqueue(new RunEventDto(walkId, RunEventKind.VariableSet, elapsedMs, nodeId, Detail: value, Variable: name));
+    public void VariableSet(Guid walkId, int elapsedMs, string name, string value, Guid? nodeId, string? nodeName) =>
+        Enqueue(new RunEventDto(walkId, RunEventKind.VariableSet, elapsedMs, nodeId, Detail: value, Variable: name,
+            NodeName: nodeName));
 
     /// <summary>
     /// Обход припарковался. <b>Сбрасывается немедленно</b>, в обход окна склейки: это
@@ -198,19 +201,20 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
     /// Освободить от склейки безопасно, потому что таких событий за сессию единицы: всплеск,
     /// ради укрощения которого этот класс и существует, — это трафик нод, и он не затронут.
     /// </summary>
-    public void WalkPaused(Guid walkId, int elapsedMs, string nodeId, DebugPauseReason reason) =>
+    public void WalkPaused(Guid walkId, int elapsedMs, Guid nodeId, string nodeName, DebugPauseReason reason) =>
         Enqueue(
             new RunEventDto(
                 walkId,
                 reason == DebugPauseReason.Breakpoint ? RunEventKind.BreakpointHit : RunEventKind.Paused,
                 elapsedMs,
                 nodeId,
-                Detail: Describe(reason)),
+                Detail: Describe(reason),
+                NodeName: nodeName),
             urgent: true);
 
     /// <inheritdoc cref="WalkPaused" />
-    public void WalkResumed(Guid walkId, int elapsedMs, string nodeId) =>
-        Enqueue(new RunEventDto(walkId, RunEventKind.Resumed, elapsedMs, nodeId), urgent: true);
+    public void WalkResumed(Guid walkId, int elapsedMs, Guid nodeId, string nodeName) =>
+        Enqueue(new RunEventDto(walkId, RunEventKind.Resumed, elapsedMs, nodeId, NodeName: nodeName), urgent: true);
 
     // По-русски, как и любой другой Detail: панель выводит это дословно в полосе лога и на
     // панели инструментов, а какая из четырёх причин сработала, знает только демон.

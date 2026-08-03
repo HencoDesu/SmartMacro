@@ -1,5 +1,6 @@
 using SmartMacro.Macros.Model;
 
+// ReSharper disable once CheckNamespace — имена SmartMacro.Macros.* достались разборам от жизни в Core.
 namespace SmartMacro.Macros.Analysis;
 
 /// <summary>
@@ -42,9 +43,10 @@ public enum VariableKind
 }
 
 /// <summary>Одно место, где переменную трогают.</summary>
-/// <param name="NodeId">Нода, которая её трогает.</param>
+/// <param name="NodeId">Нода, которая её трогает, — по нему панель подсвечивает коробку на канве.</param>
+/// <param name="NodeName">Её подпись — по ней панель называет ноду в карточке переменной.</param>
 /// <param name="Slot">Какое именно поле этой ноды.</param>
-public sealed record VariableReference(string NodeId, VariableSlot Slot);
+public sealed record VariableReference(Guid NodeId, string NodeName, VariableSlot Slot);
 
 /// <summary>
 /// Всё, что граф говорит об одной переменной: кто её пишет, кто читает, что в ней лежит.
@@ -164,6 +166,7 @@ public static class MacroVariableAnalysis
                 names.Add(name);
             }
         }
+
         return names ?? (IReadOnlyList<string>)[];
     }
 
@@ -174,38 +177,38 @@ public static class MacroVariableAnalysis
             // ---- пишущие: закрытый набор из spec §5.3 -----------------------------------
 
             case FindElementNode n:
-                Write(found, n.FoundPointVar, node.Id, VariableSlot.FoundPointVar, VariableKind.Point, order);
+                Write(found, n.FoundPointVar, node, VariableSlot.FoundPointVar, VariableKind.Point, order);
                 break;
 
             case WaitForElementNode n:
-                Write(found, n.FoundPointVar, node.Id, VariableSlot.FoundPointVar, VariableKind.Point, order);
+                Write(found, n.FoundPointVar, node, VariableSlot.FoundPointVar, VariableKind.Point, order);
                 break;
 
             case RecognizeTagNode n:
-                Write(found, n.ResultVar, node.Id, VariableSlot.ResultVar, VariableKind.Text, order);
+                Write(found, n.ResultVar, node, VariableSlot.ResultVar, VariableKind.Text, order);
                 break;
 
             // ---- читающие ---------------------------------------------------------------
 
             case ClickNode n:
                 // Единственное чтение, которое называет переменную прямо, а не подставляет её.
-                Read(found, n.PointVar, node.Id, VariableSlot.PointVar, VariableKind.Point, order);
+                Read(found, n.PointVar, node, VariableSlot.PointVar, VariableKind.Point, order);
                 break;
 
             case AddTagNode n:
-                Interpolated(found, n.Tag, node.Id, VariableSlot.Tag, order);
+                Interpolated(found, n.Tag, node, VariableSlot.Tag, order);
                 break;
 
             case RemoveTagNode n:
-                Interpolated(found, n.Tag, node.Id, VariableSlot.Tag, order);
+                Interpolated(found, n.Tag, node, VariableSlot.Tag, order);
                 break;
 
             case SetIconNode n:
-                Interpolated(found, n.IconPath, node.Id, VariableSlot.IconPath, order);
+                Interpolated(found, n.IconPath, node, VariableSlot.IconPath, order);
                 break;
 
             case RunMacroNode n:
-                Interpolated(found, n.MacroName, node.Id, VariableSlot.MacroName, order);
+                Interpolated(found, n.MacroName, node, VariableSlot.MacroName, order);
                 break;
 
             default:
@@ -218,21 +221,21 @@ public static class MacroVariableAnalysis
     private static void Interpolated(
         Dictionary<string, Entry> found,
         string? template,
-        string nodeId,
+        MacroNode node,
         VariableSlot slot,
         int order)
     {
         foreach (var name in PlaceholdersIn(template))
         {
             // Подстановка о типе не говорит ничего — строковое представление есть у всего.
-            Read(found, name, nodeId, slot, VariableKind.Unknown, order);
+            Read(found, name, node, slot, VariableKind.Unknown, order);
         }
     }
 
     private static void Write(
         Dictionary<string, Entry> found,
         string? name,
-        string nodeId,
+        MacroNode node,
         VariableSlot slot,
         VariableKind kind,
         int order)
@@ -241,8 +244,9 @@ public static class MacroVariableAnalysis
         {
             return;
         }
+
         var entry = Get(found, name, order);
-        entry.Writes.Add(new VariableReference(nodeId, slot));
+        entry.Writes.Add(Reference(node, slot));
         // Запись о типе говорит достоверно; чтение — только догадывается.
         entry.Kind = kind;
     }
@@ -250,7 +254,7 @@ public static class MacroVariableAnalysis
     private static void Read(
         Dictionary<string, Entry> found,
         string? name,
-        string nodeId,
+        MacroNode node,
         VariableSlot slot,
         VariableKind kind,
         int order)
@@ -259,13 +263,20 @@ public static class MacroVariableAnalysis
         {
             return;
         }
+
         var entry = Get(found, name, order);
-        entry.Reads.Add(new VariableReference(nodeId, slot));
+        entry.Reads.Add(Reference(node, slot));
         if (entry.Kind == VariableKind.Unknown && entry.Writes.Count == 0)
         {
             entry.Kind = kind;
         }
     }
+
+    // Имя снимается ЗДЕСЬ, в момент разбора, а не резолвится панелью позже: разбор гоняют по
+    // тому же графу, который панель и показывает, так что вторая карта «id → подпись» была бы
+    // лишним местом для рассинхрона.
+    private static VariableReference Reference(MacroNode node, VariableSlot slot) =>
+        new(node.Id, MacroNodeNames.Display(node), slot);
 
     private static Entry Get(Dictionary<string, Entry> found, string name, int order)
     {
@@ -274,6 +285,7 @@ public static class MacroVariableAnalysis
             entry = new Entry(name, order);
             found[name] = entry;
         }
+
         return entry;
     }
 

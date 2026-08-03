@@ -11,12 +11,12 @@ public class RunMacroNodeTests
 {
     /// <summary>Под-макрос, нажимающий F9 в своём контекстном окне.</summary>
     private static MacroGraph SubPressingF9(string name = "суб") =>
-        ExecutorHarness.Graph(name, "k", new KeyPressNode { Id = "k", Key = VirtualKey.F9, Next = null });
+        ExecutorHarness.Graph(name, Ids.Of("k"), new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F9, Next = null });
 
     private static MacroGraph ParentRunning(string subName, bool await_ = true, TargetSelector? target = null) =>
-        ExecutorHarness.Graph("родитель", "r",
-            new RunMacroNode { Id = "r", MacroName = subName, Await = await_, Target = target, Next = "after" },
-            new KeyPressNode { Id = "after", Key = VirtualKey.F1, Next = null });
+        ExecutorHarness.Graph("родитель", Ids.Of("r"),
+            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = subName, Await = await_, Target = target, Next = Ids.Of("after") },
+            new KeyPressNode { Id = Ids.Of("after"), DisplayName = "after", Key = VirtualKey.F1, Next = null });
 
     [Test]
     public async Task AwaitTrue_RunsSubMacroThenContinues()
@@ -95,8 +95,8 @@ public class RunMacroNodeTests
 
         // Родитель БЕЗ ноды-действия «после»: его обход вообще не трогает примитив с затвором,
         // так что завершение доказывает именно «запустил и забыл», и ничего кроме.
-        var parent = ExecutorHarness.Graph("родитель", "r",
-            new RunMacroNode { Id = "r", MacroName = "суб", Await = false, Next = null });
+        var parent = ExecutorHarness.Graph("родитель", Ids.Of("r"),
+            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = "суб", Await = false, Next = null });
 
         var result = await h.Executor
             .RunAsync(parent, h.Context(ExecutorHarness.Window), CancellationToken.None)
@@ -114,8 +114,8 @@ public class RunMacroNodeTests
         // м0 → м1 → м2 → м3 → м4 → м5: запуск м5 требует глубины 5 > MaxDepth(4).
         for (var i = 0; i < 5; i++)
         {
-            h.Resolver.Add(ExecutorHarness.Graph($"м{i}", "r",
-                new RunMacroNode { Id = "r", MacroName = $"м{i + 1}", Next = null }));
+            h.Resolver.Add(ExecutorHarness.Graph($"м{i}", Ids.Of("r"),
+                new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = $"м{i + 1}", Next = null }));
         }
 
         h.Resolver.Add(SubPressingF9("м5"));
@@ -137,8 +137,8 @@ public class RunMacroNodeTests
         // это законно.
         for (var i = 0; i < 4; i++)
         {
-            h.Resolver.Add(ExecutorHarness.Graph($"м{i}", "r",
-                new RunMacroNode { Id = "r", MacroName = $"м{i + 1}", Next = null }));
+            h.Resolver.Add(ExecutorHarness.Graph($"м{i}", Ids.Of("r"),
+                new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = $"м{i + 1}", Next = null }));
         }
 
         h.Resolver.Add(SubPressingF9("м4"));
@@ -154,10 +154,10 @@ public class RunMacroNodeTests
     public async Task NameCycle_AbortsRun()
     {
         var h = new ExecutorHarness();
-        h.Resolver.Add(ExecutorHarness.Graph("а", "r",
-            new RunMacroNode { Id = "r", MacroName = "б", Next = null }));
-        h.Resolver.Add(ExecutorHarness.Graph("б", "r",
-            new RunMacroNode { Id = "r", MacroName = "а", Next = null }));
+        h.Resolver.Add(ExecutorHarness.Graph("а", Ids.Of("r"),
+            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = "б", Next = null }));
+        h.Resolver.Add(ExecutorHarness.Graph("б", Ids.Of("r"),
+            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = "а", Next = null }));
 
         var result = await h.Executor.RunAsync(
             h.Resolver.TryGet("а")!, h.Context(ExecutorHarness.Window), CancellationToken.None);
@@ -170,8 +170,8 @@ public class RunMacroNodeTests
     public async Task SelfCycle_AbortsRun()
     {
         var h = new ExecutorHarness();
-        h.Resolver.Add(ExecutorHarness.Graph("а", "r",
-            new RunMacroNode { Id = "r", MacroName = "а", Next = null }));
+        h.Resolver.Add(ExecutorHarness.Graph("а", Ids.Of("r"),
+            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = "а", Next = null }));
 
         var result = await h.Executor.RunAsync(
             h.Resolver.TryGet("а")!, h.Context(ExecutorHarness.Window), CancellationToken.None);
@@ -187,11 +187,11 @@ public class RunMacroNodeTests
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         h.Primitives.RecognizeHandler = (_, _, _) => "жрец";
         // Потомок ЧИТАЕТ переменную родителя (в тег) и ПИШЕТ свою собственную (ResultVar).
-        h.Resolver.Add(ExecutorHarness.Graph("суб", "t",
-            new AddTagNode { Id = "t", Tag = "из-родителя-{п}", Next = "r" },
+        h.Resolver.Add(ExecutorHarness.Graph("суб", Ids.Of("t"),
+            new AddTagNode { Id = Ids.Of("t"), DisplayName = "t", Tag = "из-родителя-{п}", Next = Ids.Of("r") },
             new RecognizeTagNode
             {
-                Id = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 1, 1),
+                Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 1, 1),
                 ApplyTag = false, ResultVar = "tag", Matched = null, NotMatched = null,
             }));
         var variables = new MacroVariables();
@@ -220,10 +220,10 @@ public class RunMacroNodeTests
         h.Resolver.Add(SubPressingF9());
         // Ноды-продолжения без цели здесь нет: родитель идёт без контекстного окна, так что всё
         // после веера обязано нести селектор тоже (или завершать прогон).
-        var parent = ExecutorHarness.Graph("родитель", "r",
+        var parent = ExecutorHarness.Graph("родитель", Ids.Of("r"),
             new RunMacroNode
             {
-                Id = "r", MacroName = "суб",
+                Id = Ids.Of("r"), DisplayName = "r", MacroName = "суб",
                 Target = new TargetSelector { RequireTags = ["перс"] }, Next = null,
             });
 
@@ -248,8 +248,8 @@ public class RunMacroNodeTests
         h.Resolver.Add(SubPressingF9("суб-жрец"));
         var variables = new MacroVariables();
         variables.Set("tag", "жрец");
-        var parent = ExecutorHarness.Graph("родитель", "r",
-            new RunMacroNode { Id = "r", MacroName = "суб-{tag}", Next = null });
+        var parent = ExecutorHarness.Graph("родитель", Ids.Of("r"),
+            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = "суб-{tag}", Next = null });
 
         var result = await h.Executor.RunAsync(parent, h.Context(ExecutorHarness.Window, variables),
             CancellationToken.None);
@@ -277,8 +277,8 @@ public class RunMacroNodeTests
         var h = new ExecutorHarness();
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         // Потомок прерывается: подстановка неопределённой переменной.
-        h.Resolver.Add(ExecutorHarness.Graph("суб", "t",
-            new AddTagNode { Id = "t", Tag = "{нет}", Next = null }));
+        h.Resolver.Add(ExecutorHarness.Graph("суб", Ids.Of("t"),
+            new AddTagNode { Id = Ids.Of("t"), DisplayName = "t", Tag = "{нет}", Next = null }));
 
         var result = await h.Executor.RunAsync(
             ParentRunning("суб"), h.Context(ExecutorHarness.Window), CancellationToken.None);

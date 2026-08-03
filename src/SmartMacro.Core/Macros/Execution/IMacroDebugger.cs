@@ -38,10 +38,11 @@ public sealed class MacroDebugGate
 {
     private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    internal MacroDebugGate(Guid walkId, string nodeId, DebugPauseReason reason)
+    internal MacroDebugGate(Guid walkId, Guid nodeId, string nodeName, DebugPauseReason reason)
     {
         WalkId = walkId;
         NodeId = nodeId;
+        NodeName = nodeName;
         Reason = reason;
     }
 
@@ -49,7 +50,10 @@ public sealed class MacroDebugGate
     public Guid WalkId { get; }
 
     /// <summary>Нода, ПЕРЕД которой обход припаркован. Она ещё не выполнялась.</summary>
-    public string NodeId { get; }
+    public Guid NodeId { get; }
+
+    /// <summary>Её подпись — то, что уедет в событие паузы и в лог.</summary>
+    public string NodeName { get; }
 
     /// <summary>Почему.</summary>
     public DebugPauseReason Reason { get; }
@@ -92,7 +96,8 @@ public interface IMacroDebugger
     /// <param name="walkId">Обход в том виде, в каком о нём доложили в <see cref="IMacroRunObserver.WalkStarted"/>.</param>
     /// <param name="macroName">Обходимый граф — точки останова ключуются парой (макрос, нода).</param>
     /// <param name="nodeId">Нода, которая вот-вот выполнится.</param>
-    MacroDebugGate? Arm(Guid walkId, string macroName, string nodeId);
+    /// <param name="nodeName">Её подпись — сессия несёт её дальше в событие паузы и в лог.</param>
+    MacroDebugGate? Arm(Guid walkId, string macroName, Guid nodeId, string nodeName);
 
     /// <summary>
     /// Забывает затвор — и когда его отпустили штатно, и когда его бросили из-за отмены. Walker

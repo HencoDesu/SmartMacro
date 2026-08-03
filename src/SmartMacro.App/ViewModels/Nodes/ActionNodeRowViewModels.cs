@@ -12,8 +12,8 @@ namespace SmartMacro.App.ViewModels.Nodes;
 /// </summary>
 public abstract class ActionNodeRowViewModel : NodeRowViewModel
 {
-    protected ActionNodeRowViewModel(string nodeId, TargetSelectorViewModel? target, string? next)
-        : base(nodeId, target, new NodeEdgeViewModel("Далее", next))
+    protected ActionNodeRowViewModel(MacroNode node, TargetSelectorViewModel? target, Guid? next)
+        : base(node, target, new NodeEdgeViewModel("Далее", next))
     {
     }
 
@@ -27,7 +27,7 @@ public sealed class KeyPressNodeRowViewModel : ActionNodeRowViewModel
     private string _keyName;
 
     public KeyPressNodeRowViewModel(KeyPressNode node)
-        : base(node.Id, TargetSelectorViewModel.FromSelector(node.Target), node.Next)
+        : base(node, TargetSelectorViewModel.FromSelector(node.Target), node.Next)
     {
         _keyName = node.Key.ToString();
     }
@@ -53,18 +53,19 @@ public sealed class KeyPressNodeRowViewModel : ActionNodeRowViewModel
 
     public override MacroNode ToNode() => new KeyPressNode
     {
-        Id = NodeId,
+        Id = Id,
+        DisplayName = DisplayName,
         Editor = Editor,
         Key = ParseKey(_keyName),
         Target = Target?.ToSelector(),
-        Next = Next.TargetOrNull,
+        Next = Next.TargetId,
     };
 
     public override IEnumerable<string> GetInputErrors()
     {
         if (!Enum.TryParse<VirtualKey>(_keyName, out var key) || key == 0)
         {
-            yield return $"[{NodeId}] клавиша не задана.";
+            yield return $"[{DisplayName}] клавиша не задана.";
         }
     }
 
@@ -86,7 +87,7 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
     private bool _doubleClick;
 
     public ClickNodeRowViewModel(ClickNode node)
-        : base(node.Id, TargetSelectorViewModel.FromSelector(node.Target), node.Next)
+        : base(node, TargetSelectorViewModel.FromSelector(node.Target), node.Next)
     {
         var point = node.Point ?? default;
         _xText = NodeInput.FormatInt(point.X);
@@ -145,13 +146,14 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
 
     public override MacroNode ToNode() => new ClickNode
     {
-        Id = NodeId,
+        Id = Id,
+        DisplayName = DisplayName,
         Editor = Editor,
         Point = _useVariable ? null : new ScreenPoint(NodeInput.ParseInt(_xText) ?? 0, NodeInput.ParseInt(_yText) ?? 0),
         PointVar = _useVariable ? _pointVar : null,
         DoubleClick = _doubleClick,
         Target = Target?.ToSelector(),
-        Next = Next.TargetOrNull,
+        Next = Next.TargetId,
     };
 
     public override IEnumerable<string> GetInputErrors()
@@ -160,7 +162,7 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
         {
             if (string.IsNullOrWhiteSpace(_pointVar))
             {
-                yield return $"[{NodeId}] имя переменной не задано.";
+                yield return $"[{DisplayName}] имя переменной не задано.";
             }
 
             yield break;
@@ -168,12 +170,12 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
 
         if (NodeInput.ParseInt(_xText) is null)
         {
-            yield return $"[{NodeId}] X: «{_xText}» — не целое число.";
+            yield return $"[{DisplayName}] X: «{_xText}» — не целое число.";
         }
 
         if (NodeInput.ParseInt(_yText) is null)
         {
-            yield return $"[{NodeId}] Y: «{_yText}» — не целое число.";
+            yield return $"[{DisplayName}] Y: «{_yText}» — не целое число.";
         }
     }
 }
@@ -189,7 +191,7 @@ public sealed class DelayNodeRowViewModel : ActionNodeRowViewModel
     private string _secondsText;
 
     public DelayNodeRowViewModel(DelayNode node)
-        : base(node.Id, target: null, node.Next)
+        : base(node, target: null, node.Next)
     {
         _secondsText = NodeInput.FormatSeconds(node.Ms);
     }
@@ -207,17 +209,18 @@ public sealed class DelayNodeRowViewModel : ActionNodeRowViewModel
 
     public override MacroNode ToNode() => new DelayNode
     {
-        Id = NodeId,
+        Id = Id,
+        DisplayName = DisplayName,
         Editor = Editor,
         Ms = NodeInput.ParseSecondsToMs(_secondsText) ?? 0,
-        Next = Next.TargetOrNull,
+        Next = Next.TargetId,
     };
 
     public override IEnumerable<string> GetInputErrors()
     {
         if (NodeInput.ParseSecondsToMs(_secondsText) is null)
         {
-            yield return $"[{NodeId}] пауза: «{_secondsText}» — не неотрицательное число секунд.";
+            yield return $"[{DisplayName}] пауза: «{_secondsText}» — не неотрицательное число секунд.";
         }
     }
 }
@@ -227,8 +230,8 @@ public abstract class TagNodeRowViewModel : ActionNodeRowViewModel
 {
     private string _tag;
 
-    protected TagNodeRowViewModel(string nodeId, TargetSelector? target, string? next, string tag)
-        : base(nodeId, TargetSelectorViewModel.FromSelector(target), next)
+    protected TagNodeRowViewModel(MacroNode node, TargetSelector? target, Guid? next, string tag)
+        : base(node, TargetSelectorViewModel.FromSelector(target), next)
     {
         _tag = tag;
     }
@@ -247,7 +250,7 @@ public abstract class TagNodeRowViewModel : ActionNodeRowViewModel
     {
         if (string.IsNullOrWhiteSpace(_tag))
         {
-            yield return $"[{NodeId}] тег не задан.";
+            yield return $"[{DisplayName}] тег не задан.";
         }
     }
 }
@@ -256,7 +259,7 @@ public abstract class TagNodeRowViewModel : ActionNodeRowViewModel
 public sealed class AddTagNodeRowViewModel : TagNodeRowViewModel
 {
     public AddTagNodeRowViewModel(AddTagNode node)
-        : base(node.Id, node.Target, node.Next, node.Tag)
+        : base(node, node.Target, node.Next, node.Tag)
     {
     }
 
@@ -264,11 +267,12 @@ public sealed class AddTagNodeRowViewModel : TagNodeRowViewModel
 
     public override MacroNode ToNode() => new AddTagNode
     {
-        Id = NodeId,
+        Id = Id,
+        DisplayName = DisplayName,
         Editor = Editor,
         Tag = Tag,
         Target = Target?.ToSelector(),
-        Next = Next.TargetOrNull,
+        Next = Next.TargetId,
     };
 }
 
@@ -276,7 +280,7 @@ public sealed class AddTagNodeRowViewModel : TagNodeRowViewModel
 public sealed class RemoveTagNodeRowViewModel : TagNodeRowViewModel
 {
     public RemoveTagNodeRowViewModel(RemoveTagNode node)
-        : base(node.Id, node.Target, node.Next, node.Tag)
+        : base(node, node.Target, node.Next, node.Tag)
     {
     }
 
@@ -284,11 +288,12 @@ public sealed class RemoveTagNodeRowViewModel : TagNodeRowViewModel
 
     public override MacroNode ToNode() => new RemoveTagNode
     {
-        Id = NodeId,
+        Id = Id,
+        DisplayName = DisplayName,
         Editor = Editor,
         Tag = Tag,
         Target = Target?.ToSelector(),
-        Next = Next.TargetOrNull,
+        Next = Next.TargetId,
     };
 }
 
@@ -298,7 +303,7 @@ public sealed class SetIconNodeRowViewModel : ActionNodeRowViewModel
     private string _iconPath;
 
     public SetIconNodeRowViewModel(SetIconNode node)
-        : base(node.Id, TargetSelectorViewModel.FromSelector(node.Target), node.Next)
+        : base(node, TargetSelectorViewModel.FromSelector(node.Target), node.Next)
     {
         _iconPath = node.IconPath;
     }
@@ -317,18 +322,19 @@ public sealed class SetIconNodeRowViewModel : ActionNodeRowViewModel
 
     public override MacroNode ToNode() => new SetIconNode
     {
-        Id = NodeId,
+        Id = Id,
+        DisplayName = DisplayName,
         Editor = Editor,
         IconPath = _iconPath,
         Target = Target?.ToSelector(),
-        Next = Next.TargetOrNull,
+        Next = Next.TargetId,
     };
 
     public override IEnumerable<string> GetInputErrors()
     {
         if (string.IsNullOrWhiteSpace(_iconPath))
         {
-            yield return $"[{NodeId}] путь к иконке не задан.";
+            yield return $"[{DisplayName}] путь к иконке не задан.";
         }
     }
 }
@@ -341,7 +347,7 @@ public sealed class RunMacroNodeRowViewModel : ActionNodeRowViewModel
     private ObservableCollection<string> _macroChoices = [];
 
     public RunMacroNodeRowViewModel(RunMacroNode node)
-        : base(node.Id, TargetSelectorViewModel.FromSelector(node.Target), node.Next)
+        : base(node, TargetSelectorViewModel.FromSelector(node.Target), node.Next)
     {
         _macroName = node.MacroName;
         _await = node.Await;
@@ -384,19 +390,20 @@ public sealed class RunMacroNodeRowViewModel : ActionNodeRowViewModel
 
     public override MacroNode ToNode() => new RunMacroNode
     {
-        Id = NodeId,
+        Id = Id,
+        DisplayName = DisplayName,
         Editor = Editor,
         MacroName = _macroName,
         Await = _await,
         Target = Target?.ToSelector(),
-        Next = Next.TargetOrNull,
+        Next = Next.TargetId,
     };
 
     public override IEnumerable<string> GetInputErrors()
     {
         if (string.IsNullOrWhiteSpace(_macroName))
         {
-            yield return $"[{NodeId}] не выбран макрос.";
+            yield return $"[{DisplayName}] не выбран макрос.";
         }
     }
 }

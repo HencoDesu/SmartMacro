@@ -27,7 +27,7 @@ public class TemplatesViewModelTests
     private static MacroGraph Macro(string name, params MacroNode[] nodes) => new()
     {
         Name = name,
-        StartNodeId = nodes.Length > 0 ? nodes[0].Id : "n1",
+        StartNodeId = nodes.Length > 0 ? nodes[0].Id : Ids.Of("n1"),
         Nodes = [.. nodes],
     };
 
@@ -103,8 +103,8 @@ public class TemplatesViewModelTests
         var client = Client(
             [File(null, "ServerSelectButton"), File(null, "Ничей"), File("classes", "Лучник")],
             [
-                Macro("pw-boot", new FindElementNode { Id = "find", Template = "ServerSelectButton" }),
-                Macro("pw-identify", new RecognizeTagNode { Id = "rec", TemplateSet = "classes", Region = Region }),
+                Macro("pw-boot", new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "ServerSelectButton" }),
+                Macro("pw-identify", new RecognizeTagNode { Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "classes", Region = Region }),
             ]);
         using var vm = Create(client);
 
@@ -130,8 +130,8 @@ public class TemplatesViewModelTests
         using var vm = Create(Client(
             [File("classes", "Лучник")],
             [
-                Macro("pw-boot", new FindElementNode { Id = "find", Template = "КнопкаКоторойНет" }),
-                Macro("боссы", new RecognizeTagNode { Id = "rec", TemplateSet = "bosses", Region = Region }),
+                Macro("pw-boot", new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "КнопкаКоторойНет" }),
+                Macro("боссы", new RecognizeTagNode { Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "bosses", Region = Region }),
             ]));
 
         await Assert.That(vm.HasMissing).IsTrue();
@@ -147,8 +147,8 @@ public class TemplatesViewModelTests
         using var vm = Create(Client(
             [File(null, "ServerSelectButton"), File("classes", "Лучник")],
             [
-                Macro("pw-boot", new FindElementNode { Id = "find", Template = "ServerSelectButton" }),
-                Macro("pw-identify", new RecognizeTagNode { Id = "rec", TemplateSet = "classes", Region = Region }),
+                Macro("pw-boot", new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "ServerSelectButton" }),
+                Macro("pw-identify", new RecognizeTagNode { Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "classes", Region = Region }),
             ]));
 
         await Assert.That(vm.HasMissing).IsFalse();
@@ -164,7 +164,7 @@ public class TemplatesViewModelTests
 
         client.Respond(
             IpcMessageTypes.GetMacros,
-            new[] { Macro("новый", new FindElementNode { Id = "find", Template = "Кнопка" }) });
+            new[] { Macro("новый", new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "Кнопка" }) });
         client.RaiseEvent(IpcMessageTypes.MacrosChanged);
 
         await Assert.That(vm.Templates[0].IsUnused).IsFalse();

@@ -35,6 +35,7 @@ public class RunEventStreamTests
                 Engine.RunEvents,
                 Engine.Log,
                 Engine.Debug,
+                Engine.SettingsSnapshots,
                 NullLogger<IpcServer>.Instance);
             Server.SubscribeToEngine();
             Engine.RunEvents.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
@@ -106,8 +107,8 @@ public class RunEventStreamTests
             0));
         foreach (var node in nodes)
         {
-            publisher.NodeEntered(walkId, 0, node);
-            publisher.NodeExited(walkId, 1, node, RunOutcomes.Ok, "деталь", 1);
+            publisher.NodeEntered(walkId, 0, Ids.Of(node), node);
+            publisher.NodeExited(walkId, 1, Ids.Of(node), node, RunOutcomes.Ok, "деталь", 1);
         }
 
         return walkId;
@@ -348,7 +349,7 @@ public class RunEventStreamTests
         fixture.Publisher.WalkStarted(new MacroWalkStart(walkId, Guid.NewGuid(), "шторм", new IntPtr(0x1), 0));
         for (var i = 0; i < 20_000; i++)
         {
-            fixture.Publisher.NodeEntered(walkId, i, "n");
+            fixture.Publisher.NodeEntered(walkId, i, Ids.Of("n"), "n");
         }
 
         var dropped = 0;
@@ -385,11 +386,11 @@ public class RunEventStreamTests
         var batch = IpcJson.Read<RunEventBatch>(Parse(await client.ReadLineAsync(timeoutMs: 5000))
             .GetProperty("Payload"))!;
 
-        // OfType<string>(), а не Where(id => id is not null): здесь null — законное значение
+        // OfType<string>(), а не Where(name => name is not null): здесь null — законное значение
         // (у событий уровня обхода ноды нет) и его действительно надо отбросить, но через Where
         // компилятор тип не сужает, и на выходе оставался IEnumerable<string?> — отсюда CS8631.
         // OfType и отфильтровывает, и сужает, то есть говорит ровно то, что тут и происходит.
-        await Assert.That(batch.Events.Select(e => e.NodeId).OfType<string>())
+        await Assert.That(batch.Events.Select(e => e.NodeName).OfType<string>())
             .IsEquivalentTo(new[] { "z", "z" });
 
         client.CloseClient();

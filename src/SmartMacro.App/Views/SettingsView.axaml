@@ -1,0 +1,690 @@
+<!--
+  «Настройки» — вариант 2c макета (docs/design/opt-2c.html): один экран без прокрутки, плитки в
+  оболочке, диагностика полосой снизу.
+
+  Раскладка следует макету, но три вещи в ней сделаны иначе, и все три — решения автора, принятые
+  ПОСЛЕ картинки:
+
+    · ПРОФИЛИ ПРОЦЕССОВ — ПОСЛЕДНИМИ. Это единственный блок переменной высоты: стоя наверху, он
+      отталкивал бы всё остальное вниз при каждом добавленном профиле. Внизу он просто растёт в
+      оставшееся место и скроллится сам.
+    · У ПОРОГА РАСПОЗНАВАНИЯ НЕТ СЧЁТЧИКА. В макете рядом стоит «7 шагов из 19 задают его сами» —
+      этого нет ни в каком виде: чтобы показать число, панель обязана пересчитать все графы
+      библиотеки, а устареет оно при первой же правке любого из них. Осталась пометка, что это
+      умолчание и шаг вправе задать своё.
+    · СИГНАЛ ПОБУДКИ БЕЗ ЧИСЛА. Макет показывает ActivationLParam экспертным полем; здесь его нет
+      вовсе — только «есть» / «не нужен». Обоснование записано у ProcessProfileRowViewModel.
+
+  ⚠️ У КАЖДОГО TextBox С ЖЁСТКОЙ ВЫСОТОЙ СТОИТ Padding="8,0" И VerticalContentAlignment="Center".
+  Это не косметика: вертикальный отступ темы 11.2px плюс обрезающий PART_ScrollViewer при Height
+  в 24–26 не оставляют строке места, и у «р», «у», «д» пропадают хвосты — буквы при этом остаются
+  читаемыми, так что заметно это только глазами, вплотную. Ловушка описана в Themes/Controls.axaml
+  у самой темы; на этом экране полей больше, чем на любом другом, поэтому правило здесь особенно
+  жёсткое.
+
+  Цвета и отступы — из Themes/Tokens.axaml. Литерального hex здесь нет.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:SmartMacro.App.ViewModels"
+             xmlns:conv="using:SmartMacro.App.Converters"
+             x:Class="SmartMacro.App.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.eyebrow">
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="LetterSpacing" Value="0.7" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextGhostBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Заголовок плитки: имя слева, поясняющая приписка следом, действие справа. -->
+        <Style Selector="TextBlock.tile">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.aside">
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeMicro}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextFaintBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeSmall}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeMicro}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextFaintBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <!-- Поле числа: узкое, моноширинное, выровненное вправо — чтобы разряды стояли столбиком. -->
+        <Style Selector="TextBox.num">
+            <Setter Property="Width" Value="56" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="TextAlignment" Value="Right" />
+            <Setter Property="FontFamily" Value="{DynamicResource NocturneFontFamilyMono}" />
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeBody}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+
+        <!-- ================================= шапка ================================= -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,8">
+            <!-- Путь стоит в ЗВЁЗДНОЙ колонке, а не в Auto. С Auto он занимал всю свою
+                 естественную ширину (а это полный путь к файлу), звёздная колонка схлопывалась в
+                 ноль, и кнопки уезжали за правый край окна — «Применить» становилась недоступна.
+                 Найдено глазами, и только после того, как рядом появился счётчик правок: до него
+                 запаса ширины хватало впритык. Теперь усыхает и обрезается многоточием путь —
+                 он же целиком есть в подсказке. -->
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="Настройки"
+                           FontSize="{DynamicResource NocturneFontSizeBody}"
+                           FontWeight="Medium"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Margin="10,0,10,0"
+                           Classes="aside"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding SettingsFilePath}"
+                           Text="{Binding SettingsFilePath, StringFormat='всё в одной папке · {0}'}" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                    <!-- «2 изменения не применены» — рядом с кнопкой, которая их применит.
+                         Макет держит эту строку в полосе прогонов внизу окна, но полоса
+                         принадлежит оболочке и говорит про макросы; строка про несохранённую
+                         форму там читалась бы как состояние прогона. -->
+                    <TextBlock Text="{Binding ChangeText}"
+                               Classes="aside"
+                               Margin="0,0,4,0"
+                               Foreground="{DynamicResource NocturneWarningBrush}"
+                               IsVisible="{Binding IsDirty}" />
+                    <Button Content="Проверить среду"
+                            Height="23"
+                            Padding="10,0"
+                            ToolTip.Tip="Права, шаблоны, масштаб экрана, хоткеи, папка на запись и канал с демоном"
+                            Click="OnRunDiagnosticsClicked" />
+                    <Button Content="Открыть папку"
+                            Height="23"
+                            Padding="10,0"
+                            ToolTip.Tip="{Binding FolderPath}"
+                            Click="OnOpenFolderClicked" />
+                    <Button Content="Сброс к умолчаниям"
+                            Height="23"
+                            Padding="10,0"
+                            ToolTip.Tip="Перезапишет settings.json заводскими значениями. Макросы и шаблоны не тронет."
+                            Click="OnResetClicked" />
+                    <Button Content="Отменить"
+                            Height="23"
+                            Padding="10,0"
+                            IsEnabled="{Binding IsDirty}"
+                            ToolTip.Tip="Вернуть поля к тому, что сейчас у демона"
+                            Click="OnRevertClicked" />
+                    <Button Content="Применить"
+                            Classes="accent"
+                            Height="23"
+                            Padding="12,0"
+                            IsEnabled="{Binding CanApply}"
+                            Click="OnApplyClicked" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ================================== тело ================================== -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,380" Margin="12,10">
+
+            <!-- ============================ левая колонка =========================== -->
+            <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="0,0,12,0">
+
+                <!-- Две небольшие плитки в ряд: обе про темп работы демона. -->
+                <Grid Grid.Row="0" ColumnDefinitions="*,*" Margin="0,0,0,12">
+
+                    <!-- · Наблюдение -->
+                    <Border Grid.Column="0"
+                            Margin="0,0,6,0"
+                            Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                            BorderBrush="{DynamicResource NocturneDividerBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource NocturneRadiusMd}">
+                        <StackPanel>
+                            <Border Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
+                                    BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                    BorderThickness="0,0,0,1"
+                                    CornerRadius="8,8,0,0"
+                                    Padding="12,0"
+                                    Height="30">
+                                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                                    <TextBlock Classes="tile" Text="Наблюдение" />
+                                    <TextBlock Classes="aside" Text="два разных цикла" />
+                                </StackPanel>
+                            </Border>
+                            <StackPanel Margin="12,9" Spacing="8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5">
+                                        <TextBlock Classes="label" Text="Поиск новых процессов" />
+                                        <TextBlock Classes="aside" Text="— заметить запуск клиента" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                        <TextBox Classes="num" Text="{Binding ProcessPollSeconds, Mode=TwoWay}" />
+                                        <TextBlock Classes="aside" Text="с" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5">
+                                        <TextBlock Classes="label" Text="Проверка живости окон" />
+                                        <TextBlock Classes="aside" Text="— заметить закрытие" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                        <TextBox Classes="num" Text="{Binding WindowPollSeconds, Mode=TwoWay}" />
+                                        <TextBlock Classes="aside" Text="с" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- · Журнал -->
+                    <Border Grid.Column="1"
+                            Margin="6,0,0,0"
+                            Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                            BorderBrush="{DynamicResource NocturneDividerBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource NocturneRadiusMd}">
+                        <StackPanel>
+                            <Border Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
+                                    BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                    BorderThickness="0,0,0,1"
+                                    CornerRadius="8,8,0,0"
+                                    Padding="12,0"
+                                    Height="30">
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <TextBlock Grid.Column="0" Classes="tile" Text="Журнал" />
+                                    <TextBlock Grid.Column="1"
+                                               Classes="aside"
+                                               HorizontalAlignment="Right"
+                                               Text="применяется сразу" />
+                                </Grid>
+                            </Border>
+                            <StackPanel Margin="12,9" Spacing="7">
+                                <ComboBox HorizontalAlignment="Stretch"
+                                          Height="26"
+                                          VerticalAlignment="Center"
+                                          ItemsSource="{Binding LogLevels}"
+                                          SelectedItem="{Binding LogLevel, Mode=TwoWay}"
+                                          ToolTip.Tip="Минимальный уровень, ниже которого записи не покидают демон">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LogLevelChoice">
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                       FontSize="{DynamicResource NocturneFontSizeSmall}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <!-- Оба факта названы прямо, а не в подсказке: и то, что уровень
+                                     не сохраняется, и то, чем стоит Debug. Настройка, которая
+                                     молча не переживает перезапуск, читается как сломанная. -->
+                                <TextBlock Classes="hint"
+                                           Text="Живёт до перезапуска демона: постоянный уровень — в appsettings.json. Debug пишет каждое сообщение окну — это десятки МБ в час на десяти клиентах." />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- · Профили процессов: последними, потому что это единственный блок
+                       переменной высоты -->
+                <Border Grid.Row="1"
+                        Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                        BorderBrush="{DynamicResource NocturneDividerBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource NocturneRadiusMd}">
+                    <Grid RowDefinitions="30,24,*,Auto">
+
+                        <Border Grid.Row="0"
+                                Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
+                                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                BorderThickness="0,0,0,1"
+                                CornerRadius="8,8,0,0"
+                                Padding="12,0">
+                            <Grid ColumnDefinitions="Auto,Auto,*">
+                                <TextBlock Grid.Column="0" Classes="tile" Text="Профили процессов" />
+                                <TextBlock Grid.Column="1"
+                                           Margin="9,0,0,0"
+                                           Classes="aside"
+                                           Text="за кем следить и как будить окна перед вводом" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Шапка таблицы. Ширины колонок совпадают со строками ниже; менять
+                             их надо в обоих местах. -->
+                        <Border Grid.Row="1"
+                                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                BorderThickness="0,0,0,1"
+                                Padding="12,0">
+                            <Grid ColumnDefinitions="*,86,74,74,132,24">
+                                <TextBlock Grid.Column="0" Classes="eyebrow" Text="ПРОЦЕСС" />
+                                <TextBlock Grid.Column="1" Classes="eyebrow" Text="ПОБУДКА" />
+                                <TextBlock Grid.Column="2" Classes="eyebrow" Text="ОСЕДАНИЕ" />
+                                <TextBlock Grid.Column="3" Classes="eyebrow" Text="ДЕАКТИВ." />
+                                <TextBlock Grid.Column="4" Classes="eyebrow" Text="ВВОД" />
+                            </Grid>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Profiles}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ProcessProfileRowViewModel">
+                                        <Border BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="12,4">
+                                            <Grid ColumnDefinitions="*,86,74,74,132,24">
+                                                <TextBox Grid.Column="0"
+                                                         Height="26"
+                                                         MinHeight="26"
+                                                         Margin="0,0,8,0"
+                                                         Padding="8,0"
+                                                         VerticalContentAlignment="Center"
+                                                         FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                         FontSize="{DynamicResource NocturneFontSizeBody}"
+                                                         Watermark="имя процесса без .exe"
+                                                         Text="{Binding ProcessName, Mode=TwoWay}" />
+
+                                                <!-- Числа сигнала побудки здесь нет намеренно:
+                                                     это добытый реверсом костыль под одну игру,
+                                                     а не настройка. Подсказка объясняет и то,
+                                                     что он делает, и где его править. -->
+                                                <TextBlock Grid.Column="1"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                           Text="{Binding WakeText}"
+                                                           ToolTip.Tip="{Binding WakeTooltip}"
+                                                           Foreground="{Binding WakesWindows, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneWarningBrush|NocturneTextFaintBrush}" />
+
+                                                <TextBox Grid.Column="2"
+                                                         Classes="num"
+                                                         Width="60"
+                                                         Margin="0,0,8,0"
+                                                         HorizontalAlignment="Left"
+                                                         ToolTip.Tip="Пауза после сигнала побудки, мс. Ниже 150 PW начинает терять ввод."
+                                                         Text="{Binding SettleDelayMs, Mode=TwoWay}" />
+                                                <TextBox Grid.Column="3"
+                                                         Classes="num"
+                                                         Width="60"
+                                                         Margin="0,0,8,0"
+                                                         HorizontalAlignment="Left"
+                                                         ToolTip.Tip="Пауза перед деактивацией, мс — время на разбор очереди ввода."
+                                                         Text="{Binding DeactivationDelayMs, Mode=TwoWay}" />
+
+                                                <ComboBox Grid.Column="4"
+                                                          Width="124"
+                                                          Height="26"
+                                                          VerticalAlignment="Center"
+                                                          ItemsSource="{Binding InputChoices}"
+                                                          SelectedItem="{Binding Input, Mode=TwoWay}">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:InputMethodChoice">
+                                                            <TextBlock Text="{Binding Title}"
+                                                                       FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                                       ToolTip.Tip="{Binding Detail}" />
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+
+                                                <Button Grid.Column="5"
+                                                        Content="✕"
+                                                        Width="22"
+                                                        Height="22"
+                                                        MinWidth="0"
+                                                        Padding="0"
+                                                        VerticalAlignment="Center"
+                                                        ToolTip.Tip="Убрать профиль — за окнами этого процесса демон следить перестанет"
+                                                        Click="OnRemoveProfileClicked" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <!-- Добавление: имя + кнопка. Известному имени сигнал побудки и паузы
+                             проставятся сами — см. KnownActivationSignals. -->
+                        <Border Grid.Row="3"
+                                Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
+                                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                BorderThickness="0,1,0,0"
+                                CornerRadius="0,0,8,8"
+                                Padding="12,7">
+                            <Grid ColumnDefinitions="220,Auto,*">
+                                <TextBox Grid.Column="0"
+                                         Height="26"
+                                         MinHeight="26"
+                                         Padding="8,0"
+                                         VerticalContentAlignment="Center"
+                                         FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                         Watermark="имя процесса, например elementclient_64"
+                                         Text="{Binding NewProfileName, Mode=TwoWay}"
+                                         KeyDown="OnNewProfileKeyDown" />
+                                <Button Grid.Column="1"
+                                        Margin="6,0,0,0"
+                                        Content="+ Профиль"
+                                        Height="26"
+                                        Padding="10,0"
+                                        Click="OnAddProfileClicked" />
+                                <TextBlock Grid.Column="2"
+                                           Margin="10,0,0,0"
+                                           Classes="aside"
+                                           TextTrimming="CharacterEllipsis"
+                                           Text="узнанному имени сигнал побудки проставится сам" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- ============================ правая колонка ========================== -->
+            <StackPanel Grid.Column="1" Spacing="12">
+
+                <!-- · Ввод по умолчанию -->
+                <Border Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                        BorderBrush="{DynamicResource NocturneDividerBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource NocturneRadiusMd}">
+                    <StackPanel>
+                        <Border Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
+                                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                BorderThickness="0,0,0,1"
+                                CornerRadius="8,8,0,0"
+                                Padding="12,0"
+                                Height="30">
+                            <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                                <TextBlock Classes="tile" Text="Ввод по умолчанию" />
+                                <TextBlock Classes="aside" Text="наведение — цена способа" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Список, а не радиокнопки: тема ListBoxItem уже рисует выбор
+                             акцентной линейкой в 2px, и это тот же приём, что в рейке режимов.
+                             ВЕСЬ текст здесь приезжает из InputMethodInfo — второй копии
+                             подсказок в разметке нет и быть не должно. -->
+                        <ListBox ItemsSource="{Binding InputChoices}"
+                                 SelectedItem="{Binding DefaultInput, Mode=TwoWay}"
+                                 Background="Transparent"
+                                 BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:InputMethodChoice">
+                                    <Grid ColumnDefinitions="*,Auto" Height="26" ToolTip.Tip="{Binding Detail}">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Title}"
+                                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Badge}"
+                                                   FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                   Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <TextBlock Margin="12,4,12,9"
+                                   Classes="hint"
+                                   Text="Клики всегда уходят PostMessage и настройке не подчиняются: они доходили надёжно всегда. Спорной была только клавиатура." />
+                    </StackPanel>
+                </Border>
+
+                <!-- · Распознавание шаблонов -->
+                <Border Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                        BorderBrush="{DynamicResource NocturneDividerBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource NocturneRadiusMd}">
+                    <StackPanel>
+                        <Border Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
+                                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                BorderThickness="0,0,0,1"
+                                CornerRadius="8,8,0,0"
+                                Padding="12,0"
+                                Height="30">
+                            <TextBlock Classes="tile" Text="Распознавание шаблонов" />
+                        </Border>
+                        <StackPanel Margin="12,9" Spacing="6">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0"
+                                           Classes="label"
+                                           Text="Порог совпадения — умолчание" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding MatchThresholdText}"
+                                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                           FontSize="12.5"
+                                           Foreground="{DynamicResource NocturneAccent300Brush}"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                            <Slider Minimum="0.05"
+                                    Maximum="1.0"
+                                    TickFrequency="0.01"
+                                    IsSnapToTickEnabled="True"
+                                    Value="{Binding MatchThreshold, Mode=TwoWay}" />
+                            <!-- Счётчика «столько-то шагов задают свой порог» здесь нет и не
+                                 будет: чтобы его показать, панель обязана пересчитать все графы
+                                 библиотеки, а устареет он при первой же правке любого. -->
+                            <TextBlock Classes="hint"
+                                       Text="Умолчание для тех шагов, где порог не задан. Шаг вправе задать свой — тогда это значение к нему не относится." />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- · Запуск и права -->
+                <Border Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                        BorderBrush="{DynamicResource NocturneDividerBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource NocturneRadiusMd}">
+                    <StackPanel>
+                        <Border Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
+                                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                BorderThickness="0,0,0,1"
+                                CornerRadius="8,8,0,0"
+                                Padding="12,0"
+                                Height="30">
+                            <TextBlock Classes="tile" Text="Запуск и права" />
+                        </Border>
+
+                        <!-- Пояснение вынесено ИЗ содержимого галочки и стоит отдельной строкой
+                             с отступом под неё. Так было не сразу: пока обе строки лежали внутри
+                             CheckBox, квадратик центрировался по всему содержимому и у пояснения
+                             в две строки оказывался напротив ВТОРОЙ из них — то есть напротив
+                             текста, к которому не относится. Найдено глазами. -->
+                        <CheckBox Margin="12,8,12,0"
+                                  Content="Запускать при входе в систему"
+                                  FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                  IsChecked="{Binding RunAtLogon, Mode=TwoWay}" />
+                        <TextBlock Margin="31,1,12,0"
+                                   Classes="hint"
+                                   Text="поднимать демон вместе с сеансом" />
+
+                        <CheckBox Margin="12,9,12,0"
+                                  Content="Работать с правами администратора"
+                                  FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                  IsChecked="{Binding RunElevated, Mode=TwoWay}" />
+                        <TextBlock Margin="31,1,12,0"
+                                   Classes="hint"
+                                   Text="нужно, чтобы доставлять ввод в клиенты, запущенные с повышением" />
+
+                        <Border Margin="0,9,0,0"
+                                Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
+                                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                                BorderThickness="0,1,0,0"
+                                Padding="12,6">
+                            <Grid ColumnDefinitions="Auto,*">
+                                <TextBlock Grid.Column="0" Classes="eyebrow" Text="СПОСОБ" />
+                                <TextBlock Grid.Column="1"
+                                           Margin="9,0,0,0"
+                                           Text="{Binding StartupMechanismText}"
+                                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                           Foreground="{DynamicResource NocturneAccent300Brush}"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
+                        <!-- ДВА предупреждения, и оба обязательны. Без первого пользователь
+                             снимет галочку, увидит чистую панель и решит, что применилось.
+                             Без второго он неделю спустя будет искать, почему макросы перестали
+                             доходить до игры, — а причина в галочке, снятой неделю назад. -->
+                        <Border Background="{DynamicResource NocturneWarningSurfaceBrush}"
+                                BorderBrush="{DynamicResource NocturneWarningBorderBrush}"
+                                BorderThickness="0,1,0,0"
+                                CornerRadius="0,0,8,8"
+                                Padding="12,7">
+                            <StackPanel Spacing="5">
+                                <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                           Foreground="{DynamicResource NocturneWarningBrush}"
+                                           TextWrapping="Wrap"
+                                           IsVisible="{Binding ShowsElevationRestartNote}"
+                                           Text="Смена прав требует перезапуска демона: повышение нельзя получить на лету." />
+                                <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                           Foreground="{DynamicResource NocturneTextMutedBrush}"
+                                           TextWrapping="Wrap"
+                                           Text="Сняв права, вы сломаете ввод в окна игры, запущенной от администратора: UIPI заблокирует и сообщения, и захват экрана. Обе галочки вместе возможны только через Планировщик — ключ реестра не умеет поднимать процесс с повышением." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- ============================== замечания ============================== -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource NocturneDangerSurfaceBrush}"
+                BorderBrush="{DynamicResource NocturneDangerBorderBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16,6"
+                IsVisible="{Binding HasIssues}">
+            <StackPanel Spacing="3">
+                <TextBlock Text="Не применено:"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           Foreground="{DynamicResource NocturneDangerBrush}" />
+                <ItemsControl ItemsSource="{Binding Issues}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock Text="{Binding}"
+                                       FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource NocturneTextMutedBrush}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- ============================= диагностика =============================
+             Полосой снизу, а не отдельным разделом: почти все отказы этого приложения
+             средовые, и проваленная проверка обязана быть видна, а не лежать там, куда
+             надо доскроллить. -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
+                BorderBrush="{DynamicResource NocturneDividerBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16,9,16,11">
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Classes="tile" Text="Диагностика среды" />
+                    <TextBlock Classes="aside" Text="{Binding DiagnosticsSummary}" />
+                    <TextBlock Classes="aside"
+                               Text="{Binding Status}"
+                               Foreground="{DynamicResource NocturneAccent400Brush}" />
+                </StackPanel>
+
+                <!-- Провалы и предупреждения — карточками с текстом. -->
+                <ItemsControl ItemsSource="{Binding Diagnostics}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DiagnosticRowViewModel">
+                            <Panel>
+                                <!-- проблема: карточка -->
+                                <Border Width="416"
+                                        Margin="0,0,8,8"
+                                        Padding="9,7"
+                                        CornerRadius="{DynamicResource NocturneRadiusSm}"
+                                        BorderThickness="1"
+                                        IsVisible="{Binding IsProblem}"
+                                        Background="{Binding Status, Converter={x:Static conv:DiagnosticStatusToBrushConverter.Instance}, ConverterParameter=surface}"
+                                        BorderBrush="{Binding Status, Converter={x:Static conv:DiagnosticStatusToBrushConverter.Instance}, ConverterParameter=border}">
+                                    <Grid ColumnDefinitions="16,*">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Glyph}"
+                                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                   VerticalAlignment="Top"
+                                                   Foreground="{Binding Status, Converter={x:Static conv:DiagnosticStatusToBrushConverter.Instance}}" />
+                                        <StackPanel Grid.Column="1" Spacing="3">
+                                            <TextBlock Text="{Binding Title}"
+                                                       FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{Binding Status, Converter={x:Static conv:DiagnosticStatusToBrushConverter.Instance}}" />
+                                            <TextBlock Text="{Binding Detail}"
+                                                       FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource NocturneTextMutedBrush}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- порядок: компактная строка -->
+                                <Border Width="270"
+                                        Height="26"
+                                        Margin="0,0,8,8"
+                                        Padding="9,0"
+                                        CornerRadius="{DynamicResource NocturneRadiusSm}"
+                                        BorderThickness="1"
+                                        IsVisible="{Binding IsOk}"
+                                        Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                                        BorderBrush="{DynamicResource NocturneDividerBrush}">
+                                    <Grid ColumnDefinitions="14,Auto,*">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Glyph}"
+                                                   FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource NocturneNeutral500Brush}" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Title}"
+                                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource NocturneNeutral300Brush}" />
+                                        <TextBlock Grid.Column="2"
+                                                   Margin="8,0,0,0"
+                                                   Text="{Binding Detail}"
+                                                   FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip.Tip="{Binding Detail}"
+                                                   Foreground="{DynamicResource NocturneTextFaintBrush}" />
+                                    </Grid>
+                                </Border>
+                            </Panel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Classes="hint"
+                           IsVisible="{Binding !Diagnostics.Count}"
+                           Text="Права, файлы шаблонов, масштаб экрана, регистрация хоткеев, папка на запись и время ответа демона. Почти всё, что здесь ломается, ломается снаружи программы." />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

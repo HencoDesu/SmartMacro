@@ -56,9 +56,9 @@ public sealed partial class MacroDebugSession : IMacroDebugger
 {
     private readonly Lock _lock = new();
 
-    // Имя макроса → id нод. Везде порядковое (ordinal) сравнение: и id нод, и имена макросов во
-    // всей остальной системе чувствительны к регистру.
-    private readonly Dictionary<string, HashSet<string>> _breakpoints = new(StringComparer.Ordinal);
+    // Имя макроса → id нод. Имена макросов сравниваются порядково (ordinal), как и во всей
+    // остальной системе; ноды адресуются guid'ом, поэтому у них вопроса регистра нет вовсе.
+    private readonly Dictionary<string, HashSet<Guid>> _breakpoints = new(StringComparer.Ordinal);
 
     private readonly Dictionary<Guid, WalkState> _walks = [];
 
@@ -142,14 +142,14 @@ public sealed partial class MacroDebugSession : IMacroDebugger
     /// Заменяет точки останова одного макроса. Пустой список убирает макрос из отображения
     /// целиком, поэтому <see cref="Breakpoints"/> никогда не сообщает о пустом наборе.
     /// </summary>
-    public void SetBreakpoints(string macroName, IReadOnlyList<string> nodeIds)
+    public void SetBreakpoints(string macroName, IReadOnlyList<Guid> nodeIds)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(macroName);
         ArgumentNullException.ThrowIfNull(nodeIds);
 
         var wanted = nodeIds
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .ToHashSet(StringComparer.Ordinal);
+            .Where(id => id != Guid.Empty)
+            .ToHashSet();
 
         lock (_lock)
         {
@@ -175,9 +175,7 @@ public sealed partial class MacroDebugSession : IMacroDebugger
             [
                 .. _breakpoints
                     .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                    .Select(pair => new BreakpointSetDto(
-                        pair.Key,
-                        [.. pair.Value.OrderBy(id => id, StringComparer.Ordinal)]))
+                    .Select(pair => new BreakpointSetDto(pair.Key, [.. pair.Value.Order()]))
             ];
         }
     }
@@ -195,7 +193,7 @@ public sealed partial class MacroDebugSession : IMacroDebugger
     /// обход неизвестен: он завершился либо принадлежит прогону демона, который старше этой
     /// сессии.
     /// </returns>
-    public DebugAckDto Command(Guid walkId, DebugCommand command, string? nodeId)
+    public DebugAckDto Command(Guid walkId, DebugCommand command, Guid? nodeId)
     {
         MacroDebugGate? release = null;
         DebugAckDto ack;
@@ -247,13 +245,13 @@ public sealed partial class MacroDebugSession : IMacroDebugger
                 case DebugCommand.RunToNode:
                     // Без id ноды это означало бы «идти в никуда», то есть обычный Resume под
                     // вводящим в заблуждение именем. Лучше отказать.
-                    if (string.IsNullOrWhiteSpace(nodeId))
+                    if (nodeId is not { } target || target == Guid.Empty)
                     {
                         return new DebugAckDto(Accepted: false, state.Gate is not null, state.Pending is not null);
                     }
 
                     state.Pending = null;
-                    state.RunToNodeId = nodeId;
+                    state.RunToNodeId = target;
                     release = Take(state);
                     break;
 
@@ -275,7 +273,7 @@ public sealed partial class MacroDebugSession : IMacroDebugger
     // ------------------------------------------------------------------- IMacroDebugger
 
     /// <inheritdoc />
-    public MacroDebugGate? Arm(Guid walkId, string macroName, string nodeId)
+    public MacroDebugGate? Arm(Guid walkId, string macroName, Guid nodeId, string nodeName)
     {
         // Перепроверять внутри блокировки незачем: отключение, бегущее с нами наперегонки,
         // отпустит затвор в ту же секунду, как его увидит, — Release() выгребает _walks.
@@ -297,7 +295,7 @@ public sealed partial class MacroDebugSession : IMacroDebugger
                     ? DebugPauseReason.Breakpoint
                     : state?.Pending is { } pending
                         ? pending
-                        : state?.RunToNodeId is { } target && string.Equals(target, nodeId, StringComparison.Ordinal)
+                        : state?.RunToNodeId == nodeId
                             ? DebugPauseReason.Cursor
                             : null;
 
@@ -311,11 +309,11 @@ public sealed partial class MacroDebugSession : IMacroDebugger
             // Израсходовано: шаг — это одна нода, «до курсора» — одно прибытие.
             state.Pending = null;
             state.RunToNodeId = null;
-            gate = new MacroDebugGate(walkId, nodeId, pauseReason);
+            gate = new MacroDebugGate(walkId, nodeId, nodeName, pauseReason);
             state.Gate = gate;
         }
 
-        LogPaused(walkId, nodeId, gate.Reason.ToString());
+        LogPaused(walkId, nodeName, gate.Reason.ToString());
         return gate;
     }
 
@@ -342,7 +340,7 @@ public sealed partial class MacroDebugSession : IMacroDebugger
         }
     }
 
-    private bool HasBreakpoint(string macroName, string nodeId) =>
+    private bool HasBreakpoint(string macroName, Guid nodeId) =>
         _breakpoints.TryGetValue(macroName, out var nodes) && nodes.Contains(nodeId);
 
     private static MacroDebugGate? Take(WalkState state)
@@ -359,7 +357,7 @@ public sealed partial class MacroDebugSession : IMacroDebugger
         public DebugPauseReason? Pending { get; set; }
 
         /// <summary>Припарковаться, когда дойдём до этой ноды. Расходуется по прибытии; не дойти вовсе — законно.</summary>
-        public string? RunToNodeId { get; set; }
+        public Guid? RunToNodeId { get; set; }
 
         /// <summary>Затвор, которым обход сейчас удерживают, либо <c>null</c>, когда он идёт.</summary>
         public MacroDebugGate? Gate { get; set; }
@@ -381,6 +379,6 @@ public sealed partial class MacroDebugSession : IMacroDebugger
     [LoggerMessage(LogLevel.Debug, "Команда отладчика {Command} обходу {WalkId}")]
     partial void LogCommand(string command, Guid walkId);
 
-    [LoggerMessage(LogLevel.Information, "Обход {WalkId} припаркован перед нодой '{NodeId}' ({Reason})")]
-    partial void LogPaused(Guid walkId, string nodeId, string reason);
+    [LoggerMessage(LogLevel.Information, "Обход {WalkId} припаркован перед нодой '{NodeName}' ({Reason})")]
+    partial void LogPaused(Guid walkId, string nodeName, string reason);
 }

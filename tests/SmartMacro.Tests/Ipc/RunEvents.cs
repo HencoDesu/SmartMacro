@@ -21,12 +21,13 @@ internal static class RunEvents
     public static RunEventDto Started(RunWalkDto walk) =>
         new(walk.WalkId, RunEventKind.WalkStarted, ElapsedMs: 0, Walk: walk);
 
-    public static RunEventDto Entered(RunWalkDto walk, int elapsedMs, string nodeId) =>
-        new(walk.WalkId, RunEventKind.NodeEntered, elapsedMs, nodeId);
+    public static RunEventDto Entered(RunWalkDto walk, int elapsedMs, string node) =>
+        new(walk.WalkId, RunEventKind.NodeEntered, elapsedMs, Ids.Of(node), NodeName: node);
 
-    public static RunEventDto Exited(RunWalkDto walk, int elapsedMs, string nodeId, string outcome, string? detail,
+    public static RunEventDto Exited(RunWalkDto walk, int elapsedMs, string node, string outcome, string? detail,
         int durationMs) =>
-        new(walk.WalkId, RunEventKind.NodeExited, elapsedMs, nodeId, outcome, detail, durationMs);
+        new(walk.WalkId, RunEventKind.NodeExited, elapsedMs, Ids.Of(node), outcome, detail, durationMs,
+            NodeName: node);
 
     public static RunEventDto Finished(RunWalkDto walk, int elapsedMs, string outcome, string? detail = null) =>
         new(walk.WalkId, RunEventKind.WalkFinished, elapsedMs, Outcome: outcome, Detail: detail);
@@ -37,20 +38,22 @@ internal static class RunEvents
     /// Припаркован на точке останова. В <c>Detail</c> уезжает то самое русское слово, которое
     /// кладёт туда демон, — панель показывает его как есть, поэтому подделка обязана совпадать.
     /// </summary>
-    public static RunEventDto Breakpoint(RunWalkDto walk, int elapsedMs, string nodeId) =>
-        new(walk.WalkId, RunEventKind.BreakpointHit, elapsedMs, nodeId, Detail: "брейкпоинт");
+    public static RunEventDto Breakpoint(RunWalkDto walk, int elapsedMs, string node) =>
+        new(walk.WalkId, RunEventKind.BreakpointHit, elapsedMs, Ids.Of(node), Detail: "брейкпоинт",
+            NodeName: node);
 
     /// <summary>Припаркован по любой другой причине.</summary>
-    public static RunEventDto Paused(RunWalkDto walk, int elapsedMs, string nodeId, string reason = "пауза") =>
-        new(walk.WalkId, RunEventKind.Paused, elapsedMs, nodeId, Detail: reason);
+    public static RunEventDto Paused(RunWalkDto walk, int elapsedMs, string node, string reason = "пауза") =>
+        new(walk.WalkId, RunEventKind.Paused, elapsedMs, Ids.Of(node), Detail: reason, NodeName: node);
 
-    public static RunEventDto Resumed(RunWalkDto walk, int elapsedMs, string nodeId) =>
-        new(walk.WalkId, RunEventKind.Resumed, elapsedMs, nodeId);
+    public static RunEventDto Resumed(RunWalkDto walk, int elapsedMs, string node) =>
+        new(walk.WalkId, RunEventKind.Resumed, elapsedMs, Ids.Of(node), NodeName: node);
 
-    /// <summary>Присваивание переменной. <paramref name="nodeId"/> равен <c>null</c> для затравки от триггера.</summary>
+    /// <summary>Присваивание переменной. <paramref name="node"/> равен <c>null</c> для затравки от триггера.</summary>
     public static RunEventDto Variable(RunWalkDto walk, int elapsedMs, string name, string value,
-        string? nodeId = null) =>
-        new(walk.WalkId, RunEventKind.VariableSet, elapsedMs, nodeId, Detail: value, Variable: name);
+        string? node = null) =>
+        new(walk.WalkId, RunEventKind.VariableSet, elapsedMs, node is null ? null : Ids.Of(node),
+            Detail: value, Variable: name, NodeName: node);
 }
 
 /// <summary>Подача событий прогона во view-model так же, как это делает насос демона, — пачками.</summary>

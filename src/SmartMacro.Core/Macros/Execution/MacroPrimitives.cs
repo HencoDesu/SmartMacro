@@ -75,7 +75,7 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
 
     /// <inheritdoc />
     public async Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, string template, ScreenRect? region,
-        CancellationToken ct)
+        double? matchThreshold, CancellationToken ct)
     {
         if (Resolve(hwnd, nameof(FindElementAsync)) is not { } window)
         {
@@ -88,12 +88,12 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
             return null;
         }
 
-        return await window.FindElementAsync(bytes, region ?? default, ct).ConfigureAwait(false);
+        return await window.FindElementAsync(bytes, region ?? default, matchThreshold, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public async Task<ScreenPoint?> WaitForElementAsync(IntPtr hwnd, string template, ScreenRect? region, int timeoutMs,
-        CancellationToken ct)
+        double? matchThreshold, CancellationToken ct)
     {
         if (Resolve(hwnd, nameof(WaitForElementAsync)) is not { } window)
         {
@@ -107,11 +107,13 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
         }
 
         var budget = TimeSpan.FromMilliseconds(Math.Max(0, timeoutMs));
-        return await window.WaitForElementAsync(bytes, region ?? default, budget, ct).ConfigureAwait(false);
+        return await window.WaitForElementAsync(bytes, region ?? default, budget, matchThreshold, ct)
+            .ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task<string?> RecognizeAsync(IntPtr hwnd, string templateSet, ScreenRect region, CancellationToken ct)
+    public Task<string?> RecognizeAsync(IntPtr hwnd, string templateSet, ScreenRect region, double? matchThreshold,
+        CancellationToken ct)
     {
         if (Resolve(hwnd, nameof(RecognizeAsync)) is not { } window)
         {
@@ -143,7 +145,7 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
 
         try
         {
-            var match = _matcher.Match(screenshot, templates, region);
+            var match = _matcher.Match(screenshot, templates, region, matchThreshold);
             if (match is null)
             {
                 LogRecognizeNoMatch(templateSet, hwnd.ToInt64());

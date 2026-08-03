@@ -1,0 +1,17 @@
+<!--
+  Одна цель, которая возвращает список файлов публикации проекта.
+
+  Существует потому, что штатная ComputeFilesToPublish в SDK объявлена БЕЗ Returns и через
+  TargetOutputs отдаёт пустоту (проверено). Список нужен build/portable.proj: там два проекта
+  публикуются в одну папку, и перед второй публикацией надо знать, какие файлы она собирается
+  положить туда, где уже что-то лежит.
+
+  Подключается не правкой csproj, а свойством CustomAfterMicrosoftCommonTargets — штатной точкой
+  расширения MSBuild. Так проекты остаются не в курсе существования портативной сборки, а файл
+  подмешивается только тому вызову, который его попросил.
+-->
+<Project>
+  <Target Name="SmartMacroReturnPublishFiles"
+          DependsOnTargets="ComputeFilesToPublish"
+          Returns="@(ResolvedFileToPublish)" />
+</Project>

@@ -7,7 +7,14 @@ using SmartMacro.App.Services;
 
 namespace SmartMacro.App.ViewModels;
 
-/// <summary>Пять вещей, которые панель способна показывать. Порядок — тот же, что в боковой полосе.</summary>
+/// <summary>
+/// Что панель способна показывать. Порядок — тот же, что в боковой полосе.
+///
+/// <see cref="Settings"/> здесь шестой член, но НЕ шестой равноправный режим: в полосе он стоит
+/// под разделителем, в самом низу, с шестерёнкой и без счётчика. Счётчики полосы отвечают на
+/// вопрос «сколько сейчас есть», а у настроек такого числа нет; вместо него там красная точка,
+/// означающая проваленную диагностику.
+/// </summary>
 public enum ShellMode
 {
     Windows,
@@ -15,6 +22,7 @@ public enum ShellMode
     Runs,
     Templates,
     Log,
+    Settings,
 }
 
 /// <summary>
@@ -145,7 +153,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public const string IdentifyMacroName = "pw-identify";
 
     private readonly IMacroLauncher? _launcher;
-    private ShellModeViewModel _selectedMode;
+    private ShellModeViewModel? _selectedMode;
+    private ShellMode _currentMode = ShellMode.Windows;
     private bool _hotkeysSuspended;
     private bool _runEventsSubscribed;
 
@@ -154,17 +163,20 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         MacroEditorViewModel editor,
         TemplatesViewModel templates,
         LogViewModel log,
+        SettingsViewModel settings,
         IMacroLauncher? launcher = null)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(editor);
         ArgumentNullException.ThrowIfNull(templates);
         ArgumentNullException.ThrowIfNull(log);
+        ArgumentNullException.ThrowIfNull(settings);
 
         Workspace = workspace;
         Editor = editor;
         Templates = templates;
         Log = log;
+        Settings = settings;
         _launcher = launcher;
 
         Modes =
@@ -176,6 +188,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             new ShellModeViewModel(ShellMode.Log, "Лог"),
         ];
 
+        // Настройки — отдельная строка, а не шестой элемент Modes: она рисуется под
+        // разделителем, у неё нет счётчика, и выделяться две строки одновременно не должны.
+        SettingsMode = new ShellModeViewModel(ShellMode.Settings, "Настройки");
+
         _selectedMode = Modes[0];
         _selectedMode.IsSelected = true;
 
@@ -184,6 +200,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Editor.Macros.CollectionChanged += OnMacrosChanged;
         Templates.TemplatesChanged += OnTemplatesChanged;
         Log.LogChanged += OnLogChanged;
+        Settings.SettingsChanged += OnSettingsChanged;
 
         RefreshWindowState();
         RefreshRunState();
@@ -211,8 +228,29 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// <summary>Лента журнала демона — тело «Лога».</summary>
     public LogViewModel Log { get; }
 
-    /// <summary>Строки боковой полосы, в порядке показа.</summary>
+    /// <summary>Настройки демона и диагностика среды — тело «Настроек».</summary>
+    public SettingsViewModel Settings { get; }
+
+    /// <summary>Пять рабочих строк боковой полосы, в порядке показа.</summary>
     public IReadOnlyList<ShellModeViewModel> Modes { get; }
+
+    /// <summary>
+    /// Шестая строка полосы — «Настройки», отделённая от пяти рабочих.
+    ///
+    /// Держится отдельно от <see cref="Modes"/> ровно потому, что она не равноправна: своего
+    /// счётчика у неё нет (счётчики отвечают «сколько сейчас есть», а у настроек такого числа
+    /// нет), выделение у неё своё, и в списке она стоит под разделителем.
+    /// </summary>
+    public ShellModeViewModel SettingsMode { get; }
+
+    /// <summary>
+    /// Красная точка на строке настроек: последняя проверка среды нашла проблему.
+    ///
+    /// Занимает то место, где у остальных строк счётчик, и это не украшение: почти все отказы
+    /// этого приложения средовые, а проявляются они тем, что макрос «просто не работает». Точка
+    /// — единственное место, где такая поломка видна, не заходя в режим.
+    /// </summary>
+    public bool HasEnvironmentProblems => Settings.ProblemCount > 0;
 
     /// <summary>Тег → сколько окон, самые многочисленные первыми. Единственное место, где весь состав виден сразу.</summary>
     public ObservableCollection<TagSummaryItemViewModel> TagSummary { get; } = [];
@@ -221,47 +259,79 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public bool HasTagSummary => TagSummary.Count > 0;
 
     /// <summary>
-    /// Выбранная строка боковой полосы. Привязана двусторонне от <c>ListBox</c>; присвоение —
-    /// единственный способ сменить видимый режим.
+    /// Выбранная строка боковой полосы. Привязана двусторонне от <c>ListBox</c>.
     ///
-    /// <c>[AllowNull]</c> на записи — честная аннотация, а не подавление: <c>ListBox</c>
-    /// действительно проталкивает сюда <c>null</c>, пока перетряхивается его <c>ItemsSource</c>,
-    /// и сеттер этот случай обрабатывает. Читается свойство всегда ненулевым.
+    /// <c>null</c> здесь ЗНАЧАЩЕЕ: так выглядит полоса, когда на экране «Настройки». Выделение
+    /// в <c>ListBox</c> рисует он сам, а не наш флаг, поэтому единственный способ снять с рейки
+    /// подсветку — обнулить его выбор; иначе подсвеченными оказались бы две строки сразу.
+    ///
+    /// Раньше сеттер игнорировал <c>null</c>, защищаясь от того, что <c>ListBox</c> проталкивает
+    /// его, пока перетряхивается <c>ItemsSource</c>. Защита снята сознательно: <see cref="Modes"/>
+    /// строится один раз в конструкторе и не меняется никогда, так что перетряхивать нечего, — а
+    /// цена ошибки, если это всё же случится, теперь косметическая (рейка без подсветки при
+    /// нетронутом содержимом), а не «пустая рабочая область».
     /// </summary>
     [AllowNull]
-    public ShellModeViewModel SelectedMode
+    public ShellModeViewModel? SelectedMode
     {
         get => _selectedMode;
         set
         {
-            // ListBox проталкивает null, пока перетряхивается его ItemsSource, а оболочка без
-            // режима нарисовалась бы пустой рабочей областью.
-            if (value is null || ReferenceEquals(value, _selectedMode))
+            if (ReferenceEquals(value, _selectedMode))
             {
                 return;
             }
 
-            _selectedMode.IsSelected = false;
+            if (_selectedMode is { } previous)
+            {
+                previous.IsSelected = false;
+            }
+
             SetField(ref _selectedMode, value);
-            _selectedMode.IsSelected = true;
 
-            OnPropertyChanged(nameof(CurrentMode));
-            OnPropertyChanged(nameof(IsWindowsMode));
-            OnPropertyChanged(nameof(IsMacrosMode));
-            OnPropertyChanged(nameof(IsRunsMode));
-            OnPropertyChanged(nameof(IsTemplatesMode));
-            OnPropertyChanged(nameof(IsLogMode));
+            if (value is null)
+            {
+                // Полосу обнулили — значит, показываем настройки; сам режим переключит
+                // ShowSettings.
+                return;
+            }
 
-            ApplyMacrosModeScope();
-            RefreshTemplatesOnEntry();
+            value.IsSelected = true;
+            SettingsMode.IsSelected = false;
+            SetCurrentMode(value.Mode);
         }
     }
 
     /// <summary>Какой режим на экране.</summary>
-    public ShellMode CurrentMode => _selectedMode.Mode;
+    public ShellMode CurrentMode => _currentMode;
 
     /// <summary>Переключает режим по личности, а не по строке, — так удобнее code-behind и тестам.</summary>
-    public void SelectMode(ShellMode mode) => SelectedMode = Mode(mode);
+    public void SelectMode(ShellMode mode)
+    {
+        if (mode == ShellMode.Settings)
+        {
+            ShowSettings();
+            return;
+        }
+
+        SelectedMode = Mode(mode);
+    }
+
+    /// <summary>
+    /// Показывает «Настройки»: снимает выбор с рейки, подсвечивает свою строку и переключает
+    /// рабочую область.
+    /// </summary>
+    public void ShowSettings()
+    {
+        if (_currentMode == ShellMode.Settings)
+        {
+            return;
+        }
+
+        SelectedMode = null;
+        SettingsMode.IsSelected = true;
+        SetCurrentMode(ShellMode.Settings);
+    }
 
     public bool IsWindowsMode => CurrentMode == ShellMode.Windows;
 
@@ -272,6 +342,8 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public bool IsTemplatesMode => CurrentMode == ShellMode.Templates;
 
     public bool IsLogMode => CurrentMode == ShellMode.Log;
+
+    public bool IsSettingsMode => CurrentMode == ShellMode.Settings;
 
     // ---- полоса прогонов ----------------------------------------------------------------
 
@@ -346,9 +418,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Editor.Macros.CollectionChanged -= OnMacrosChanged;
         Templates.TemplatesChanged -= OnTemplatesChanged;
         Log.LogChanged -= OnLogChanged;
+        Settings.SettingsChanged -= OnSettingsChanged;
         Workspace.Dispose();
         Editor.Dispose();
         Templates.Dispose();
+        Settings.Dispose();
         // Отписываться от ленты у демона отдельным запросом не нужно и негде: этот путь ведёт к
         // закрытию панели, а разрыв трубы сервер разбирает сам — соединение уходит вместе со
         // своей подпиской. (Хоткеи — исключение ровно потому, что их демон обратно НЕ
@@ -357,6 +431,53 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     }
 
     // ---- внутренности -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Единственное место, где меняется видимый режим: и рейка, и строка настроек проходят через
+    /// него, поэтому побочные эффекты входа в режим описаны один раз, а не по разу на каждый
+    /// способ туда попасть.
+    /// </summary>
+    private void SetCurrentMode(ShellMode mode)
+    {
+        if (_currentMode == mode)
+        {
+            return;
+        }
+
+        _currentMode = mode;
+        OnPropertyChanged(nameof(CurrentMode));
+        OnPropertyChanged(nameof(IsWindowsMode));
+        OnPropertyChanged(nameof(IsMacrosMode));
+        OnPropertyChanged(nameof(IsRunsMode));
+        OnPropertyChanged(nameof(IsTemplatesMode));
+        OnPropertyChanged(nameof(IsLogMode));
+        OnPropertyChanged(nameof(IsSettingsMode));
+
+        ApplyMacrosModeScope();
+        RefreshTemplatesOnEntry();
+        RefreshSettingsOnEntry();
+    }
+
+    /// <summary>
+    /// Перечитывает настройки и прогоняет диагностику на входе в режим.
+    ///
+    /// Снимок настроек и без того живой — демон толкает <c>SettingsChanged</c>, — так что запрос
+    /// здесь страховочный. А вот диагностика по подписке не приезжает вовсе: она безопасна, но не
+    /// бесплатна (шлёт <c>WM_NULL</c> каждому окну и пишет пробный файл), и гонять её по таймеру
+    /// незачем. Вход в режим — момент, когда она заведомо интересна.
+    /// </summary>
+    private void RefreshSettingsOnEntry()
+    {
+        if (CurrentMode != ShellMode.Settings)
+        {
+            return;
+        }
+
+        _ = SafeAsync(Settings.RefreshAsync(), "settings");
+        _ = SafeAsync(Settings.RunDiagnosticsAsync(), "diagnostics");
+    }
+
+    private void OnSettingsChanged() => OnPropertyChanged(nameof(HasEnvironmentProblems));
 
     /// <summary>
     /// В скобки «„Макросы“ на экране» взяты две вещи: глобальные хоткеи ложатся, а поток

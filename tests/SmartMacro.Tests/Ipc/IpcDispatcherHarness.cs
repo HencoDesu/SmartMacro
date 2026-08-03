@@ -1,8 +1,10 @@
 using FakeItEasy;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Hotkeys;
+using SmartMacro.Settings;
 using SmartMacro.Ipc;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Storage;
@@ -53,6 +55,16 @@ internal sealed class IpcDispatcherHarness : IDisposable
         Log = new LogEventPublisher();
         Debug = new MacroDebugSession(NullLogger<MacroDebugSession>.Instance);
 
+        // Настоящее хранилище над той же временной папкой: обработчики настроек — тонкий слой
+        // над ним, и подделав его, мы проверяли бы только собственный маппер. Конструктор при
+        // этом сам создаст settings.json с умолчаниями — ровно то, что делает демон при первом
+        // запуске, и заодно бесплатная проверка, что это не падает.
+        SettingsFile = new SettingsStore(_baseDirectory, NullLogger<SettingsStore>.Instance);
+        LogLevel = new FakeLogLevelSwitch();
+        SettingsSnapshots = new SettingsSnapshotProvider(SettingsFile, LogLevel);
+        AutoStart = new AutoStartManager(NullLogger<AutoStartManager>.Instance);
+        Diagnostics = new EnvironmentDiagnostics(Windows, Macros, Templates, Hotkeys, SettingsFile, AutoStart);
+
         Dispatcher = new IpcRequestDispatcher(
             Windows,
             Macros,
@@ -65,8 +77,39 @@ internal sealed class IpcDispatcherHarness : IDisposable
             RunEvents,
             Log,
             Debug,
+            SettingsFile,
+            SettingsSnapshots,
+            Diagnostics,
             NullLogger<IpcRequestDispatcher>.Instance);
     }
+
+    /// <summary>Уровень журнала без Serilog: у Core его нет, а провайдеру снимка нужен только шов.</summary>
+    internal sealed class FakeLogLevelSwitch : ILogLevelSwitch
+    {
+        public LogLevelDto Current { get; set; } = LogLevelDto.Information;
+    }
+
+    /// <summary>
+    /// Настоящее хранилище настроек над временной папкой. Названо НЕ <c>Settings</c> намеренно:
+    /// это имя в области видимости разрешается в пространство имён <c>SmartMacro.Settings</c>.
+    /// </summary>
+    public SettingsStore SettingsFile { get; }
+
+    /// <summary>Рубильник уровня журнала — тот, что двигает <c>SetLogLevel</c>.</summary>
+    public FakeLogLevelSwitch LogLevel { get; }
+
+    /// <summary>Сборщик снимка: он же стоит за <c>GetSettings</c> и за пушем <c>SettingsChanged</c>.</summary>
+    public SettingsSnapshotProvider SettingsSnapshots { get; }
+
+    /// <summary>
+    /// Настоящий: проверка «зарегистрирован ли автозапуск» читает реестр и Планировщик. На
+    /// чистой машине там нашего ничего нет, так что при выключенных галочках проверка честно
+    /// говорит «в порядке», ничего не меняя.
+    /// </summary>
+    public AutoStartManager AutoStart { get; }
+
+    /// <summary>Проверки среды за <c>RunDiagnostics</c>.</summary>
+    public EnvironmentDiagnostics Diagnostics { get; }
 
     public WindowRegistry Windows { get; }
 
@@ -133,6 +176,8 @@ internal sealed class IpcDispatcherHarness : IDisposable
     {
         RunEvents.DisposeAsync().AsTask().GetAwaiter().GetResult();
         Log.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        SettingsSnapshots.Detach();
+        SettingsFile.Dispose();
         Macros.Dispose();
         Runs.Dispose();
         try

@@ -6,19 +6,19 @@ namespace SmartMacro.Macros.Execution;
 /// <param name="RunId">Уникальный id прогона.</param>
 /// <param name="MacroName">Имя прогоняемого макроса.</param>
 /// <param name="StartedUtc">Когда прогон начался.</param>
-/// <param name="CurrentNodeId">Id ноды, в которую walker вошёл последней; <c>null</c> до первой ноды.</param>
-public sealed record MacroRunSnapshot(Guid RunId, string MacroName, DateTime StartedUtc, string? CurrentNodeId);
+/// <param name="CurrentNodeName">Подпись ноды, в которую walker вошёл последней; <c>null</c> до первой ноды.</param>
+public sealed record MacroRunSnapshot(Guid RunId, string MacroName, DateTime StartedUtc, string? CurrentNodeName);
 
 /// <summary>
 /// Живой дескриптор одного прогона, который возвращает <see cref="MacroRunRegistry.TryBegin"/>.
 /// Бегун исполняет прогон с <see cref="Token"/> и докладывает о прогрессе через
-/// <see cref="CurrentNodeId"/> (подведите его к <see cref="MacroRunContext.OnNodeEntered"/>); а
+/// <see cref="CurrentNodeName"/> (подведите его к <see cref="MacroRunContext.OnNodeEntered"/>); а
 /// когда прогон заканчивается — чем бы он ни закончился — вызовите
 /// <see cref="MacroRunRegistry.Complete"/>.
 /// </summary>
 public sealed class MacroRunHandle
 {
-    private string? _currentNodeId;
+    private string? _currentNodeName;
 
     internal MacroRunHandle(Guid runId, string macroName, DateTime startedUtc, CancellationToken token)
     {
@@ -41,13 +41,14 @@ public sealed class MacroRunHandle
     public CancellationToken Token { get; }
 
     /// <summary>
-    /// Id ноды, в которую walker вошёл последней. Volatile — бегун обновляет его на ходу, а
-    /// читают его снимки для UI (в будущем — визуальная отладка).
+    /// Подпись ноды, в которую walker вошёл последней. Volatile — бегун обновляет её на ходу, а
+    /// читают её снимки для UI. Подпись, а не id: единственный её потребитель — колонка «где
+    /// сейчас» в режиме «Прогоны», и адресовать эту ноду ей незачем.
     /// </summary>
-    public string? CurrentNodeId
+    public string? CurrentNodeName
     {
-        get => Volatile.Read(ref _currentNodeId);
-        set => Volatile.Write(ref _currentNodeId, value);
+        get => Volatile.Read(ref _currentNodeName);
+        set => Volatile.Write(ref _currentNodeName, value);
     }
 }
 
@@ -193,7 +194,7 @@ public sealed partial class MacroRunRegistry : IDisposable
                     run.Handle.RunId,
                     run.Handle.MacroName,
                     run.Handle.StartedUtc,
-                    run.Handle.CurrentNodeId));
+                    run.Handle.CurrentNodeName));
             }
 
             return result;

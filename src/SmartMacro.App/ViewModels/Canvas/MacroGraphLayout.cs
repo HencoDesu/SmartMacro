@@ -21,7 +21,7 @@ public static class MacroGraphLayout
     /// инструментов, и она всегда затирает: явная просьба прибраться — не тот момент, когда
     /// нужно беречь расставленные вручную координаты.
     /// </summary>
-    public static void Apply(IReadOnlyList<NodeRowViewModel> nodes, string? startNodeId)
+    public static void Apply(IReadOnlyList<NodeRowViewModel> nodes, Guid startNodeId)
     {
         ArgumentNullException.ThrowIfNull(nodes);
 
@@ -46,7 +46,7 @@ public static class MacroGraphLayout
     ///     не свалены поверх существующих коробок.
     /// </summary>
     /// <returns><c>true</c>, если хоть что-нибудь сдвинулось.</returns>
-    public static bool EnsurePositions(IReadOnlyList<NodeRowViewModel> nodes, string? startNodeId)
+    public static bool EnsurePositions(IReadOnlyList<NodeRowViewModel> nodes, Guid startNodeId)
     {
         ArgumentNullException.ThrowIfNull(nodes);
         if (nodes.Count == 0)
@@ -110,25 +110,25 @@ public static class MacroGraphLayout
     }
 
     /// <summary>В глубину от стартовой ноды, а следом всё, до чего она не дотянулась.</summary>
-    internal static List<NodeRowViewModel> Order(IReadOnlyList<NodeRowViewModel> nodes, string? startNodeId)
+    internal static List<NodeRowViewModel> Order(IReadOnlyList<NodeRowViewModel> nodes, Guid startNodeId)
     {
-        var byId = new Dictionary<string, NodeRowViewModel>(StringComparer.Ordinal);
+        var byId = new Dictionary<Guid, NodeRowViewModel>();
         foreach (var node in nodes)
         {
-            byId.TryAdd(node.NodeId, node);
+            byId.TryAdd(node.Id, node);
         }
 
         var ordered = new List<NodeRowViewModel>(nodes.Count);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<Guid>();
 
-        if (!string.IsNullOrEmpty(startNodeId) && byId.TryGetValue(startNodeId, out var start))
+        if (byId.TryGetValue(startNodeId, out var start))
         {
             Walk(start);
         }
 
         foreach (var node in nodes)
         {
-            if (seen.Add(node.NodeId))
+            if (seen.Add(node.Id))
             {
                 ordered.Add(node);
             }
@@ -138,7 +138,7 @@ public static class MacroGraphLayout
 
         void Walk(NodeRowViewModel node)
         {
-            if (!seen.Add(node.NodeId))
+            if (!seen.Add(node.Id))
             {
                 return;
             }
@@ -146,7 +146,7 @@ public static class MacroGraphLayout
             ordered.Add(node);
             foreach (var edge in node.Edges)
             {
-                if (edge.TargetId.Length > 0 && byId.TryGetValue(edge.TargetId, out var next))
+                if (edge.TargetId is { } target && byId.TryGetValue(target, out var next))
                 {
                     Walk(next);
                 }

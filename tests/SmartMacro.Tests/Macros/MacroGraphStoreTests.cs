@@ -17,7 +17,7 @@ public class MacroGraphStoreTests
         new() { Name = name, StartNodeId = nodes[0].Id, Nodes = [.. nodes] };
 
     private static MacroGraph SimpleMacro(string name, VirtualKey key = VirtualKey.F1) =>
-        Chain(name, new KeyPressNode { Id = "n0", Key = key, Target = new TargetSelector() });
+        Chain(name, new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = key, Target = new TargetSelector() });
 
     private static string CreateTempDir()
     {
@@ -149,6 +149,18 @@ public class MacroGraphStoreTests
             await Assert.That(store.All).Count().IsEqualTo(1);
             await Assert.That(store.All[0].Name).IsEqualTo("good");
             await Assert.That(store.TryGet("broken")).IsNull();
+
+            // Пропустить и записать строчку в лог мало: после смены модели ноды НИ ОДИН старый
+            // файл больше не разбирается, и пользователь открыл бы панель с пустой библиотекой и
+            // без единого следа того, куда делись его макросы. Отодвинутый файл виден в
+            // проводнике прямо там же — он и есть объяснение.
+            await Assert.That(Directory.EnumerateFiles(macrosDir).Select(Path.GetFileName).Order().ToList())
+                .IsEquivalentTo(new List<string?>
+                {
+                    "broken.json.incompatible",
+                    "good.json",
+                    "unknown-node.json.incompatible",
+                }.Order().ToList());
         }
         finally
         {
@@ -322,6 +334,34 @@ public class MacroGraphStoreTests
 
             store.Dispose();
             await Assert.That(store.Dispose).ThrowsNothing();
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+    [Test]
+    public async Task Load_LeavesAnUnreadableFileAlone_BecauseThatIsTemporary()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var macrosDir = Path.Combine(dir, "macros");
+            Directory.CreateDirectory(macrosDir);
+            var path = Path.Combine(macrosDir, "занят.json");
+            File.WriteAllText(path, MacroGraphJson.Serialize(SimpleMacro("занят")));
+
+            // Файл держат открытым эксклюзивно — так выглядит редактор, сохраняющий его прямо
+            // сейчас. В отличие от сбоя РАЗБОРА, это состояние временное, и переименовать такой
+            // файл было бы прямым вредительством: следующая перезагрузка прочитала бы его.
+            using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                using var store = CreateStore(dir);
+                await Assert.That(store.All).IsEmpty();
+            }
+
+            await Assert.That(File.Exists(path)).IsTrue();
+            await Assert.That(File.Exists(path + MacroGraphStore.IncompatibleSuffix)).IsFalse();
         }
         finally
         {

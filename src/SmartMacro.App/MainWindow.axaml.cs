@@ -105,6 +105,13 @@ public partial class MainWindow : Window
     private void ToggleMaximised() =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
+    // ---- рейка -------------------------------------------------------------------------------
+
+    // «Настройки» живут вне ListBox рейки (см. разметку), поэтому переход туда — обычный клик, а
+    // не смена SelectedItem. IsChecked у кнопки привязан OneWay: состояние решает view-model,
+    // иначе повторный клик по уже открытым настройкам их бы «отжал».
+    private void OnSettingsClicked(object? sender, RoutedEventArgs e) => Vm?.ShowSettings();
+
     // ---- полоса прогона ----------------------------------------------------------------------
 
     private void OnStopPrimaryRunClicked(object? sender, RoutedEventArgs e)

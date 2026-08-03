@@ -19,6 +19,7 @@ internal sealed class RecordingPrimitives : IMacroPrimitives
 
     private readonly Lock _lock = new();
     private readonly List<Call> _calls = [];
+    private readonly List<double?> _thresholds = [];
 
     public IReadOnlyList<Call> Calls
     {
@@ -34,6 +35,18 @@ internal sealed class RecordingPrimitives : IMacroPrimitives
     public Func<IntPtr, string, ScreenRect?, ScreenPoint?> FindHandler { get; set; } = (_, _, _) => null;
     public Func<IntPtr, string, ScreenRect?, int, ScreenPoint?> WaitHandler { get; set; } = (_, _, _, _) => null;
     public Func<IntPtr, string, ScreenRect, string?> RecognizeHandler { get; set; } = (_, _, _) => null;
+
+    /// <summary>Пороги совпадения, дошедшие до примитивов, по порядку вызовов. <c>null</c> = нода порога не задавала.</summary>
+    public IReadOnlyList<double?> Thresholds
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _thresholds];
+            }
+        }
+    }
 
     /// <summary>Если задан, каждый PressKeyAsync после записи вызова дожидается возвращённой задачи.</summary>
     public Func<Task>? PressKeyGate { get; set; }
@@ -53,22 +66,24 @@ internal sealed class RecordingPrimitives : IMacroPrimitives
         return Task.CompletedTask;
     }
 
-    public Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, string template, ScreenRect? region, CancellationToken ct)
+    public Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, string template, ScreenRect? region,
+        double? matchThreshold, CancellationToken ct)
     {
-        Record(new Call("Find", hwnd, template));
+        Record(new Call("Find", hwnd, template), matchThreshold);
         return Task.FromResult(FindHandler(hwnd, template, region));
     }
 
     public Task<ScreenPoint?> WaitForElementAsync(IntPtr hwnd, string template, ScreenRect? region, int timeoutMs,
-        CancellationToken ct)
+        double? matchThreshold, CancellationToken ct)
     {
-        Record(new Call("Wait", hwnd, template, timeoutMs));
+        Record(new Call("Wait", hwnd, template, timeoutMs), matchThreshold);
         return Task.FromResult(WaitHandler(hwnd, template, region, timeoutMs));
     }
 
-    public Task<string?> RecognizeAsync(IntPtr hwnd, string templateSet, ScreenRect region, CancellationToken ct)
+    public Task<string?> RecognizeAsync(IntPtr hwnd, string templateSet, ScreenRect region, double? matchThreshold,
+        CancellationToken ct)
     {
-        Record(new Call("Recognize", hwnd, templateSet));
+        Record(new Call("Recognize", hwnd, templateSet), matchThreshold);
         return Task.FromResult(RecognizeHandler(hwnd, templateSet, region));
     }
 
@@ -78,11 +93,12 @@ internal sealed class RecordingPrimitives : IMacroPrimitives
         return Task.CompletedTask;
     }
 
-    private void Record(Call call)
+    private void Record(Call call, double? threshold = null)
     {
         lock (_lock)
         {
             _calls.Add(call);
+            _thresholds.Add(threshold);
         }
     }
 }
@@ -135,7 +151,7 @@ internal sealed class ExecutorHarness
         };
     }
 
-    public static MacroGraph Graph(string name, string startId, params MacroNode[] nodes) =>
+    public static MacroGraph Graph(string name, Guid startId, params MacroNode[] nodes) =>
         new() { Name = name, StartNodeId = startId, Nodes = [.. nodes] };
 }
 
@@ -152,10 +168,17 @@ internal sealed class RecordingObserver : IMacroRunObserver
     /// <summary>Одно сообщённое событие, разложенное в плоскую запись.</summary>
     /// <param name="Kind">начало обхода / вход / выход / конец обхода.</param>
     /// <param name="WalkId">Обход, которому оно принадлежит.</param>
-    /// <param name="NodeId">Нода или <c>null</c> для видов уровня обхода.</param>
+    /// <param name="NodeName">Подпись ноды или <c>null</c> для видов уровня обхода.</param>
     /// <param name="Outcome">Константа из <c>RunOutcomes</c> или <c>null</c>.</param>
     /// <param name="Detail">Строка для лога или <c>null</c>.</param>
-    internal sealed record Entry(string Kind, Guid WalkId, string? NodeId, string? Outcome, string? Detail);
+    /// <param name="NodeId">Её id — по нему проверяется адресация, тогда как читается подпись.</param>
+    internal sealed record Entry(
+        string Kind,
+        Guid WalkId,
+        string? NodeName,
+        string? Outcome,
+        string? Detail,
+        Guid? NodeId = null);
 
     private readonly Lock _lock = new();
     private readonly List<Entry> _entries = [];
@@ -210,8 +233,8 @@ internal sealed class RecordingObserver : IMacroRunObserver
     /// </summary>
     public IReadOnlyList<string> NodeIdsOf(string kind) =>
     [
-        .. OfKind(kind).Select(e => e.NodeId ?? throw new InvalidOperationException(
-            $"У записи вида «{kind}» пустой NodeId, хотя в этом виде нода есть всегда.")),
+        .. OfKind(kind).Select(e => e.NodeName ?? throw new InvalidOperationException(
+            $"У записи вида «{kind}» пустая подпись ноды, хотя в этом виде нода есть всегда.")),
     ];
 
     /// <summary>
@@ -234,11 +257,12 @@ internal sealed class RecordingObserver : IMacroRunObserver
         }
     }
 
-    public void NodeEntered(Guid walkId, int elapsedMs, string nodeId) =>
-        Add(new Entry("enter", walkId, nodeId, null, null));
+    public void NodeEntered(Guid walkId, int elapsedMs, Guid nodeId, string nodeName) =>
+        Add(new Entry("enter", walkId, nodeName, null, null, nodeId));
 
-    public void NodeExited(Guid walkId, int elapsedMs, string nodeId, string outcome, string? detail, int durationMs) =>
-        Add(new Entry("exit", walkId, nodeId, outcome, detail));
+    public void NodeExited(Guid walkId, int elapsedMs, Guid nodeId, string nodeName, string outcome, string? detail,
+        int durationMs) =>
+        Add(new Entry("exit", walkId, nodeName, outcome, detail, nodeId));
 
     public void WalkFinished(Guid walkId, int elapsedMs, string outcome, string? detail) =>
         Add(new Entry("end", walkId, null, outcome, detail));
@@ -260,14 +284,14 @@ internal sealed class RecordingObserver : IMacroRunObserver
     /// <summary>Строка вида для возобновления.</summary>
     public const string ResumedKind = "resumed";
 
-    public void VariableSet(Guid walkId, int elapsedMs, string name, string value, string? nodeId) =>
-        Add(new Entry(VariableKind, walkId, nodeId, name, value));
+    public void VariableSet(Guid walkId, int elapsedMs, string name, string value, Guid? nodeId, string? nodeName) =>
+        Add(new Entry(VariableKind, walkId, nodeName, name, value, nodeId));
 
-    public void WalkPaused(Guid walkId, int elapsedMs, string nodeId, DebugPauseReason reason) =>
-        Add(new Entry(PausedKind, walkId, nodeId, reason.ToString(), null));
+    public void WalkPaused(Guid walkId, int elapsedMs, Guid nodeId, string nodeName, DebugPauseReason reason) =>
+        Add(new Entry(PausedKind, walkId, nodeName, reason.ToString(), null, nodeId));
 
-    public void WalkResumed(Guid walkId, int elapsedMs, string nodeId) =>
-        Add(new Entry(ResumedKind, walkId, nodeId, null, null));
+    public void WalkResumed(Guid walkId, int elapsedMs, Guid nodeId, string nodeName) =>
+        Add(new Entry(ResumedKind, walkId, nodeName, null, null, nodeId));
 
     private void Add(Entry entry)
     {

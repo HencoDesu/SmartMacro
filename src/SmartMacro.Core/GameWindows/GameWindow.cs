@@ -1,11 +1,12 @@
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using OpenCvSharp;
-using SmartMacro.Config;
+using SmartMacro.Contracts.Settings;
+using SmartMacro.Input;
 using SmartMacro.Native;
 using SmartMacro.Native.Window;
 using SmartMacro.ProcessMonitoring;
+using SmartMacro.Settings;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace SmartMacro.GameWindows;
@@ -13,26 +14,32 @@ namespace SmartMacro.GameWindows;
 [SupportedOSPlatform("windows")]
 public sealed partial class GameWindow : IGameWindow
 {
-    private readonly IKeyboardInput _keyboard;
+    private readonly KeyboardInputResolver _keyboard;
     private readonly IMouseInput _mouse;
+    private readonly ISettingsSource _settings;
+    private readonly string _processName;
 
     private readonly INativeWindow _nativeWindow;
 
+    // ПРОФИЛЬ ЗАПЕЧЁН ПРИ СОЗДАНИИ, и это осознанно, в отличие от порогов и способа ввода ниже.
+    // Профиль описывает, КАК будить именно это окно; смени его на лету — и окно, чей профиль
+    // пользователь удалил или переименовал посреди прогона, молча стало бы «обычным процессом»,
+    // то есть перестало бы просыпаться, не сказав ни слова. Правка профиля применяется к окнам,
+    // появившимся после неё; клиент для этого достаточно переоткрыть.
+    //
     // Null = процесс с простым вводом (профиля нет либо ActivationLParam не настроен): вся
     // пляска «побудка через WM_ACTIVATEAPP — деактивация» пропускается.
     private readonly uint? _activationLParam;
     private readonly int _settleDelayMs;
     private readonly int _deactivationDelayMs;
-    private readonly double _matchThreshold;
-    private readonly TimeSpan _pollInterval;
     private readonly ILogger<GameWindow> _logger;
 
     public GameWindow(
         ProcessInfo info,
-        ProcessProfile profile,
-        IKeyboardInput keyboard,
+        ProcessProfileSettings profile,
+        KeyboardInputResolver keyboard,
         IMouseInput mouse,
-        IOptions<WindowVisionOptions> visionOptions,
+        ISettingsSource settings,
         ILogger<GameWindow> logger)
     {
         if (info.MainWindowHandle == IntPtr.Zero)
@@ -42,14 +49,23 @@ public sealed partial class GameWindow : IGameWindow
 
         _keyboard = keyboard;
         _mouse = mouse;
+        _settings = settings;
+        _processName = info.ProcessName;
         _nativeWindow = Win32NativeWindowSystem.Open(info.MainWindowHandle);
         _activationLParam = profile.ActivationLParam;
         _settleDelayMs = profile.SettleDelayMs;
         _deactivationDelayMs = profile.DeactivationDelayMs;
-        _matchThreshold = visionOptions.Value.MatchThreshold;
-        _pollInterval = TimeSpan.FromMilliseconds(visionOptions.Value.PollIntervalMs);
         _logger = logger;
     }
+
+    // Пороги и темп опроса читаются В МОМЕНТ СОПОСТАВЛЕНИЯ, а не запоминаются в конструкторе:
+    // окно живёт часами, а порог подбирают именно тогда, когда шаблон не попадает, — и «поправил
+    // и перезапустил всё» вместо «поправил и попробовал ещё раз» это ровно тот опыт, ради
+    // отсутствия которого хранилище настроек и заводилось. Чтение — одна ссылка на неизменяемый
+    // снимок.
+    private double MatchThreshold => _settings.Current.Vision.MatchThreshold;
+
+    private TimeSpan PollInterval => TimeSpan.FromMilliseconds(_settings.Current.Vision.PollIntervalMs);
 
     public IntPtr Handle => _nativeWindow.Handle;
 
@@ -114,8 +130,11 @@ public sealed partial class GameWindow : IGameWindow
         }
     }
 
+    // Способ доставки спрашивается на КАЖДОЕ нажатие: настройка «ввод по умолчанию» обязана
+    // применяться со следующего цикла активации, а не со следующего запуска демона. Резолвер
+    // держит обе реализации полями, так что это выбор из двух ссылок, а не создание объекта.
     public Task PressKeyAsync(VirtualKey key, CancellationToken cancellationToken = default) =>
-        _keyboard.SendKeyAsync(Handle, key, cancellationToken);
+        _keyboard.For(_processName).SendKeyAsync(Handle, key, cancellationToken);
 
     public Task ClickAsync(ScreenPoint point, CancellationToken cancellationToken = default) =>
         _mouse.ClickAsync(Handle, point.X, point.Y, cancellationToken);
@@ -151,7 +170,7 @@ public sealed partial class GameWindow : IGameWindow
     // без опроса. FindElementNode ветвится по исходу немедленно, так что бюджет на опрос здесь
     // был бы просто скрытым ожиданием, о котором автор графа не просил.
     public async Task<ScreenPoint?> FindElementAsync(byte[] elementTemplate, ScreenRect position,
-        CancellationToken cancellationToken = default)
+        double? matchThreshold = null, CancellationToken cancellationToken = default)
     {
         byte[] capture;
         try
@@ -164,13 +183,18 @@ public sealed partial class GameWindow : IGameWindow
             return null;
         }
 
-        if (TryMatchOnce(capture, elementTemplate, position, out var score, out var center))
+        // Порог снимается ОДИН раз на попытку и передаётся дальше значением: прочитай мы его
+        // отдельно для сравнения и отдельно для строки лога, правка настройки ровно между двумя
+        // чтениями дала бы запись «оценка 0.62 < 0.70» под вердиктом «попадание». Порог НОДЫ
+        // главнее настройки — та лишь умолчание для нод, где автор его не трогал.
+        var threshold = matchThreshold ?? MatchThreshold;
+        if (TryMatchOnce(capture, elementTemplate, position, threshold, out var score, out var center))
         {
-            LogMatchHit(position, score, _matchThreshold);
+            LogMatchHit(position, score, threshold);
             return center;
         }
 
-        LogMatchMiss(position, score, _matchThreshold);
+        LogMatchMiss(position, score, threshold);
         return null;
     }
 
@@ -179,7 +203,7 @@ public sealed partial class GameWindow : IGameWindow
     // запускает MatchTemplate (CCoeffNormed) и возвращает ЦЕНТР совпадения на первом же тике,
     // где максимальная оценка перевалила за MatchThreshold. По таймауту возвращает null.
     public async Task<ScreenPoint?> WaitForElementAsync(byte[] elementTemplate, ScreenRect position,
-        TimeSpan waitDuration, CancellationToken cancellationToken = default)
+        TimeSpan waitDuration, double? matchThreshold = null, CancellationToken cancellationToken = default)
     {
         var deadline = Environment.TickCount64 + (long)waitDuration.TotalMilliseconds;
         while (Environment.TickCount64 < deadline)
@@ -201,19 +225,23 @@ public sealed partial class GameWindow : IGameWindow
             catch (Exception ex)
             {
                 LogCaptureFailed(ex);
-                await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
                 continue;
             }
 
-            if (TryMatchOnce(capture, elementTemplate, position, out var score, out var center))
+            var threshold = matchThreshold ?? MatchThreshold;
+            if (TryMatchOnce(capture, elementTemplate, position, threshold, out var score, out var center))
             {
-                LogMatchHit(position, score, _matchThreshold);
+                LogMatchHit(position, score, threshold);
                 return center;
             }
 
-            LogMatchMiss(position, score, _matchThreshold);
+            LogMatchMiss(position, score, threshold);
 
-            await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
+            // Темп опроса тоже перечитывается на каждом тике: цикл ожидания живёт до минуты, и
+            // правка, применяющаяся только к следующему запуску макроса, здесь мало чем лучше
+            // перезапуска демона.
+            await Task.Delay(PollInterval, cancellationToken).ConfigureAwait(false);
         }
 
         return null;
@@ -247,8 +275,8 @@ public sealed partial class GameWindow : IGameWindow
     // начало области обрезки прибавляется обратно, чтобы вызывающий получил точку, которую можно
     // сразу отдать в ClickAsync. Ради этого FoundPointVar и существует («найди кнопку где
     // угодно, а потом кликни по ней»).
-    private bool TryMatchOnce(byte[] sourcePng, byte[] templatePng, ScreenRect position, out double score,
-        out ScreenPoint center)
+    private bool TryMatchOnce(byte[] sourcePng, byte[] templatePng, ScreenRect position, double threshold,
+        out double score, out ScreenPoint center)
     {
         score = 0.0;
         center = default;
@@ -290,7 +318,7 @@ public sealed partial class GameWindow : IGameWindow
         center = new ScreenPoint(
             rect.X + maxLoc.X + (templateGray.Width / 2),
             rect.Y + maxLoc.Y + (templateGray.Height / 2));
-        return score >= _matchThreshold;
+        return score >= threshold;
     }
 
     private static Mat ToGrayscale(Mat bgr)

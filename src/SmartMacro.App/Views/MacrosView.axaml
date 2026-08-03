@@ -593,10 +593,10 @@
                 <ComboBox Grid.Column="1"
                           HorizontalAlignment="Stretch"
                           ItemsSource="{Binding Choices}"
-                          SelectedItem="{Binding TargetId, Mode=TwoWay}">
+                          SelectedItem="{Binding Target, Mode=TwoWay}">
                     <ComboBox.ItemTemplate>
-                        <DataTemplate x:DataType="sys:String">
-                            <TextBlock Text="{Binding ., Converter={x:Static conv:NodeIdDisplayConverter.Instance}}" />
+                        <DataTemplate x:DataType="nodes:NodeChoiceViewModel">
+                            <TextBlock Text="{Binding Display}" />
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
@@ -688,7 +688,7 @@
                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                    Foreground="{DynamicResource NocturneTextMutedBrush}"
                                    TextTrimming="CharacterEllipsis"
-                                   Text="{Binding NodeId}" />
+                                   Text="{Binding DisplayName}" />
                         <TextBlock Margin="0,1,0,0"
                                    FontSize="10.5"
                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
@@ -710,10 +710,10 @@
                     <!-- развёрнутое тело (1e): коробка становится редактором самой себя -->
                     <StackPanel Grid.Row="1" Margin="9,8,9,4" Spacing="5.6" IsVisible="{Binding IsExpanded}">
                         <Grid ColumnDefinitions="64,*">
-                            <TextBlock Grid.Column="0" Classes="label" Text="id" />
+                            <TextBlock Grid.Column="0" Classes="label" Text="имя" />
                             <TextBox Grid.Column="1"
                                      Classes="mono"
-                                     Text="{Binding NodeId, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                     Text="{Binding DisplayName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                         </Grid>
                         <ContentControl Content="{Binding}" />
                         <ContentControl Content="{Binding Target}" IsVisible="{Binding HasTarget}" />
@@ -878,6 +878,11 @@
                 <ContentControl Content="{Binding Region}" />
                 <TextBlock Classes="hint" Text="Ш или В = 0 — искать по всему окну" Margin="64,0,0,0" />
                 <Grid ColumnDefinitions="64,*">
+                    <TextBlock Grid.Column="0" Classes="label" Text="порог" />
+                    <TextBox Grid.Column="1" Classes="mono" Watermark="из настроек" Text="{Binding MatchThresholdText, Mode=TwoWay}" />
+                </Grid>
+                <TextBlock Classes="hint" Text="пусто — порог из настроек (Vision)" Margin="64,0,0,0" />
+                <Grid ColumnDefinitions="64,*">
                     <TextBlock Grid.Column="0" Classes="label" Text="точка →" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="переменная (необяз.)" Text="{Binding FoundPointVar, Mode=TwoWay}" />
                 </Grid>
@@ -899,6 +904,11 @@
                     </Grid>
                 </Grid>
                 <Grid ColumnDefinitions="64,*">
+                    <TextBlock Grid.Column="0" Classes="label" Text="порог" />
+                    <TextBox Grid.Column="1" Classes="mono" Watermark="из настроек" Text="{Binding MatchThresholdText, Mode=TwoWay}" />
+                </Grid>
+                <TextBlock Classes="hint" Text="пусто — порог из настроек (Vision)" Margin="64,0,0,0" />
+                <Grid ColumnDefinitions="64,*">
                     <TextBlock Grid.Column="0" Classes="label" Text="точка →" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="переменная (необяз.)" Text="{Binding FoundPointVar, Mode=TwoWay}" />
                 </Grid>
@@ -912,6 +922,11 @@
                     <TextBox Grid.Column="1" Classes="mono" Watermark="classes" Text="{Binding TemplateSet, Mode=TwoWay}" />
                 </Grid>
                 <ContentControl Content="{Binding Region}" />
+                <Grid ColumnDefinitions="64,*">
+                    <TextBlock Grid.Column="0" Classes="label" Text="порог" />
+                    <TextBox Grid.Column="1" Classes="mono" Watermark="из настроек" Text="{Binding MatchThresholdText, Mode=TwoWay}" />
+                </Grid>
+                <TextBlock Classes="hint" Text="пусто — порог из настроек (Vision)" Margin="64,0,0,0" />
                 <Grid ColumnDefinitions="64,*">
                     <TextBlock Grid.Column="0" Classes="label" Text="результат" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="tag" Text="{Binding ResultVar, Mode=TwoWay}" />
@@ -1040,7 +1055,13 @@
                           MinWidth="150"
                           IsEnabled="{Binding HasOpenMacro}"
                           ItemsSource="{Binding StartNodeChoices}"
-                          SelectedItem="{Binding StartNodeId, Mode=TwoWay}" />
+                          SelectedItem="{Binding StartNode, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="nodes:NodeChoiceViewModel">
+                            <TextBlock Text="{Binding Display}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
 
                 <Button Grid.Column="4"
                         x:Name="AddNodeButton"
@@ -1611,7 +1632,7 @@
                                                            FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                                            TextTrimming="CharacterEllipsis"
                                                            Foreground="{DynamicResource NocturneTextMutedBrush}"
-                                                           Text="{Binding NodeId}" />
+                                                           Text="{Binding NodeName}" />
                                                 <TextBlock Grid.Column="2"
                                                            FontSize="10.5"
                                                            FontFamily="{DynamicResource NocturneFontFamilyMono}"
@@ -1665,11 +1686,11 @@
                             <StackPanel IsVisible="{Binding HasSelectedNode}">
                                 <StackPanel Margin="12,9" Spacing="5.6">
                                     <Grid ColumnDefinitions="64,*">
-                                        <TextBlock Grid.Column="0" Classes="label" Text="id" />
+                                        <TextBlock Grid.Column="0" Classes="label" Text="имя" />
                                         <TextBox Grid.Column="1"
                                                  Classes="mono"
-                                                 ToolTip.Tip="Переименование автоматически перешивает входящие рёбра"
-                                                 Text="{Binding SelectedNode.NodeId, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                                 ToolTip.Tip="Подпись ноды: видна в логе прогона и в замечаниях валидатора. Рёбра ссылаются не на неё, так что переименование графа не трогает."
+                                                 Text="{Binding SelectedNode.DisplayName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                     </Grid>
                                     <ContentControl Content="{Binding SelectedNode}" />
                                 </StackPanel>

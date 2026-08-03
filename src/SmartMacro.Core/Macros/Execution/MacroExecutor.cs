@@ -130,12 +130,13 @@ public sealed partial class MacroExecutor
     private async Task<MacroRunResult> RunCoreAsync(MacroGraph macro, MacroRunContext context, MacroWalkTrace trace,
         CancellationToken ct)
     {
-        var nodesById = new Dictionary<string, MacroNode>(StringComparer.Ordinal);
+        var nodesById = new Dictionary<Guid, MacroNode>();
         foreach (var node in macro.Nodes)
         {
             if (!nodesById.TryAdd(node.Id, node))
             {
-                throw new MacroRunAbortException($"Макрос «{macro.Name}»: дубликат id ноды «{node.Id}».");
+                throw new MacroRunAbortException(
+                    $"Макрос «{macro.Name}»: дубликат id ноды (одну из них зовут «{MacroNodeNames.Display(node)}»).");
             }
         }
 
@@ -153,28 +154,28 @@ public sealed partial class MacroExecutor
         {
             foreach (var (name, value) in context.Variables.Entries)
             {
-                trace.VariableSet(name, value.DisplayString, nodeId: null);
+                trace.VariableSet(name, value.DisplayString, node: null);
             }
         }
 
-        var currentId = macro.StartNodeId;
-        while (currentId is not null)
+        var currentId = (Guid?)macro.StartNodeId;
+        while (currentId is { } id)
         {
             ct.ThrowIfCancellationRequested();
-            if (!nodesById.TryGetValue(currentId, out var node))
+            if (!nodesById.TryGetValue(id, out var node))
             {
                 throw new MacroRunAbortException(
-                    $"Макрос «{macro.Name}»: ребро ведёт в несуществующую ноду «{currentId}».");
+                    $"Макрос «{macro.Name}»: ребро ведёт в ноду, которой в графе нет.");
             }
 
-            context.OnNodeEntered?.Invoke(node.Id);
-            trace.NodeEntered(node.Id);
+            context.OnNodeEntered?.Invoke(MacroNodeNames.Display(node));
+            trace.NodeEntered(node);
 
             // ЗАТВОР ОТЛАДЧИКА. Между двумя нодами и до того, как пойдут часы ноды, — чтобы
             // пауза не стоила припаркованной ноде ни миллисекунды замеренного времени и чтобы,
             // как сказано в комментарии к классу, пока мы ждём, ни одно игровое окно не сидело
             // разбуженным.
-            await GateAsync(context, trace, macro.Name, node.Id, ct).ConfigureAwait(false);
+            await GateAsync(context, trace, macro.Name, node, ct).ConfigureAwait(false);
 
             var nodeStart = MacroWalkTrace.Now;
 
@@ -189,14 +190,14 @@ public sealed partial class MacroExecutor
                 // прикончила, а это первое, что хочет знать всякий, кто читает полосу. Фильтр
                 // держит всю ветку в стороне от пути, когда никто не смотрит.
                 trace.NodeExited(
-                    node.Id,
+                    node,
                     ex is OperationCanceledException ? RunOutcomes.Cancelled : RunOutcomes.Error,
                     ex is OperationCanceledException ? null : ex.Message,
                     nodeStart);
                 throw;
             }
 
-            trace.NodeExited(node.Id, step.Outcome, step.Detail, nodeStart);
+            trace.NodeExited(node, step.Outcome, step.Detail, nodeStart);
             currentId = step.Next;
         }
 
@@ -205,7 +206,7 @@ public sealed partial class MacroExecutor
     }
 
     /// <summary>
-    /// Придерживает обход перед <paramref name="nodeId"/>, если так велел отладчик.
+    /// Придерживает обход перед <paramref name="node"/>, если так велел отладчик.
     ///
     /// Устроено как несинхронный быстрый путь плюс асинхронный медленный, чтобы обычный случай
     /// — отладчика нет либо ничего не взведено — сводился к одному volatile-чтению и возврату
@@ -215,7 +216,7 @@ public sealed partial class MacroExecutor
         MacroRunContext context,
         MacroWalkTrace trace,
         string macroName,
-        string nodeId,
+        MacroNode node,
         CancellationToken ct)
     {
         if (context.Debugger is not { IsActive: true } debugger)
@@ -225,7 +226,7 @@ public sealed partial class MacroExecutor
 
         // Точки останова ключуются парой (макрос, нода) — той же самой, которой их ставит
         // редактор.
-        if (debugger.Arm(trace.WalkId, macroName, nodeId) is not { } gate)
+        if (debugger.Arm(trace.WalkId, macroName, node.Id, MacroNodeNames.Display(node)) is not { } gate)
         {
             return Task.CompletedTask;
         }
@@ -235,7 +236,7 @@ public sealed partial class MacroExecutor
         static async Task WaitAsync(IMacroDebugger debugger, MacroDebugGate gate, MacroWalkTrace trace,
             CancellationToken ct)
         {
-            trace.Paused(gate.NodeId, gate.Reason);
+            trace.Paused(gate.NodeId, gate.NodeName, gate.Reason);
             try
             {
                 // Отмена («■ Стоп», выключение демона) распускает парковку: OCE
@@ -248,7 +249,7 @@ public sealed partial class MacroExecutor
                 debugger.Disarm(gate);
             }
 
-            trace.Resumed(gate.NodeId);
+            trace.Resumed(gate.NodeId, gate.NodeName);
         }
     }
 
@@ -257,10 +258,10 @@ public sealed partial class MacroExecutor
     /// съём показаний) строка с описанием. Readonly-структура, чтобы обход без съёма показаний
     /// ничего не выделял на ноду.
     /// </summary>
-    private readonly record struct NodeStep(string? Next, string Outcome, string? Detail = null)
+    private readonly record struct NodeStep(Guid? Next, string Outcome, string? Detail = null)
     {
         /// <summary>Нода действия: выход ровно один.</summary>
-        public static NodeStep Done(string? next, string? detail) => new(next, RunOutcomes.Ok, detail);
+        public static NodeStep Done(Guid? next, string? detail) => new(next, RunOutcomes.Ok, detail);
     }
 
     private async Task<NodeStep> ExecuteNodeAsync(
@@ -275,7 +276,7 @@ public sealed partial class MacroExecutor
         {
             case KeyPressNode n:
             {
-                var targets = ResolveTargets(n.Id, n.Target, context);
+                var targets = ResolveTargets(n, n.Target, context);
                 await Task.WhenAll(targets.Select(hwnd => _primitives.PressKeyAsync(hwnd, n.Key, ct)))
                     .ConfigureAwait(false);
                 return NodeStep.Done(n.Next, DetailIfTracing(trace, () => Fanout(n.Key.ToString(), targets.Count)));
@@ -283,7 +284,7 @@ public sealed partial class MacroExecutor
             case ClickNode n:
             {
                 var point = ResolveClickPoint(n, context.Variables);
-                var targets = ResolveTargets(n.Id, n.Target, context);
+                var targets = ResolveTargets(n, n.Target, context);
                 await Task.WhenAll(targets.Select(hwnd => _primitives.ClickAsync(hwnd, point, n.DoubleClick, ct)))
                     .ConfigureAwait(false);
                 return NodeStep.Done(n.Next, DetailIfTracing(trace, () => Fanout(
@@ -302,7 +303,7 @@ public sealed partial class MacroExecutor
             case AddTagNode n:
             {
                 var tag = context.Variables.Interpolate(n.Tag);
-                var targets = ResolveTargets(n.Id, n.Target, context);
+                var targets = ResolveTargets(n, n.Target, context);
                 foreach (var hwnd in targets)
                 {
                     _windows.AddTag(hwnd, tag);
@@ -313,7 +314,7 @@ public sealed partial class MacroExecutor
             case RemoveTagNode n:
             {
                 var tag = context.Variables.Interpolate(n.Tag);
-                var targets = ResolveTargets(n.Id, n.Target, context);
+                var targets = ResolveTargets(n, n.Target, context);
                 foreach (var hwnd in targets)
                 {
                     _windows.RemoveTag(hwnd, tag);
@@ -324,7 +325,7 @@ public sealed partial class MacroExecutor
             case SetIconNode n:
             {
                 var iconPath = context.Variables.Interpolate(n.IconPath);
-                var targets = ResolveTargets(n.Id, n.Target, context);
+                var targets = ResolveTargets(n, n.Target, context);
                 await Task.WhenAll(targets.Select(hwnd => _primitives.SetIconAsync(hwnd, iconPath, ct)))
                     .ConfigureAwait(false);
                 return NodeStep.Done(n.Next, DetailIfTracing(trace, () => Fanout(FileNameOf(iconPath), targets.Count)));
@@ -333,13 +334,13 @@ public sealed partial class MacroExecutor
                 return await ExecuteRunMacroAsync(macro, n, context, callChain, trace, ct).ConfigureAwait(false);
             case FindElementNode n:
             {
-                var hwnd = RequireContext(n.Id, context);
-                var found = await _primitives.FindElementAsync(hwnd, n.Template, n.Region, ct).ConfigureAwait(false);
+                var hwnd = RequireContext(n, context);
+                var found = await _primitives.FindElementAsync(hwnd, n.Template, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
                 if (found is { } point)
                 {
                     if (n.FoundPointVar is not null)
                     {
-                        SetVariable(trace, context, n.Id, n.FoundPointVar, point);
+                        SetVariable(trace, context, n, n.FoundPointVar, point);
                     }
 
                     return new NodeStep(n.Found, RunOutcomes.Found,
@@ -350,14 +351,14 @@ public sealed partial class MacroExecutor
             }
             case WaitForElementNode n:
             {
-                var hwnd = RequireContext(n.Id, context);
-                var found = await _primitives.WaitForElementAsync(hwnd, n.Template, n.Region, n.TimeoutMs, ct)
+                var hwnd = RequireContext(n, context);
+                var found = await _primitives.WaitForElementAsync(hwnd, n.Template, n.Region, n.TimeoutMs, n.MatchThreshold, ct)
                     .ConfigureAwait(false);
                 if (found is { } point)
                 {
                     if (n.FoundPointVar is not null)
                     {
-                        SetVariable(trace, context, n.Id, n.FoundPointVar, point);
+                        SetVariable(trace, context, n, n.FoundPointVar, point);
                     }
 
                     return new NodeStep(n.Found, RunOutcomes.Found,
@@ -369,11 +370,11 @@ public sealed partial class MacroExecutor
             }
             case RecognizeTagNode n:
             {
-                var hwnd = RequireContext(n.Id, context);
-                var tag = await _primitives.RecognizeAsync(hwnd, n.TemplateSet, n.Region, ct).ConfigureAwait(false);
+                var hwnd = RequireContext(n, context);
+                var tag = await _primitives.RecognizeAsync(hwnd, n.TemplateSet, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
                 if (tag is not null)
                 {
-                    SetVariable(trace, context, n.Id, n.ResultVar, tag);
+                    SetVariable(trace, context, n, n.ResultVar, tag);
                     if (n.ApplyTag)
                     {
                         _windows.AddTag(hwnd, tag);
@@ -387,7 +388,7 @@ public sealed partial class MacroExecutor
             }
             default:
                 throw new MacroRunAbortException(
-                    $"Макрос «{macro.Name}»: нода «{node.Id}» имеет неподдерживаемый тип {node.GetType().Name}.");
+                    $"Макрос «{macro.Name}»: нода «{MacroNodeNames.Display(node)}» имеет неподдерживаемый тип {node.GetType().Name}.");
         }
     }
 
@@ -395,11 +396,11 @@ public sealed partial class MacroExecutor
     // помощника, чтобы в каком-нибудь из них нельзя было забыть доложить наружу: панель
     // переменных, показывающая устаревшее значение {tag}, была бы неотличима от несработавшего
     // распознавания.
-    private static void SetVariable(MacroWalkTrace trace, MacroRunContext context, string nodeId, string name,
+    private static void SetVariable(MacroWalkTrace trace, MacroRunContext context, MacroNode node, string name,
         VariableValue value)
     {
         context.Variables.Set(name, value);
-        trace.VariableSet(name, value.DisplayString, nodeId);
+        trace.VariableSet(name, value.DisplayString, node);
     }
 
     // Строки подробностей существуют только ради полосы лога, поэтому и строятся они, только
@@ -455,7 +456,7 @@ public sealed partial class MacroExecutor
 
         var subMacro = _resolver.TryGet(name)
                        ?? throw new MacroRunAbortException(
-                           $"Макрос «{macro.Name}»: нода «{node.Id}» ссылается на несуществующий макрос «{name}».");
+                           $"Макрос «{macro.Name}»: нода «{MacroNodeNames.Display(node)}» ссылается на несуществующий макрос «{name}».");
 
         List<MacroRunContext> childContexts = [];
         if (node.Target is { } selector)
@@ -467,12 +468,12 @@ public sealed partial class MacroExecutor
 
             if (childContexts.Count == 0)
             {
-                LogNoTargets(macro.Name, node.Id);
+                LogNoTargets(macro.Name, MacroNodeNames.Display(node));
             }
         }
         else
         {
-            var hwnd = RequireContext(node.Id, context);
+            var hwnd = RequireContext(node, context);
             childContexts.Add(BuildChildContext(context, callChain, hwnd));
         }
 
@@ -550,7 +551,9 @@ public sealed partial class MacroExecutor
         }
     }
 
-    private IReadOnlyList<IntPtr> ResolveTargets(string nodeId, TargetSelector? target, MacroRunContext context)
+    // Ноду в сообщениях об ошибках называем ПОДПИСЬЮ: текст читает человек, а guid ему сказать
+    // нечего — на канве та же нода подсветится по id, который несёт ValidationIssue.
+    private IReadOnlyList<IntPtr> ResolveTargets(MacroNode node, TargetSelector? target, MacroRunContext context)
     {
         if (target is null)
         {
@@ -560,18 +563,18 @@ public sealed partial class MacroExecutor
             }
 
             throw new MacroRunAbortException(
-                $"У ноды «{nodeId}» нет селектора Target, а у этого прогона нет контекстного окна (у прогонов от хоткея его не бывает).");
+                $"У ноды «{MacroNodeNames.Display(node)}» нет селектора Target, а у этого прогона нет контекстного окна (у прогонов от хоткея его не бывает).");
         }
 
         var matched = SelectorEvaluator.Select(_windows.Snapshot(), target);
         return matched.Select(window => window.Hwnd).ToArray();
     }
 
-    private static IntPtr RequireContext(string nodeId, MacroRunContext context)
+    private static IntPtr RequireContext(MacroNode node, MacroRunContext context)
     {
         return context.ContextWindow
                ?? throw new MacroRunAbortException(
-                   $"Ноде «{nodeId}» нужно контекстное окно, а у этого прогона его нет (у прогонов от хоткея его не бывает).");
+                   $"Ноде «{MacroNodeNames.Display(node)}» нужно контекстное окно, а у этого прогона его нет (у прогонов от хоткея его не бывает).");
     }
 
     private static ScreenPoint ResolveClickPoint(ClickNode node, MacroVariables variables)
@@ -581,7 +584,7 @@ public sealed partial class MacroExecutor
             ({ } point, null) => point,
             (null, { } pointVar) => variables.GetPoint(pointVar),
             _ => throw new MacroRunAbortException(
-                $"У ноды ClickNode «{node.Id}» должно быть задано ровно одно из Point / PointVar."),
+                $"У ноды ClickNode «{MacroNodeNames.Display(node)}» должно быть задано ровно одно из Point / PointVar."),
         };
     }
 
@@ -595,8 +598,8 @@ public sealed partial class MacroExecutor
     partial void LogAborted(string macroName, string reason);
 
     [LoggerMessage(LogLevel.Debug,
-        "Макрос '{MacroName}': селектор ноды '{NodeId}' не совпал ни с одним окном — ничего не делаем")]
-    partial void LogNoTargets(string macroName, string nodeId);
+        "Макрос '{MacroName}': селектор ноды '{NodeName}' не совпал ни с одним окном — ничего не делаем")]
+    partial void LogNoTargets(string macroName, string nodeName);
 
     [LoggerMessage(LogLevel.Warning, "Под-макрос без ожидания '{MacroName}' оборван: {Reason}")]
     partial void LogDetachedSubRunAborted(string macroName, string reason);

@@ -1,3 +1,5 @@
+// ReSharper disable once CheckNamespace — имена SmartMacro.Macros.* достались модели от жизни в Core.
+
 namespace SmartMacro.Macros.Model;
 
 /// <summary>
@@ -22,8 +24,12 @@ public sealed class MacroGraph
     /// </summary>
     public List<MacroTrigger> Triggers { get; init; } = [];
 
-    /// <summary>Id ноды, с которой начинается исполнение. Обязан ссылаться на элемент <see cref="Nodes"/>.</summary>
-    public required string StartNodeId { get; init; }
+    /// <summary>
+    /// Нода, с которой начинается исполнение. Обязана ссылаться на элемент <see cref="Nodes"/>;
+    /// <see cref="Guid.Empty"/> = стартовая нода не задана, и это ошибка валидации, а не
+    /// «начинать с первой».
+    /// </summary>
+    public required Guid StartNodeId { get; init; }
 
     /// <summary>Все ноды графа. Их id обязаны быть уникальны (проверяют и валидатор, и исполнитель).</summary>
     public required List<MacroNode> Nodes { get; init; }

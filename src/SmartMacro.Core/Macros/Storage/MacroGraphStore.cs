@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SmartMacro.Macros.Execution;
@@ -20,10 +21,10 @@ namespace SmartMacro.Macros.Storage;
 ///   * горячую перезагрузку через <see cref="FileSystemWatcher"/> с гашением дребезга, где
 ///     собственные записи подавляются сравнением подписи папки по временам последней записи.
 ///
-/// ИНВАРИАНТ: КОНСТРУКТОР НЕ ПИШЕТ НИ ОДНОГО ФАЙЛА. Он заводит саму папку, если её ещё нет
+/// ИНВАРИАНТ: ХРАНИЛИЩЕ НЕ СОЧИНЯЕТ СОДЕРЖИМОГО. Конструктор заводит саму папку, если её ещё нет
 /// (иначе некуда класть первый макрос и не на что натравливать наблюдателя), читает её — и на
-/// этом всё: содержимое библиотеки сразу после создания хранилища ровно такое, каким его
-/// оставил пользователь.
+/// этом всё: библиотека сразу после создания хранилища ровно такая, какой её оставил
+/// пользователь.
 ///
 /// Так было НЕ ВСЕГДА, и потому это записано инвариантом, а не подразумевается. До отмены
 /// обратной совместимости конструктор ещё и мигрировал унаследованный <c>macros.json</c>,
@@ -34,6 +35,15 @@ namespace SmartMacro.Macros.Storage;
 /// Примеры теперь раздаются файлами (<c>examples/</c> рядом с демоном) и копируются руками, а
 /// мигрировать больше нечего. Побочные эффекты сюда не возвращать: если что-то нужно записать
 /// на старте, это отдельный метод, видимый на месте вызова.
+///
+/// ЕДИНСТВЕННОЕ ИСКЛЮЧЕНИЕ — <c>*.json.incompatible</c>. Файл, который не разбирается, ОТОДВИГАЕТСЯ
+/// в сторону переименованием: содержимого это не сочиняет, но состояние на диске меняет, поэтому
+/// названо здесь явно. Появилось вместе с переходом нод на <c>Guid</c>: миграции нет, старые
+/// <c>"Id": "n1"</c> перестали разбираться разом, и «пропустить и записать строку в лог» означало
+/// бы, что пользователь открывает панель, видит пустую библиотеку и НИЧЕГО не видит на её месте.
+/// Отодвинутый файл видно в проводнике рядом с макросами — это и есть объяснение.
+/// Переименовываются только сбои РАЗБОРА: занятый или недоступный файл — история временная, и
+/// трогать его было бы прямым вредительством.
 ///
 /// Реализует <see cref="IMacroGraphResolver"/>, так что <c>RunMacroNode</c> разрешает
 /// под-макросы прямо из живой библиотеки.
@@ -153,7 +163,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         {
             if (issue.Severity == ValidationSeverity.Error)
             {
-                LogValidationError(graph.Name, issue.NodeId ?? "(граф)", issue.Message);
+                LogValidationError(graph.Name, issue.NodeName ?? "(граф)", issue.Message);
             }
         }
 
@@ -301,8 +311,19 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
 
                 macros.Add(graph);
             }
-            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+            catch (JsonException ex)
             {
+                // Разобрать не вышло — и не выйдет впредь, потому что файл не поменяется сам.
+                // Отодвигаем в сторону, чтобы пустая библиотека имела на диске видимое
+                // объяснение; см. инвариант в комментарии класса.
+                LogFileSkipped(ex, path);
+                MoveAside(path);
+                skipped++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Файл занят или недоступен — это состояние временное, и трогать его нельзя:
+                // следующая перезагрузка, скорее всего, прочитает его как ни в чём не бывало.
                 LogFileSkipped(ex, path);
                 skipped++;
             }
@@ -316,6 +337,36 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         if (raiseEvent)
         {
             MacrosChanged?.Invoke(_macros);
+        }
+    }
+
+    /// <summary>
+    /// Суффикс, который получает файл, не разобравшийся в <see cref="MacroGraph"/>.
+    /// Расширение <c>.json</c> сохраняется целиком (<c>pw-boot.json.incompatible</c>), чтобы в
+    /// проводнике было видно, чем файл был; наблюдатель на такое имя уже не смотрит.
+    /// </summary>
+    public const string IncompatibleSuffix = ".incompatible";
+
+    // Отодвигает непарсимый файл. Не бросает никогда: не получилось — значит, файл останется на
+    // месте и будет пропускаться дальше, ровно как до этой волны, и об этом пишется в лог.
+    private void MoveAside(string path)
+    {
+        try
+        {
+            var target = path + IncompatibleSuffix;
+            // Второй заход по тому же имени (файл вернули руками и он снова не разобрался) не
+            // должен ни падать, ни молча затирать предыдущую попытку.
+            for (var i = 2; File.Exists(target); i++)
+            {
+                target = string.Create(CultureInfo.InvariantCulture, $"{path}{IncompatibleSuffix}-{i}");
+            }
+
+            File.Move(path, target);
+            LogFileMovedAside(path, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogMoveAsideFailed(ex, path);
         }
     }
 
