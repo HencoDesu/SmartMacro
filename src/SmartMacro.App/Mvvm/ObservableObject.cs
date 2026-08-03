@@ -17,6 +17,25 @@ public abstract class ObservableObject : INotifyPropertyChanged
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
+    // ---------------------------------------------------------------------------------------
+    // Про [AllowNull] на строковых свойствах наследников.
+    //
+    // Сеттеры, привязанные к TextBox и ComboBox, устроены как
+    //     [AllowNull] public string Foo { get => _foo; set => SetField(ref _foo, value ?? ""); }
+    // и защита `?? ""` там не лишняя: Avalonia проталкивает в сеттер null — TextBox при очистке,
+    // ComboBox пока перестраивается его ItemsSource, — вопреки тому, что свойство размечено
+    // ненулевым. Пустая строка для этих полей и означает «не задано», а null в них означал бы
+    // NullReferenceException при первом же обращении.
+    //
+    // Раньше здесь стояла ненулевая аннотация и голая защита, и анализатор справедливо ругался,
+    // что левый операнд `??` никогда не null. Ответ — не глушить его, а сказать правду:
+    // [AllowNull] разрешает null НА ВХОДЕ, оставляя выход ненулевым. Тогда и защита обоснована
+    // типом, и подсказки анализатора снова чего-то стоят.
+    //
+    // Не путать с nullable-полями DTO протокола (см. SetBreakpointsRequest.NodeIds): там null
+    // приезжает из чужого JSON и разрешён по-настоящему, с обеих сторон.
+    // ---------------------------------------------------------------------------------------
+
     protected bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.ObjectModel;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
@@ -43,6 +44,7 @@ public sealed class KeyPressNodeRowViewModel : ActionNodeRowViewModel
     /// <c>Controls.KeyBindingPicker</c> (он ловит имена клавиш Avalonia, а перечисление их
     /// намеренно повторяет).
     /// </summary>
+    [AllowNull]
     public string KeyName
     {
         get => _keyName;
@@ -128,6 +130,7 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
     }
 
     /// <summary>Переменная прогона с точкой клика — <c>"cursor"</c> триггер засевает всегда.</summary>
+    [AllowNull]
     public string PointVar
     {
         get => _pointVar;
@@ -231,6 +234,7 @@ public abstract class TagNodeRowViewModel : ActionNodeRowViewModel
     }
 
     /// <summary>Текст тега; поддерживает подстановку <c>{var}</c> из переменных прогона.</summary>
+    [AllowNull]
     public string Tag
     {
         get => _tag;
@@ -304,6 +308,7 @@ public sealed class SetIconNodeRowViewModel : ActionNodeRowViewModel
     public override string Summary => _iconPath;
 
     /// <summary>Путь к картинке; поддерживает подстановку <c>{var}</c>.</summary>
+    [AllowNull]
     public string IconPath
     {
         get => _iconPath;

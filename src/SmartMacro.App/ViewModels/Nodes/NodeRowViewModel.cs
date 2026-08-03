@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels.Canvas;
@@ -58,6 +59,7 @@ public sealed class NodeEdgeViewModel : ObservableObject
         : string.Concat(char.ToLowerInvariant(Label[0]).ToString(), Label.AsSpan(1));
 
     /// <summary>Выбранный id ноды; <c>""</c> = конец прогона.</summary>
+    [AllowNull]
     public string TargetId
     {
         get => _targetId;
@@ -277,6 +279,7 @@ public abstract class NodeRowViewModel : ObservableObject
     public event Action<NodeRowViewModel, string>? IdChanged;
 
     /// <summary>Уникальный внутри графа id. Именно по нему рёбра ссылаются на ноды.</summary>
+    [AllowNull]
     public string NodeId
     {
         get => _nodeId;

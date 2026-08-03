@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -328,6 +329,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     public ObservableCollection<MacroLibraryGroupViewModel> MacroGroups { get; } = [];
 
     /// <summary>Поле фильтра библиотеки. Подстрока в имени макроса, без учёта регистра.</summary>
+    [AllowNull]
     public string LibrarySearch
     {
         get => _librarySearch;
@@ -367,6 +369,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// ключуется по основе имени файла, поэтому переименование — это «записать новый файл,
     /// удалить старый», чем эта VM и занимается, ведь операции переименования в протоколе нет.
     /// </summary>
+    [AllowNull]
     public string MacroName
     {
         get => _macroName;

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using SmartMacro.App.Mvvm;
@@ -70,6 +71,7 @@ public sealed class TargetSelectorViewModel : ObservableObject
     }
 
     /// <summary>Теги через запятую, которые окно обязано нести все до одного.</summary>
+    [AllowNull]
     public string RequireText
     {
         get => _requireText;
@@ -83,6 +85,7 @@ public sealed class TargetSelectorViewModel : ObservableObject
     }
 
     /// <summary>Теги через запятую, любой из которых снимает окно с дистанции.</summary>
+    [AllowNull]
     public string ExcludeText
     {
         get => _excludeText;
@@ -284,6 +287,7 @@ public sealed class TargetSelectorViewModel : ObservableObject
     public ObservableCollection<SelectorTagChipViewModel> ExcludeChips { get; } = [];
 
     /// <summary>Текст поля «+ тег» в popup для списка обязательных.</summary>
+    [AllowNull]
     public string NewRequireTag
     {
         get => _newRequireTag;
@@ -291,6 +295,7 @@ public sealed class TargetSelectorViewModel : ObservableObject
     }
 
     /// <summary>Текст поля «+ тег» в popup для списка исключений.</summary>
+    [AllowNull]
     public string NewExcludeTag
     {
         get => _newExcludeTag;

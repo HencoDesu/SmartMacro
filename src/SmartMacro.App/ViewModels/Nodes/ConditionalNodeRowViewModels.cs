@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using SmartMacro.Macros.Model;
 
 namespace SmartMacro.App.ViewModels.Nodes;
@@ -68,6 +69,7 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
     public override string Summary => Join(_template, DescribeRegion(Region));
 
     /// <summary>Основа имени файла шаблона; разрешает её слой примитивов.</summary>
+    [AllowNull]
     public string Template
     {
         get => _template;
@@ -78,6 +80,7 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
     public RegionEditorViewModel Region { get; }
 
     /// <summary>Необязательная переменная прогона, куда пишется центр совпадения. Пусто — не записывать.</summary>
+    [AllowNull]
     public string FoundPointVar
     {
         get => _foundPointVar;
@@ -134,6 +137,7 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
     public override string Summary =>
         Join(_template, $"{NodeInput.FormatSeconds(NodeInput.ParseInt(_timeoutMsText) ?? 0)} с");
 
+    [AllowNull]
     public string Template
     {
         get => _template;
@@ -149,6 +153,7 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
         set => SetField(ref _timeoutMsText, value);
     }
 
+    [AllowNull]
     public string FoundPointVar
     {
         get => _foundPointVar;
@@ -213,6 +218,7 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
         Join(_templateSet.Length > 0 ? $"набор {_templateSet}" : null, DescribeRegion(Region));
 
     /// <summary>Имя набора шаблонов; основа имени каждого файла в наборе — кандидат в теги.</summary>
+    [AllowNull]
     public string TemplateSet
     {
         get => _templateSet;
@@ -230,6 +236,7 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
     }
 
     /// <summary>Переменная прогона, куда пишется победившее имя (умолчание модели — <c>"tag"</c>).</summary>
+    [AllowNull]
     public string ResultVar
     {
         get => _resultVar;

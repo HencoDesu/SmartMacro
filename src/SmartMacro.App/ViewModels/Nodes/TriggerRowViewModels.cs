@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using SmartMacro.App.Mvvm;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
@@ -105,6 +106,7 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
     }
 
     /// <summary>Имя члена <see cref="VirtualKey"/> либо пусто для сочетания с мышью.</summary>
+    [AllowNull]
     public string KeyName
     {
         get => _keyName;
@@ -166,6 +168,7 @@ public sealed class ProcessTriggerRowViewModel : TriggerRowViewModel
     public override string TypeLabel => "Появление процесса";
 
     /// <summary>Имя процесса без расширения, сопоставляется без учёта регистра (например, <c>elementclient_64</c>).</summary>
+    [AllowNull]
     public string ProcessName
     {
         get => _processName;
