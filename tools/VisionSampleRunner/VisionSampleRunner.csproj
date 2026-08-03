@@ -10,10 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Direct reference, not inherited: SmartMacro.Core marks Tesseract PrivateAssets="all"
-         so the 16 MB of native blobs stop reaching SmartMacro.Daemon, which never OCRs
-         anything. This runner is the ONE live consumer of TesseractCoordinateReader, so it
-         asks for the package itself (and ships the matching tessdata\ below). -->
+    <!-- Ссылка прямая, а не унаследованная: SmartMacro.Core помечает Tesseract как
+         PrivateAssets="all", чтобы 12 МБ нативных блобов не доезжали до SmartMacro.Daemon,
+         который OCR не делает никогда. Этот прогонщик — ЕДИНСТВЕННЫЙ живой потребитель
+         TesseractCoordinateReader, поэтому пакет он просит себе сам (и везёт при себе
+         подходящий tessdata\ ниже). -->
     <PackageReference Include="Tesseract" Version="5.2.0" />
   </ItemGroup>
 

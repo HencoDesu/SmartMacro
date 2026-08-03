@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- WinExe, not Exe: the daemon is windowless and must not flash a console window when
-         it starts (typically from the shell / a shortcut, not a terminal). Serilog's console
-         sink still works when it IS launched from one via `dotnet run`. -->
+    <!-- WinExe, а не Exe: у демона нет окон, и мигать консолью при старте он не должен —
+         запускают его обычно из оболочки или по ярлыку, а не из терминала. Консольный сток
+         Serilog при этом продолжает работать, если его всё-таки подняли через dotnet run. -->
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
@@ -12,23 +12,23 @@
     <RootNamespace>SmartMacro.Daemon</RootNamespace>
     <AssemblyName>SmartMacro.Daemon</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- Stage 4A. This is a Windows-only, x64-only tool (Win32 message injection,
-         requireAdministrator, PrintWindow), so there is no reason to carry every RID a
-         package happens to ship. Without this, OpenCvSharp4.runtime.win alone laid down
-         runtimes/win-x86 next to runtimes/win-x64 — 148 MB of runtimes/ for an output
-         that needs 85 MB of it. Output: 169 MB → 107 MB (and → 91 MB once stage 4B took
-         Tesseract's natives + tessdata off this project; see SmartMacro.Core.csproj).
-         It costs no RAM either way (the extra RIDs were never loaded); this is purely
-         build output and copy time.
-         SelfContained=false: RID-specific stopped implying self-contained in .NET 6, but
-         say it out loud — an accidental self-contained daemon would be a 70 MB apphost.
-         AppendRuntimeIdentifierToOutputPath=false: keeps bin/Debug/net10.0-windows/ as
-         the output path. DaemonLauncher/UiExecutableLocator find each other by swapping
-         the project-folder segment of an otherwise identical path, and CLAUDE.md documents
-         that path — a win-x64/ segment would break both. The native blobs simply move
-         from runtimes/win-x64/native/ into the output root, which is where the loader
-         looks first anyway (verified: OpenCvSharpExtern still resolves on first vision
-         call). -->
+    <!-- Инструмент только под Windows и только x64 (инъекция сообщений Win32,
+         requireAdministrator, PrintWindow), так что везти каждый RID, который пакет решил
+         положить, незачем. Без этого один только OpenCvSharp4.runtime.win клал
+         runtimes/win-x86 рядом с runtimes/win-x64 — 148 МБ runtimes/ на выхлоп, которому
+         нужно оттуда 85. Выхлоп: 169 МБ → 107 МБ (и → 91 МБ, когда стадия 4B убрала из
+         проекта нативные блобы Tesseract и tessdata; см. SmartMacro.Core.csproj).
+         Оперативной памяти это не стоит ни так, ни эдак — лишние RID никогда не грузились;
+         речь только про размер выхлопа и время копирования.
+         SelfContained=false: с .NET 6 «под конкретный RID» перестало означать
+         «самодостаточный», но лучше сказать вслух — случайно самодостаточный демон это
+         apphost на 70 МБ.
+         AppendRuntimeIdentifierToOutputPath=false: оставляет путь выхлопа как
+         bin/Debug/net10.0-windows/. Панель и демон находят друг друга подменой сегмента с
+         именем проекта в остальном одинакового пути, и этот путь описан в CLAUDE.md —
+         сегмент win-x64/ сломал бы обоих. Нативные блобы при этом просто переезжают из
+         runtimes/win-x64/native/ в корень выхлопа, куда загрузчик и смотрит первым делом
+         (проверено: OpenCvSharpExtern по-прежнему находится на первом же вызове vision). -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
@@ -49,13 +49,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Authoritative engine configuration. Moved here from SmartMacro.App in stage 2A —
-         the daemon is the process that hosts the engine, so this is where its knobs live.
-         App keeps a stripped-down copy only for as long as its transitional composition
-         root survives (deleted in stage 3).
-         The File sink runs with "shared": true — a rejected second instance must be able to
-         append its "already running" line while the winner holds the same rolling file, and
-         that only works if every writer opens it in shared mode. -->
+    <!-- Конфигурация Serilog, и только она: все ручки движка уехали в settings.json,
+         которым владеет SettingsStore. Уровень журнала здесь остаётся намеренно — если демон
+         споткнётся на чтении настроек, отладить это можно лишь тем уровнем, что был известен
+         ДО. Сток File работает с "shared": true — отвергнутый второй экземпляр обязан суметь
+         дописать свою строку «уже запущен», пока победитель держит тот же роллинговый файл, а
+         это работает, только если каждый пишущий открывает его в разделяемом режиме. -->
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -66,22 +65,22 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Assets physically live here as of stage 3 (they used to be linked out of
-         SmartMacro.App). Everything that reads them — the vision pipeline, the template
-         matcher, WindowIconService, Win32TrayIcon — runs in this process, so this is where
-         they belong; the panel keeps only its own embedded window icon.
-         Copied rather than embedded so the user can add or retouch a template without a
-         rebuild.
-         tessdata\ used to sit alongside them; stage 4B deleted it. The only thing that ever
-         read it was TesseractCoordinateReader, which the daemon does not resolve — the
-         language pack now lives solely with tools/VisionSampleRunner. -->
-    <!-- Tray icon, loaded from disk by Win32TrayIcon (LoadImage + LR_LOADFROMFILE). -->
+    <!-- Активы физически лежат здесь начиная со стадии 3 (раньше линковались из
+         SmartMacro.App). Всё, что их читает, — конвейер vision, сопоставитель шаблонов,
+         WindowIconService, Win32TrayIcon — работает в этом процессе, так что им тут и место;
+         панели остаётся только её собственная встроенная иконка окна.
+         Копируются, а не встраиваются, чтобы пользователь мог добавить или подправить шаблон
+         без пересборки.
+         Рядом с ними лежал tessdata\; стадия 4B его удалила. Читал его единственный
+         TesseractCoordinateReader, которого демон не поднимает, — языковой пакет теперь живёт
+         только при tools/VisionSampleRunner. -->
+    <!-- Иконка трея, читается с диска в Win32TrayIcon (LoadImage + LR_LOADFROMFILE). -->
     <None Include="Assets\icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <!-- Per-tag taskbar icons. A SetIconNode names the file (typically
-         "Assets/ClassIcons/{tag}.png"); WindowIconService resolves it and skips with a
-         Debug log when it's missing. -->
+    <!-- Иконки панели задач по тегам. Файл называет нода SetIcon (обычно
+         «Assets/ClassIcons/{tag}.png»); WindowIconService разрешает путь, а когда файла нет —
+         пропускает, записав строку уровня Debug. -->
     <None Include="Assets\ClassIcons\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

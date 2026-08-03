@@ -25,12 +25,12 @@
          avares://, они теперь avares://SmartMacro/ (их четыре, все в App.axaml и App.axaml.cs). -->
     <AssemblyName>SmartMacro</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- Stage 4A, same reasoning as SmartMacro.Daemon.csproj — see the comment there.
-         Avalonia is the expensive one here: without a RID the output carried Skia and
-         HarfBuzz for linux-x64, linux-musl-x64, linux-arm, linux-arm64, osx, win-arm64
-         and win-x86 as well as the one build that can ever run. Output: 112 MB → 29 MB.
-         Disk only — libSkiaSharp/libHarfBuzzSharp just move to the output root, and the
-         panel still starts and connects. -->
+    <!-- Тот же довод, что и в SmartMacro.Daemon.csproj, — см. комментарий там. Дорогая часть
+         здесь Avalonia: без RID в выхлоп ехали Skia и HarfBuzz под linux-x64, linux-musl-x64,
+         linux-arm, linux-arm64, osx, win-arm64 и win-x86 вдобавок к единственной сборке,
+         которая вообще может запуститься. Выхлоп: 112 МБ → 29 МБ. Только на диске —
+         libSkiaSharp и libHarfBuzzSharp просто переезжают в корень выхлопа, а панель
+         по-прежнему стартует и подключается. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>false</SelfContained>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
@@ -92,11 +92,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Contracts (+ Native, transitively) and NOTHING ELSE.
-         Stage 3 removed the SmartMacro.Core reference: the panel is a pure IPC client now,
-         and this is the constraint that keeps OpenCV, Tesseract and their native blobs out
-         of the process the user opens and closes all day. If a view-model ever needs
-         something from Core, the answer is a message type, not a reference. -->
+    <!-- Contracts (и транзитивно Native) — И БОЛЬШЕ НИЧЕГО.
+         Ссылку на SmartMacro.Core сняли на стадии 3: панель стала чистым клиентом IPC, и
+         именно это ограничение держит OpenCV, Tesseract и их нативные блобы за пределами
+         процесса, который пользователь открывает и закрывает по десять раз на дню. Если
+         view-model'и однажды понадобится что-то из Core, ответ — новый тип сообщения, а не
+         ссылка. -->
     <ProjectReference Include="..\SmartMacro.Contracts\SmartMacro.Contracts.csproj" />
   </ItemGroup>
 
@@ -107,10 +108,10 @@
        поставки снова оказалось бы два файла вместо одного. -->
 
   <ItemGroup>
-    <!-- The only asset left in this project: the window icon, embedded and loaded via
-         avares://SmartMacro/Assets/icon.png. The vision templates, the per-tag taskbar
-         icons, the tray .ico and the Tesseract language pack all moved to SmartMacro.Daemon
-         in stage 3 — they are read at runtime by code that no longer runs here. -->
+    <!-- Единственный актив, оставшийся в этом проекте: иконка окна, встроенная и загружаемая
+         через avares://SmartMacro/Assets/icon.png. Шаблоны vision, иконки панели задач по
+         тегам, .ico для трея и языковой пакет Tesseract уехали в SmartMacro.Daemon на стадии
+         3 — их читает в рантайме код, который здесь больше не работает. -->
     <AvaloniaResource Include="Assets\icon.png" />
   </ItemGroup>
 

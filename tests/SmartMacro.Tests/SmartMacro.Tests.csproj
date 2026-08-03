@@ -5,8 +5,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <!-- TUnit runs on Microsoft.Testing.Platform: the test project is an executable
-         (dotnet run with project tests/SmartMacro.Tests). TUnit source-generates Main. -->
+    <!-- TUnit работает поверх Microsoft.Testing.Platform: тестовый проект — это исполняемый
+         файл, который запускают через `dotnet run` с ключом project, а Main генерирует сам
+         TUnit. (Ключ здесь описан словами: двойной дефис внутри XML-комментария запрещён.) -->
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
@@ -14,13 +15,13 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SmartMacro.Contracts\SmartMacro.Contracts.csproj" />
     <ProjectReference Include="..\..\src\SmartMacro.Core\SmartMacro.Core.csproj" />
-    <!-- W0.3: view-model tests. The App project is a WinExe, but referencing it only
-         pulls in its assembly — the VMs under test take Core services through their
-         constructors and marshal through IUiDispatcher, so nothing here needs an
-         Avalonia application, a dispatcher loop, or a render surface. -->
+    <!-- Тесты view-model'ей. Проект панели — WinExe, но ссылка на него тянет только сборку:
+         проверяемые view-model'и получают всё через конструктор и маршалят через
+         IUiDispatcher, так что ни приложения Avalonia, ни цикла диспетчера, ни поверхности
+         отрисовки здесь не нужно. -->
     <ProjectReference Include="..\..\src\SmartMacro.App\SmartMacro.App.csproj" />
-    <!-- Stage 2A: the daemon's pieces of real (non-Win32) logic — the single-instance mutex,
-         the UI-executable probe, the writability probe. Оговорка про столкновение двух
+    <!-- Куски настоящей (не-Win32) логики демона: мьютекс единственного экземпляра, поиск
+         исполняемого файла панели, проба пера на запись. Оговорка про столкновение двух
          appsettings.json в выхлопе тестов снята дважды: сперва имена разошлись, потом файл
          конфигурации у панели исчез вовсе. Читать конфиг отсюда всё равно некому — ни один exe
          тесты не запускают. -->
