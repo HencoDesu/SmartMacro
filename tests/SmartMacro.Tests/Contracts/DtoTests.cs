@@ -8,9 +8,9 @@ using SmartMacro.Windows;
 
 namespace SmartMacro.Tests.Contracts;
 
-// Stage 1: the DTOs are the only shape the UI will see after the split, so both halves
-// matter — the JSON round trip (wire fidelity) and the mappers from the live Core types
-// (which is where an IntPtr width or a DateTimeKind quietly goes wrong).
+// Стадия 1: после разделения DTO — единственная форма, которую видит интерфейс, поэтому важны
+// обе половины: round trip через JSON (точность передачи по проводу) и мапперы из живых типов
+// Core (а вот там-то ширина IntPtr или DateTimeKind и портятся втихую).
 public class DtoTests
 {
     private static T RoundTrip<T>(T value) =>
@@ -46,7 +46,8 @@ public class DtoTests
     [Test]
     public async Task ValidationIssueDto_RoundTrips()
     {
-        var reloaded = RoundTrip(new ValidationIssueDto("Error", "click1", "У ClickNode должно быть задано ровно одно из Point / PointVar."));
+        var reloaded = RoundTrip(new ValidationIssueDto("Error", "click1",
+            "У ClickNode должно быть задано ровно одно из Point / PointVar."));
 
         await Assert.That(reloaded.Severity).IsEqualTo("Error");
         await Assert.That(reloaded.NodeId).IsEqualTo("click1");
@@ -70,7 +71,7 @@ public class DtoTests
     [Test]
     public async Task ValidationIssue_UnknownSeverity_ReadsAsError()
     {
-        // Never silently downgrade something we can't classify.
+        // То, что не поддаётся классификации, никогда не понижаем в важности молча.
         var parsed = new ValidationIssueDto("Catastrophe", null, "?").ToIssue();
 
         await Assert.That(parsed.Severity).IsEqualTo(ValidationSeverity.Error);
@@ -79,7 +80,7 @@ public class DtoTests
     [Test]
     public async Task ValidationIssueList_MapsAndSurvivesAResponsePayload()
     {
-        // SaveMacro answers with the issue array; empty means "saved".
+        // SaveMacro отвечает массивом замечаний; пустой означает «сохранено».
         IReadOnlyList<ValidationIssue> issues =
         [
             new(ValidationSeverity.Error, "a", "битая ссылка"),
@@ -108,7 +109,7 @@ public class DtoTests
         await Assert.That(dto.ProcessName).IsEqualTo("elementclient");
         await Assert.That(dto.Tags).Count().IsEqualTo(1);
 
-        // The list projection is a copy — later registry snapshots must not mutate it.
+        // Проекция списка — это копия: последующие снимки реестра не имеют права её менять.
         var many = new[] { window, new ManagedWindowInfo(new IntPtr(2), "notepad", new HashSet<string>()) }.ToDto();
         await Assert.That(many).Count().IsEqualTo(2);
         await Assert.That(many[1].Tags).IsEmpty();
@@ -131,8 +132,9 @@ public class DtoTests
     [Test]
     public async Task MacroRunSnapshot_WithUnspecifiedKind_IsNotShiftedByTheLocalOffset()
     {
-        // DateTimeOffset(DateTime) applies the LOCAL offset to an Unspecified value; the
-        // mapper pins the kind first, so the wire timestamp stays the one we stamped.
+        // DateTimeOffset(DateTime) применяет к значению с Unspecified МЕСТНОЕ смещение; маппер
+        // сперва прибивает kind, поэтому в провод уезжает ровно та отметка времени, которую
+        // мы и поставили.
         var unspecified = new DateTime(2026, 8, 2, 12, 0, 0, DateTimeKind.Unspecified);
 
         var dto = new MacroRunSnapshot(Guid.NewGuid(), "m", unspecified, null).ToDto();

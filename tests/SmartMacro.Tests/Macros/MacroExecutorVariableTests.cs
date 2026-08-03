@@ -4,8 +4,8 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2a: how nodes READ variables — PointVar clicks, {var} interpolation in Tag/IconPath,
-// and the hard rule that a missing variable aborts the run instead of silently missing.
+// W0.2a: как ноды ЧИТАЮТ переменные — клики по PointVar, подстановка {var} в Tag и IconPath,
+// а также жёсткое правило: отсутствующая переменная прерывает прогон, а не тихо промахивается.
 public class MacroExecutorVariableTests
 {
     [Test]
@@ -140,7 +140,7 @@ public class MacroExecutorVariableTests
     [Test]
     public async Task FindThenClickPattern_ClicksTheFoundPoint()
     {
-        // The plan's marquee pattern: Find(FoundPointVar: "btn") →Found→ Click(PointVar: "btn").
+        // Заглавный приём из плана: Find(FoundPointVar: "btn") →Found→ Click(PointVar: "btn").
         var h = new ExecutorHarness();
         h.Primitives.FindHandler = (_, _, _) => new ScreenPoint(300, 400);
         var graph = ExecutorHarness.Graph("м", "f",

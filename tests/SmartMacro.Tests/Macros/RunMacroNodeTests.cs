@@ -4,12 +4,12 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2a: RunMacroNode semantics — await/fire-and-forget, depth limit, name-cycle
-// detection, per-window sub-runs with the matched window as context, and variable
-// copy-not-share isolation.
+// W0.2a: семантика RunMacroNode — дождаться или запустить и забыть, предел глубины,
+// обнаружение цикла по именам, под-прогоны на каждое окно с подошедшим окном в контексте и
+// изоляция переменных копированием, а не разделением.
 public class RunMacroNodeTests
 {
-    /// <summary>Sub-macro pressing F9 on its context window.</summary>
+    /// <summary>Под-макрос, нажимающий F9 в своём контекстном окне.</summary>
     private static MacroGraph SubPressingF9(string name = "суб") =>
         ExecutorHarness.Graph(name, "k", new KeyPressNode { Id = "k", Key = VirtualKey.F9, Next = null });
 
@@ -27,7 +27,8 @@ public class RunMacroNodeTests
         var result = await h.Executor.RunAsync(ParentRunning("суб"), h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
-        // Sub-run's key first, parent's Next after — proof the parent awaited.
+        // Сперва клавиша под-прогона, потом Next родителя — вот и доказательство, что родитель
+        // дождался.
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(2);
         await Assert.That(h.Primitives.Calls[0].A).IsEqualTo(VirtualKey.F9);
         await Assert.That(h.Primitives.Calls[1].A).IsEqualTo(VirtualKey.F1);
@@ -64,15 +65,15 @@ public class RunMacroNodeTests
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Primitives.PressKeyGate = () => gate.Task;
 
-        // The parent's own "after" key press also goes through the gated primitive, so
-        // gate BEFORE starting and check completion state: with Await=false the parent
-        // must reach (and record) its Next node even though the child hangs.
+        // Собственное нажатие клавиши «после» у родителя тоже идёт через примитив с затвором,
+        // поэтому ставим затвор ДО запуска и смотрим на состояние завершения: при Await=false
+        // родитель обязан дойти до своей ноды Next (и записать её), даже если потомок висит.
         var runTask = h.Executor.RunAsync(
             ParentRunning("суб", await_: false), h.Context(ExecutorHarness.Window), CancellationToken.None);
 
-        // The parent finishes only if it did NOT await the gated child... but its own
-        // F1 press is gated too. Release the gate and verify both key presses landed and
-        // the parent completed — order-independent, unlike the Await=true test above.
+        // Родитель завершится, только если он НЕ ждал потомка за затвором… но и его собственное
+        // нажатие F1 тоже за затвором. Открываем затвор и проверяем, что оба нажатия дошли, а
+        // родитель завершился, — в отличие от теста с Await=true выше, здесь порядок не важен.
         gate.TrySetResult();
         var result = await runTask.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -90,8 +91,8 @@ public class RunMacroNodeTests
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Primitives.PressKeyGate = () => gate.Task;
 
-        // Parent WITHOUT an "after" action node: its walk never touches the gated
-        // primitive, so completion proves fire-and-forget alone.
+        // Родитель БЕЗ ноды-действия «после»: его обход вообще не трогает примитив с затвором,
+        // так что завершение доказывает именно «запустил и забыл», и ничего кроме.
         var parent = ExecutorHarness.Graph("родитель", "r",
             new RunMacroNode { Id = "r", MacroName = "суб", Await = false, Next = null });
 
@@ -108,7 +109,7 @@ public class RunMacroNodeTests
     public async Task DepthBeyondLimit_AbortsRun()
     {
         var h = new ExecutorHarness();
-        // м0 → м1 → м2 → м3 → м4 → м5: running м5 needs depth 5 > MaxDepth(4).
+        // м0 → м1 → м2 → м3 → м4 → м5: запуск м5 требует глубины 5 > MaxDepth(4).
         for (var i = 0; i < 5; i++)
         {
             h.Resolver.Add(ExecutorHarness.Graph($"м{i}", "r",
@@ -121,7 +122,7 @@ public class RunMacroNodeTests
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
         await Assert.That(result.Error!).Contains("depth limit");
-        // м5's key press never happened.
+        // Нажатия клавиши в м5 не случилось.
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
     }
 
@@ -129,7 +130,8 @@ public class RunMacroNodeTests
     public async Task DepthWithinLimit_Runs()
     {
         var h = new ExecutorHarness();
-        // м0 → м1 → м2 → м3 → м4(action): deepest sub-run has depth 4 = MaxDepth, legal.
+        // м0 → м1 → м2 → м3 → м4(действие): у самого глубокого под-прогона глубина 4 = MaxDepth,
+        // это законно.
         for (var i = 0; i < 4; i++)
         {
             h.Resolver.Add(ExecutorHarness.Graph($"м{i}", "r",
@@ -180,7 +182,7 @@ public class RunMacroNodeTests
         var h = new ExecutorHarness();
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         h.Primitives.RecognizeHandler = (_, _, _) => "жрец";
-        // Child READS the parent's variable (into a tag) and WRITES its own (ResultVar).
+        // Потомок ЧИТАЕТ переменную родителя (в тег) и ПИШЕТ свою собственную (ResultVar).
         h.Resolver.Add(ExecutorHarness.Graph("суб", "t",
             new AddTagNode { Id = "t", Tag = "из-родителя-{п}", Next = "r" },
             new RecognizeTagNode
@@ -195,9 +197,9 @@ public class RunMacroNodeTests
         var result = await h.Executor.RunAsync(ParentRunning("суб"), context, CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
-        // Read inherited: the child saw п="снаружи".
+        // Чтение унаследовано: потомок увидел п="снаружи".
         await Assert.That(h.Registry.HasTag(ExecutorHarness.Window, "из-родителя-снаружи")).IsTrue();
-        // Write isolated: the child's "tag" never reached the parent.
+        // Запись изолирована: "tag" потомка до родителя не добрался.
         await Assert.That(context.Variables.TryGet("tag", out _)).IsFalse();
     }
 
@@ -212,8 +214,8 @@ public class RunMacroNodeTests
         h.Registry.AddTag(w2, "перс");
         h.Registry.Register(w3, "elementclient"); // no tag — must not get a sub-run
         h.Resolver.Add(SubPressingF9());
-        // No targetless follow-up node here: the parent runs without a context window,
-        // so everything after the fan-out must carry a selector too (or end the run).
+        // Ноды-продолжения без цели здесь нет: родитель идёт без контекстного окна, так что всё
+        // после веера обязано нести селектор тоже (или завершать прогон).
         var parent = ExecutorHarness.Graph("родитель", "r",
             new RunMacroNode
             {
@@ -221,7 +223,7 @@ public class RunMacroNodeTests
                 Target = new TargetSelector { RequireTags = ["перс"] }, Next = null,
             });
 
-        // Parent has no context window at all — the selector supplies the children's.
+        // Контекстного окна у родителя нет вовсе — окна потомкам выдаёт селектор.
         var result = await h.Executor.RunAsync(parent, h.Context(window: null), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
@@ -269,7 +271,7 @@ public class RunMacroNodeTests
     {
         var h = new ExecutorHarness();
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
-        // Child aborts: interpolation of an undefined variable.
+        // Потомок прерывается: подстановка неопределённой переменной.
         h.Resolver.Add(ExecutorHarness.Graph("суб", "t",
             new AddTagNode { Id = "t", Tag = "{нет}", Next = null }));
 
@@ -278,7 +280,7 @@ public class RunMacroNodeTests
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
         await Assert.That(result.Error!).Contains("суб");
-        // Parent's Next never ran.
+        // Next родителя так и не отработал.
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
     }
 }

@@ -2,9 +2,9 @@ using SmartMacro.Daemon;
 
 namespace SmartMacro.Tests.Daemon;
 
-// Stage 2A: the tray's "Открыть панель" resolves the UI executable as a sibling of the
-// daemon's own assembly. Pure path logic plus an injected existence probe, so no filesystem
-// is involved.
+// Стадия 2A: «Открыть панель» в трее ищет исполняемый файл интерфейса рядом со сборкой самого
+// демона. Чистая логика путей плюс подставленная проверка существования файла, так что файловая
+// система не задействована.
 public class UiExecutableLocatorTests
 {
     private const string BaseDirectory = @"C:\apps\smartmacro";
@@ -19,8 +19,8 @@ public class UiExecutableLocatorTests
     [Test]
     public async Task ProbePath_HandlesATrailingSeparator()
     {
-        // AppContext.BaseDirectory always ends in a separator, so this is the real shape of
-        // the input — Path.Combine must not double it.
+        // AppContext.BaseDirectory всегда заканчивается разделителем, так что на вход приходит
+        // именно такая строка, — Path.Combine не имеет права его удваивать.
         await Assert.That(UiExecutableLocator.ProbePath(BaseDirectory + Path.DirectorySeparatorChar))
             .IsEqualTo(ExpectedPath);
     }
@@ -50,9 +50,9 @@ public class UiExecutableLocatorTests
     [Test]
     public async Task Resolve_DoesNotSearchAnywhereElse()
     {
-        // Exactly one candidate: no PATH walk, no parent-directory climb. A daemon that
-        // launched some other SmartMacro.App.exe it happened to find would be worse than
-        // one that reports "not found" with the path it looked at.
+        // Ровно один кандидат: ни обхода PATH, ни подъёма по родительским папкам. Демон,
+        // запустивший какой-то посторонний SmartMacro.App.exe, попавшийся под руку, был бы хуже
+        // того, который говорит «не нашли» и называет путь, куда смотрел.
         var probes = new List<string>();
         UiExecutableLocator.Resolve(BaseDirectory, path =>
         {
@@ -66,7 +66,7 @@ public class UiExecutableLocatorTests
     [Test]
     public async Task Resolve_DefaultProbe_UsesTheFilesystem()
     {
-        // No fake: an empty temp directory really doesn't contain the UI exe.
+        // Без подделок: во временной пустой папке действительно нет exe с интерфейсом.
         var empty = Directory.CreateTempSubdirectory("smartmacro-locator-");
         try
         {
@@ -88,8 +88,8 @@ public class UiExecutableLocatorTests
     [Test]
     public async Task UiExecutableName_MatchesTheAppProjectsOutput()
     {
-        // Guards against a rename of SmartMacro.App's AssemblyName silently breaking the
-        // tray's launch path — this constant is the only coupling between the two projects.
+        // Страхует от того, что переименование AssemblyName у SmartMacro.App молча сломает путь
+        // запуска из трея, — эта константа и есть единственная связка между двумя проектами.
         await Assert.That(UiExecutableLocator.UiExecutableName).IsEqualTo("SmartMacro.App.exe");
     }
 }

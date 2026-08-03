@@ -3,10 +3,10 @@ using SmartMacro.Vision;
 
 namespace SmartMacro.Tests;
 
-// W0.2b: resolving the template names macro nodes carry into PNG bytes. Succeeds
-// ClassTemplateLoader, whose "scan a folder, key by filename stem" contract it inherits
-// (the stem IS the tag a RecognizeTagNode applies). Bytes are never decoded here, so
-// dummy content is enough.
+// W0.2b: превращение имён шаблонов, которые несут ноды макросов, в байты PNG. Наследник
+// ClassTemplateLoader, у которого он перенял договорённость «просканировать папку, ключ — основа
+// имени файла» (эта основа И ЕСТЬ тег, который навешивает RecognizeTagNode). Байты здесь никогда
+// не декодируются, так что содержимого-пустышки достаточно.
 public class TemplateSetProviderTests
 {
     private static string CreateAssetsRoot(params (string Folder, string Stem, byte[] Bytes)[] files)
@@ -89,8 +89,8 @@ public class TemplateSetProviderTests
         var root = CreateAssetsRoot();
         try
         {
-            // A RecognizeTagNode pointing at a set the user hasn't created yet must simply
-            // never match, not take the run (or the library load) down.
+            // RecognizeTagNode, указывающая на набор, который пользователь ещё не завёл, обязана
+            // просто никогда не срабатывать, а не ронять прогон (или загрузку библиотеки).
             await Assert.That(Create(root).GetSet("nope")).IsEmpty();
         }
         finally
@@ -126,7 +126,7 @@ public class TemplateSetProviderTests
             var provider = Create(root);
             var first = provider.TryGetTemplate("Cached");
 
-            // Editing assets at runtime isn't supported — templates load once per process.
+            // Правка ассетов на ходу не поддерживается — шаблоны грузятся один раз на процесс.
             File.WriteAllBytes(Path.Combine(root, "GameUiElements", "Cached.png"), [2, 2, 2]);
 
             await Assert.That(provider.TryGetTemplate("Cached")).IsEquivalentTo(first!);

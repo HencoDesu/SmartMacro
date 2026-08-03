@@ -2,16 +2,16 @@ using SmartMacro.Daemon;
 
 namespace SmartMacro.Tests.Daemon;
 
-// Stage 2A: the daemon refuses to run twice. Everything here uses a throwaway mutex name so
-// the tests never collide with a real daemon (or with each other under TUnit's default
-// parallelism) — the production name is asserted separately, not acquired.
+// Стадия 2A: демон отказывается запускаться дважды. Всё здесь работает на одноразовом имени
+// мьютекса, чтобы тесты никогда не столкнулись ни с настоящим демоном, ни друг с другом при
+// параллелизме TUnit по умолчанию, — боевое имя проверяется отдельно, а не захватывается.
 //
-// Win32 mutex ownership is THREAD-affine and re-entrant, which shapes every test below:
-// acquire and dispose are kept on one thread with no `await` between them (after an await
-// the continuation can land on a different pool thread, making ReleaseMutex a no-op), and
-// the contention test uses a dedicated thread rather than Task.Run — the pool would happily
-// hand it the very thread that already owns the mutex, and the second acquisition would
-// succeed. That's the same reason the daemon takes the mutex on its Main thread.
+// Владение мьютексом Win32 привязано к ПОТОКУ и реентерабельно, и это определяет форму каждого
+// теста ниже: захват и освобождение держатся на одном потоке без `await` между ними (после await
+// продолжение может уехать на другой поток пула, и тогда ReleaseMutex превращается в пустышку),
+// а тест на конкуренцию берёт выделенный поток, а не Task.Run, — пул с удовольствием выдал бы
+// ровно тот поток, который мьютексом уже владеет, и второй захват прошёл бы успешно. По той же
+// причине демон берёт мьютекс на своём потоке Main.
 public class SingleInstanceGuardTests
 {
     private static string UniqueName() => $@"Local\SmartMacro.Tests.{Guid.NewGuid():N}";
@@ -88,9 +88,9 @@ public class SingleInstanceGuardTests
     [Test]
     public async Task DaemonMutexName_IsMachineWide()
     {
-        // Global\, not Local\: the resources the daemon contends for (RegisterHotKey, the
-        // WH_MOUSE_LL hook, the game clients) are machine-wide, so a second instance in
-        // another terminal-services session must lose the race too.
+        // Global\, а не Local\: ресурсы, за которые демон конкурирует (RegisterHotKey, хук
+        // WH_MOUSE_LL, клиенты игры), общемашинные, так что второй экземпляр в другом сеансе
+        // служб терминалов обязан проиграть гонку тоже.
         await Assert.That(SingleInstanceGuard.DaemonMutexName).StartsWith(@"Global\");
     }
 }

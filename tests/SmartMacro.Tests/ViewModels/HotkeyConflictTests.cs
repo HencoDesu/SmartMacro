@@ -11,13 +11,14 @@ using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// D4, mockup 1f, fourth state: «уже занят pw-immunity».
+// D4, макет 1f, четвёртое состояние: «уже занят pw-immunity».
 //
-// There are two ways a bound hotkey does nothing, and both land in the same slot because
-// they are the same thing from the user's chair:
-//   * another macro in the library already claims the chord — answerable in the panel;
-//   * Win32 RegisterHotKey refused it because something else owns it system-wide — only the
-//     daemon can see that, and it reports it through GetHotkeyFailures.
+// Привязанный хоткей может не делать ничего по двум причинам, и обе попадают в одно и то же
+// место, потому что со стула пользователя это одно и то же:
+//   * аккорд уже застолбил другой макрос в библиотеке — на это панель отвечает сама;
+//   * Win32 RegisterHotKey отказал, потому что аккордом владеет что-то ещё на уровне всей
+//     системы, — увидеть это способен только демон, и он сообщает об этом через
+//     GetHotkeyFailures.
 public class HotkeyConflictTests
 {
     private sealed class Daemon
@@ -52,7 +53,7 @@ public class HotkeyConflictTests
     private static HotkeyTriggerRowViewModel Hotkey(MacroEditorViewModel vm) =>
         vm.Triggers.OfType<HotkeyTriggerRowViewModel>().Single();
 
-    // ---- library conflicts -----------------------------------------------------------------
+    // ---- конфликты внутри библиотеки ---------------------------------------------------------
 
     [Test]
     public async Task ChordOwnedByAnotherMacro_NamesTheOwner()
@@ -87,8 +88,8 @@ public class HotkeyConflictTests
         await Assert.That(row.Conflict).IsNull();
     }
 
-    // The macro being edited is represented by its ROWS, not by what is on disk — otherwise
-    // opening a macro would report every one of its own hotkeys as taken by itself.
+    // Правящийся макрос представлен своими СТРОКАМИ, а не тем, что лежит на диске, — иначе,
+    // открыв макрос, мы бы отрапортовали, что каждый его собственный хоткей занят им же самим.
     [Test]
     public async Task OwnChordOnDisk_DoesNotConflictWithItself()
     {
@@ -119,8 +120,8 @@ public class HotkeyConflictTests
         await Assert.That(second.Conflict).IsEqualTo("уже задан в этом макросе");
     }
 
-    // Two fresh pickers with nothing bound are not a clash; a macro that is half-authored
-    // must not light up red for it.
+    // Два свежих поля выбора, в которых ничего не привязано, — это не столкновение; макрос,
+    // написанный наполовину, не имеет права из-за такого краснеть.
     [Test]
     public async Task UnboundPickers_DoNotClashWithEachOther()
     {
@@ -147,7 +148,7 @@ public class HotkeyConflictTests
         vm.LoadGraph(daemon.Macros[1]);
         var row = (HotkeyTriggerRowViewModel)vm.AddTrigger(MacroTriggerKind.Hotkey);
 
-        // Same (empty) modifier flags, but a key rather than a button.
+        // Флаги модификаторов те же (пустые), но клавиша, а не кнопка.
         row.KeyName = "F13";
         await Assert.That(row.Conflict).IsNull();
 
@@ -168,14 +169,14 @@ public class HotkeyConflictTests
         row.KeyName = "F23";
         await Assert.That(row.Conflict).IsNull();
 
-        // Someone edits another macro's file and the daemon pushes the change.
+        // Кто-то правит файл другого макроса, и демон присылает пуш об изменении.
         daemon.Macros.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
         daemon.Client.RaiseEvent(IpcMessageTypes.MacrosChanged);
 
         await Assert.That(row.Conflict).IsEqualTo("уже занят pw-immunity");
     }
 
-    // ---- registration failures ------------------------------------------------------------
+    // ---- отказы при регистрации --------------------------------------------------------------
 
     [Test]
     public async Task ChordRefusedByWindows_SaysSoInThePicker()
@@ -190,9 +191,9 @@ public class HotkeyConflictTests
         await Assert.That(Hotkey(vm).Conflict).IsEqualTo("занят другим приложением");
     }
 
-    // When two macros share a chord the daemon registers one and Windows rejects the other,
-    // so the failure carries the LOSER's name. The winner must not be told its own key is
-    // taken — hence matching on the macro name and not only on the chord.
+    // Когда аккорд делят два макроса, демон регистрирует один, а второму Windows отказывает, —
+    // значит, отказ несёт имя ПРОИГРАВШЕГО. Победителю нельзя говорить, что его собственная
+    // клавиша занята, — отсюда и сопоставление по имени макроса, а не по одному лишь аккорду.
     [Test]
     public async Task RegistrationFailureOfAnotherMacro_DoesNotAccuseTheWinner()
     {
@@ -206,8 +207,9 @@ public class HotkeyConflictTests
         await Assert.That(Hotkey(vm).Conflict).IsNull();
     }
 
-    // The library clash is the message that names something the user can fix, so it wins
-    // even when the daemon ALSO reports the registration failure for this macro.
+    // Столкновение внутри библиотеки — это сообщение, которое называет то, что пользователь в
+    // силах починить, поэтому оно побеждает даже тогда, когда демон ЗАОДНО сообщает и об отказе
+    // регистрации для этого макроса.
     [Test]
     public async Task LibraryConflict_TakesPrecedenceOverTheRegistrationFailure()
     {
@@ -222,8 +224,9 @@ public class HotkeyConflictTests
         await Assert.That(Hotkey(vm).Conflict).IsEqualTo("уже занят pw-immunity");
     }
 
-    // The trap this exists to close: a hotkey that dies at daemon startup, on a macro
-    // nobody opens. The library row is the only place it can be noticed.
+    // Ловушка, ради закрытия которой это и существует: хоткей, умерший при старте демона, на
+    // макросе, который никто не открывает. Строка в библиотеке — единственное место, где это
+    // вообще можно заметить.
     [Test]
     public async Task LibraryRow_MarksAMacroWhoseHotkeyNeverRegistered()
     {
@@ -241,9 +244,10 @@ public class HotkeyConflictTests
         await Assert.That(vm.Macros.Single(item => item.Name == "pw-immunity").HasHotkeyProblem).IsFalse();
     }
 
-    // While «Макросы» is on screen the daemon holds every chord unregistered, so a hotkey
-    // bound in the editor is only ever TRIED when the user leaves the mode. Resume is
-    // therefore the moment the verdict exists, and the panel has to go and get it.
+    // Пока на экране «Макросы», демон держит все аккорды незарегистрированными, так что хоткей,
+    // привязанный в редакторе, ПРОБУЮТ только тогда, когда пользователь уходит из этого режима.
+    // Возобновление, стало быть, и есть тот момент, когда приговор существует, — и панель обязана
+    // за ним сходить.
     [Test]
     public async Task ResumingHotkeys_RefetchesTheFailureList()
     {
@@ -255,7 +259,7 @@ public class HotkeyConflictTests
         vm.LoadGraph(daemon.Macros[0]);
         await Assert.That(Hotkey(vm).Conflict).IsNull();
 
-        // The daemon tries the registration on resume and fails.
+        // При возобновлении демон пробует зарегистрировать — и не может.
         daemon.Failures.Add(new HotkeyFailureDto("баг-госта", HotkeyModifiers.Win, VirtualKey.L));
         await vm.ResumeHotkeysAsync();
 

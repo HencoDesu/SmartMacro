@@ -6,11 +6,12 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2b: first-run bootstrap of the macro folder — converting a legacy macros.json into
-// graphs, and seeding the PW examples when there's nothing to convert.
+// W0.2b: раскладка папки макросов при первом запуске — превращение унаследованного macros.json
+// в графы и посев примеров PW, когда превращать нечего.
 //
-// The fixtures are verbatim pre-W0.2 files (enum-name keys under "ActionsByClass"), so
-// this also covers the old-format compatibility the deleted MacroJsonCompatTests used to.
+// Фикстуры здесь — дословные файлы времён до W0.2 (ключи-имена перечисления под
+// "ActionsByClass"), так что заодно покрыта и совместимость со старым форматом, которой раньше
+// занимались удалённые MacroJsonCompatTests.
 public class MacroMigrationTests
 {
     private const string SingleTagFixture =
@@ -75,8 +76,8 @@ public class MacroMigrationTests
         {
             File.WriteAllText(Path.Combine(dir, "macros.json"), SingleTagFixture);
 
-            // seedDefaults:false isolates the migration result — example seeding is
-            // covered separately by MigratedFolder_StillReceivesThePwExamples.
+            // seedDefaults:false вычленяет результат именно миграции — посев примеров покрыт
+            // отдельно, тестом MigratedFolder_StillReceivesThePwExamples.
             using var store = CreateStore(dir, seedDefaults: false);
 
             await Assert.That(store.All).Count().IsEqualTo(1);
@@ -99,7 +100,7 @@ public class MacroMigrationTests
             await Assert.That(click.Point).IsEqualTo(new ScreenPoint(100, 200));
             await Assert.That(click.DoubleClick).IsTrue();
             await Assert.That(click.Target!.RequireTags).Contains("Лучник");
-            // Last node in the chain ends the run.
+            // Последняя нода цепочки завершает прогон.
             await Assert.That(click.Next).IsNull();
         }
         finally
@@ -125,15 +126,15 @@ public class MacroMigrationTests
             var calls = dispatcher!.Nodes.OfType<RunMacroNode>().ToList();
             await Assert.That(calls).Count().IsEqualTo(2);
             await Assert.That(calls.All(call => call.Await)).IsTrue();
-            // Each branch is selected by tag, and the chain runs them one after another.
+            // Каждая ветка выбирается по тегу, а цепочка прогоняет их одну за другой.
             await Assert.That(calls[0].Target!.RequireTags).Contains("Лучник");
             await Assert.That(calls[0].MacroName).IsEqualTo("бурст-Лучник");
             await Assert.That(calls[0].Next).IsEqualTo(calls[1].Id);
             await Assert.That(calls[1].Target!.RequireTags).Contains("Жрец");
             await Assert.That(calls[1].Next).IsNull();
 
-            // Per-tag graphs are TARGETLESS: their context window comes from the
-            // dispatcher's selector fan-out.
+            // Графы по тегам идут БЕЗ ЦЕЛИ: контекстное окно приходит к ним из веера по
+            // селектору у диспетчера.
             var archer = store.TryGet("бурст-Лучник");
             await Assert.That(archer).IsNotNull();
             await Assert.That(((KeyPressNode)archer!.Nodes[0]).Key).IsEqualTo(VirtualKey.F5);
@@ -165,8 +166,8 @@ public class MacroMigrationTests
             await Assert.That(File.Exists(Path.Combine(dir, "macros.json"))).IsFalse();
             await Assert.That(File.Exists(Path.Combine(dir, "macros.json.migrated"))).IsTrue();
 
-            // Deleting everything the migration produced must NOT resurrect it on the
-            // next start — the folder existing is what marks migration as done.
+            // Удаление всего, что породила миграция, НЕ имеет права воскресить это при
+            // следующем запуске: признак выполненной миграции — само существование папки.
             File.Delete(Path.Combine(dir, "macros", "Баг госта.json"));
 
             using var second = CreateStore(dir, seedDefaults: false);
@@ -194,7 +195,7 @@ public class MacroMigrationTests
             await Assert.That(names).Contains("pw-identify");
             await Assert.That(names).Contains("pw-identify-one");
 
-            // Seeding writes real files, so a restart picks them up rather than re-seeding.
+            // Посев пишет настоящие файлы, так что перезапуск подхватывает их, а не сеет заново.
             await Assert.That(File.Exists(Path.Combine(dir, "macros", "pw-boot.json"))).IsTrue();
         }
         finally
@@ -203,10 +204,10 @@ public class MacroMigrationTests
         }
     }
 
-    // Regression: seeding used to be gated on "folder is empty", which silently skipped
-    // the examples for every upgrading user — migration fills the folder with their own
-    // macros first, and the pw-* examples are the only remaining implementation of the
-    // built-in broadcasts that the same upgrade deletes.
+    // Регрессия: посев раньше был завязан на «папка пуста», и это молча лишало примеров каждого
+    // обновляющегося пользователя — миграция первым делом наполняет папку его собственными
+    // макросами, а примеры pw-* остаются единственной реализацией встроенных широковещательных
+    // команд, которые то же самое обновление и удаляет.
     [Test]
     public async Task MigratedFolder_StillReceivesThePwExamples()
     {
@@ -303,15 +304,16 @@ public class MacroMigrationTests
 
             using var store = CreateStore(dir);
 
-            // The chord now lives in the macro it starts — that's the whole point of
-            // dropping hotkeys.json.
+            // Аккорд теперь живёт в том макросе, который он запускает, — ради этого от
+            // hotkeys.json и отказались.
             var dispatcher = store.TryGet("бурст");
             await Assert.That(dispatcher).IsNotNull();
             var trigger = dispatcher!.Triggers.OfType<HotkeyTrigger>().Single();
             await Assert.That(trigger.Key).IsEqualTo(VirtualKey.F21);
             await Assert.That(trigger.Modifiers).IsEqualTo(HotkeyModifiers.None);
 
-            // Per-tag children stay trigger-less: only the dispatcher is user-facing.
+            // Потомки по тегам остаются без триггеров: наружу, к пользователю, смотрит только
+            // диспетчер.
             await Assert.That(store.TryGet("бурст-Лучник")!.Triggers).IsEmpty();
 
             await Assert.That(File.Exists(Path.Combine(dir, "hotkeys.json"))).IsFalse();
@@ -342,7 +344,8 @@ public class MacroMigrationTests
         var result = LegacyMacroMigration.Convert(SingleTagFixture, hotkeys);
 
         await Assert.That(result.AttachedHotkeys).IsEqualTo(1);
-        // The two broadcast chords have no destination — those behaviors are pw-* examples now.
+        // У двух широковещательных аккордов больше нет адресата — эти поведения теперь живут
+        // примерами pw-*.
         await Assert.That(result.OrphanedHotkeys).IsEqualTo(2);
         await Assert.That(result.Graphs.Single().Triggers).Count().IsEqualTo(1);
     }

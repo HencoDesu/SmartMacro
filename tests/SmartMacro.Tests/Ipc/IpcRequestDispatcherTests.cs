@@ -8,13 +8,14 @@ using SmartMacro.Tests.Macros;
 
 namespace SmartMacro.Tests.Ipc;
 
-// Stage 2B: the whole IpcMessageTypes catalogue, one handler at a time — the happy path
-// plus the failure that actually matters for each. The two worth calling out:
+// Стадия 2B: весь каталог IpcMessageTypes, по одному обработчику за раз — счастливый путь плюс
+// тот отказ, который для каждого из них по-настоящему важен. Два стоит назвать отдельно:
 //
-//   * SaveMacro with a validation ERROR must leave the disk untouched. Asserted against a
-//     real temp-folder store, because "did not write" is not something a fake can prove.
-//   * A handler must never throw across the wire: an unknown type and an exploding
-//     dependency both have to come back as Ok=false with a message.
+//   * SaveMacro с ОШИБКОЙ проверки обязан оставить диск нетронутым. Проверяется на настоящем
+//     хранилище во временной папке, потому что «не записал» — это не то, что способна доказать
+//     подделка.
+//   * Обработчик не имеет права бросить исключение через провод: и неизвестный тип, и
+//     взорвавшаяся зависимость обязаны вернуться как Ok=false с сообщением.
 public class IpcRequestDispatcherTests
 {
     private static MacroGraph SimpleMacro(string name, VirtualKey key = VirtualKey.F1) => new()
@@ -24,7 +25,7 @@ public class IpcRequestDispatcherTests
         Nodes = [new KeyPressNode { Id = "n0", Key = key, Target = new TargetSelector() }],
     };
 
-    // ------------------------------------------------------------------------ windows
+    // -------------------------------------------------------------------------- окна
 
     [Test]
     public async Task GetWindows_ReturnsTheRegistrySnapshotAsDtos()
@@ -65,8 +66,8 @@ public class IpcRequestDispatcherTests
     {
         using var harness = new IpcDispatcherHarness();
 
-        // The UI always tags from a snapshot that may be a moment stale; a client is not
-        // wrong just because the game client closed in the meantime.
+        // Интерфейс всегда навешивает теги по снимку, который может на мгновение отстать; клиент
+        // не виноват в том, что клиент игры за это время успел закрыться.
         var response = await harness.DispatchAsync(IpcMessageTypes.AddTag, new AddTagRequest(0xDEAD, "Жрец"));
 
         await Assert.That(response.Ok).IsTrue();
@@ -84,7 +85,7 @@ public class IpcRequestDispatcherTests
         await Assert.That(response.Error).Contains("AddTag");
     }
 
-    // ------------------------------------------------------------------------- macros
+    // ---------------------------------------------------------------------- макросы
 
     [Test]
     public async Task RunMacro_KnownName_StartsItAndAnswersImmediately()
@@ -116,9 +117,9 @@ public class IpcRequestDispatcherTests
         using var harness = new IpcDispatcherHarness();
         var handle = harness.Runs.TryBegin("бесконечный")!;
 
-        // Stand in for Orchestrator.RunAsync: run until cancelled, then Complete() in the
-        // finally. Without an acknowledgement StopAsync never returns, which is precisely
-        // the contract the handler leans on.
+        // Заместитель Orchestrator.RunAsync: крутиться до отмены, потом Complete() в finally.
+        // Без подтверждения StopAsync не вернётся никогда, а обработчик опирается ровно на эту
+        // договорённость.
         var runner = Task.Run(async () =>
         {
             try
@@ -143,8 +144,8 @@ public class IpcRequestDispatcherTests
     {
         using var harness = new IpcDispatcherHarness();
 
-        // Documented as success: a run that finished on its own between the UI's snapshot
-        // and the click has already done what Stop was asking for.
+        // Задокументировано как успех: прогон, сам завершившийся между снимком интерфейса и
+        // щелчком, уже сделал то, о чём просил «Стоп».
         var response = await harness.DispatchAsync(IpcMessageTypes.StopMacro, new StopMacroRequest(Guid.NewGuid()));
 
         await Assert.That(response.Ok).IsTrue();
@@ -178,8 +179,9 @@ public class IpcRequestDispatcherTests
 
         var macros = IpcJson.Read<MacroGraph[]>(response.Payload)!;
         await Assert.That(macros).Count().IsEqualTo(1);
-        // Same witness IpcGraphPayloadTests uses, but end to end: store → handler → payload.
-        // A dropped $type discriminator anywhere on that path shows up as a diff here.
+        // Тот же свидетель, что и в IpcGraphPayloadTests, только из конца в конец:
+        // хранилище → обработчик → нагрузка. Потерянный где угодно на этом пути дискриминатор
+        // $type всплывёт здесь расхождением.
         await Assert.That(MacroGraphJson.Serialize(macros[0])).IsEqualTo(MacroGraphJson.Serialize(original));
     }
 
@@ -205,7 +207,7 @@ public class IpcRequestDispatcherTests
         var broken = new MacroGraph
         {
             Name = "битый",
-            // Edge into a node that isn't in the graph — a hard error, not a warning.
+            // Ребро в ноду, которой в графе нет, — это жёсткая ошибка, а не предупреждение.
             StartNodeId = "n0",
             Nodes = [new KeyPressNode { Id = "n0", Key = VirtualKey.F1, Target = new TargetSelector(), Next = "нетуноды" }],
         };
@@ -217,7 +219,7 @@ public class IpcRequestDispatcherTests
         await Assert.That(issues).IsNotEmpty();
         await Assert.That(issues.Any(i => i.Severity == nameof(SmartMacro.Macros.Validation.ValidationSeverity.Error))).IsTrue();
 
-        // The assertion the whole handler exists for.
+        // Та самая проверка, ради которой весь обработчик и существует.
         await Assert.That(File.Exists(harness.MacroFile("битый"))).IsFalse();
         await Assert.That(harness.Macros.TryGet("битый")).IsNull();
     }
@@ -230,8 +232,8 @@ public class IpcRequestDispatcherTests
 
         var response = await harness.DispatchAsync(IpcMessageTypes.SaveMacro, new SaveMacroRequest(graph));
 
-        // The store would throw ArgumentException here; surfacing it as an issue instead is
-        // what lets the editor show it next to the structural errors.
+        // Хранилище бросило бы здесь ArgumentException; именно то, что вместо этого ошибку
+        // подают как замечание, и позволяет редактору показать её рядом со структурными.
         await Assert.That(response.Ok).IsTrue();
         var issues = IpcJson.Read<ValidationIssueDto[]>(response.Payload)!;
         await Assert.That(issues.Any(i => i.Message.Contains('/'))).IsTrue();
@@ -249,15 +251,15 @@ public class IpcRequestDispatcherTests
             Nodes =
             [
                 new KeyPressNode { Id = "n0", Key = VirtualKey.F1, Target = new TargetSelector() },
-                // Nothing points here → unreachable → warning, not an error.
+                // Сюда ничто не ведёт → недостижима → предупреждение, а не ошибка.
                 new DelayNode { Id = "orphan", Ms = 100 },
             ],
         };
 
         var response = await harness.DispatchAsync(IpcMessageTypes.SaveMacro, new SaveMacroRequest(withUnreachableNode));
 
-        // Empty list means "written" by contract — warnings do not block a save and are
-        // deliberately not reported here, because a non-empty list means rejection.
+        // Пустой список по договорённости означает «записано»: предупреждения сохранению не
+        // мешают и здесь намеренно не сообщаются, потому что непустой список означает отказ.
         await Assert.That(IpcJson.Read<ValidationIssueDto[]>(response.Payload)!).IsEmpty();
         await Assert.That(File.Exists(harness.MacroFile("спредупреждением"))).IsTrue();
     }
@@ -287,7 +289,7 @@ public class IpcRequestDispatcherTests
         await Assert.That(again.Ok).IsTrue();
     }
 
-    // ------------------------------------------------------------------------ hotkeys
+    // ------------------------------------------------------------------------ хоткеи
 
     [Test]
     public async Task SuspendHotkeys_And_ResumeHotkeys_ReachTheListener()
@@ -301,9 +303,9 @@ public class IpcRequestDispatcherTests
         A.CallTo(() => harness.Hotkeys.ResumeAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
     }
 
-    // D4: chords the daemon has bound but Windows would not give it. Without this the
-    // failure is a line in a log file the pipe never carries, and the user sees a hotkey
-    // that looks bound and does nothing.
+    // D4: аккорды, которые демон привязал, а Windows ему не отдала. Без этого отказ остаётся
+    // строчкой в файле лога, который труба не переносит, — а пользователь видит хоткей, который
+    // выглядит привязанным и не делает ничего.
     [Test]
     public async Task GetHotkeyFailures_ReportsWhatRegisterHotKeyRefused()
     {
@@ -335,7 +337,7 @@ public class IpcRequestDispatcherTests
         await Assert.That(IpcJson.Read<HotkeyFailureDto[]>(response.Payload)!).IsEmpty();
     }
 
-    // -------------------------------------------------------------------- diagnostics
+    // ---------------------------------------------------------------------- диагностика
 
     [Test]
     public async Task DumpCaptures_CreatesTheFolderAndAnswersWithItsPath()
@@ -362,8 +364,9 @@ public class IpcRequestDispatcherTests
 
         var response = await harness.DispatchAsync(IpcMessageTypes.RequestActivate);
 
-        // Broadcast, not a reply payload: the asker is a second UI launch about to exit and
-        // the panel that must come forward is a different connection entirely.
+        // Рассылка, а не нагрузка ответа: спрашивающий — это второй запуск интерфейса, который
+        // сейчас завершится, а та панель, которая обязана выйти вперёд, — вообще другое
+        // соединение.
         await Assert.That(response.Ok).IsTrue();
         await Assert.That(sent.Select(evt => evt.Type)).IsEquivalentTo(new[] { IpcMessageTypes.ActivateWindow });
         await Assert.That(sent[0].Payload).IsNull();
@@ -387,8 +390,8 @@ public class IpcRequestDispatcherTests
 
         var response = await harness.DispatchAsync(IpcMessageTypes.Shutdown);
 
-        // Ordering is the contract: the reply has to be produced before anything starts
-        // tearing the host (and therefore this connection) down.
+        // Порядок здесь и есть договорённость: ответ обязан быть выдан прежде, чем что-либо
+        // начнёт разбирать хост (а с ним и это соединение).
         await Assert.That(response.Ok).IsTrue();
         A.CallTo(() => harness.Lifetime.StopApplication()).MustNotHaveHappened();
 
@@ -407,7 +410,7 @@ public class IpcRequestDispatcherTests
         await Assert.That(stopped).IsTrue();
     }
 
-    // -------------------------------------------------------------------- error paths
+    // -------------------------------------------------------------------- пути отказа
 
     [Test]
     public async Task UnknownRequestType_IsRejectedWithAReadableError()

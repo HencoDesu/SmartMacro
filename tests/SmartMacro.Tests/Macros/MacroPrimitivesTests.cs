@@ -10,9 +10,9 @@ using SmartMacro.Windows;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2b: the primitives layer — the seam where the walker's hwnd-addressed operations
-// become real input, vision, and window cosmetics. Everything below the seam
-// (IGameWindow, IClassMatcher) is faked; the wiring itself is under test.
+// W0.2b: слой примитивов — тот шов, на котором адресованные по hwnd операции обходчика
+// превращаются в настоящий ввод, vision и косметику окна. Всё, что ниже шва (IGameWindow,
+// IClassMatcher), подделано; проверяется сама обвязка.
 public class MacroPrimitivesTests
 {
     private static readonly IntPtr Hwnd = new(0xBEEF);
@@ -46,7 +46,7 @@ public class MacroPrimitivesTests
                 NullLogger<MacroPrimitives>.Instance);
         }
 
-        /// <summary>Writes a stand-in template file; only its bytes travel through the seam.</summary>
+        /// <summary>Пишет файл-заглушку шаблона; через шов едут только его байты.</summary>
         public void WriteTemplate(string folder, string stem, string content) =>
             File.WriteAllText(Path.Combine(AssetsRoot, folder, $"{stem}.png"), content);
 
@@ -75,7 +75,7 @@ public class MacroPrimitivesTests
         var found = await harness.Primitives.FindElementAsync(Hwnd, "ServerSelectButton", region, CancellationToken.None);
 
         await Assert.That(found).IsEqualTo(center);
-        // The node's region is passed through verbatim — cropping is the window's job.
+        // Область из ноды передаётся дословно — обрезка это забота окна.
         A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, region, A<CancellationToken>._))
             .MustHaveHappenedOnceExactly();
     }
@@ -137,8 +137,8 @@ public class MacroPrimitivesTests
         var tag = await harness.Primitives.RecognizeAsync(Hwnd, TemplateSetProvider.ClassesSetName, region, CancellationToken.None);
 
         await Assert.That(tag).IsEqualTo("Лучник");
-        // The "classes" set name resolves onto the shipped GameClassNames folder, keyed by
-        // file stem — the stem IS the tag the node applies.
+        // Имя набора "classes" разрешается в поставляемую папку GameClassNames с ключом по
+        // основе имени файла — эта основа И ЕСТЬ тег, который навешивает нода.
         await Assert.That(seen).IsNotNull();
         await Assert.That(seen!.Keys.Order().ToList()).IsEquivalentTo(new List<string> { "Жрец", "Лучник" });
         A.CallTo(() => harness.Matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._, region))
@@ -176,7 +176,7 @@ public class MacroPrimitivesTests
         using var harness = new Harness();
         var stranger = new IntPtr(0x1234);
 
-        // A fan-out racing window teardown must not blow up the run.
+        // Веер, попавший в гонку со сносом окна, не имеет права разорвать прогон.
         await harness.Primitives.PressKeyAsync(stranger, VirtualKey.F8, CancellationToken.None);
         await harness.Primitives.ClickAsync(stranger, new ScreenPoint(1, 1), false, CancellationToken.None);
         var found = await harness.Primitives.FindElementAsync(stranger, "whatever", null, CancellationToken.None);
@@ -199,9 +199,9 @@ public class MacroPrimitivesTests
     }
 }
 
-// The icon service owns path resolution for SetIconNode: relative paths resolve against
-// the app folder, and PW's Russian-tag → English-file-stem alias keeps the shipped
-// Assets/ClassIcons working with a "{tag}.png" template.
+// Разрешение путей для SetIconNode принадлежит службе иконок: относительные пути отсчитываются
+// от папки приложения, а псевдоним «русский тег → английская основа имени файла» позволяет
+// поставляемым Assets/ClassIcons работать с шаблоном "{tag}.png".
 public class WindowIconServiceTests
 {
     private static string CreateTempDir()
@@ -240,8 +240,8 @@ public class WindowIconServiceTests
         var dir = CreateTempDir();
         try
         {
-            // The interpolated "{tag}.png" path doesn't exist, but the shipped English
-            // icon for that tag does.
+            // Подставленного пути "{tag}.png" не существует, а вот поставляемая английская
+            // иконка для этого тега — существует.
             var aliased = Path.Combine(dir, "archer.png");
             File.WriteAllText(aliased, "icon");
             var window = A.Fake<IGameWindow>();

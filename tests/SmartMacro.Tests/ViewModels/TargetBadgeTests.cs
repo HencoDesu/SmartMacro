@@ -9,13 +9,13 @@ using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// D4, mockup 1g: «8 окон · кроме Склад».
+// D4, макет 1g: «8 окон · кроме Склад».
 //
-// The badge is computed in the PANEL — no new IPC request — but against
-// TargetSelector.Matches, the same rule the daemon's SelectorEvaluator calls. That is the
-// property these tests exist to protect: a badge that disagrees with what the executor
-// actually targets is worse than no badge at all, because telling you what a run will hit
-// is the whole reason it is on screen.
+// Бейдж считается в ПАНЕЛИ — никакого нового запроса IPC, — но считается по
+// TargetSelector.Matches, то есть по тому же правилу, которое зовёт SelectorEvaluator у демона.
+// Именно это свойство эти тесты и защищают: бейдж, расходящийся с тем, кого исполнитель на самом
+// деле берёт в цель, хуже, чем никакого бейджа вовсе, — ведь он и висит на экране ровно затем,
+// чтобы сказать, кого заденет прогон.
 public class TargetBadgeTests
 {
     private static WindowCatalog Catalog(params (long Hwnd, string[] Tags)[] windows)
@@ -25,7 +25,7 @@ public class TargetBadgeTests
         return catalog;
     }
 
-    /// <summary>Eleven windows: eight «перс», one «Склад», two with no tags at all.</summary>
+    /// <summary>Одиннадцать окон: восемь «перс», один «Склад» и два вовсе без тегов.</summary>
     private static WindowCatalog Party()
     {
         var windows = new List<(long, string[])>();
@@ -50,7 +50,7 @@ public class TargetBadgeTests
         return vm;
     }
 
-    // ---- the four collapsed states -----------------------------------------------------
+    // ---- четыре свёрнутых состояния ----------------------------------------------------
 
     [Test]
     public async Task ContextWindow_IsTheNeutralPill()
@@ -89,9 +89,9 @@ public class TargetBadgeTests
         await Assert.That(vm.ShowsBars).IsFalse();
     }
 
-    // With the game closed EVERY selector matches nothing. Painting every node of every
-    // macro red would train the user to ignore the colour that is supposed to mean "this
-    // selector is wrong", so the empty daemon gets its own quiet state.
+    // При закрытой игре КАЖДЫЙ селектор не совпадает ни с чем. Покрасив каждую ноду каждого
+    // макроса красным, мы приучили бы пользователя не замечать цвет, который должен означать
+    // «этот селектор неверен», — поэтому у пустого демона своё, тихое состояние.
     [Test]
     public async Task NoWindowsAtAll_IsQuiet_NotAnError()
     {
@@ -112,7 +112,7 @@ public class TargetBadgeTests
         await Assert.That(vm.BadgeText).IsEqualTo("нет окон");
     }
 
-    // окно / окна / окон, including the 11–14 exception.
+    // окно / окна / окон, включая исключение для 11–14.
     [Test]
     [Arguments(1, "1 окно")]
     [Arguments(2, "2 окна")]
@@ -122,15 +122,15 @@ public class TargetBadgeTests
     public async Task WindowCount_IsPluralisedInRussian(int count, string expected)
     {
         var windows = Enumerable.Range(0, count).Select(i => ((long)(0x200000 + i), new[] { "перс" })).ToArray();
-        // A selector with both lists empty means "every window", and the count says that on
-        // its own — so the badge is nothing but the number, which is what this is measuring.
+        // Селектор с обоими пустыми списками означает «каждое окно», и счётчик говорит это сам по
+        // себе, — так что бейдж здесь не более чем число, и именно это тут и меряется.
         var vm = Selector(Catalog(windows));
 
         await Assert.That(vm.BadgeText).IsEqualTo(expected);
     }
 
-    // The canvas box gets the count without the tags: a 210px header already carries a
-    // family glyph and a type label, and the full string pushes the label out entirely.
+    // Коробке на канве достаётся счётчик без тегов: в заголовок шириной 210px уже уложены значок
+    // семейства и подпись типа, а полная строка выдавливает эту подпись целиком.
     [Test]
     public async Task CompactBadge_KeepsTheCountAndDropsTheTags()
     {
@@ -140,7 +140,7 @@ public class TargetBadgeTests
         await Assert.That(TargetSelectorViewModel.FromSelector(null).BadgeCountText).IsEqualTo("контекст");
     }
 
-    // ---- share bars ----------------------------------------------------------------------
+    // ---- полоски доли ----------------------------------------------------------------------
 
     [Test]
     public async Task Bars_ShowTheShare_AndNeverRoundANonZeroShareDownToNothing()
@@ -148,41 +148,41 @@ public class TargetBadgeTests
         var eightOfEleven = Selector(Party(), require: "перс", exclude: "Склад");
         var oneOfEleven = Selector(Party(), require: "Лучник");
 
-        // 8/11 → 2.9 → three bars, exactly as the mockup draws it.
+        // 8/11 → 2,9 → три полоски, ровно так, как рисует макет.
         await Assert.That(eightOfEleven.Bars).IsEquivalentTo(new[] { true, true, true, false });
-        // 1/11 → 0.36, which rounds to nothing; an empty strip beside "1 окно" would read
-        // as zero, so any hit is worth a bar.
+        // 1/11 → 0,36, что округляется в ничто; пустая полоска рядом с «1 окно» читалась бы как
+        // ноль, поэтому любое попадание стоит одной полоски.
         await Assert.That(oneOfEleven.Bars).IsEquivalentTo(new[] { true, false, false, false });
     }
 
-    // ---- the expansion --------------------------------------------------------------------
+    // ---- развёрнутый вид -------------------------------------------------------------------
 
     [Test]
     public async Task Expansion_NamesTheHits_StrikesOutTheMisses_AndCountsTheUntagged()
     {
         var vm = Selector(Party(), require: "перс", exclude: "Склад");
 
-        // Four named, the rest collapsed into "+N".
+        // Четверо названы по именам, остальные свёрнуты в "+N".
         await Assert.That(vm.HitWindows).Count().IsEqualTo(4);
         await Assert.That(vm.HitWindows[0].Label).IsEqualTo("0x140000 перс Лучник");
         await Assert.That(vm.HitWindows[0].IsExcluded).IsFalse();
         await Assert.That(vm.MoreText).IsEqualTo("+4");
         await Assert.That(vm.HasMore).IsTrue();
 
-        // The «Склад» window is shown, struck through — who fell out is half the point.
+        // Окно «Склад» показано зачёркнутым: кто именно выпал — это половина всего смысла.
         await Assert.That(vm.MissedWindows.Select(w => w.Label)).Contains("0x140550 перс Склад");
         await Assert.That(vm.MissedWindows.All(w => w.IsExcluded)).IsTrue();
 
-        // Windows with no tags cannot be routed to at all, so they are counted, not named.
+        // До окон без тегов маршрут не проложить вовсе, поэтому их считают, а не называют.
         await Assert.That(vm.UntaggedText).IsEqualTo("2 без тегов");
         await Assert.That(vm.HasUntagged).IsTrue();
     }
 
-    // ---- the rule is shared, not reimplemented ---------------------------------------------
+    // ---- правило общее, а не переписанное заново ---------------------------------------------
 
-    // The panel evaluates selectors itself (no IPC request), so the ONE thing that must hold
-    // is that it evaluates them with the engine's rule. Every combination below goes through
-    // TargetSelector.Matches from both directions.
+    // Селекторы панель вычисляет сама (запроса IPC нет), поэтому ЕДИНСТВЕННОЕ, что обязано
+    // выполняться, — что вычисляет она их правилом движка. Каждое сочетание ниже проходит через
+    // TargetSelector.Matches с обеих сторон.
     [Test]
     public async Task BadgeCount_AgreesWithTheRuleTheExecutorUses()
     {
@@ -207,7 +207,7 @@ public class TargetBadgeTests
         }
     }
 
-    // ---- live updates ------------------------------------------------------------------------
+    // ---- обновления на лету --------------------------------------------------------------------
 
     [Test]
     public async Task TaggingAWindow_MovesTheCountWithoutARoundTrip()
@@ -219,7 +219,7 @@ public class TargetBadgeTests
         var raised = 0;
         vm.PropertyChanged += (_, e) => raised += e.PropertyName == nameof(vm.BadgeText) ? 1 : 0;
 
-        // What a WindowTagsChanged push does.
+        // Вот что делает пуш WindowTagsChanged.
         catalog.Upsert(new WindowDto(0x2, "elementclient_64", ["перс"]));
 
         await Assert.That(vm.MatchCount).IsEqualTo(2);
@@ -242,7 +242,7 @@ public class TargetBadgeTests
         await Assert.That(vm.TotalCount).IsEqualTo(0);
     }
 
-    // ---- the popup's chip editor ---------------------------------------------------------------
+    // ---- редактор фишек во всплывающем окне -------------------------------------------------------
 
     [Test]
     public async Task TagChips_MirrorTheCommaSeparatedText_BothWays()
@@ -257,8 +257,8 @@ public class TargetBadgeTests
 
         await Assert.That(vm.ExcludeText).IsEqualTo("Склад, Инквизитор");
         await Assert.That(vm.NewExcludeTag).IsEqualTo(string.Empty);
-        // The chip editor writes through to the model, so the saved graph is the same shape
-        // as if the tag had been typed into the inspector's box.
+        // Редактор фишек пишет насквозь в модель, поэтому сохранённый граф выходит той же формы,
+        // как если бы тег набрали в поле инспектора.
         await Assert.That(vm.ToSelector()!.ExcludeTags).IsEquivalentTo(new List<string> { "Склад", "Инквизитор" });
 
         vm.ExcludeChips.First(c => c.Text == "Склад").Remove();
@@ -277,13 +277,14 @@ public class TargetBadgeTests
         vm.NewRequireTag = "перс";
         vm.CommitRequireTag();
         await Assert.That(vm.RequireText).IsEqualTo("перс");
-        // A rejected commit leaves the box alone, so the user can see what was ignored.
+        // Отклонённая фиксация поле не трогает — так пользователь видит, что именно
+        // проигнорировали.
         await Assert.That(vm.NewRequireTag).IsEqualTo("перс");
     }
 
-    // Turning the selector off is NOT the same as clearing the boxes: null vs empty is the
-    // difference between "the context window" and "every window", and the tags have to
-    // survive the round trip through the popup's mode buttons.
+    // Выключить селектор — это НЕ то же самое, что очистить поля: разница между «нет значения» и
+    // «пусто» — это разница между «контекстное окно» и «каждое окно», и теги обязаны пережить круг
+    // через кнопки режима во всплывающем окне.
     [Test]
     public async Task SwitchingToContextAndBack_KeepsTheTags()
     {
@@ -298,11 +299,11 @@ public class TargetBadgeTests
         await Assert.That(vm.BadgeText).IsEqualTo("8 окон · перс · кроме Склад");
     }
 
-    // ---- the editor's end of it ------------------------------------------------------------
+    // ---- половина, за которую отвечает редактор -----------------------------------------------
 
-    // The editor owns the catalogue and hands it to every node it attaches, the same way it
-    // hands out NodeIdChoices. Without this the badge on a freshly opened graph would sit at
-    // "нет окон" until something else touched it.
+    // Каталог принадлежит редактору, и он раздаёт его каждой подключаемой ноде так же, как
+    // раздаёт NodeIdChoices. Без этого бейдж на только что открытом графе висел бы на «нет окон»,
+    // пока его не тронет что-нибудь ещё.
     [Test]
     public async Task Editor_SeedsTheCatalogue_AndAttachesItToEveryNode()
     {
@@ -328,7 +329,7 @@ public class TargetBadgeTests
         await Assert.That(target.TotalCount).IsEqualTo(2);
         await Assert.That(target.BadgeText).IsEqualTo("1 окно · кроме Склад");
 
-        // …and it follows the daemon's pushes.
+        // …и он следует за пушами демона.
         client.RaiseEvent(IpcMessageTypes.WindowTagsChanged, new WindowDto(0x2, "elementclient_64", ["перс"]));
         await Assert.That(target.MatchCount).IsEqualTo(2);
 

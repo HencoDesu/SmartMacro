@@ -4,9 +4,9 @@ using SmartMacro.Contracts.Ipc;
 
 namespace SmartMacro.Tests.Contracts;
 
-// Stage 1: the envelope is the one part of the protocol both processes parse before they
-// know what the message is, so it has to survive every shape — payload present, payload
-// absent, error replies, and message types this build has never heard of.
+// Стадия 1: конверт — та единственная часть протокола, которую оба процесса разбирают ещё до
+// того, как узнают, что за сообщение пришло, а значит, он обязан пережить любую форму: нагрузка
+// есть, нагрузки нет, ответ с ошибкой и типы сообщений, о которых эта сборка слыхом не слыхивала.
 public class IpcEnvelopeTests
 {
     private static T RoundTrip<T>(T value)
@@ -35,7 +35,8 @@ public class IpcEnvelopeTests
 
         await Assert.That(reloaded.Id).IsEqualTo(1);
         await Assert.That(reloaded.Payload).IsNull();
-        // Reading a typed payload out of an argument-less message is a no-op, not a throw.
+        // Попытка вычитать типизированную нагрузку из сообщения без аргументов ничего не делает,
+        // а не бросает исключение.
         await Assert.That(IpcJson.Read<AddTagRequest>(reloaded.Payload)).IsNull();
     }
 
@@ -74,7 +75,7 @@ public class IpcEnvelopeTests
     [Test]
     public async Task Response_Ok_WithScalarPayload_RoundTrips()
     {
-        // DumpCaptures answers with a bare JSON string, not an object.
+        // DumpCaptures отвечает голой строкой JSON, а не объектом.
         var reloaded = RoundTrip(new IpcResponse(3, Ok: true, IpcJson.Write(@"C:\captures\2026-08-02")));
 
         await Assert.That(IpcJson.Read<string>(reloaded.Payload)).IsEqualTo(@"C:\captures\2026-08-02");
@@ -95,8 +96,8 @@ public class IpcEnvelopeTests
     [Test]
     public async Task UnknownType_DeserializesWithoutThrowing()
     {
-        // A newer daemon talking to an older client (or vice versa) must not blow up in
-        // the parser — the dispatcher decides what to do with a type it doesn't handle.
+        // Демон посвежее, разговаривающий с клиентом постарее (или наоборот), не имеет права
+        // взорваться в разборщике — что делать с необслуживаемым типом, решает диспетчер.
         const string requestJson = """{"Id":5,"Type":"TeleportPlayer","Payload":{"Whatever":true}}""";
         const string eventJson = """{"Type":"MoonPhaseChanged","Payload":[1,2,3]}""";
 
@@ -123,9 +124,10 @@ public class IpcEnvelopeTests
     [Test]
     public async Task SerializedEnvelope_IsASingleLine()
     {
-        // The transport is JSON Lines: a newline inside a message would split it in two.
-        // MacroGraphJson.Options indents (files are hand-edited), so this is exactly the
-        // setting IpcJson has to override — and the graph payload is the fattest case.
+        // Транспорт — это JSON Lines: перевод строки внутри сообщения разрезал бы его надвое.
+        // MacroGraphJson.Options делает отступы (файлы правят руками), так что это ровно та
+        // настройка, которую IpcJson обязан перебить, — а нагрузка с графом здесь самый жирный
+        // случай.
         var request = new IpcRequest(
             1,
             IpcMessageTypes.SaveMacro,

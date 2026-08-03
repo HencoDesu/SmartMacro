@@ -4,8 +4,9 @@ using SmartMacro.Vision;
 
 namespace SmartMacro.Tests;
 
-// W0.0 smoke tests: prove the TUnit runner executes from CLI and FakeItEasy can fake
-// a Core interface. Real coverage arrives with each wave (see docs/refactoring-plan-split.md §0.6).
+// Дымовые тесты W0.0: доказывают, что прогон TUnit запускается из CLI и что FakeItEasy умеет
+// подделать интерфейс из Core. Настоящее покрытие приезжает с каждой волной
+// (см. docs/refactoring-plan-split.md §0.6).
 public class SmokeTests
 {
     [Test]

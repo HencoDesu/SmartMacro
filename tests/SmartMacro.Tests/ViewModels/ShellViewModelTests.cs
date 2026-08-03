@@ -9,13 +9,14 @@ using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// D2: the 1b shell. Everything here is derivation and scoping — the shell owns no data of
-// its own, so what is worth testing is that the sidebar numbers follow the collections, that
-// the tag summary follows a WindowTagsChanged push without a re-fetch, that the run bar has
-// two honest states, and that global hotkeys are switched off and back on at the right
-// moments (getting THAT wrong silently kills every hotkey in the app).
+// D2: оболочка 1b. Всё здесь — это выведение значений и очерчивание области действия: своих
+// данных у оболочки нет, поэтому проверять стоит вот что — цифры на боковой панели следуют за
+// коллекциями, сводка по тегам следует за пушем WindowTagsChanged без повторного запроса, у
+// панели прогонов два честных состояния, а глобальные хоткеи выключаются и включаются обратно в
+// нужные моменты (ошибись ИМЕННО ТУТ — и все хоткеи приложения молча умрут).
 //
-// One FakeIpcClient serves both mode view-models, exactly as the one real connection does.
+// Один FakeIpcClient обслуживает view-model обоих режимов — ровно так же, как это делает одно
+// настоящее соединение.
 public class ShellViewModelTests
 {
     private const long HwndA = 0x1111;
@@ -47,7 +48,7 @@ public class ShellViewModelTests
     private static ShellModeViewModel Row(ShellViewModel shell, ShellMode mode) =>
         shell.Modes.Single(row => row.Mode == mode);
 
-    // ---- modes ----------------------------------------------------------------------------
+    // ---- режимы -----------------------------------------------------------------------------
 
     [Test]
     public async Task Shell_OpensOnWindows_WithTheRailInMockupOrder()
@@ -83,11 +84,11 @@ public class ShellViewModelTests
 
         shell.SelectedMode = null!;
 
-        // A shell with no mode would render a blank work area, so the last one stands.
+        // Оболочка без режима нарисовала бы пустую рабочую область, так что последний остаётся.
         await Assert.That(shell.CurrentMode).IsEqualTo(ShellMode.Log);
     }
 
-    // ---- counters -------------------------------------------------------------------------
+    // ---- счётчики ---------------------------------------------------------------------------
 
     [Test]
     public async Task Counters_FollowTheCollectionsTheyCountFrom()
@@ -112,8 +113,8 @@ public class ShellViewModelTests
     {
         using var shell = CreateShell(new FakeIpcClient());
 
-        // Deliberately blank rather than invented: neither mode has an IPC message behind
-        // it. If one ever gains a request, this is the test that should change.
+        // Намеренно пусто, а не выдумано: ни за одним из этих режимов нет сообщения IPC. Если у
+        // какого-нибудь из них однажды появится запрос — меняться должен именно этот тест.
         await Assert.That(Row(shell, ShellMode.Templates).HasCounter).IsFalse();
         await Assert.That(Row(shell, ShellMode.Templates).CounterText).IsNull();
         await Assert.That(Row(shell, ShellMode.Log).HasCounter).IsFalse();
@@ -147,7 +148,7 @@ public class ShellViewModelTests
         await Assert.That(Row(shell, ShellMode.Macros).CounterIsAccent).IsTrue();
     }
 
-    // ---- tag summary -------------------------------------------------------------------
+    // ---- сводка по тегам -----------------------------------------------------------------
 
     [Test]
     public async Task TagSummary_AggregatesTheRoster_BusiestFirst()
@@ -165,7 +166,8 @@ public class ShellViewModelTests
         await Assert.That(shell.HasTagSummary).IsTrue();
         await Assert.That(shell.TagSummary.Select(t => $"{t.Tag} {t.CountText}"))
             .IsEquivalentTo(new[] { "Лучник 2", "Жрец 1", "Мастер 1" });
-        // Busiest first is an ORDER, not a set — the sidebar shows the party's shape.
+        // «Самые многолюдные сверху» — это ПОРЯДОК, а не набор: боковая панель показывает форму
+        // партии.
         await Assert.That(shell.TagSummary[0].Tag).IsEqualTo("Лучник");
     }
 
@@ -199,7 +201,7 @@ public class ShellViewModelTests
         await Assert.That(shell.HasTagSummary).IsFalse();
     }
 
-    // ---- run bar ---------------------------------------------------------------------------
+    // ---- панель прогонов ---------------------------------------------------------------------
 
     [Test]
     public async Task RunBar_IsIdleWithNothingRunning()
@@ -256,7 +258,7 @@ public class ShellViewModelTests
         A.CallTo(() => launcher.RunMacro(ShellViewModel.IdentifyMacroName)).MustHaveHappenedOnceExactly();
     }
 
-    // ---- hotkey scoping ----------------------------------------------------------------------
+    // ---- область действия хоткеев --------------------------------------------------------------
 
     [Test]
     public async Task Hotkeys_AreSuspendedWhileMacrosIsOnScreen_AndResumedOnTheWayOut()
@@ -294,8 +296,8 @@ public class ShellViewModelTests
     [Test]
     public async Task ResumeHotkeysIfSuspended_IsTheExitPath_AndIsIdempotent()
     {
-        // The daemon does not re-register when a client disconnects, so closing the window
-        // from inside «Макросы» has to put them back or they stay dead.
+        // При отключении клиента демон заново ничего не регистрирует, так что закрытие окна
+        // изнутри «Макросов» обязано вернуть хоткеи на место — иначе они так и останутся мёртвыми.
         var hotkeys = A.Fake<IHotkeySuspension>();
         using var shell = CreateShell(new FakeIpcClient(), hotkeys: hotkeys);
         shell.SelectMode(ShellMode.Macros);
@@ -318,7 +320,7 @@ public class ShellViewModelTests
         A.CallTo(() => hotkeys.ResumeAsync(A<CancellationToken>._)).MustNotHaveHappened();
     }
 
-    // ---- teardown ------------------------------------------------------------------------------
+    // ---- разборка ---------------------------------------------------------------------------------
 
     [Test]
     public async Task Dispose_UnsubscribesBothModeViewModels()

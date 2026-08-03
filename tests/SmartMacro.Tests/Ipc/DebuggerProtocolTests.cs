@@ -11,16 +11,17 @@ using SmartMacro.Windows;
 
 namespace SmartMacro.Tests.Ipc;
 
-// D5: the debugger as it behaves over a real (in-memory) connection, with a real executor
-// walking a real graph on the other end.
+// D5: отладчик в том виде, в каком он ведёт себя на настоящем (пусть и внутрипамятном)
+// соединении, когда на другом конце настоящий исполнитель обходит настоящий граф.
 //
-// The three things only an end-to-end test can show:
+// Три вещи, которые способен показать только сквозной тест:
 //
-//   1. a breakpoint set over the wire actually parks the walker;
-//   2. DROPPING THE CONNECTION with a walk parked releases it — hazard 1, and the reason the
-//      attach count rides on the run-event subscription rather than living on its own;
-//   3. the debugger's own events reach the panel WITHOUT waiting out the 50 ms coalescing
-//      window, because a step that lags feels like a broken button.
+//   1. точка останова, поставленная через провод, и правда паркует обходчик;
+//   2. ОБРЫВ СОЕДИНЕНИЯ при припаркованном обходе его распускает — это опасность номер один и
+//      причина, по которой счёт подключений едет на подписке о событиях прогона, а не живёт сам
+//      по себе;
+//   3. собственные события отладчика доходят до панели, НЕ выжидая окно склейки в 50 мс, потому
+//      что запаздывающий шаг ощущается сломанной кнопкой.
 public class DebuggerProtocolTests
 {
     private sealed class Fixture : IAsyncDisposable
@@ -67,7 +68,7 @@ public class DebuggerProtocolTests
             return (pair, serve);
         }
 
-        /// <summary>A walk of <paramref name="graph"/> wired to the real publisher and debug session.</summary>
+        /// <summary>Обход графа <paramref name="graph"/>, подключённый к настоящему публикатору и сессии отладки.</summary>
         public Task<MacroRunResult> RunAsync(MacroGraph graph, CancellationToken ct = default) =>
             Executor.RunAsync(
                 graph,
@@ -112,14 +113,15 @@ public class DebuggerProtocolTests
     }
 
     /// <summary>
-    /// One line off the wire, sorted: a response goes to whoever asked for that id, an event
-    /// batch is appended to <see cref="Events"/>.
+    /// Одна строка из провода, разложенная по адресатам: ответ уходит тому, кто спрашивал под
+    /// этим id, пачка событий дописывается в <see cref="Events"/>.
     ///
-    /// The demultiplexing is the point, and getting it wrong is how the first draft of these
-    /// tests hung: correlating a response by "read lines until the id matches" DISCARDS the
-    /// run events that arrive in between, and the pause a later assertion was waiting for had
-    /// already gone past. The real <c>IpcClient</c> has exactly this shape for exactly this
-    /// reason — responses and events share one stream and neither may eat the other.
+    /// Всё дело именно в этом разделении, и ошибка в нём — то, из-за чего висел первый черновик
+    /// этих тестов: сопоставление ответа способом «читать строки, пока id не совпадёт»
+    /// ВЫБРАСЫВАЕТ приехавшие между делом события прогона, и та пауза, которой ждала более
+    /// поздняя проверка, была уже позади. У настоящего <c>IpcClient</c> ровно такая же форма и
+    /// ровно по той же причине: ответы и события делят один поток, и ни одно не вправе съесть
+    /// другое.
     /// </summary>
     private sealed class Reader(DuplexStreamPair client)
     {
@@ -138,7 +140,7 @@ public class DebuggerProtocolTests
             }
         }
 
-        /// <summary>Reads until <paramref name="predicate"/> holds over everything seen so far.</summary>
+        /// <summary>Читает, пока <paramref name="predicate"/> не станет истинным для всего увиденного к этому моменту.</summary>
         public async Task<List<RunEventDto>> UntilAsync(Func<List<RunEventDto>, bool> predicate)
         {
             while (!predicate(Events))
@@ -169,7 +171,7 @@ public class DebuggerProtocolTests
         }
     }
 
-    // ---- breakpoints over the wire ---------------------------------------------------
+    // ---- точки останова через провод -----------------------------------------------------
 
     [Test]
     public async Task BreakpointsCanBeSetWhileNothingIsRunning_AndAreReadBackWhole()
@@ -178,8 +180,8 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
 
-        // Arming before pressing Run is the normal way to use one, so this must not require a
-        // live walk — or even a saved macro.
+        // Взвести её до нажатия «Запустить» — это обычный способ ею пользоваться, так что живой
+        // обход здесь не требуется, как и сохранённый макрос.
         await reader.RequestAsync(1, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["b", "c"]));
         var reply = await reader.RequestAsync(2, IpcMessageTypes.GetBreakpoints);
 
@@ -212,9 +214,9 @@ public class DebuggerProtocolTests
     [Test]
     public async Task BreakpointsSurviveAClientReconnecting()
     {
-        // The ergonomic reason breakpoints live in the daemon rather than in the macro file:
-        // the daemon outlives the panel, so "session-scoped" already means "survives a panel
-        // restart", which is the thing anyone actually wanted from persistence.
+        // Эргономическая причина, по которой точки останова живут в демоне, а не в файле
+        // макроса: демон переживает панель, поэтому «в пределах сессии» уже означает «переживает
+        // перезапуск панели», — а именно этого от сохранения на самом деле и хотели.
         await using var fixture = new Fixture();
         var (first, firstServe) = await fixture.ConnectAsync();
         await new Reader(first).RequestAsync(1, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", ["b"]));
@@ -231,7 +233,7 @@ public class DebuggerProtocolTests
         await secondServe;
     }
 
-    // ---- the round trip: park, step, resume ------------------------------------------
+    // ---- полный круг: припарковать, шагнуть, распустить ------------------------------------
 
     [Test]
     public async Task ABreakpointParksTheWalk_AndTheStepCommandAdvancesItOneNode()
@@ -298,7 +300,8 @@ public class DebuggerProtocolTests
         await run.WaitAsync(TimeSpan.FromSeconds(5));
 
         var vars = events.Where(e => e.Kind == RunEventKind.VariableSet).ToList();
-        // cursor comes from the trigger and names no node; tag comes from the node that wrote it.
+        // cursor приходит от триггера и ноды не называет; tag приходит от той ноды, которая его
+        // и записала.
         var cursor = vars.Single(e => e.Variable == MacroVariableNames.Cursor);
         await Assert.That(cursor.NodeId).IsNull();
         await Assert.That(cursor.Detail).IsEqualTo(new ScreenPoint(1804, 902).ToString());
@@ -311,7 +314,7 @@ public class DebuggerProtocolTests
         await serve;
     }
 
-    // ---- hazard 1: the panel goes away with a walk parked ------------------------------
+    // ---- опасность 1: панель уходит, а обход остаётся припаркованным -----------------------
 
     [Test]
     public async Task DroppingTheConnectionReleasesAPausedWalk()
@@ -326,9 +329,9 @@ public class DebuggerProtocolTests
         await reader.UntilAsync(all => all.Any(e => e.Kind == RunEventKind.BreakpointHit));
         await Assert.That(fixture.Engine.Debug.AttachedCount).IsEqualTo(1);
 
-        // The panel crashed / the user closed the window. Nothing is left that could press
-        // resume, and a walk left in the gate would hold its macro's single-flight slot — so
-        // that macro's hotkey would be dead until the daemon restarted.
+        // Панель упала или пользователь закрыл окно. Нажать «Дальше» больше некому, а обход,
+        // оставленный в затворе, держал бы слот single-flight своего макроса, — то есть хоткей
+        // этого макроса был бы мёртв до самого перезапуска демона.
         client.CloseClient();
         await serve;
 
@@ -341,9 +344,9 @@ public class DebuggerProtocolTests
     [Test]
     public async Task UnsubscribingWithoutDisconnectingAlsoReleasesAPausedWalk()
     {
-        // The same hazard by the other route: the panel is still there but has left «Макросы»,
-        // which is where the subscription is scoped. It can no longer show the pause, so it
-        // must no longer be able to hold one.
+        // Та же опасность, но с другой стороны: панель на месте, однако ушла из «Макросов», а
+        // подписка живёт именно там. Показать паузу она больше не может — значит, и держать паузу
+        // больше не должна.
         await using var fixture = new Fixture();
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
@@ -365,8 +368,8 @@ public class DebuggerProtocolTests
     [Test]
     public async Task AConnectionThatNeverSubscribedCannotIssueDebugCommands()
     {
-        // The attach count is the safety property; a command from outside it could park a walk
-        // that nothing is counted as able to release.
+        // Счёт подключений и есть то свойство, которое обеспечивает безопасность; команда извне
+        // него способна припарковать обход, распустить который, по счёту, некому.
         await using var fixture = new Fixture();
         var (client, serve) = await fixture.ConnectAsync();
 
@@ -384,8 +387,8 @@ public class DebuggerProtocolTests
     [Test]
     public async Task StoppingTheRunUnparksTheWalk()
     {
-        // Hazard 3, engine half: ■ Стоп cancels the RUN's token, and a parked walk has to come
-        // out of the gate rather than sit there holding it.
+        // Опасность 3, половина со стороны движка: «■ Стоп» отменяет токен ПРОГОНА, и
+        // припаркованный обход обязан выйти из затвора, а не сидеть в нём, удерживая его.
         await using var fixture = new Fixture();
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
@@ -405,14 +408,14 @@ public class DebuggerProtocolTests
         await serve;
     }
 
-    // ---- latency ------------------------------------------------------------------------
+    // ---- задержки --------------------------------------------------------------------------
 
     [Test]
     public async Task ADebuggerEventDoesNotWaitOutTheCoalescingWindow()
     {
-        // The batching window is 50 ms and is right for a log. For a step it is the difference
-        // between an instant button and a sticky one, so pause/resume skip the dwell. Measured
-        // generously — the assertion is "not a full dwell", not a benchmark.
+        // Окно склейки — 50 мс, и для лога это правильно. Для шага же это разница между
+        // мгновенной кнопкой и залипающей, поэтому пауза и возобновление выдержку пропускают.
+        // Замер сделан с запасом: проверяется «не полная выдержка», а не производительность.
         await using var fixture = new Fixture();
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);

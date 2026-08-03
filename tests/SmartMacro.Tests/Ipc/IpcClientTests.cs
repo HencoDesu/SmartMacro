@@ -5,19 +5,19 @@ using SmartMacro.Contracts.Ipc;
 
 namespace SmartMacro.Tests.Ipc;
 
-// Stage 3: the client half of the protocol — correlation, the response/event split,
-// failure propagation, and reconnection.
+// Стадия 3: клиентская половина протокола — сопоставление ответов запросам, разделение
+// «ответ или событие», проброс отказов и переподключение.
 //
-// The client under test sits on the SERVER halves of a DuplexStreamPair, which reads
-// backwards for a second and then makes sense: the pair models "one peer plus a test
-// harness", and here the peer being exercised is the client. So pair.SendAsync feeds the
-// client a line, pair.ReadLineAsync picks up what the client wrote, and pair.CloseClient
-// gives it the EOF a stopped daemon would.
+// Проверяемый клиент сидит на СЕРВЕРНЫХ половинах DuplexStreamPair — с первого взгляда это
+// читается наизнанку, а со второго становится понятно: пара изображает «один собеседник плюс
+// тестовая оснастка», и здесь тот собеседник, которого гоняют, — как раз клиент. Поэтому
+// pair.SendAsync подаёт клиенту строку, pair.ReadLineAsync подбирает то, что клиент написал, а
+// pair.CloseClient выдаёт ему тот же EOF, что выдал бы остановленный демон.
 public class IpcClientTests
 {
     private static readonly TimeSpan ShortTimeout = TimeSpan.FromMilliseconds(200);
 
-    /// <summary>Drives an <see cref="IpcClient"/> over one or more staged in-memory connections.</summary>
+    /// <summary>Гоняет <see cref="IpcClient"/> поверх одного или нескольких подложенных соединений в памяти.</summary>
     private sealed class ClientFixture : IAsyncDisposable
     {
         private readonly Queue<DuplexStreamPair> _staged = new();
@@ -36,7 +36,7 @@ public class IpcClientTests
 
         public List<IpcEvent> Events { get; } = [];
 
-        /// <summary>Adds a connection the client will get on its next (re)connect.</summary>
+        /// <summary>Добавляет соединение, которое клиент получит при следующем (пере)подключении.</summary>
         public DuplexStreamPair Stage()
         {
             var pair = new DuplexStreamPair();
@@ -62,8 +62,8 @@ public class IpcClientTests
         {
             if (_staged.Count == 0)
             {
-                // Nothing left to hand out: the maintain loop treats this as "the daemon
-                // isn't there" and backs off, which is exactly the state we want at teardown.
+                // Выдавать больше нечего: поддерживающий цикл понимает это как «демона нет» и
+                // отступает — ровно то состояние, которое нам и нужно при разборке.
                 throw new IOException("нет доступных соединений");
             }
             var pair = _staged.Dequeue();
@@ -97,7 +97,7 @@ public class IpcClientTests
         return condition();
     }
 
-    // ---- correlation ---------------------------------------------------------------------
+    // ---- сопоставление ответов запросам ----------------------------------------------------
 
     [Test]
     public async Task Responses_AreMatchedById_EvenWhenTheyArriveOutOfOrder()
@@ -106,8 +106,9 @@ public class IpcClientTests
         var pair = fixture.Stage();
         await Assert.That(await fixture.Client.StartAsync(TimeSpan.FromSeconds(2))).IsTrue();
 
-        // Two calls in flight at once. The server is explicitly allowed to answer the second
-        // one first (it doesn't await handlers), so the client may not rely on arrival order.
+        // Два вызова в полёте одновременно. Серверу прямо разрешено ответить сперва на второй
+        // (обработчиков он не дожидается), так что клиент не вправе полагаться на порядок
+        // прибытия.
         var first = fixture.Client.RequestAsync<WindowDto[]>(IpcMessageTypes.GetWindows);
         var second = fixture.Client.RequestAsync<string>(IpcMessageTypes.DumpCaptures);
 
@@ -138,7 +139,7 @@ public class IpcClientTests
         var pending = fixture.Client.RequestAsync<WindowDto[]>(IpcMessageTypes.GetWindows);
         var request = ParseRequest(await pair.ReadLineAsync());
 
-        // An event squeezed in between the request and its reply must not be mistaken for one.
+        // Событие, втиснувшееся между запросом и ответом на него, не должно быть принято за ответ.
         await pair.SendAsync(new IpcEvent(
             IpcMessageTypes.WindowAppeared,
             IpcJson.Write(new WindowDto(0x2222, "proc", []))));
@@ -155,7 +156,7 @@ public class IpcClientTests
         await Assert.That(fixture.Events[1].Payload).IsNull();
     }
 
-    // ---- failure modes -------------------------------------------------------------------
+    // ---- режимы отказа ---------------------------------------------------------------------
 
     [Test]
     public async Task NotOk_BecomesAnIpcRequestException_CarryingTheDaemonsMessage()
@@ -188,7 +189,7 @@ public class IpcClientTests
     [Test]
     public async Task RequestingWithNoConnection_FailsImmediately()
     {
-        // Nothing staged, so the initial connect never succeeds.
+        // Ничего не подложено, так что первое подключение так и не удаётся.
         await using var fixture = new ClientFixture();
         await Assert.That(await fixture.Client.StartAsync(TimeSpan.FromMilliseconds(300))).IsFalse();
         await Assert.That(fixture.Client.IsConnected).IsFalse();
@@ -209,8 +210,8 @@ public class IpcClientTests
         var pending = fixture.Client.RequestAsync(IpcMessageTypes.GetMacros);
         await pair.ReadLineAsync();
 
-        // The daemon's pipe closes — no reply will ever come. Failing the call beats letting
-        // it burn its whole timeout.
+        // Труба демона закрывается — ответа не будет уже никогда. Уронить вызов лучше, чем дать
+        // ему выжечь весь свой таймаут.
         pair.CloseClient();
 
         await Assert.That(async () => await pending).Throws<IpcRequestException>();
@@ -218,7 +219,7 @@ public class IpcClientTests
         await Assert.That(fixture.Client.IsConnected).IsFalse();
     }
 
-    // ---- reconnection --------------------------------------------------------------------
+    // ---- переподключение -------------------------------------------------------------------
 
     [Test]
     public async Task AfterAReconnect_ConnectedIsRaisedAgain_AndRequestsWorkOnTheNewConnection()
@@ -233,8 +234,8 @@ public class IpcClientTests
 
         first.CloseClient();
 
-        // Connected fires a SECOND time — the signal every view-model re-fetches on, because
-        // whatever the daemon pushed while we were away is gone.
+        // Connected срабатывает ВТОРОЙ раз — это тот сигнал, по которому каждая view-model
+        // перезапрашивает данные: всё, что демон напушил, пока нас не было, потеряно.
         await Assert.That(await WaitUntilAsync(() => Volatile.Read(ref fixture.ConnectedCount) >= 2)).IsTrue();
         await Assert.That(await WaitUntilAsync(() => fixture.Client.IsConnected)).IsTrue();
 
@@ -245,6 +246,6 @@ public class IpcClientTests
         await Assert.That((await pending)!.Names).IsEquivalentTo(new[] { "pw-boot" });
     }
 
-    /// <summary>Stand-in payload — this test cares that the new connection carries traffic, not what it carries.</summary>
+    /// <summary>Нагрузка-заглушка: тесту важно, что по новому соединению идёт трафик, а не что именно.</summary>
     private sealed record MacroGraphNames(IReadOnlyList<string> Names);
 }

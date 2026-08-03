@@ -12,18 +12,19 @@ using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// Stage 3: the macro editor's behaviour, headless and over IPC.
+// Стадия 3: поведение редактора макросов, без окон и через IPC.
 //
-// The daemon is stubbed by DaemonLibraryStub rather than mocked call-by-call, because the
-// behaviours under test are conversational: a save is "request → daemon writes → daemon
-// broadcasts MacrosChanged → client re-fetches", and the editor's dirty/external-change
-// logic only makes sense against a peer that actually does all four. The stub therefore
-// keeps a real library, validates with the real MacroGraphValidator, and pushes the same
-// events in the same order the daemon does — including raising MacrosChanged from INSIDE
-// the save, which is the ordering that makes "our own write echoing back" a real case.
+// Демон заменён заглушкой DaemonLibraryStub, а не расписан моком по вызовам, потому что
+// проверяемые поведения разговорны по своей природе: сохранение — это «запрос → демон пишет →
+// демон рассылает MacrosChanged → клиент перезапрашивает», и логика редактора вокруг
+// несохранённых правок и внешних изменений имеет смысл только против собеседника, который
+// действительно делает все четыре шага. Поэтому заглушка держит настоящую библиотеку, проверяет
+// настоящим MacroGraphValidator и шлёт те же события в том же порядке, что и демон, — в том
+// числе поднимает MacrosChanged ИЗНУТРИ сохранения, а именно этот порядок и делает «наша
+// собственная запись вернулась эхом» настоящим случаем.
 public class MacroEditorViewModelTests
 {
-    /// <summary>A minimal daemon: a macro library, the run list, and the SaveMacro contract.</summary>
+    /// <summary>Минимальный демон: библиотека макросов, список прогонов и договорённость SaveMacro.</summary>
     private sealed class DaemonLibraryStub
     {
         public DaemonLibraryStub()
@@ -44,7 +45,7 @@ public class MacroEditorViewModelTests
         public MacroGraph? Find(string name) =>
             Macros.FirstOrDefault(macro => string.Equals(macro.Name, name, StringComparison.Ordinal));
 
-        /// <summary>Writes a graph the way an external editor would, and pushes the change.</summary>
+        /// <summary>Пишет граф так, как это сделал бы сторонний редактор, и присылает пуш об изменении.</summary>
         public void WriteExternally(MacroGraph graph)
         {
             Macros.RemoveAll(macro => string.Equals(macro.Name, graph.Name, StringComparison.Ordinal));
@@ -62,8 +63,8 @@ public class MacroEditorViewModelTests
         private MacroGraph[] Snapshot() =>
             [.. Macros.OrderBy(macro => macro.Name, StringComparer.Ordinal)];
 
-        // Mirrors IpcRequestDispatcher.SaveMacroAsync: validate, add the name check as a
-        // graph-level issue, reject on any error, otherwise write and broadcast.
+        // Повторяет IpcRequestDispatcher.SaveMacroAsync: проверить, добавить проверку имени как
+        // замечание уровня графа, отказать при любой ошибке, иначе записать и разослать.
         private ValidationIssueDto[] Save(SaveMacroRequest request)
         {
             var issues = new List<ValidationIssue>(MacroGraphValidator.Validate(request.Macro));
@@ -79,10 +80,10 @@ public class MacroEditorViewModelTests
 
             Macros.RemoveAll(macro => string.Equals(macro.Name, request.Macro.Name, StringComparison.Ordinal));
             Macros.Add(request.Macro);
-            // Raised before the reply is returned — exactly as the daemon does it, since the
-            // event pump and the response path are different writers on the same connection.
+            // Поднимается до того, как вернётся ответ, — ровно так же, как это делает демон:
+            // насос событий и путь ответа суть разные писатели на одном соединении.
             Client.RaiseEvent(IpcMessageTypes.MacrosChanged);
-            // Empty = written. Warnings are deliberately NOT reported on success.
+            // Пусто — значит, записано. При успехе предупреждения намеренно НЕ сообщаются.
             return [];
         }
 
@@ -107,7 +108,7 @@ public class MacroEditorViewModelTests
         IHotkeySuspension? hotkeys = null) =>
         new(daemon.Client, launcher, hotkeys, ImmediateUiDispatcher.Instance, @"C:\smartmacro\macros");
 
-    /// <summary>a → b → c, all Delay nodes, no triggers (so the context rule doesn't apply).</summary>
+    /// <summary>a → b → c, все ноды Delay, триггеров нет (поэтому правило про контекст не действует).</summary>
     private static MacroGraph Chain(string name = "цепочка") => new()
     {
         Name = name,
@@ -120,7 +121,7 @@ public class MacroEditorViewModelTests
         ],
     };
 
-    // ---- structure editing ------------------------------------------------------------
+    // ---- правка структуры ---------------------------------------------------------------
 
     [Test]
     public async Task DeleteNode_ClearsEveryInboundEdge()
@@ -201,11 +202,11 @@ public class MacroEditorViewModelTests
         await Assert.That(first.NodeId).IsEqualTo("n1");
         await Assert.That(second.NodeId).IsEqualTo("n2");
         await Assert.That(vm.StartNodeId).IsEqualTo("n1");
-        // Both new ids plus the "end of run" entry must be offered to every edge.
+        // Каждому ребру обязаны предлагаться оба новых id плюс запись «конец прогона».
         await Assert.That(vm.NodeIdChoices).IsEquivalentTo(new[] { string.Empty, "n1", "n2" });
     }
 
-    // ---- save gating --------------------------------------------------------------------
+    // ---- что не пускает сохранить ------------------------------------------------------------
 
     [Test]
     public async Task Save_SendsSaveMacro_AndTheGraphLandsInTheLibrary()
@@ -229,8 +230,8 @@ public class MacroEditorViewModelTests
         var daemon = new DaemonLibraryStub();
         using var vm = CreateEditor(daemon);
 
-        // A hotkey macro has no context window, so a reachable conditional node is an
-        // ERROR — the classic authoring mistake the validator exists to catch.
+        // У макроса на хоткее нет контекстного окна, поэтому достижимая условная нода — это
+        // ОШИБКА, классический авторский промах, ради ловли которого проверяльщик и существует.
         vm.LoadGraph(new MacroGraph
         {
             Name = "битый",
@@ -238,7 +239,8 @@ public class MacroEditorViewModelTests
             StartNodeId = "find",
             Nodes = [new FindElementNode { Id = "find", Template = "Btn" }],
         });
-        // An edit, so "still dirty after a refusal" is an observable claim.
+        // Правка — чтобы утверждение «после отказа правки всё ещё не сохранены» можно было
+        // наблюдать.
         vm.MacroName = "битый-2";
 
         var saved = await vm.SaveAsync();
@@ -261,8 +263,8 @@ public class MacroEditorViewModelTests
         var saved = await vm.SaveAsync();
 
         await Assert.That(saved).IsFalse();
-        // A half-typed number never reaches the wire: BuildGraph would silently substitute
-        // something the user didn't ask for.
+        // Недопечатанное число до провода не доходит: BuildGraph втихую подставил бы что-нибудь,
+        // о чём пользователь не просил.
         await Assert.That(daemon.Client.CountOf(IpcMessageTypes.SaveMacro)).IsEqualTo(0);
         await Assert.That(vm.Issues.Any(i => i.IsError)).IsTrue();
     }
@@ -287,8 +289,8 @@ public class MacroEditorViewModelTests
     {
         var daemon = new DaemonLibraryStub();
         using var vm = CreateEditor(daemon);
-        // "orphan" is unreachable from the start node — a warning, not an error, and one the
-        // daemon does NOT return on a successful save.
+        // "orphan" недостижим от стартовой ноды — это предупреждение, а не ошибка, и притом
+        // такое, которое демон при успешном сохранении НЕ возвращает.
         vm.LoadGraph(new MacroGraph
         {
             Name = "с-предупреждением",
@@ -338,17 +340,17 @@ public class MacroEditorViewModelTests
 
         await Assert.That(await vm.SaveAsync()).IsTrue();
 
-        // The fake client serialises the payload with the real IpcJson options, so this
-        // covers the polymorphic $type discriminators surviving the request.
+        // Поддельный клиент сериализует нагрузку настоящими настройками IpcJson, так что заодно
+        // покрыто и выживание полиморфных дискриминаторов $type в запросе.
         var received = daemon.Find(original.Name);
         await Assert.That(received).IsNotNull();
-        // Canvas coordinates are the ONE thing a round trip is allowed to add: D3a places
-        // unplaced nodes on load, so every node comes back with an Editor. Everything else
-        // has to be byte-identical.
+        // Координаты на канве — ЕДИНСТВЕННОЕ, что round trip вправе добавить: D3a расставляет при
+        // загрузке нерасставленные ноды, поэтому каждая нода возвращается с Editor. Всё остальное
+        // обязано совпасть байт в байт.
         await Assert.That(MacroGraphJson.Serialize(WithoutLayout(received!)))
             .IsEqualTo(MacroGraphJson.Serialize(WithoutLayout(original)));
         await Assert.That(received!.Nodes.All(node => node.Editor is not null)).IsTrue();
-        // …and a node that already had coordinates keeps exactly the ones it had.
+        // …а нода, у которой координаты уже были, сохраняет ровно те, что были.
         await Assert.That(received.Nodes.Single(node => node.Id == "key").Editor)
             .IsEqualTo(new NodeEditorInfo(12.5, -40));
     }
@@ -361,7 +363,7 @@ public class MacroEditorViewModelTests
         Nodes = [.. graph.Nodes.Select(node => node with { Editor = null })],
     };
 
-    // ---- library / hot reload -----------------------------------------------------------
+    // ---- библиотека и перезагрузка на лету ------------------------------------------------
 
     [Test]
     public async Task Construction_FetchesTheLibrary_AndSelectingAMacroLoadsIt()
@@ -405,7 +407,7 @@ public class MacroEditorViewModelTests
         using var vm = CreateEditor(daemon);
         vm.SelectedMacro = vm.Macros.Single();
 
-        // Someone edits the file behind our back; the daemon's watcher pushes MacrosChanged.
+        // Кто-то правит файл у нас за спиной; наблюдатель демона присылает пуш MacrosChanged.
         daemon.WriteExternally(new MacroGraph
         {
             Name = "живой",
@@ -508,7 +510,7 @@ public class MacroEditorViewModelTests
         await Assert.That(vm.FolderPath).IsEqualTo(@"C:\smartmacro\macros");
     }
 
-    // ---- run / stop / hotkeys -------------------------------------------------------------
+    // ---- запуск, остановка, хоткеи -------------------------------------------------------------
 
     [Test]
     public async Task Run_GoesThroughTheLauncher()
@@ -556,7 +558,8 @@ public class MacroEditorViewModelTests
         A.CallTo(() => hotkeys.SuspendAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
         A.CallTo(() => hotkeys.ResumeAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
 
-        // No suspension wired (tests, or a host that chose not to) must not blow up.
+        // Приостановка не подключена (тесты — или хост, который решил обойтись без неё): падать
+        // от этого нельзя.
         using var without = CreateEditor(daemon);
         await without.SuspendHotkeysAsync();
         await without.ResumeHotkeysAsync();

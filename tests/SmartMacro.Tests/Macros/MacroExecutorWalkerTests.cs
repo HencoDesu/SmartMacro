@@ -6,8 +6,8 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2a: the graph walker itself — node-by-node traversal, outcome edges, null-edge
-// termination, per-selector fan-out, context-window defaulting, and abort/cancel paths.
+// W0.2a: сам обходчик графа — прохождение нода за нодой, рёбра исходов, обрыв на пустом ребре,
+// веер по селектору, подстановка контекстного окна по умолчанию и пути прерывания и отмены.
 public class MacroExecutorWalkerTests
 {
     [Test]
@@ -87,7 +87,7 @@ public class MacroExecutorWalkerTests
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
-        // Only the Wait call — the Timeout edge is null, so the run ended there.
+        // Только вызов Wait: ребро Timeout пустое, так что прогон на нём и кончился.
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(1);
         await Assert.That(h.Primitives.Calls[0].Op).IsEqualTo("Wait");
     }
@@ -190,7 +190,7 @@ public class MacroExecutorWalkerTests
                 Target = new TargetSelector { RequireTags = ["перс"] }, Next = null,
             });
 
-        // ContextWindow deliberately null: selector-targeted actions don't need one.
+        // ContextWindow намеренно пуст: действиям, нацеленным селектором, он не нужен.
         var result = await h.Executor.RunAsync(graph, h.Context(window: null), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
@@ -222,7 +222,7 @@ public class MacroExecutorWalkerTests
     public async Task NoTarget_DefaultsToContextWindow()
     {
         var h = new ExecutorHarness();
-        // Other windows exist — a targetless action must NOT fan out to them.
+        // Другие окна есть — действие без цели НЕ имеет права разворачиваться веером на них.
         h.Registry.Register(new IntPtr(1), "elementclient");
         var graph = ExecutorHarness.Graph("м", "k",
             new KeyPressNode { Id = "k", Key = VirtualKey.F8, Next = null });
@@ -236,7 +236,7 @@ public class MacroExecutorWalkerTests
     [Test]
     public async Task NoTargetNoContext_AbortsWithoutTouchingPrimitives()
     {
-        // FakeItEasy fake: the cleanest "nothing was called" assertion.
+        // Подделка FakeItEasy: самый чистый способ проверить, что не звали вообще ничего.
         var primitives = A.Fake<IMacroPrimitives>();
         var h = new ExecutorHarness();
         var executor = new MacroExecutor(primitives, h.Registry, h.Resolver, NullLogger<MacroExecutor>.Instance);

@@ -6,12 +6,13 @@ using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// The live-state view-model (MainWindowViewModel until D2 renamed it): a pure IPC client
-// holding windows with their tag chips and the running-macro list, seeded by requests and
-// kept current by daemon pushes.
+// View-model живого состояния (до переименования в D2 — MainWindowViewModel): чистый клиент IPC,
+// держащий окна с их фишками тегов и список идущих макросов; наполняется запросами и
+// поддерживается в актуальном виде пушами демона.
 //
-// The fake client answers synchronously and ImmediateUiDispatcher runs posted work inline,
-// so the constructor's fire-and-forget refresh has already landed by the time a test looks.
+// Поддельный клиент отвечает синхронно, а ImmediateUiDispatcher выполняет отправленную работу на
+// месте, так что запущенное и брошенное обновление из конструктора уже доехало к тому моменту,
+// когда тест начинает смотреть.
 public class WorkspaceViewModelTests
 {
     private const long HwndA = 0x1111;
@@ -26,7 +27,7 @@ public class WorkspaceViewModelTests
     private static WorkspaceViewModel CreateVm(FakeIpcClient client) =>
         new(client, ImmediateUiDispatcher.Instance);
 
-    // ---- initial fetch ---------------------------------------------------------------------
+    // ---- первичный запрос --------------------------------------------------------------------
 
     [Test]
     public async Task Construction_OnALiveConnection_FetchesBothSnapshots()
@@ -68,8 +69,8 @@ public class WorkspaceViewModelTests
         using var vm = CreateVm(client);
         await Assert.That(vm.Windows).Count().IsEqualTo(2);
 
-        // While we were away one client closed and another got tagged. A reconnect has no
-        // way to replay those pushes, so the fresh snapshot has to win outright.
+        // Пока нас не было, один клиент закрылся, а другому навесили тег. Переподключению нечем
+        // проиграть эти пуши заново, так что свежий снимок обязан побеждать безоговорочно.
         client.Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndB, tags: "Жрец") });
         client.RaiseConnected();
 
@@ -79,7 +80,7 @@ public class WorkspaceViewModelTests
         await Assert.That(vm.Windows[0].Tags.Select(t => t.Text)).IsEquivalentTo(new[] { "Жрец" });
     }
 
-    // ---- window events -----------------------------------------------------------------------
+    // ---- события об окнах --------------------------------------------------------------------
 
     [Test]
     public async Task WindowAppeared_AddsARow()
@@ -91,12 +92,12 @@ public class WorkspaceViewModelTests
 
         await Assert.That(vm.Windows).Count().IsEqualTo(1);
         await Assert.That(vm.Windows[0].HasTags).IsFalse();
-        // The count used to be rendered here as WindowCountText; D2 moved the number to the
-        // sidebar counter, so what this VM still owns is the «Окна» header summary.
+        // Раньше счётчик рисовался прямо здесь как WindowCountText; D2 перенесла число в счётчик
+        // на боковой панели, так что за этой view-model осталась сводка в заголовке «Окна».
         await Assert.That(vm.WindowsSummaryText).Contains("1");
     }
 
-    // ---- derived partitions (D2) --------------------------------------------------------
+    // ---- производные разбиения (D2) -------------------------------------------------------
 
     [Test]
     public async Task Windows_ArePartitionedIntoTaggedAndUntagged()
@@ -130,8 +131,8 @@ public class WorkspaceViewModelTests
         await Assert.That(vm.UntaggedWindows).IsEmpty();
         await Assert.That(vm.TaggedWindows).Count().IsEqualTo(1);
         await Assert.That(vm.HasUntagged).IsFalse();
-        // The ROW survives the move: the partitions are reconciled, not rebuilt, so a
-        // half-typed tag box does not lose its focus when the list shifts.
+        // При переезде выживает сама СТРОКА: разбиения сверяются, а не пересобираются, — поэтому
+        // недопечатанное поле тега не теряет фокус, когда список сдвигается.
         await Assert.That(vm.TaggedWindows[0]).IsSameReferenceAs(vm.Windows[0]);
     }
 
@@ -208,7 +209,7 @@ public class WorkspaceViewModelTests
         await Assert.That(vm.Windows[0].Hwnd).IsEqualTo(HwndB);
     }
 
-    // ---- tagging -------------------------------------------------------------------------------
+    // ---- навешивание тегов -------------------------------------------------------------------------
 
     [Test]
     public async Task AddTag_SendsAddTag_AndClearsTheInput()
@@ -229,8 +230,8 @@ public class WorkspaceViewModelTests
     [Test]
     public async Task AddTag_KeepsTheTextWhenTheWindowAlreadyCarriesTheTag()
     {
-        // The daemon treats a duplicate as a silent no-op, so only the row can tell the
-        // difference — and it must not clear the box as if something happened.
+        // Дубль демон молча пропускает, так что отличить одно от другого способна только строка, —
+        // и она не имеет права очищать поле так, будто что-то произошло.
         var client = new FakeIpcClient()
             .Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, "proc", "Лучник") });
         using var vm = CreateVm(client);
@@ -282,8 +283,8 @@ public class WorkspaceViewModelTests
 
         await Assert.That(client.PayloadsOf<RemoveTagRequest>(IpcMessageTypes.RemoveTag).Single())
             .IsEqualTo(new RemoveTagRequest(HwndA, "Шаман"));
-        // The chip stays until the daemon confirms with WindowTagsChanged — the registry is
-        // the owner, and an optimistic removal would lie when the call fails.
+        // Фишка остаётся, пока демон не подтвердит через WindowTagsChanged: владелец — реестр, а
+        // оптимистичное удаление соврало бы, если вызов не удастся.
         await Assert.That(vm.Windows.Single().Tags).Count().IsEqualTo(1);
 
         client.RaiseEvent(IpcMessageTypes.WindowTagsChanged, Window(HwndA, "proc"));
@@ -291,7 +292,7 @@ public class WorkspaceViewModelTests
         await Assert.That(vm.Windows.Single().HasTags).IsFalse();
     }
 
-    // ---- running macros ------------------------------------------------------------------------
+    // ---- идущие макросы -----------------------------------------------------------------------------
 
     [Test]
     public async Task RunningMacrosChanged_AddsAndRemovesRows()
@@ -369,7 +370,7 @@ public class WorkspaceViewModelTests
         row.Refresh(row.StartedUtc.AddHours(1).AddMinutes(2).AddSeconds(3));
         await Assert.That(row.Elapsed).IsEqualTo("1:02:03");
 
-        // A clock that has gone backwards must not render a negative duration.
+        // Часы, ушедшие назад, не имеют права нарисовать отрицательную длительность.
         row.Refresh(row.StartedUtc.AddSeconds(-30));
         await Assert.That(row.Elapsed).IsEqualTo("0:00");
     }

@@ -7,12 +7,12 @@ using SmartMacro.Native.Hotkey;
 
 namespace SmartMacro.Tests;
 
-// W0.2b: hotkey bindings now come from the macro library instead of a hotkeys.json.
+// W0.2b: привязки хоткеев приходят теперь из библиотеки макросов, а не из hotkeys.json.
 //
-// The listener is exercised WITHOUT calling StartAsync, so the Win32 monitors never spawn
-// their message-loop threads and never touch RegisterHotKey — they're inert until started.
-// That keeps the binding-derivation logic (the part that actually changed) testable
-// without faking sealed native plumbing or requiring a desktop session.
+// Слушателя гоняют БЕЗ вызова StartAsync, поэтому мониторы Win32 не порождают своих потоков с
+// циклом сообщений и не трогают RegisterHotKey — до запуска они безжизненны. Так логика вывода
+// привязок (та самая часть, которая и поменялась) остаётся проверяемой без подделки запечатанной
+// нативной обвязки и без сеанса рабочего стола.
 public class HotkeyListenerTests
 {
     private static string CreateTempDir()
@@ -72,7 +72,7 @@ public class HotkeyListenerTests
             await store.SaveAsync(WithTriggers("cursor",
                 new HotkeyTrigger(HotkeyModifiers.Control, VirtualKey.F22),
                 new HotkeyTrigger(HotkeyModifiers.None, 0, MouseButton.XButton1)));
-            // Process triggers and trigger-less library macros contribute no chords.
+            // Триггеры по процессу и библиотечные макросы без триггеров аккордов не дают.
             await store.SaveAsync(WithTriggers("boot", new ProcessAppearedTrigger("elementclient_64")));
             await store.SaveAsync(WithTriggers("helper"));
 
@@ -83,7 +83,7 @@ public class HotkeyListenerTests
             await Assert.That(listener.KeyboardBindings).Count().IsEqualTo(2);
             await Assert.That(listener.MouseBindings).Count().IsEqualTo(1);
 
-            // Each registration carries its macro's chord, and its id resolves to the name.
+            // Каждая регистрация несёт аккорд своего макроса, а её id разрешается в имя.
             var immunity = listener.KeyboardBindings.Single(d => d.Key == VirtualKey.F23);
             await Assert.That(immunity.Modifiers).IsEqualTo(HotkeyModifiers.None);
             await Assert.That(listener.Bindings[immunity.Id]).IsEqualTo("immunity");
@@ -114,7 +114,8 @@ public class HotkeyListenerTests
             using var listener = CreateListener(store);
             await Assert.That(listener.Bindings.Values.Single()).IsEqualTo("first");
 
-            // Rebinding a macro is an ordinary library edit — no separate config to sync.
+            // Перепривязка макроса — обычная правка библиотеки: отдельного конфига, который надо
+            // было бы синхронизировать, нет.
             await store.SaveAsync(WithTriggers("first", new HotkeyTrigger(HotkeyModifiers.Shift, VirtualKey.F13)));
             await store.SaveAsync(WithTriggers("second", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F14)));
 
@@ -124,7 +125,7 @@ public class HotkeyListenerTests
             await Assert.That(listener.KeyboardBindings.Select(d => d.Key).Order().ToList())
                 .IsEquivalentTo(new List<VirtualKey> { VirtualKey.F13, VirtualKey.F14 });
 
-            // Deleting the macro takes its hotkey with it.
+            // Удаление макроса уносит с собой и его хоткей.
             await store.DeleteAsync("second");
             var shrunk = await WaitUntilAsync(() => listener.KeyboardBindings.Count == 1);
             await Assert.That(shrunk).IsTrue();

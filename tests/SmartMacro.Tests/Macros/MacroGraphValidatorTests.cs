@@ -4,7 +4,8 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2a: static validation — every rule fires on a crafted graph, clean graphs pass.
+// W0.2a: статическая проверка — каждое правило срабатывает на нарочно собранном графе, а чистые
+// графы проходят.
 public class MacroGraphValidatorTests
 {
     private static readonly TargetSelector AnySelector = new() { RequireTags = ["перс"] };
@@ -23,7 +24,8 @@ public class MacroGraphValidatorTests
     [Test]
     public async Task CleanContextMacro_PassesWithoutIssues()
     {
-        // Process-triggered boot-style macro: conditionals and targetless actions are fine.
+        // Макрос загрузочного вида с триггером по процессу: условные ноды и действия без цели
+        // здесь в порядке.
         var graph = Graph("w", [Process],
             new WaitForElementNode { Id = "w", Template = "мир", TimeoutMs = 60000, Found = "k", Timeout = null },
             new KeyPressNode { Id = "k", Key = VirtualKey.C, Next = "d" },
@@ -141,10 +143,11 @@ public class MacroGraphValidatorTests
         await Assert.That(Errors(issues).Any(i => i.NodeId == "k" && i.Message.Contains("контекстное окно"))).IsTrue();
     }
 
-    // W0.2b relaxation: a graph with NO triggers can only be entered via RunMacroNode or
-    // a UI Run against a window, so its context always comes from the caller. Targetless
-    // nodes are the CORRECT shape for such a library routine — that's what makes it
-    // reusable per window — so the context rule must not fire.
+    // Послабление W0.2b: в граф БЕЗ триггеров можно войти только через RunMacroNode или через
+    // «Запустить» из интерфейса на конкретном окне, так что контекст ему всегда приходит от
+    // вызывающего. Ноды без цели — ПРАВИЛЬНАЯ форма для такой библиотечной подпрограммы, именно
+    // она и делает её пригодной к повторному применению на каждом окне, — а значит, правило про
+    // контекст срабатывать не должно.
     [Test]
     public async Task TriggerlessLibraryMacro_ConditionalAndTargetlessAction_AreLegal()
     {

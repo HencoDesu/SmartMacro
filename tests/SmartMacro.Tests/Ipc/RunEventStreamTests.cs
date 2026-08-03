@@ -7,17 +7,19 @@ using SmartMacro.Macros.Execution;
 
 namespace SmartMacro.Tests.Ipc;
 
-// D3b: the run-event channel as it behaves on a real (in-memory) connection.
+// D3b: канал событий прогона в том виде, в каком он ведёт себя на настоящем (пусть и
+// внутрипамятном) соединении.
 //
-// The thing under test is not "does an event arrive" — it is the flooding contract, because
-// that is what decides whether the panel is still connected at the moment the user cares.
-// The server hands each connection a bounded queue of 256 and DROPS a client that fills it,
-// so an unmediated stream would disconnect the panel in the middle of the fan-out it was
-// opened to watch. Three mechanisms answer that, and each has a test here:
+// Проверяется здесь не «дошло ли событие», а договорённость о защите от затопления: именно она
+// решает, будет ли панель ещё подключена в тот момент, когда пользователю это важно. Сервер даёт
+// каждому соединению ограниченную очередь на 256 записей и ОТКЛЮЧАЕТ клиента, который её
+// забивает, — так что непосредованный поток отцепил бы панель прямо посреди того веера, ради
+// наблюдения за которым её и открыли. Отвечают на это три механизма, и на каждый здесь есть тест:
 //
-//   1. nothing is produced unless a connection subscribed;
-//   2. what is produced is coalesced into batches;
-//   3. overflow is counted and reported, never silently swallowed and never blocking.
+//   1. пока соединение не подписалось, не производится ничего;
+//   2. то, что производится, склеивается в пачки;
+//   3. переполнение считается и о нём сообщают — его никогда не глотают молча и никогда не
+//      ждут на движке.
 public class RunEventStreamTests
 {
     private sealed class Fixture : IAsyncDisposable
@@ -52,15 +54,19 @@ public class RunEventStreamTests
             return (pair, serve);
         }
 
-        /// <summary>Subscribes a client and returns the walks the daemon said were already running.</summary>
+        /// <summary>
+        /// Подписывает клиента и возвращает обходы, о которых демон сказал, что они уже идут.
+        /// </summary>
         public async Task<RunWalkDto[]> SubscribeAsync(DuplexStreamPair client, int id = 1, bool enabled = true)
         {
-            await client.SendAsync(new IpcRequest(id, IpcMessageTypes.SubscribeRunEvents, IpcJson.Write(new SubscribeRunEventsRequest(enabled))));
+            await client.SendAsync(new IpcRequest(id, IpcMessageTypes.SubscribeRunEvents,
+                IpcJson.Write(new SubscribeRunEventsRequest(enabled))));
             var reply = Parse(await client.ReadLineAsync());
             if (!reply.GetProperty("Ok").GetBoolean())
             {
                 throw new InvalidOperationException(reply.GetProperty("Error").GetString());
             }
+
             return IpcJson.Read<RunWalkDto[]>(reply.GetProperty("Payload"))!;
         }
 
@@ -84,25 +90,29 @@ public class RunEventStreamTests
             {
                 return true;
             }
+
             await Task.Delay(10);
         }
+
         return condition();
     }
 
-    /// <summary>Drives the observer the way a walk of <paramref name="nodes"/> would.</summary>
+    /// <summary>Дёргает наблюдателя так же, как это сделал бы обход по нодам <paramref name="nodes"/>.</summary>
     private static Guid Walk(RunEventPublisher publisher, string macroName, long hwnd, params string[] nodes)
     {
         var walkId = Guid.NewGuid();
-        publisher.WalkStarted(new MacroWalkStart(walkId, Guid.NewGuid(), macroName, hwnd == 0 ? null : new IntPtr(hwnd), 0));
+        publisher.WalkStarted(new MacroWalkStart(walkId, Guid.NewGuid(), macroName, hwnd == 0 ? null : new IntPtr(hwnd),
+            0));
         foreach (var node in nodes)
         {
             publisher.NodeEntered(walkId, 0, node);
             publisher.NodeExited(walkId, 1, node, RunOutcomes.Ok, "деталь", 1);
         }
+
         return walkId;
     }
 
-    // ---- opt-in ----------------------------------------------------------------------
+    // ---- только по подписке --------------------------------------------------------------
 
     [Test]
     public async Task WithNoSubscriber_TheEngineIsNotEvenInstrumented()
@@ -113,8 +123,8 @@ public class RunEventStreamTests
         await Assert.That(fixture.Publisher.IsEnabled).IsFalse();
         Walk(fixture.Publisher, "pw-boot", 0x10, "a", "b");
 
-        // Not "the events were filtered out" — they were never produced. The only line this
-        // connection can get is the reply to a request sent afterwards.
+        // Не «события отфильтровали» — их вообще не производили. Единственная строка, которую
+        // это соединение способно получить, — ответ на посланный следом запрос.
         await client.SendAsync(new IpcRequest(7, IpcMessageTypes.GetWindows));
         var line = Parse(await client.ReadLineAsync());
         await Assert.That(line.GetProperty("Id").GetInt32()).IsEqualTo(7);
@@ -155,8 +165,8 @@ public class RunEventStreamTests
         await Assert.That(fixture.Publisher.SubscriberCount).IsEqualTo(1);
 
         await fixture.SubscribeAsync(client, id: 3, enabled: false);
-        // A leaked reference here would leave the executor instrumented forever with nobody
-        // reading, which is the exact cost the opt-in exists to avoid.
+        // Утёкшая здесь ссылка навсегда оставила бы исполнитель с включённой трассировкой, хотя
+        // читать её некому, — а ровно от этих расходов подписка и избавляет.
         await Assert.That(fixture.Publisher.SubscriberCount).IsEqualTo(0);
 
         client.CloseClient();
@@ -190,8 +200,8 @@ public class RunEventStreamTests
 
         await Assert.That(TypeOf(Parse(await watcher.ReadLineAsync()))).IsEqualTo(IpcMessageTypes.RunEvents);
 
-        // The bystander gets ordinary events and nothing else. Handing it the burst would
-        // cost it its connection for a stream it has no use for.
+        // Посторонний получает обычные события и ничего сверх того. Вывалив на него всплеск, мы
+        // стоили бы ему соединения ради потока, который ему совершенно не нужен.
         fixture.Engine.Windows.Register(0x99, "elementclient");
         var seen = Parse(await bystander.ReadLineAsync());
         await Assert.That(TypeOf(seen)).IsEqualTo(IpcMessageTypes.WindowAppeared);
@@ -201,7 +211,7 @@ public class RunEventStreamTests
         await Task.WhenAll(watcherServe, bystanderServe);
     }
 
-    // ---- mid-run subscription --------------------------------------------------------
+    // ---- подписка посреди прогона ----------------------------------------------------------
 
     [Test]
     public async Task SubscribingMidRun_AnswersWithTheLiveWalks_FlaggedAsIncomplete()
@@ -209,7 +219,7 @@ public class RunEventStreamTests
         await using var fixture = new Fixture();
         var (client, serve) = await fixture.ConnectAsync();
 
-        // Two walks already going before anybody was listening.
+        // Два обхода уже идут, а слушать их ещё некому.
         var first = Walk(fixture.Publisher, "pw-boot", 0x140804);
         Walk(fixture.Publisher, "pw-assist", 0);
 
@@ -217,13 +227,14 @@ public class RunEventStreamTests
 
         await Assert.That(live).Count().IsEqualTo(2);
         await Assert.That(live.Select(w => w.MacroName)).IsEquivalentTo(new[] { "pw-boot", "pw-assist" });
-        // The whole point: their leading node rows happened while nothing was recording, and
-        // the protocol says so rather than letting the panel render the tail as a full log.
+        // В этом весь смысл: их начальные строки по нодам прошли, когда никто ничего не
+        // записывал, и протокол так и говорит, вместо того чтобы позволить панели нарисовать
+        // хвост как полный лог.
         await Assert.That(live.All(w => !w.FromStart)).IsTrue();
         await Assert.That(live.Single(w => w.MacroName == "pw-boot").Hwnd).IsEqualTo(0x140804L);
         await Assert.That(live.Single(w => w.MacroName == "pw-assist").Hwnd).IsEqualTo(0L);
 
-        // A walk that has since finished is not offered.
+        // Обход, успевший с тех пор завершиться, уже не предлагают.
         fixture.Publisher.WalkFinished(first, 10, RunOutcomes.Completed, null);
         var again = await fixture.SubscribeAsync(client, id: 2);
         await Assert.That(again.Select(w => w.MacroName)).IsEquivalentTo(new[] { "pw-assist" });
@@ -262,25 +273,26 @@ public class RunEventStreamTests
         await Assert.That(harness.RunEvents.IsEnabled).IsFalse();
     }
 
-    // ---- the burst -------------------------------------------------------------------
+    // ---- всплеск ---------------------------------------------------------------------------
 
     [Test]
     public async Task ATenWindowFanOutIsCoalesced_AndThePanelIsStillConnectedAfterwards()
     {
-        const int Walks = 10;
-        const int NodesPerWalk = 12;
-        // 10 × (1 walk-start + 12 × 2 node events + 1 walk-end) = 260 events. Unbatched that
-        // is already past the connection's 256-event queue — which is the failure this
-        // wave had to design around, and it would land exactly when the user is watching.
-        const int Expected = Walks * (2 + (NodesPerWalk * 2));
+        const int walks = 10;
+        const int nodesPerWalk = 12;
+        // 10 × (1 начало обхода + 12 × 2 события по нодам + 1 конец обхода) = 260 событий. Без
+        // склейки это уже больше, чем очередь соединения на 256 событий, — тот самый отказ,
+        // вокруг которого этой волне и пришлось проектировать, и случился бы он ровно тогда,
+        // когда пользователь смотрит на экран.
+        const int expected = walks * (2 + (nodesPerWalk * 2));
 
         await using var fixture = new Fixture();
         var (client, serve) = await fixture.ConnectAsync();
         await fixture.SubscribeAsync(client);
 
-        var nodes = Enumerable.Range(0, NodesPerWalk).Select(i => $"n{i}").ToArray();
-        // Produced from ten threads at once, the way a RunMacroNode fan-out actually does it.
-        await Task.WhenAll(Enumerable.Range(0, Walks).Select(i => Task.Run(() =>
+        var nodes = Enumerable.Range(0, nodesPerWalk).Select(i => $"n{i}").ToArray();
+        // Производятся с десяти потоков разом — именно так это и делает веер RunMacroNode.
+        await Task.WhenAll(Enumerable.Range(0, walks).Select(i => Task.Run(() =>
         {
             var walkId = Walk(fixture.Publisher, "pw-identify-one", 0x100 + i, nodes);
             fixture.Publisher.WalkFinished(walkId, 100, RunOutcomes.Completed, null);
@@ -290,7 +302,7 @@ public class RunEventStreamTests
         var envelopes = 0;
         var dropped = 0;
         var deadline = Environment.TickCount64 + 15000;
-        while (events.Count + dropped < Expected && Environment.TickCount64 < deadline)
+        while (events.Count + dropped < expected && Environment.TickCount64 < deadline)
         {
             var line = Parse(await client.ReadLineAsync(timeoutMs: 5000));
             await Assert.That(TypeOf(line)).IsEqualTo(IpcMessageTypes.RunEvents);
@@ -300,16 +312,16 @@ public class RunEventStreamTests
             envelopes++;
         }
 
-        await Assert.That(events.Count + dropped).IsEqualTo(Expected);
-        // The queue is 4096 deep, so a burst this size loses nothing.
+        await Assert.That(events.Count + dropped).IsEqualTo(expected);
+        // Очередь глубиной 4096, так что всплеск такого размера не теряет ничего.
         await Assert.That(dropped).IsEqualTo(0);
-        // The coalescing claim, stated as a number: hundreds of events, a handful of lines
-        // on the wire — comfortably under the 256 that would cost the panel its connection.
+        // Обещание про склейку, выраженное числом: сотни событий — горстка строк в проводе,
+        // с большим запасом ниже тех 256, которые стоили бы панели соединения.
         await Assert.That(envelopes).IsLessThan(64);
-        await Assert.That(events.Count(e => e.Kind == RunEventKind.WalkStarted)).IsEqualTo(Walks);
-        await Assert.That(events.Select(e => e.WalkId).Distinct()).Count().IsEqualTo(Walks);
+        await Assert.That(events.Count(e => e.Kind == RunEventKind.WalkStarted)).IsEqualTo(walks);
+        await Assert.That(events.Select(e => e.WalkId).Distinct()).Count().IsEqualTo(walks);
 
-        // And the whole point of the exercise — the connection survived it.
+        // И то, ради чего всё затевалось: соединение это пережило.
         await Assert.That(fixture.Server.ConnectionCount).IsEqualTo(1);
         await client.SendAsync(new IpcRequest(99, IpcMessageTypes.GetWindows));
         var reply = Parse(await client.ReadLineAsync());
@@ -327,9 +339,10 @@ public class RunEventStreamTests
         var (client, serve) = await fixture.ConnectAsync();
         await fixture.SubscribeAsync(client);
 
-        // Deliberately past the publisher's own 4096-event queue. The engine must not block
-        // — a macro run is between two Win32 messages — so the surplus is dropped, and the
-        // count rides out with the next batch so the panel can admit the hole.
+        // Намеренно больше, чем собственная очередь публикатора на 4096 событий. Движку ждать
+        // нельзя — прогон макроса идёт между двумя сообщениями Win32, — поэтому излишек
+        // выбрасывается, а счёт уезжает со следующей пачкой, чтобы панель могла признаться в
+        // дыре.
         var walkId = Guid.NewGuid();
         fixture.Publisher.WalkStarted(new MacroWalkStart(walkId, Guid.NewGuid(), "шторм", new IntPtr(0x1), 0));
         for (var i = 0; i < 20_000; i++)
@@ -341,7 +354,8 @@ public class RunEventStreamTests
         var deadline = Environment.TickCount64 + 15000;
         while (dropped == 0 && Environment.TickCount64 < deadline)
         {
-            var batch = IpcJson.Read<RunEventBatch>(Parse(await client.ReadLineAsync(timeoutMs: 5000)).GetProperty("Payload"))!;
+            var batch = IpcJson.Read<RunEventBatch>(Parse(await client.ReadLineAsync(timeoutMs: 5000))
+                .GetProperty("Payload"))!;
             dropped += batch.Dropped;
         }
 
@@ -362,13 +376,20 @@ public class RunEventStreamTests
         Walk(fixture.Publisher, "pw-boot", 0x1, "a", "b", "c");
         await fixture.SubscribeAsync(client, id: 2, enabled: false);
 
-        // Whatever was queued was addressed to a subscriber that is gone. Delivering it to
-        // the next one would open its log with a burst from a run it never saw.
+        // Всё, что осталось в очереди, адресовалось подписчику, которого больше нет. Доставить
+        // это следующему — значит открыть ему лог всплеском из прогона, которого он не видел.
         await fixture.SubscribeAsync(client, id: 3);
         Walk(fixture.Publisher, "pw-assist", 0x2, "z");
 
-        var batch = IpcJson.Read<RunEventBatch>(Parse(await client.ReadLineAsync(timeoutMs: 5000)).GetProperty("Payload"))!;
-        await Assert.That(batch.Events.Select(e => e.NodeId).Where(id => id is not null)).IsEquivalentTo(new[] { "z", "z" });
+        var batch = IpcJson.Read<RunEventBatch>(Parse(await client.ReadLineAsync(timeoutMs: 5000))
+            .GetProperty("Payload"))!;
+
+        // OfType<string>(), а не Where(id => id is not null): здесь null — законное значение
+        // (у событий уровня обхода ноды нет) и его действительно надо отбросить, но через Where
+        // компилятор тип не сужает, и на выходе оставался IEnumerable<string?> — отсюда CS8631.
+        // OfType и отфильтровывает, и сужает, то есть говорит ровно то, что тут и происходит.
+        await Assert.That(batch.Events.Select(e => e.NodeId).OfType<string>())
+            .IsEquivalentTo(new[] { "z", "z" });
 
         client.CloseClient();
         await serve;

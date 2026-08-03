@@ -3,10 +3,10 @@ using SmartMacro.Config;
 
 namespace SmartMacro.Tests;
 
-// W0.1: ProcessProfiles — binding from configuration (the "ProcessProfiles" section is
-// a raw JSON array, bound into ProcessProfileOptions.Profiles the same way Program.cs
-// does it) plus the profile-lookup and watched-names union helpers ProcessMonitor and
-// GameWindowFactory rely on.
+// W0.1: ProcessProfiles — привязка из конфигурации (секция "ProcessProfiles" представляет собой
+// голый массив JSON и привязывается к ProcessProfileOptions.Profiles тем же способом, каким это
+// делает Program.cs) плюс помощники поиска профиля и объединения отслеживаемых имён, на которые
+// опираются ProcessMonitor и GameWindowFactory.
 public class ProcessProfileOptionsTests
 {
     private static ProcessProfileOptions BindFromMemory(Dictionary<string, string?> values)
@@ -15,7 +15,7 @@ public class ProcessProfileOptionsTests
             .AddInMemoryCollection(values)
             .Build();
 
-        // Mirrors the composition-root binding in Program.cs.
+        // Повторяет привязку в корне композиции из Program.cs.
         var options = new ProcessProfileOptions();
         configuration.GetSection(ProcessProfileOptions.SectionName).Bind(options.Profiles);
         return options;
@@ -41,7 +41,7 @@ public class ProcessProfileOptionsTests
         await Assert.That(pw.SettleDelayMs).IsEqualTo(200);
         await Assert.That(pw.DeactivationDelayMs).IsEqualTo(100);
 
-        // No ActivationLParam configured = plain input, no wake-up dance.
+        // ActivationLParam не задан — значит, ввод обычный, без плясок с пробуждением.
         var plain = options.Profiles[1];
         await Assert.That(plain.ProcessName).IsEqualTo("notepad");
         await Assert.That(plain.ActivationLParam).IsNull();
@@ -112,8 +112,8 @@ public class ProcessProfileOptionsTests
             Profiles =
             {
                 new ProcessProfile { ProcessName = "elementclient_64" },
-                new ProcessProfile { ProcessName = "ELEMENTCLIENT_64" }, // dup, different case
-                new ProcessProfile { ProcessName = "" },                 // blank — skipped
+                new ProcessProfile { ProcessName = "ELEMENTCLIENT_64" }, // дубль, другой регистр
+                new ProcessProfile { ProcessName = "" }, // пустое — пропускается
                 new ProcessProfile { ProcessName = "notepad" },
             },
         };

@@ -4,16 +4,17 @@ using SmartMacro.Contracts.Ipc;
 namespace SmartMacro.Tests.Ipc;
 
 /// <summary>
-/// Builders for the run-event stream, so a view-model test can stage a plausible walk
-/// without spelling out the DTO's eight positional arguments each time.
+/// Конструкторы событий прогона, чтобы тест view-model мог разыграть правдоподобный обход, не
+/// выписывая каждый раз восемь позиционных аргументов DTO.
 ///
-/// Deliberately dumb: no state, no ordering rules. The point of these tests is that the
-/// PANEL survives whatever the daemon sends — including a node exit whose entry was dropped,
-/// or an event for a walk it never saw start — so the helper must not quietly fix things up.
+/// Намеренно бестолковые: ни состояния, ни правил порядка. Смысл этих тестов в том, что ПАНЕЛЬ
+/// переживает всё, что бы демон ни прислал, — в том числе выход из ноды, вход в которую потерялся,
+/// или событие обхода, начала которого она не видела, — так что помощник не имеет права втихую
+/// приводить данные в порядок.
 /// </summary>
 internal static class RunEvents
 {
-    /// <summary>A walk descriptor. <paramref name="hwnd"/> of 0 means "no context window".</summary>
+    /// <summary>Описатель обхода. <paramref name="hwnd"/>, равный 0, означает «контекстного окна нет».</summary>
     public static RunWalkDto Walk(string macroName, long hwnd = 0, Guid? runId = null, int depth = 0) =>
         new(Guid.NewGuid(), runId ?? Guid.NewGuid(), macroName, hwnd, depth, DateTimeOffset.UtcNow, FromStart: true);
 
@@ -23,34 +24,39 @@ internal static class RunEvents
     public static RunEventDto Entered(RunWalkDto walk, int elapsedMs, string nodeId) =>
         new(walk.WalkId, RunEventKind.NodeEntered, elapsedMs, nodeId);
 
-    public static RunEventDto Exited(RunWalkDto walk, int elapsedMs, string nodeId, string outcome, string? detail, int durationMs) =>
+    public static RunEventDto Exited(RunWalkDto walk, int elapsedMs, string nodeId, string outcome, string? detail,
+        int durationMs) =>
         new(walk.WalkId, RunEventKind.NodeExited, elapsedMs, nodeId, outcome, detail, durationMs);
 
     public static RunEventDto Finished(RunWalkDto walk, int elapsedMs, string outcome, string? detail = null) =>
         new(walk.WalkId, RunEventKind.WalkFinished, elapsedMs, Outcome: outcome, Detail: detail);
 
-    // ---- debugger (D5) ----------------------------------------------------------------
+    // ---- отладчик (D5) ------------------------------------------------------------------
 
-    /// <summary>Parked at a breakpoint. <paramref name="reason"/> is the daemon's Russian word.</summary>
+    /// <summary>
+    /// Припаркован на точке останова. В <c>Detail</c> уезжает то самое русское слово, которое
+    /// кладёт туда демон, — панель показывает его как есть, поэтому подделка обязана совпадать.
+    /// </summary>
     public static RunEventDto Breakpoint(RunWalkDto walk, int elapsedMs, string nodeId) =>
         new(walk.WalkId, RunEventKind.BreakpointHit, elapsedMs, nodeId, Detail: "брейкпоинт");
 
-    /// <summary>Parked for any other reason.</summary>
+    /// <summary>Припаркован по любой другой причине.</summary>
     public static RunEventDto Paused(RunWalkDto walk, int elapsedMs, string nodeId, string reason = "пауза") =>
         new(walk.WalkId, RunEventKind.Paused, elapsedMs, nodeId, Detail: reason);
 
     public static RunEventDto Resumed(RunWalkDto walk, int elapsedMs, string nodeId) =>
         new(walk.WalkId, RunEventKind.Resumed, elapsedMs, nodeId);
 
-    /// <summary>A variable assignment. <paramref name="nodeId"/> is <c>null</c> for the trigger seed.</summary>
-    public static RunEventDto Variable(RunWalkDto walk, int elapsedMs, string name, string value, string? nodeId = null) =>
+    /// <summary>Присваивание переменной. <paramref name="nodeId"/> равен <c>null</c> для затравки от триггера.</summary>
+    public static RunEventDto Variable(RunWalkDto walk, int elapsedMs, string name, string value,
+        string? nodeId = null) =>
         new(walk.WalkId, RunEventKind.VariableSet, elapsedMs, nodeId, Detail: value, Variable: name);
 }
 
-/// <summary>Pushing run events at a view-model the way the daemon's pump does — in batches.</summary>
+/// <summary>Подача событий прогона во view-model так же, как это делает насос демона, — пачками.</summary>
 internal static class FakeIpcClientRunExtensions
 {
-    /// <summary>Delivers one batch. Goes through <c>IpcJson</c>, so the enum round trip is real.</summary>
+    /// <summary>Доставляет одну пачку. Идёт через <c>IpcJson</c>, так что round trip перечисления настоящий.</summary>
     public static void Push(this FakeIpcClient client, params RunEventDto[] events)
     {
         ArgumentNullException.ThrowIfNull(client);

@@ -5,8 +5,8 @@ using SmartMacro.Windows;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2a: selectors are how macros pick windows — AND semantics over require/exclude,
-// evaluated against real WindowRegistry snapshots (the executor's exact input).
+// W0.2a: селекторы — это то, чем макросы выбирают окна: семантика И по require/exclude,
+// вычисляемая на настоящих снимках WindowRegistry (ровно то, что подаётся исполнителю).
 public class SelectorEvaluatorTests
 {
     private static readonly IntPtr Archer = new(1);
@@ -83,11 +83,11 @@ public class SelectorEvaluatorTests
         await Assert.That(matched).Count().IsEqualTo(0);
     }
 
-    // D4 moved the RULE to TargetSelector.Matches in Contracts and left this class as the
-    // typed wrapper the executor calls, so the panel can evaluate the same selectors against
-    // its own WindowDto snapshot without a second implementation. This pins the two together:
-    // if anyone reintroduces the loops here, a divergence shows up as a failure rather than
-    // as a badge that quietly lies about what a run will hit.
+    // D4 перенесла само ПРАВИЛО в TargetSelector.Matches в Contracts, оставив этот класс
+    // типизированной обёрткой, которую зовёт исполнитель, — чтобы панель могла вычислять те же
+    // селекторы на своём снимке WindowDto без второй реализации. Этот тест сшивает обе:
+    // если кто-нибудь вернёт циклы сюда, расхождение всплывёт как упавший тест, а не как бейдж,
+    // втихую врущий о том, кого прогон на самом деле заденет.
     [Test]
     public async Task Evaluator_DelegatesToTheSelectorsOwnRule()
     {

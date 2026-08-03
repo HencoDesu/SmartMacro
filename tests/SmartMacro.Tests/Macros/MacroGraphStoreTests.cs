@@ -5,11 +5,12 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2b: the folder-backed macro library — CRUD round-trip, resilience to a hand-broken
-// file, name validation, and the watcher's debounce / own-write suppression.
+// W0.2b: библиотека макросов поверх папки — круг CRUD, устойчивость к файлу, испорченному
+// руками, проверка имени, а также подавление дребезга и собственных записей у наблюдателя.
 //
-// Watcher tests are [NotInParallel] and use real temp folders: FileSystemWatcher is the
-// one thing here we can't fake without testing our own mock.
+// Тесты наблюдателя помечены [NotInParallel] и работают на настоящих временных папках:
+// FileSystemWatcher — то единственное здесь, что нельзя подделать, не проверяя вместо него
+// собственный мок.
 public class MacroGraphStoreTests
 {
     private static MacroGraph Chain(string name, params MacroNode[] nodes) =>
@@ -36,11 +37,12 @@ public class MacroGraphStoreTests
         }
         catch (IOException)
         {
-            // Watcher may still hold the folder momentarily; temp cleanup isn't the assertion.
+            // Наблюдатель может ещё мгновение держать папку; уборка временных файлов — не то,
+            // что здесь проверяется.
         }
     }
 
-    /// <summary>Polls until <paramref name="condition"/> holds or the budget runs out.</summary>
+    /// <summary>Опрашивает, пока <paramref name="condition"/> не выполнится или не выйдет отпущенное время.</summary>
     private static async Task<bool> WaitUntilAsync(Func<bool> condition, int timeoutMs = 3000)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
@@ -71,7 +73,7 @@ public class MacroGraphStoreTests
                 await Assert.That(File.Exists(Path.Combine(dir, "macros", "ассист.json"))).IsTrue();
             }
 
-            // Fresh store = a real load from disk, not the in-memory snapshot.
+            // Новое хранилище — это настоящая загрузка с диска, а не снимок из памяти.
             using var reloaded = CreateStore(dir);
             await Assert.That(reloaded.All).Count().IsEqualTo(2);
             var macro = reloaded.TryGet("иммунка");
@@ -118,7 +120,7 @@ public class MacroGraphStoreTests
         {
             var macrosDir = Path.Combine(dir, "macros");
             Directory.CreateDirectory(macrosDir);
-            // Simulates the user renaming the file: the stem is the identity.
+            // Изображает переименование файла пользователем: основа имени и есть личность макроса.
             File.WriteAllText(Path.Combine(macrosDir, "renamed.json"), MacroGraphJson.Serialize(SimpleMacro("old-name")));
 
             using var store = CreateStore(dir);
@@ -202,8 +204,8 @@ public class MacroGraphStoreTests
 
             await store.SaveAsync(SimpleMacro("mine"));
 
-            // SaveAsync raises exactly one event; the watcher event its own write triggers
-            // must be swallowed. Wait past the 300ms debounce plus slack.
+            // SaveAsync поднимает ровно одно событие; событие наблюдателя, вызванное его же
+            // собственной записью, обязано быть проглочено. Ждём дольше 300 мс дребезга плюс запас.
             await Task.Delay(900);
             await Assert.That(Volatile.Read(ref events)).IsEqualTo(1);
         }
@@ -227,8 +229,8 @@ public class MacroGraphStoreTests
             var macrosDir = Path.Combine(dir, "macros");
             var path = Path.Combine(macrosDir, "external.json");
 
-            // Someone edits the folder behind our back (text editor, git checkout).
-            // A burst of writes must collapse into a single reload.
+            // Кто-то правит папку у нас за спиной (текстовый редактор, git checkout).
+            // Всплеск записей обязан схлопнуться в одну-единственную перезагрузку.
             for (var i = 0; i < 3; i++)
             {
                 File.WriteAllText(path, MacroGraphJson.Serialize(SimpleMacro("external", VirtualKey.F5)));
@@ -250,15 +252,16 @@ public class MacroGraphStoreTests
     [NotInParallel]
     public async Task Dispose_IsIdempotent_EvenAfterTheWatcherArmedAReload()
     {
-        // Regression (found running the stage 2B daemon): the store is registered twice in
-        // DI — as itself and as IMacroGraphResolver through a factory — so the scope tracks
-        // ONE instance in its disposable list TWICE and calls Dispose twice on shutdown. The
-        // second call used to Cancel an already-disposed CancellationTokenSource and take
-        // host teardown down with it ("terminated unexpectedly", non-zero exit code).
+        // Регрессия (нашлась на живом демоне стадии 2B): хранилище зарегистрировано в DI дважды —
+        // само по себе и как IMacroGraphResolver через фабрику, — так что область видимости
+        // держит ОДИН экземпляр в своём списке освобождаемых ДВАЖДЫ и при выключении зовёт
+        // Dispose два раза. Второй вызов раньше делал Cancel уже освобождённому
+        // CancellationTokenSource и утаскивал за собой всё выключение хоста («завершилось
+        // неожиданно», ненулевой код возврата).
         //
-        // It only reproduces once a watcher event has armed a reload — with a never-touched
-        // folder the field is null and the double dispose is silently harmless, which is why
-        // it went unnoticed until an external edit happened in the same session.
+        // Воспроизводится это только после того, как событие наблюдателя взвело перезагрузку:
+        // на нетронутой папке поле пустое, и двойное освобождение молча безвредно, — потому-то
+        // всё и оставалось незамеченным, пока в том же сеансе не случалась внешняя правка.
         var dir = CreateTempDir();
         try
         {

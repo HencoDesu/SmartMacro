@@ -10,25 +10,25 @@ using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// D3a: the canvas editor's logic, headless.
+// D3a: логика редактора-канвы, без окон.
 //
-// Rendering is not testable here and is not the risk. The risk is everything the canvas
-// COMPUTES — where a box lands, which way an edge is routed, what counts as an end state,
-// which library section a macro falls into — because all of it is invisible in a diff and
-// all of it is what a user would notice first.
+// Отрисовку здесь проверить нельзя, да и не в ней риск. Риск во всём том, что канва ВЫЧИСЛЯЕТ:
+// куда встанет коробка, как проложится ребро, что считается конечным состоянием, в какой раздел
+// библиотеки попадёт макрос, — потому что всё это в диффе невидимо и всё это пользователь
+// заметит первым.
 public class MacroCanvasTests
 {
     private static MacroEditorViewModel CreateEditor(FakeIpcClient? client = null) =>
         new(client ?? new FakeIpcClient(), null, null, ImmediateUiDispatcher.Instance, @"C:\smartmacro\macros");
 
-    /// <summary>Same, but hands back the fake daemon so a test can push run events at it.</summary>
+    /// <summary>То же самое, но отдаёт и поддельный демон, чтобы тест мог слать в него события прогона.</summary>
     private static MacroEditorViewModel CreateEditor(out FakeIpcClient daemon)
     {
         daemon = new FakeIpcClient();
         return CreateEditor(daemon);
     }
 
-    /// <summary>The shape of pw-boot: a chain with one branch, and no coordinates anywhere.</summary>
+    /// <summary>Форма pw-boot: цепочка с одной веткой и без единой координаты.</summary>
     private static MacroGraph BootLike() => new()
     {
         Name = "pw-boot",
@@ -57,7 +57,7 @@ public class MacroCanvasTests
     private static List<NodeRowViewModel> Rows(MacroGraph graph) =>
         [.. graph.Nodes.Select(NodeRowViewModel.FromNode)];
 
-    // ---- layout --------------------------------------------------------------------------
+    // ---- раскладка ---------------------------------------------------------------------------
 
     [Test]
     public async Task AutoLayout_WalksTheGraphDepthFirst_AndWrapsEveryThreeBoxes()
@@ -66,8 +66,8 @@ public class MacroCanvasTests
 
         MacroGraphLayout.Apply(rows, "wait-server");
 
-        // Depth-first from the start, following each node's outcomes in order. That is what
-        // keeps a chain in reading order: the mockup's pw-boot is laid out exactly so.
+        // В глубину от старта, следуя исходам каждой ноды по порядку. Именно это и удерживает
+        // цепочку в порядке чтения: pw-boot в макете разложен ровно так.
         string[] expected =
         [
             "wait-server", "click-server", "wait-char",
@@ -113,7 +113,7 @@ public class MacroCanvasTests
 
         await Assert.That(moved).IsTrue();
         await Assert.That(rows.All(row => row.HasPosition)).IsTrue();
-        // Not a pile at the origin: exactly one box may sit there.
+        // Не куча в начале координат: там имеет право стоять ровно одна коробка.
         await Assert.That(rows.Count(row => row is { X: 0, Y: 0 })).IsEqualTo(1);
     }
 
@@ -150,7 +150,7 @@ public class MacroCanvasTests
         var stray = rows.Single(row => row.NodeId == "stray");
         await Assert.That(placed.X).IsEqualTo(600d);
         await Assert.That(placed.Y).IsEqualTo(300d);
-        // Below the lowest existing box, so it cannot land on top of one.
+        // Ниже самой нижней из существующих коробок, чтобы не приземлиться поверх какой-нибудь.
         await Assert.That(stray.Y).IsGreaterThan(placed.Y + placed.LayoutHeight);
     }
 
@@ -159,20 +159,20 @@ public class MacroCanvasTests
     {
         var rows = Rows(BootLike());
         MacroGraphLayout.Apply(rows, "wait-server");
-        // Nine nodes = rows 0..2 full; the next box belongs on row 3, column 0.
+        // Девять нод — ряды 0..2 заполнены; следующей коробке место в ряду 3, столбце 0.
         var (x, y) = MacroGraphLayout.NextFreeSlot(rows);
 
         await Assert.That(x).IsEqualTo(0d);
         await Assert.That(y).IsEqualTo(CanvasMetrics.RowPitch * 3);
     }
 
-    // ---- edge routing ----------------------------------------------------------------------
+    // ---- прокладка рёбер ---------------------------------------------------------------------
 
     [Test]
     public async Task Router_DrawsNothingForAnUnwiredOutcome()
     {
-        // The mockup's own emphasis: "в конец" must not materialise a node, and it must not
-        // materialise a dangling line either.
+        // Особый упор самого макета: «в конец» не имеет права породить ни ноду, ни болтающуюся
+        // линию.
         var rows = Rows(new MacroGraph
         {
             Name = "конец",
@@ -239,11 +239,11 @@ public class MacroCanvasTests
 
         await Assert.That(edge.IsDirect).IsFalse();
         await Assert.That(edge.Waypoints).Count().IsEqualTo(5);
-        // The horizontal leg runs ABOVE the target row, not across the boxes of either row.
+        // Горизонтальный участок идёт НАД целевым рядом, а не сквозь коробки того или другого.
         var gutterY = CanvasMetrics.RowPitch - CanvasMetrics.GutterOffset;
         await Assert.That(edge.Waypoints[2].Y).IsEqualTo(gutterY);
         await Assert.That(edge.Waypoints[3].Y).IsEqualTo(gutterY);
-        // …and it drops into the TOP edge of the target.
+        // …и падает в ВЕРХНИЙ край цели.
         await Assert.That(edge.Waypoints[^1].Y).IsEqualTo(CanvasMetrics.RowPitch);
         await Assert.That(edge.Waypoints[^1].X).IsEqualTo(CanvasMetrics.NodeWidth / 2);
     }
@@ -285,17 +285,17 @@ public class MacroCanvasTests
 
         await Assert.That(found.X).IsEqualTo(CanvasMetrics.NodeWidth);
         await Assert.That(timeout.Y - found.Y).IsEqualTo(CanvasMetrics.OutcomeRowHeight);
-        // Both inside the box, above its bottom edge.
+        // Обе внутри коробки, выше её нижнего края.
         await Assert.That(timeout.Y).IsLessThan(row.LayoutHeight);
     }
 
-    // ---- library grouping ---------------------------------------------------------------------
+    // ---- группировка библиотеки ------------------------------------------------------------------
 
     [Test]
     public async Task Grouping_ReproducesTheMockupsOwnSections()
     {
-        // Straight out of opt-1d.html, including the case the obvious rule gets wrong:
-        // "Баг госта" has no dash yet belongs with "Баг госта-Лучник".
+        // Прямо из opt-1d.html, включая тот случай, на котором очевидное правило ошибается:
+        // в «Баг госта» дефиса нет, а место ему всё равно рядом с «Баг госта-Лучник».
         var items = Items(
             "pw-boot", "pw-immunity", "pw-assist",
             "Баг госта", "Баг госта-Лучник", "Баг госта-Жрец",
@@ -321,7 +321,7 @@ public class MacroCanvasTests
     {
         await Assert.That(MacroLibraryGrouping.PrefixOf("pw-cursor-click")).IsEqualTo("pw");
         await Assert.That(MacroLibraryGrouping.PrefixOf("Сбор наград")).IsEqualTo("Сбор наград");
-        // A leading dash is not a prefix boundary — that would produce an empty heading.
+        // Дефис в начале границей префикса не считается — иначе получился бы пустой заголовок.
         await Assert.That(MacroLibraryGrouping.PrefixOf("-странное")).IsEqualTo("-странное");
     }
 
@@ -343,7 +343,7 @@ public class MacroCanvasTests
         await Assert.That(vm.MacroGroups.Select(g => g.Header)).IsEquivalentTo(new[] { "прочее · 1" });
     }
 
-    // ---- the editor over the canvas -------------------------------------------------------------
+    // ---- редактор поверх канвы ---------------------------------------------------------------------
 
     [Test]
     public async Task LoadGraph_PlacesEveryBox_WithoutMakingTheEditorDirty()
@@ -353,7 +353,8 @@ public class MacroCanvasTests
         vm.LoadGraph(BootLike());
 
         await Assert.That(vm.Nodes.All(node => node.HasPosition)).IsTrue();
-        // The layout is baked into the load baseline: opening an old macro is not an edit.
+        // Раскладка запекается в исходный слепок при загрузке: открыть старый макрос — это не
+        // правка.
         await Assert.That(vm.IsDirty()).IsFalse();
     }
 
@@ -529,7 +530,7 @@ public class MacroCanvasTests
         await Assert.That(vm.InspectorTitle).IsEqualTo("Пауза");
     }
 
-    // ---- the surface wave D3b has to fill ----------------------------------------------------
+    // ---- та поверхность, которую предстоит наполнить волне D3b ------------------------------------
 
     [Test]
     public async Task RunLog_IsEmptyUntilTheDaemonReportsAnything()
@@ -542,8 +543,8 @@ public class MacroCanvasTests
         await Assert.That(vm.HasRuns).IsFalse();
         await Assert.That(vm.ExecutingNodeId).IsNull();
         await Assert.That(vm.Nodes.Any(node => node.IsExecuting)).IsFalse();
-        // The empty text distinguishes "nothing ran" from "nothing is being recorded" — the
-        // strip is only fed while «Макросы» holds the subscription.
+        // Пустой текст отличает «ничего не запускалось» от «ничего не записывается»: полосу
+        // питают только пока подписку держат «Макросы».
         await Assert.That(vm.RunLogEmptyText).IsEqualTo("лог пишется, пока открыт режим «Макросы»");
     }
 
@@ -576,7 +577,7 @@ public class MacroCanvasTests
         await Assert.That(vm.RunChipText).IsEqualTo("0x140804");
         await Assert.That(vm.SelectedRunIsLive).IsTrue();
 
-        // Entering a node opens a row and lights the box; the row has no outcome yet.
+        // Вход в ноду открывает строку и зажигает коробку; исхода у строки пока нет.
         daemon.Push(RunEvents.Entered(walk, 0, "wait-server"));
         await Assert.That(vm.RunLog).Count().IsEqualTo(1);
         await Assert.That(vm.RunLog[0].Outcome).IsEqualTo(RunLogRowViewModel.PendingOutcome);
@@ -584,7 +585,7 @@ public class MacroCanvasTests
         await Assert.That(vm.ExecutingNodeId).IsEqualTo("wait-server");
         await Assert.That(vm.Nodes.Single(node => node.IsExecuting).NodeId).IsEqualTo("wait-server");
 
-        // Leaving it completes the SAME row in place — the strip must not flicker a new one.
+        // Выход из неё достраивает ТУ ЖЕ строку на месте — полоса не имеет права мигнуть новой.
         var openRow = vm.RunLog[0];
         daemon.Push(RunEvents.Exited(walk, 1200, "wait-server", RunOutcomes.Found, "A @ 1190,1802", 1200));
         await Assert.That(vm.RunLog).Count().IsEqualTo(1);
@@ -595,7 +596,7 @@ public class MacroCanvasTests
         await Assert.That(openRow.Detail).IsEqualTo("A @ 1190,1802 · 1.2 с");
         await Assert.That(openRow.IsCurrent).IsFalse();
 
-        // The highlight follows the walker, one box at a time.
+        // Подсветка следует за обходчиком, по одной коробке за раз.
         daemon.Push(RunEvents.Entered(walk, 1200, "click-server"));
         await Assert.That(vm.Nodes.Where(node => node.IsExecuting).Select(node => node.NodeId))
             .IsEquivalentTo(new[] { "click-server" });
@@ -606,7 +607,7 @@ public class MacroCanvasTests
         await Assert.That(vm.RunLog[1].OutcomeIsAccent).IsFalse();
         await Assert.That(vm.RunLog[1].Elapsed).IsEqualTo("0:01.2");
 
-        // The run ends: the log stays for reading, the canvas goes dark.
+        // Прогон кончается: лог остаётся, чтобы его читать, а канва гаснет.
         daemon.Push(RunEvents.Finished(walk, 1300, RunOutcomes.Completed));
         await Assert.That(vm.ExecutingNodeId).IsNull();
         await Assert.That(vm.Nodes.Any(node => node.IsExecuting)).IsFalse();
@@ -620,7 +621,8 @@ public class MacroCanvasTests
         using var vm = CreateEditor(out var daemon);
         vm.LoadGraph(BootLike());
 
-        // The case the picker exists for: one graph, ten walks, ten different nodes live.
+        // Тот самый случай, ради которого выбор обхода и существует: один граф, десять обходов,
+        // десять разных живых нод.
         var walks = Enumerable.Range(0, 10)
             .Select(i => RunEvents.Walk("pw-boot", hwnd: 0x100 + i))
             .ToList();
@@ -631,10 +633,12 @@ public class MacroCanvasTests
         }
 
         await Assert.That(vm.Runs).Count().IsEqualTo(10);
-        // Exactly one — nine lit boxes on one graph is the noise this wave had to avoid.
+        // Ровно одна: девять зажжённых коробок на одном графе — та самая пестрота, которой этой
+        // волне и надо было избежать.
         await Assert.That(vm.Nodes.Count(node => node.IsExecuting)).IsEqualTo(1);
 
-        // The first walk keeps the selection: a live run is never stolen by a newer sibling.
+        // Выбор остаётся за первым обходом: живой прогон никогда не отбирает более поздний
+        // собрат.
         await Assert.That(vm.RunChipText).IsEqualTo("0x100");
         await Assert.That(vm.RunPositionText).IsEqualTo("1 / 10");
         await Assert.That(vm.ExecutingNodeId).IsEqualTo("wait-server");
@@ -645,7 +649,7 @@ public class MacroCanvasTests
         await Assert.That(vm.Nodes.Count(node => node.IsExecuting)).IsEqualTo(1);
         await Assert.That(vm.RunLog).Count().IsEqualTo(1);
 
-        // ◂ from the first entry wraps to the last rather than dead-ending.
+        // ◂ с первой записи заворачивает на последнюю, а не упирается в тупик.
         vm.SelectPreviousRun();
         vm.SelectPreviousRun();
         await Assert.That(vm.RunChipText).IsEqualTo("0x109");
@@ -662,13 +666,13 @@ public class MacroCanvasTests
         daemon.Push(RunEvents.Started(first), RunEvents.Entered(first, 0, "wait-server"));
         await Assert.That(vm.RunChipText).IsEqualTo("0x1");
 
-        // A live selection holds against a newcomer.
+        // Живой выбор устоит против новичка.
         var second = RunEvents.Walk("pw-boot", hwnd: 0x2);
         daemon.Push(RunEvents.Started(second));
         await Assert.That(vm.RunChipText).IsEqualTo("0x1");
 
-        // Once it is finished, the next run takes over — the user is otherwise left
-        // watching a log that has stopped moving.
+        // А вот как только он завершился, эстафету принимает следующий прогон, — иначе
+        // пользователь останется смотреть на лог, который перестал двигаться.
         daemon.Push(RunEvents.Finished(first, 100, RunOutcomes.Completed));
         var third = RunEvents.Walk("pw-boot", hwnd: 0x3);
         daemon.Push(RunEvents.Started(third), RunEvents.Entered(third, 0, "open-stats"));
@@ -688,7 +692,7 @@ public class MacroCanvasTests
             RunEvents.Started(boot), RunEvents.Entered(boot, 0, "recognize"),
             RunEvents.Started(other), RunEvents.Entered(other, 0, "n1"));
 
-        // Walks of another graph are tracked but change nothing on screen.
+        // Обходы другого графа отслеживаются, но на экране не меняют ничего.
         await Assert.That(vm.Runs).Count().IsEqualTo(1);
         await Assert.That(vm.ExecutingNodeId).IsEqualTo("recognize");
 
@@ -702,7 +706,7 @@ public class MacroCanvasTests
         await Assert.That(vm.ExecutingNodeId).IsEqualTo("n1");
         await Assert.That(vm.Nodes.Single(node => node.IsExecuting).NodeId).IsEqualTo("n1");
 
-        // Back again: the first walk's log survived rather than being discarded.
+        // Обратно: лог первого обхода уцелел, а не был выброшен.
         vm.LoadGraph(BootLike());
         await Assert.That(vm.RunChipText).IsEqualTo("0xA");
         await Assert.That(vm.RunLog).Count().IsEqualTo(1);
@@ -715,7 +719,8 @@ public class MacroCanvasTests
         var client = new FakeIpcClient()
             .Respond(IpcMessageTypes.SubscribeRunEvents, new[]
             {
-                // What the daemon answers with: walks already in flight, flagged as such.
+                // То, чем отвечает демон: обходы, уже находящиеся в полёте, и помеченные как
+                // таковые.
                 new RunWalkDto(Guid.NewGuid(), Guid.NewGuid(), "pw-boot", 0x140804, 0, DateTimeOffset.UtcNow, FromStart: false),
             });
         using var vm = CreateEditor(client);
@@ -728,9 +733,10 @@ public class MacroCanvasTests
         await Assert.That(vm.RunLogNotice).IsEqualTo("начало прогона не записано");
         await Assert.That(vm.RunLogEmptyText).IsEqualTo("прогонов ещё не было");
 
-        // A dropped batch is reported too — the alternative is a log with an invisible hole.
-        // Both reasons stack: the selection is still the mid-run walk (a live one is never
-        // stolen), so its head is missing AND the daemon has since discarded events.
+        // О выброшенной пачке тоже сообщают — иначе получился бы лог с невидимой дырой. Обе
+        // причины складываются: выбран по-прежнему тот обход, к которому подключились посреди
+        // прогона (живой никогда не отбирают), так что у него И начала нет, И демон с тех пор
+        // успел что-то выбросить.
         var walk = RunEvents.Walk("pw-boot", hwnd: 0x2);
         client.RaiseEvent(IpcMessageTypes.RunEvents, new RunEventBatch([RunEvents.Started(walk)], Dropped: 12));
         await Assert.That(vm.RunLogNotice).IsEqualTo("начало прогона не записано · пропущено событий: 12");
@@ -750,8 +756,8 @@ public class MacroCanvasTests
 
         client.RaiseConnected();
 
-        // The daemon forgets a subscription with its connection, and the gap is unknowable —
-        // so the panel re-asks and starts from nothing rather than resuming a broken log.
+        // Подписку демон забывает вместе с соединением, а размер провала узнать неоткуда, —
+        // поэтому панель переспрашивает и начинает с чистого листа, а не продолжает битый лог.
         await Assert.That(vm.HasRunLog).IsFalse();
         await Assert.That(vm.HasRuns).IsFalse();
         await Assert.That(vm.ExecutingNodeId).IsNull();
@@ -764,8 +770,9 @@ public class MacroCanvasTests
         using var vm = CreateEditor(out var daemon);
         vm.LoadGraph(BootLike());
 
-        // Only possible when the WalkStarted was in a batch the daemon had to discard. A run
-        // synthesised here would have no macro name and could not be filed under a graph.
+        // Возможно только тогда, когда WalkStarted попал в пачку, которую демону пришлось
+        // выбросить. У прогона, придуманного здесь на месте, не было бы имени макроса, и подшить
+        // его к какому-либо графу не вышло бы.
         var orphan = RunEvents.Walk("pw-boot", hwnd: 0x9);
         daemon.Push(RunEvents.Entered(orphan, 0, "wait-server"));
 
@@ -796,7 +803,7 @@ public class MacroCanvasTests
         var walk = RunEvents.Walk("pw-boot", hwnd: 0x6);
         daemon.Push(RunEvents.Started(walk));
 
-        // A macro that loops must not grow the panel without bound.
+        // Зацикленный макрос не имеет права раздувать панель без предела.
         for (var i = 0; i < MacroRunViewModel.MaxRows + 25; i++)
         {
             daemon.Push(RunEvents.Entered(walk, i, "await-stats"), RunEvents.Exited(walk, i, "await-stats", RunOutcomes.Ok, null, 1));
@@ -806,7 +813,7 @@ public class MacroCanvasTests
         await Assert.That(vm.RunLog[0].Elapsed).IsEqualTo(RunLogRowViewModel.FormatElapsed(25));
     }
 
-    // ---- box chrome --------------------------------------------------------------------------
+    // ---- обвес коробки -------------------------------------------------------------------------
 
     [Test]
     public async Task ConditionalBoxesAreTallerThanActionBoxes()
@@ -834,16 +841,16 @@ public class MacroCanvasTests
         var seen = false;
         row.PropertyChanged += (_, e) => seen |= e.PropertyName == nameof(NodeRowViewModel.Summary);
 
-        // A region lives in its own view-model; without the forwarding its change would
-        // never reach the box and the caption would silently go stale.
+        // Область живёт в собственной view-model; без переброски её изменение до коробки не
+        // дошло бы никогда, и подпись молча устарела бы.
         row.Region.WidthText = "320";
 
         await Assert.That(seen).IsTrue();
         await Assert.That(row.Summary).IsEqualTo("набор classes · 320×35");
     }
 
-    // D4 replaced the box's plain text chip with the live badge; Summary is now only the
-    // SELECTOR half of it (the badge puts the window count in front — see TargetBadgeTests).
+    // D4 заменила простую текстовую фишку на коробке живым бейджем; Summary теперь — это только
+    // СЕЛЕКТОРНАЯ его половина (счётчик окон бейдж ставит впереди — см. TargetBadgeTests).
     [Test]
     public async Task TargetSummary_DescribesTheSelectorInWords()
     {
@@ -857,9 +864,9 @@ public class MacroCanvasTests
         await Assert.That(row.Target.Summary).IsEqualTo("кроме Склад");
     }
 
-    // The chip is on the box only when the node departs from the default. Wave D4 kept that
-    // rule (a 210px header has no room for both a type label and a badge), so it stays
-    // pinned.
+    // Фишка появляется на коробке, только когда нода отходит от значения по умолчанию. Волна D4
+    // это правило сохранила (в заголовке шириной 210px не помещаются разом и подпись типа, и
+    // бейдж), так что оно остаётся закреплённым.
     [Test]
     public async Task TargetChip_IsOnlyDrawnWhenTheNodeRoutesByTags()
     {

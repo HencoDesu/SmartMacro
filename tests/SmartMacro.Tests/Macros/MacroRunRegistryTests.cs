@@ -4,8 +4,8 @@ using SmartMacro.Macros.Model;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2a: the run registry — single-flight per macro name, Stop/StopAll cancelling live
-// executor runs, snapshots, and RunsChanged notifications.
+// W0.2a: реестр прогонов — single-flight по имени макроса, Stop/StopAll, отменяющие живые
+// прогоны исполнителя, снимки и уведомления RunsChanged.
 public class MacroRunRegistryTests
 {
     private static MacroRunRegistry NewRegistry() => new(NullLogger<MacroRunRegistry>.Instance);
@@ -109,7 +109,8 @@ public class MacroRunRegistryTests
             enteredDelay.TrySetResult();
         });
 
-        // The caller pattern the registry is designed for: run bracketed by TryBegin/Complete.
+        // Тот способ вызова, под который реестр и спроектирован: прогон в скобках
+        // TryBegin/Complete.
         var runTask = Task.Run(async () =>
         {
             try
@@ -125,7 +126,8 @@ public class MacroRunRegistryTests
         await enteredDelay.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await Assert.That(registry.Snapshot()[0].CurrentNodeId).IsEqualTo("d");
 
-        // StopAsync resolves only after the runner acknowledged via Complete.
+        // StopAsync завершается только после того, как исполняющая сторона отчиталась через
+        // Complete.
         await registry.StopAsync(handle.RunId).WaitAsync(TimeSpan.FromSeconds(5));
 
         var result = await runTask.WaitAsync(TimeSpan.FromSeconds(5));

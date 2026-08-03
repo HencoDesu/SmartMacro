@@ -6,13 +6,13 @@ using SmartMacro.Windows;
 
 namespace SmartMacro.Tests.Vision;
 
-// Stage 2B moved the "Dump captures" sweep out of MainWindow.axaml.cs into Core, so it is
-// now reachable over IPC (and, incidentally, testable at all — it used to read view-model
-// rows and call Avalonia-side services).
+// Стадия 2B вынесла обход «Сдампить снимки» из MainWindow.axaml.cs в Core, и теперь до него
+// можно дотянуться по IPC (а заодно его вообще стало возможно проверять — раньше он читал строки
+// view-model и звал службы со стороны Avalonia).
 //
-// What matters here is the resilience contract: the reason anyone dumps captures is that
-// something is already broken, so one window failing to capture must not cost you the
-// other eight.
+// Важна здесь договорённость об устойчивости: снимки дампят как раз потому, что что-то уже
+// сломалось, — поэтому одно окно, снимок которого не удался, не имеет права стоить вам
+// остальных восьми.
 public class CaptureDumpServiceTests
 {
     private static readonly byte[] FakeCapture = [1, 2, 3, 4];
@@ -91,8 +91,8 @@ public class CaptureDumpServiceTests
 
         await fixture.Service.DumpAsync();
 
-        // The untagged case is the interesting one — a dump is usually taken BECAUSE
-        // identification failed, so the file names have to stay distinct without tags.
+        // Случай без тегов здесь самый интересный: дамп обычно и снимают ПОТОМУ, что опознание
+        // провалилось, — значит, имена файлов обязаны оставаться различимыми и без тегов.
         await Assert.That(fixture.DumpedFiles()).Contains("elementclient-0xBEEF-full.png");
     }
 
@@ -118,10 +118,10 @@ public class CaptureDumpServiceTests
         await fixture.Service.DumpAsync();
 
         var files = fixture.DumpedFiles();
-        // The failure is recorded next to where its PNG would have been...
+        // Отказ записан там же, где лежал бы его PNG…
         await Assert.That(files).Contains("elementclient-битый.error.txt");
         await Assert.That(files).DoesNotContain("elementclient-битый-full.png");
-        // ...and the healthy window is still captured.
+        // …а здоровое окно всё равно снято.
         await Assert.That(files).Contains("elementclient-живой-full.png");
         await Assert.That(files).Contains("elementclient-живой-class-bin.png");
     }
@@ -145,7 +145,7 @@ public class CaptureDumpServiceTests
     public async Task Dump_SkipsEntriesWithNoDrivableWindow_AndStillCreatesTheFolder()
     {
         using var fixture = new Fixture();
-        // Registered without a facade — nothing to capture, but not an error either.
+        // Зарегистрировано без фасада — снимать нечего, но и ошибкой это не считается.
         fixture.Windows.Register(0x60, "elementclient");
 
         var folder = await fixture.Service.DumpAsync();

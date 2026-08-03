@@ -6,21 +6,20 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// D5: pause, step, run-to-node and breakpoints inside the walker.
+// D5: пауза, шаг, «до ноды» и точки останова внутри walker'а.
 //
-// Extends the executor suite rather than touching it — every pre-D5 test still runs with
-// Debugger = null, which is the undebugged path and the one the daemon takes whenever no
-// panel is attached. These cover the other path, and the three hazards it introduces:
+// Набор расширяет тесты исполнителя, а не переписывает их: каждый тест, написанный до D5,
+// по-прежнему гоняется с Debugger = null — это путь без отладчика, и именно им демон идёт всякий
+// раз, когда панель не подключена. Здесь покрыт второй путь и три опасности, которые он вносит:
 //
-//   · a walk parked with nobody attached would hold its single-flight slot forever;
-//   · a pause inside a node would strand a woken game client;
-//   · Stop has to be honest about whether it stops a walk or a run.
+//   · обход, припаркованный, когда никто не подключён, держал бы свой слот single-flight вечно;
+//   · пауза внутри ноды бросила бы разбуженного клиента игры в этом состоянии;
+//   · «Стоп» обязан честно говорить, что именно он останавливает — обход или прогон.
 //
-// The third is a protocol/UI decision (StopMacro cancels the RUN) and is asserted here only
-// as "cancellation unparks a paused walk".
+// Третья — решение уровня протокола и интерфейса (StopMacro отменяет ПРОГОН), и здесь она
+// проверяется только как «отмена распускает припаркованный обход».
 public class MacroDebuggerTests
 {
-    private const string Enter = "enter";
     private const string Exit = "exit";
 
     private static MacroDebugSession Session(bool attached = true)
@@ -30,10 +29,11 @@ public class MacroDebuggerTests
         {
             session.Acquire();
         }
+
         return session;
     }
 
-    // Three keys, so a pause between the second and the third is unambiguous.
+    // Три клавиши — тогда пауза между второй и третьей однозначна.
     private static MacroGraph Chain(string name = "цепочка") => ExecutorHarness.Graph(
         name,
         "a",
@@ -41,20 +41,21 @@ public class MacroDebuggerTests
         new KeyPressNode { Id = "b", Key = VirtualKey.F2, Next = "c" },
         new KeyPressNode { Id = "c", Key = VirtualKey.F3 });
 
-    /// <summary>Spins until <paramref name="condition"/> holds; fails the test rather than hanging forever.</summary>
+    /// <summary>Крутится, пока не выполнится <paramref name="condition"/>; роняет тест, а не виснет навсегда.</summary>
     private static async Task WaitFor(Func<bool> condition, string what)
     {
         for (var i = 0; i < 500 && !condition(); i++)
         {
             await Task.Delay(10);
         }
+
         await Assert.That(condition()).IsTrue().Because(what);
     }
 
     private static Task<Guid> WalkId(RecordingObserver observer) =>
         Task.FromResult(observer.Walks.Count > 0 ? observer.Walks[0].WalkId : Guid.Empty);
 
-    // ---- nothing attached: the walker must not notice the debugger exists ---------------
+    // ---- никто не подключён: обходчик не должен и заметить, что отладчик существует -------
 
     [Test]
     public async Task WithNoDebuggerAttached_BreakpointsDoNotBite()
@@ -63,8 +64,9 @@ public class MacroDebuggerTests
         var session = Session(attached: false);
         session.SetBreakpoints("цепочка", ["b"]);
 
-        // The daemon is resident: a breakpoint that halted a walk nobody is watching would
-        // wedge the macro's hotkey until a restart. Storage survives; the halt does not.
+        // Демон резидентен: точка останова, застопорившая обход, за которым никто не смотрит,
+        // заклинила бы хоткей макроса до самого перезапуска. Хранение переживает уход панели,
+        // остановка — нет.
         var result = await harness.Executor
             .RunAsync(Chain(), harness.Context(ExecutorHarness.Window, debugger: session), CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(5));
@@ -91,14 +93,15 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var spy = new CountingDebugger { IsActive = false };
 
-        await harness.Executor.RunAsync(Chain(), harness.Context(ExecutorHarness.Window, debugger: spy), CancellationToken.None);
+        await harness.Executor.RunAsync(Chain(), harness.Context(ExecutorHarness.Window, debugger: spy),
+            CancellationToken.None);
 
-        // The IsActive gate is the whole cost model, same as the observer's IsEnabled: an
-        // undebugged walk must not reach a lock or a dictionary per node.
+        // Затвор IsActive и есть вся модель расходов, ровно как IsEnabled у наблюдателя: обход
+        // без отладчика не имеет права дотягиваться до блокировки или словаря на каждой ноде.
         await Assert.That(spy.ArmCalls).IsEqualTo(0);
     }
 
-    // ---- breakpoints ---------------------------------------------------------------------
+    // ---- точки останова --------------------------------------------------------------------
 
     [Test]
     public async Task ABreakpointParksTheWalkBeforeTheNodeRuns()
@@ -113,18 +116,18 @@ public class MacroDebuggerTests
             harness.Context(ExecutorHarness.Window, observer: observer, debugger: session),
             CancellationToken.None);
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count > 0, "the walk should park");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count > 0, "обход должен встать на паузу");
 
-        // BEFORE, not during: exactly one key has been sent, and it is the one from node 'a'.
-        // This is hazard 2 in assertion form — the node the walk is parked at has not started,
-        // so nothing has woken a game window that is now waiting on a human.
+        // ДО, а не во время: отправлена ровно одна клавиша, и это та, что из ноды 'a'. Это
+        // опасность номер два, записанная проверкой: нода, на которой обход припаркован, ещё не
+        // начиналась, а значит, никто не разбудил окно игры, которое теперь ждало бы человека.
         await Assert.That(harness.Primitives.Calls).Count().IsEqualTo(1);
         var paused = observer.OfKind(RecordingObserver.PausedKind).Single();
         await Assert.That(paused.NodeId).IsEqualTo("b");
         await Assert.That(paused.Outcome).IsEqualTo(nameof(DebugPauseReason.Breakpoint));
 
-        // And the announcement lands AFTER the node's enter event, so the canvas has already
-        // lit the box the walk is standing on by the time it says «на паузе».
+        // А объявление приходит ПОСЛЕ события входа в ноду, так что к моменту, когда канва скажет
+        // «на паузе», она уже подсветила ту коробку, на которой обход и стоит.
         var kinds = observer.Entries.Select(e => $"{e.Kind}:{e.NodeId}").ToList();
         await Assert.That(kinds.IndexOf("paused:b")).IsGreaterThan(kinds.IndexOf("enter:b"));
 
@@ -153,7 +156,7 @@ public class MacroDebuggerTests
     public async Task BreakpointsAreKeyedByMacro_NotJustByNodeId()
     {
         var harness = new ExecutorHarness();
-        // 'b' exists in both graphs; the breakpoint belongs to the other one.
+        // 'b' есть в обоих графах; точка останова принадлежит другому.
         var session = Session();
         session.SetBreakpoints("другой", ["b"]);
 
@@ -167,8 +170,8 @@ public class MacroDebuggerTests
     [Test]
     public async Task BreakpointsSurviveAWalkAndApplyToTheNextOne()
     {
-        // The ergonomic half of "session, in the daemon": the panel can come and go, and so
-        // can runs — the red dot stays put until someone clears it.
+        // Эргономическая половина решения «сессия, и притом в демоне»: панель может приходить и
+        // уходить, прогоны тоже, — а красная точка стоит на месте, пока её кто-нибудь не снимет.
         var harness = new ExecutorHarness();
         var session = Session();
         session.SetBreakpoints("цепочка", ["c"]);
@@ -181,7 +184,8 @@ public class MacroDebuggerTests
                 harness.Context(ExecutorHarness.Window, observer: observer, debugger: session),
                 CancellationToken.None);
 
-            await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count > 0, $"attempt {attempt} should park");
+            await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count > 0,
+                $"попытка {attempt} должна встать на паузу");
             session.Command(await WalkId(observer), DebugCommand.Resume, null);
             await run.WaitAsync(TimeSpan.FromSeconds(5));
         }
@@ -189,7 +193,7 @@ public class MacroDebuggerTests
         await Assert.That(session.Breakpoints().Single().NodeIds).IsEquivalentTo(new[] { "c" });
     }
 
-    // ---- step / run-to-node / pause -------------------------------------------------------
+    // ---- шаг, «до ноды», пауза ---------------------------------------------------------------
 
     [Test]
     public async Task StepAdvancesExactlyOneNode()
@@ -204,14 +208,14 @@ public class MacroDebuggerTests
             harness.Context(ExecutorHarness.Window, observer: observer, debugger: session),
             CancellationToken.None);
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "park at a");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на ноде a");
         var walkId = await WalkId(observer);
 
         session.Command(walkId, DebugCommand.Step, null);
 
-        // One node ran, and the walk is parked again — this time because of the step, which
-        // the panel renders differently from a breakpoint.
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 2, "park at b");
+        // Одна нода отработала, и обход снова припаркован — на этот раз из-за шага, а его панель
+        // рисует не так, как точку останова.
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 2, "пауза на ноде b");
         await Assert.That(harness.Primitives.Calls).Count().IsEqualTo(1);
         var second = observer.OfKind(RecordingObserver.PausedKind)[1];
         await Assert.That(second.NodeId).IsEqualTo("b");
@@ -235,14 +239,14 @@ public class MacroDebuggerTests
             harness.Context(ExecutorHarness.Window, observer: observer, debugger: session),
             CancellationToken.None);
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "park at a");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на ноде a");
         session.Command(await WalkId(observer), DebugCommand.RunToNode, "c");
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 2, "park at c");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 2, "пауза на ноде c");
         var second = observer.OfKind(RecordingObserver.PausedKind)[1];
         await Assert.That(second.NodeId).IsEqualTo("c");
         await Assert.That(second.Outcome).IsEqualTo(nameof(DebugPauseReason.Cursor));
-        // 'a' and 'b' both ran; 'c' has not.
+        // 'a' и 'b' отработали обе; 'c' — нет.
         await Assert.That(harness.Primitives.Calls).Count().IsEqualTo(2);
 
         session.Command(await WalkId(observer), DebugCommand.Resume, null);
@@ -262,10 +266,10 @@ public class MacroDebuggerTests
             harness.Context(ExecutorHarness.Window, observer: observer, debugger: session),
             CancellationToken.None);
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "park at a");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на ноде a");
         session.Command(await WalkId(observer), DebugCommand.RunToNode, "не-существует");
 
-        // Not an error and not a hang: a branch that never goes there is a legitimate outcome.
+        // Ни ошибка, ни зависание: ветка, которая туда так и не заходит, — законный исход.
         var result = await run.WaitAsync(TimeSpan.FromSeconds(5));
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
     }
@@ -283,13 +287,13 @@ public class MacroDebuggerTests
             harness.Context(ExecutorHarness.Window, observer: observer, debugger: session),
             CancellationToken.None);
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "park at a");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на ноде a");
         var walkId = await WalkId(observer);
 
         var ack = session.Command(walkId, DebugCommand.RunToNode, null);
 
         await Assert.That(ack.Accepted).IsFalse();
-        // Still parked — the refusal did not release it by accident.
+        // По-прежнему припаркован: отказ не распустил его ненароком.
         await Assert.That(ack.Paused).IsTrue();
         await Assert.That(harness.Primitives.Calls).IsEmpty();
 
@@ -304,7 +308,7 @@ public class MacroDebuggerTests
         var observer = new RecordingObserver();
         var session = Session();
 
-        // Node 'a' blocks until we let it go, which is the window in which the Pause arrives.
+        // Нода 'a' стоит, пока мы её не отпустим, — вот в это окно «Пауза» и приходит.
         var inNode = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseNode = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         harness.Primitives.PressKeyGate = async () =>
@@ -323,15 +327,15 @@ public class MacroDebuggerTests
 
         var ack = session.Command(walkId, DebugCommand.Pause, null);
         await Assert.That(ack.Accepted).IsTrue();
-        // Not parked YET — the walk is inside a node that may run for a minute, and the panel
-        // has to say «пауза…» rather than «на паузе» until the event confirms it.
+        // ЕЩЁ не припаркован: обход внутри ноды, которая может отрабатывать минуту, и панель
+        // обязана говорить «пауза…», а не «на паузе», пока событие этого не подтвердит.
         await Assert.That(ack.Paused).IsFalse();
         await Assert.That(ack.PauseRequested).IsTrue();
 
         harness.Primitives.PressKeyGate = null;
         releaseNode.SetResult();
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "park at the next node");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на следующей ноде");
         var paused = observer.OfKind(RecordingObserver.PausedKind).Single();
         await Assert.That(paused.NodeId).IsEqualTo("b");
         await Assert.That(paused.Outcome).IsEqualTo(nameof(DebugPauseReason.Requested));
@@ -354,8 +358,8 @@ public class MacroDebuggerTests
 
         var ack = session.Command(await WalkId(observer), DebugCommand.Pause, null);
 
-        // «Accepted = false» is how the panel learns to stop lighting a Pause button for a
-        // walk that ended while the click was in flight.
+        // «Accepted = false» — это то, из чего панель узнаёт, что пора гасить кнопку «Пауза» для
+        // обхода, закончившегося, пока щелчок был в пути.
         await Assert.That(ack.Accepted).IsFalse();
     }
 
@@ -372,12 +376,13 @@ public class MacroDebuggerTests
             harness.Context(ExecutorHarness.Window, observer: observer, debugger: session),
             CancellationToken.None);
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "park at b");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на ноде b");
         session.Command(await WalkId(observer), DebugCommand.Resume, null);
         await run.WaitAsync(TimeSpan.FromSeconds(5));
 
-        // paused → resumed → the node actually runs. Without the resume event the toolbar
-        // would keep saying «на паузе» through a node that can legitimately take 60 seconds.
+        // На паузе → распущен → нода и правда отрабатывает. Без события о возобновлении панель
+        // инструментов твердила бы «на паузе» всё то время, пока идёт нода, которой законно
+        // требуется 60 секунд.
         var kinds = observer.Entries.Select(e => $"{e.Kind}:{e.NodeId}").ToList();
         var paused = kinds.IndexOf($"{RecordingObserver.PausedKind}:b");
         var resumed = kinds.IndexOf($"{RecordingObserver.ResumedKind}:b");
@@ -385,7 +390,7 @@ public class MacroDebuggerTests
         await Assert.That(kinds.IndexOf($"{Exit}:b")).IsGreaterThan(resumed);
     }
 
-    // ---- hazard 1: a parked walk must never outlive its audience -------------------------
+    // ---- опасность 1: припаркованный обход не должен пережить свою аудиторию ---------------
 
     [Test]
     public async Task TheLastDebuggerDetaching_AutoResumesEveryParkedWalk()
@@ -400,13 +405,13 @@ public class MacroDebuggerTests
             harness.Context(ExecutorHarness.Window, observer: observer, debugger: session),
             CancellationToken.None);
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "park at b");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на ноде b");
 
-        // The panel crashed, or the user just closed the window. Nothing can press resume.
+        // Панель упала — или пользователь просто закрыл окно. Нажать «Дальше» нечему.
         session.Release();
 
-        // The walk RUNS ON rather than aborting: it was started legitimately and abandoning a
-        // macro halfway can leave the game worse off than letting it finish.
+        // Обход ИДЁТ ДАЛЬШЕ, а не прерывается: запустили его законно, а брошенный на полпути
+        // макрос способен оставить игру в худшем состоянии, чем если бы он доработал.
         var result = await run.WaitAsync(TimeSpan.FromSeconds(5));
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
         await Assert.That(harness.Primitives.Calls).Count().IsEqualTo(3);
@@ -427,7 +432,7 @@ public class MacroDebuggerTests
             harness.Context(ExecutorHarness.Window, observer: observer, debugger: session),
             CancellationToken.None);
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "park at b");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на ноде b");
         session.Release();
 
         await Task.Delay(120);
@@ -451,12 +456,12 @@ public class MacroDebuggerTests
             .WaitAsync(TimeSpan.FromSeconds(5));
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
 
-        // Still there for the next panel — the daemon outliving the panel is exactly why
-        // session-scoped storage is enough.
+        // На месте и для следующей панели: именно потому, что демон переживает панель, хранения
+        // в пределах сессии и достаточно.
         await Assert.That(session.Breakpoints().Single().NodeIds).IsEquivalentTo(new[] { "b" });
     }
 
-    // ---- hazard 3: stop -------------------------------------------------------------------
+    // ---- опасность 3: стоп ---------------------------------------------------------------------
 
     [Test]
     public async Task CancellationUnparksAPausedWalk()
@@ -472,11 +477,11 @@ public class MacroDebuggerTests
             harness.Context(ExecutorHarness.Window, observer: observer, debugger: session),
             cts.Token);
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "park at b");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 1, "пауза на ноде b");
 
-        // ■ Стоп cancels the RUN's token — and daemon shutdown cancels every run's. Either
-        // way a parked walk has to come out of the gate rather than holding its single-flight
-        // slot until the process dies.
+        // «■ Стоп» отменяет токен ПРОГОНА, а выключение демона отменяет токены всех прогонов
+        // разом. И в том и в другом случае припаркованный обход обязан выйти из затвора, а не
+        // держать свой слот single-flight до самой смерти процесса.
         await cts.CancelAsync();
 
         var result = await run.WaitAsync(TimeSpan.FromSeconds(5));
@@ -484,7 +489,7 @@ public class MacroDebuggerTests
         await Assert.That(harness.Primitives.Calls).Count().IsEqualTo(1);
     }
 
-    // ---- fan-out: the unit is the walk ----------------------------------------------------
+    // ---- веер: единица здесь — обход ----------------------------------------------------------
 
     [Test]
     public async Task EachWalkOfAFanOutIsPausedIndependently()
@@ -504,7 +509,8 @@ public class MacroDebuggerTests
         var parent = ExecutorHarness.Graph(
             "parent",
             "fan",
-            new RunMacroNode { Id = "fan", MacroName = "sub", Target = new TargetSelector { RequireTags = ["клиент"] } });
+            new RunMacroNode
+                { Id = "fan", MacroName = "sub", Target = new TargetSelector { RequireTags = ["клиент"] } });
         session.SetBreakpoints("sub", ["press"]);
 
         var run = harness.Executor.RunAsync(
@@ -512,12 +518,13 @@ public class MacroDebuggerTests
             harness.Context(observer: observer, debugger: session),
             CancellationToken.None);
 
-        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 2, "both sub-walks park");
+        await WaitFor(() => observer.OfKind(RecordingObserver.PausedKind).Count == 2,
+            "оба вложенных обхода встали на паузу");
         var parked = observer.OfKind(RecordingObserver.PausedKind);
         await Assert.That(parked.Select(e => e.WalkId).Distinct()).Count().IsEqualTo(2);
 
-        // Releasing one leaves the other parked — which is the point of the walk picker: the
-        // user is looking at one of ten windows and steps that one.
+        // Распустив один, второй оставляем припаркованным — в этом и смысл выбора обхода:
+        // пользователь смотрит на одно из десяти окон и шагает именно им.
         session.Command(parked[0].WalkId, DebugCommand.Resume, null);
         await Task.Delay(120);
         await Assert.That(run.IsCompleted).IsFalse();
@@ -528,7 +535,7 @@ public class MacroDebuggerTests
         await Assert.That(harness.Primitives.Calls).Count().IsEqualTo(2);
     }
 
-    // ---- variable reporting ----------------------------------------------------------------
+    // ---- сообщения о переменных ----------------------------------------------------------------
 
     [Test]
     public async Task TheTriggerSeedIsReportedAtTheHeadOfTheWalk()
@@ -542,14 +549,15 @@ public class MacroDebuggerTests
             harness.Context(ExecutorHarness.Window, variables: variables, observer: observer),
             CancellationToken.None);
 
-        // No node ever writes `cursor`, so without this the variables panel could only ever
-        // show it as «нет значения» — the one value that is always available.
+        // `cursor` не пишет ни одна нода, так что без этого панель переменных всегда показывала бы
+        // его как «нет значения» — и это при том, что доступно оно всегда.
         var seed = observer.OfKind(RecordingObserver.VariableKind).Single();
         await Assert.That(seed.Outcome).IsEqualTo("cursor");
         await Assert.That(seed.Detail).IsEqualTo(new ScreenPoint(1804, 902).ToString());
         await Assert.That(seed.NodeId).IsNull();
 
-        // And it is reported before the first node, so a walk paused on node one already has it.
+        // И сообщается оно до первой ноды, так что у обхода, вставшего на паузу на первой же,
+        // оно уже есть.
         await Assert.That(observer.Entries[1].Kind).IsEqualTo(RecordingObserver.VariableKind);
     }
 
@@ -580,7 +588,8 @@ public class MacroDebuggerTests
             CancellationToken.None);
 
         var writes = observer.OfKind(RecordingObserver.VariableKind);
-        await Assert.That(writes.Select(e => e.Outcome)).IsEquivalentTo(new[] { "tag", "точка" });
+        await Assert.That(observer.OutcomesOf(RecordingObserver.VariableKind))
+            .IsEquivalentTo(new[] { "tag", "точка" });
         await Assert.That(writes[0].Detail).IsEqualTo("Жрец");
         await Assert.That(writes[0].NodeId).IsEqualTo("r");
         await Assert.That(writes[1].Detail).IsEqualTo(new ScreenPoint(1190, 1802).ToString());
@@ -598,7 +607,8 @@ public class MacroDebuggerTests
             ExecutorHarness.Graph(
                 "тихо",
                 "r",
-                new RecognizeTagNode { Id = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1), ApplyTag = false }),
+                new RecognizeTagNode
+                    { Id = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1), ApplyTag = false }),
             harness.Context(ExecutorHarness.Window, variables: MacroVariables.ForTrigger(default), observer: observer),
             CancellationToken.None);
 
@@ -608,8 +618,8 @@ public class MacroDebuggerTests
     [Test]
     public async Task AVariableWriteStillHappensWhenNobodyIsListening()
     {
-        // The report is instrumentation; the assignment is behaviour. Routing both through one
-        // helper is only safe if the gate covers the first and not the second.
+        // Сообщение — это трассировка, а присваивание — поведение. Пропускать оба через один
+        // помощник безопасно лишь при условии, что затвор закрывает первое и не трогает второе.
         var harness = new ExecutorHarness();
         harness.Primitives.RecognizeHandler = (_, _, _) => "Жрец";
 
@@ -631,7 +641,7 @@ public class MacroDebuggerTests
         await Assert.That(harness.Primitives.Calls.Single(c => c.Op == "SetIcon").A).IsEqualTo("icons/Жрец.png");
     }
 
-    /// <summary>Counts <see cref="IMacroDebugger.Arm"/> calls, to prove the gate is skipped when inactive.</summary>
+    /// <summary>Считает вызовы <see cref="IMacroDebugger.Arm"/> — чтобы доказать, что неактивный затвор обходят стороной.</summary>
     private sealed class CountingDebugger : IMacroDebugger
     {
         public bool IsActive { get; set; }

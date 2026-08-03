@@ -9,18 +9,18 @@ using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// D5: the debugger as the panel sees it — headless, against a fake daemon.
+// D5: отладчик таким, каким его видит панель, — без окон, против поддельного демона.
 //
-// What is worth pinning here is not "the button sends the request" but the state machine
-// around it: which controls are live at which moment, what the toolbar SAYS, and the two
-// places the panel could quietly lie — a stop button that does not admit it stops N walks,
-// and a pause that has been asked for but has not landed.
+// Закреплять здесь стоит не «кнопка отправляет запрос», а тот автомат состояний, который вокруг
+// неё живёт: какие органы управления живы в какой момент, что ГОВОРИТ панель инструментов и два
+// места, где панель могла бы втихую соврать, — кнопка остановки, не признающаяся, что
+// останавливает N обходов, и пауза, о которой попросили, но которая ещё не наступила.
 public class MacroDebuggerViewModelTests
 {
     private static MacroEditorViewModel CreateEditor(FakeIpcClient client) =>
         new(client, null, null, ImmediateUiDispatcher.Instance, @"C:\smartmacro\macros");
 
-    /// <summary>Three delays and a tag write — enough to have a middle, an end and a variable.</summary>
+    /// <summary>Три задержки и запись тега — достаточно, чтобы были и середина, и конец, и переменная.</summary>
     private static MacroGraph Sample() => new()
     {
         Name = "pw-boot",
@@ -54,14 +54,14 @@ public class MacroDebuggerViewModelTests
         return editor;
     }
 
-    // ---- when the toolbar exists at all ------------------------------------------------
+    // ---- когда панель инструментов вообще существует -------------------------------------
 
     [Test]
     public async Task WithNoWalkOnRecord_ThereIsNoDebuggerToolbar()
     {
         var editor = Opened(Daemon());
 
-        // Four permanently dead buttons is how a toolbar stops being read.
+        // Четыре вечно мёртвые кнопки — вот так панель инструментов и перестают читать.
         await Assert.That(editor.HasDebugTarget).IsFalse();
         await Assert.That(editor.CanPause).IsFalse();
         await Assert.That(editor.CanStop).IsFalse();
@@ -104,16 +104,17 @@ public class MacroDebuggerViewModelTests
         daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "a"));
         daemon.Push(RunEvents.Finished(walk, 500, RunOutcomes.Completed));
 
-        // "The walk I was watching just ended" must not strand a lit Pause button.
+        // «Обход, за которым я смотрел, только что кончился» не имеет права оставить после себя
+        // горящую кнопку «Пауза».
         await Assert.That(editor.CanPause).IsFalse();
         await Assert.That(editor.CanResume).IsFalse();
         await Assert.That(editor.CanStop).IsFalse();
         await Assert.That(editor.SelectedRunIsPaused).IsFalse();
-        // The chip stays, so the log of the finished walk is still readable.
+        // Фишка остаётся, так что лог завершившегося обхода по-прежнему читаем.
         await Assert.That(editor.HasDebugTarget).IsTrue();
     }
 
-    // ---- pause: request, then confirmation ----------------------------------------------
+    // ---- пауза: сперва просьба, потом подтверждение ---------------------------------------
 
     [Test]
     public async Task PauseIsShownAsPENDING_UntilTheDaemonConfirmsIt()
@@ -126,15 +127,15 @@ public class MacroDebuggerViewModelTests
 
         await editor.PauseAsync();
 
-        // ⏸ is honoured at the next node boundary, which a WaitForElement can hold off for a
-        // minute. Without this state the button greys out and nothing else changes — looking
-        // at that is what turned it up.
+        // «Паузу» уважают на ближайшей границе нод, а WaitForElement способен оттянуть эту границу
+        // на минуту. Без отдельного состояния кнопка просто сереет, и больше не меняется ничего, —
+        // а нашлось это, когда на такое посмотрели вживую.
         await Assert.That(editor.DebugStateText).IsEqualTo("пауза…");
         await Assert.That(editor.SelectedRunPauseVisible).IsTrue();
         await Assert.That(editor.PauseNotice).IsEqualTo("пауза запрошена — ждём конца ноды");
         await Assert.That(editor.SelectedRunIsPaused).IsFalse();
         await Assert.That(editor.CanResume).IsFalse();
-        // And it cannot be asked for twice.
+        // И попросить об этом дважды нельзя.
         await Assert.That(editor.CanPause).IsFalse();
 
         daemon.Push(RunEvents.Entered(walk, 900, "b"), RunEvents.Paused(walk, 900, "b"));
@@ -153,7 +154,7 @@ public class MacroDebuggerViewModelTests
         var walk = RunEvents.Walk("pw-boot", hwnd: 0x1);
         daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "c"), RunEvents.Breakpoint(walk, 0, "c"));
 
-        // Same parked state, different rendering — the mockup's red pill.
+        // Состояние парковки то же самое, рисуется иначе — красная пилюля из макета.
         await Assert.That(editor.SelectedRunIsPaused).IsTrue();
         await Assert.That(editor.SelectedRunAtBreakpoint).IsTrue();
         await Assert.That(editor.PauseNotice).IsEqualTo("брейкпоинт: c");
@@ -204,7 +205,7 @@ public class MacroDebuggerViewModelTests
         var sent = daemon.PayloadsOf<DebugCommandRequest>(IpcMessageTypes.DebugCommand);
         await Assert.That(sent.Select(r => r.Command)).IsEquivalentTo(new[] { DebugCommand.Step, DebugCommand.RunToNode });
         await Assert.That(sent.All(r => r.WalkId == walk.WalkId)).IsTrue();
-        // «До курсора» aims at the node selected on the canvas, not at a walk-relative offset.
+        // «До курсора» целится в ноду, выбранную на канве, а не в смещение относительно обхода.
         await Assert.That(sent[1].NodeId).IsEqualTo("c");
     }
 
@@ -223,7 +224,7 @@ public class MacroDebuggerViewModelTests
         await Assert.That(editor.CanRunToCursor).IsTrue();
     }
 
-    // ---- hazard 3: stop has to say what it stops -----------------------------------------
+    // ---- опасность 3: «Стоп» обязан сказать, что именно он останавливает ---------------------
 
     [Test]
     public async Task StopCancelsTheRUN_AndTheLabelSaysHowManyWalksThatIs()
@@ -240,8 +241,8 @@ public class MacroDebuggerViewModelTests
             daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "a"));
         }
 
-        // Pause and step are per-WALK; stop is per-RUN, and there is no per-walk cancellation
-        // to offer instead. The count is how the button admits the asymmetry.
+        // Пауза и шаг работают по ОБХОДУ, а «Стоп» — по ПРОГОНУ, и предложить вместо него отмену
+        // одного обхода нечем. Счётчик — это то, чем кнопка признаётся в этой несимметричности.
         await Assert.That(editor.StopLabel).IsEqualTo("■ Стоп ×3");
         await Assert.That(editor.StopTooltip).Contains("все 3");
 
@@ -275,11 +276,11 @@ public class MacroDebuggerViewModelTests
         daemon.Push(RunEvents.Started(second), RunEvents.Entered(second, 0, "a"));
         daemon.Push(RunEvents.Finished(second, 10, RunOutcomes.Completed));
 
-        // Promising to stop two when one has already ended would be its own small lie.
+        // Пообещать остановить два, когда один уже закончился, — это была бы своя маленькая ложь.
         await Assert.That(editor.StopLabel).IsEqualTo("■ Стоп");
     }
 
-    // ---- canvas state -------------------------------------------------------------------
+    // ---- состояние канвы --------------------------------------------------------------------
 
     [Test]
     public async Task PassedNodesCarryTheirTimeAndOutcome()
@@ -319,7 +320,8 @@ public class MacroDebuggerViewModelTests
             RunEvents.Entered(walk, 0, "d"),
             RunEvents.Exited(walk, 5, "d", RunOutcomes.Ok, null, 5));
 
-        // «✓ 2 мс» printed over «нет окон» was legible as neither — found by looking.
+        // «✓ 2 мс», напечатанное поверх «нет окон», не читалось ни как то, ни как другое, — нашлось
+        // при взгляде на живой экран.
         await Assert.That(icon.ShowsRunStamp).IsTrue();
         await Assert.That(icon.ShowsTargetChip).IsFalse();
     }
@@ -352,7 +354,8 @@ public class MacroDebuggerViewModelTests
 
         editor.SelectedRun = editor.Runs.Single(r => r.WalkId == second.WalkId);
 
-        // The first walk's ticks must not linger on a graph now following the second.
+        // Галочки первого обхода не имеют права задерживаться на графе, который следует уже за
+        // вторым.
         await Assert.That(editor.Nodes.Single(n => n.NodeId == "a").IsPassed).IsFalse();
         await Assert.That(editor.Nodes.Single(n => n.NodeId == "a").IsExecuting).IsTrue();
     }
@@ -371,8 +374,8 @@ public class MacroDebuggerViewModelTests
     [Test]
     public async Task AnUnknownEventKindIsIgnored()
     {
-        // A panel older than its daemon has to lose a feature, not the log. Pinned because
-        // the whole D5 protocol rides on this property of the tracker's default branch.
+        // Панель постарее своего демона обязана потерять возможность, а не лог. Закреплено потому,
+        // что на этом свойстве ветки по умолчанию у трекера держится весь протокол D5.
         var daemon = Daemon();
         var editor = Opened(daemon);
         var walk = RunEvents.Walk("pw-boot", hwnd: 0x1);
@@ -383,7 +386,7 @@ public class MacroDebuggerViewModelTests
         await Assert.That(editor.RunProgressText).IsEqualTo("1 / 4");
     }
 
-    // ---- breakpoints ----------------------------------------------------------------------
+    // ---- точки останова -----------------------------------------------------------------------
 
     [Test]
     public async Task TickingABreakpointSendsTheWholeSetForThatMacro()
@@ -402,8 +405,8 @@ public class MacroDebuggerViewModelTests
     [Test]
     public async Task BreakpointsFromTheDaemonAreAppliedWhenTheGraphIsOpened()
     {
-        // The daemon outlives the panel, so this IS the "my breakpoints are still there"
-        // case — no file, no save, no diff.
+        // Демон переживает панель, так что это И ЕСТЬ тот самый случай «мои точки останова на
+        // месте» — без файла, без сохранения, без диффа.
         var daemon = Daemon(new BreakpointSetDto("pw-boot", ["c"]));
         var editor = Opened(daemon);
 
@@ -438,8 +441,8 @@ public class MacroDebuggerViewModelTests
 
         editor.Nodes.Single(n => n.NodeId == "b").NodeId = "задержка";
 
-        // The set is derived from the ROWS, so this works without any rename bookkeeping —
-        // which is the reason it is derived from the rows.
+        // Набор выводится из СТРОК, поэтому всё работает без всякого учёта переименований, — ради
+        // этого он из строк и выводится.
         var sent = daemon.PayloadsOf<SetBreakpointsRequest>(IpcMessageTypes.SetBreakpoints);
         await Assert.That(sent[^1].NodeIds).IsEquivalentTo(new[] { "задержка" });
     }
@@ -468,7 +471,7 @@ public class MacroDebuggerViewModelTests
         await Assert.That(daemon.PayloadsOf<SetBreakpointsRequest>(IpcMessageTypes.SetBreakpoints)[^1].NodeIds).IsEmpty();
     }
 
-    // ---- variables panel --------------------------------------------------------------
+    // ---- панель переменных ---------------------------------------------------------------
 
     [Test]
     public async Task TheVariablesPanelIsBuiltFromTheGraphBeforeAnythingHasRun()
@@ -511,8 +514,8 @@ public class MacroDebuggerViewModelTests
 
         var cursor = editor.Variables.Single(v => v.RawName == "cursor");
 
-        // «click, tag · в точке клика» claimed the tag node read a click point. Found by
-        // looking at it; the per-reader breakdown moved into the tooltip.
+        // «click, tag · в точке клика» утверждало, будто нода tag читала точку клика. Нашлось при
+        // взгляде на живой экран; разбивка по читателям переехала во всплывающую подсказку.
         await Assert.That(cursor.ReadBy).IsEqualTo("click, tag");
         await Assert.That(cursor.ReadWhere).IsNull();
         await Assert.That(cursor.ReadDetail).Contains("click — в точке клика");
@@ -560,7 +563,8 @@ public class MacroDebuggerViewModelTests
 
         ((SetIconNodeRowViewModel)editor.Nodes.Single(n => n.NodeId == "d")).IconPath = "icons/{новая}.png";
 
-        // Typing a placeholder has to add a reader before the macro has ever been run.
+        // Набранная подстановка обязана добавить читателя ещё до того, как макрос хоть раз
+        // запускали.
         var added = editor.Variables.Single(v => v.RawName == "новая");
         await Assert.That(added.ReadBy).IsEqualTo("d");
         await Assert.That(added.IsUndefined).IsTrue();
@@ -580,8 +584,8 @@ public class MacroDebuggerViewModelTests
 
         editor.HighlightVariable(null);
 
-        // A hover affordance, not part of the graph: it must not linger and compete with the
-        // real edges.
+        // Это подсказка при наведении, а не часть графа: она не имеет права задерживаться и
+        // соперничать с настоящими рёбрами.
         await Assert.That(editor.Nodes.Any(n => n.IsVariableSource || n.IsVariableConsumer)).IsFalse();
         await Assert.That(editor.VariableLinks).IsEmpty();
     }
@@ -593,11 +597,11 @@ public class MacroDebuggerViewModelTests
 
         editor.HighlightVariable(editor.Variables.Single(v => v.RawName == "cursor"));
 
-        // Nothing on the canvas writes it, so there is no source end to draw from.
+        // На канве её не пишет ничто, так что и рисовать не от чего — исходного конца нет.
         await Assert.That(editor.VariableLinks).IsEmpty();
     }
 
-    // ---- reconnect ------------------------------------------------------------------------
+    // ---- переподключение ---------------------------------------------------------------------
 
     [Test]
     public async Task ReconnectingReReadsTheBreakpoints()
@@ -609,8 +613,8 @@ public class MacroDebuggerViewModelTests
         daemon.Respond(IpcMessageTypes.GetBreakpoints, new[] { new BreakpointSetDto("pw-boot", ["b"]) });
         daemon.RaiseConnected();
 
-        // Subscriptions do not survive a reconnect and neither does the panel's copy of the
-        // set — but the daemon's own copy does, so re-reading is what restores the dots.
+        // Ни подписки, ни панельная копия набора переподключение не переживают, — а вот собственная
+        // копия демона переживает, поэтому точки возвращает именно повторное чтение.
         await Assert.That(editor.Nodes.Single(n => n.NodeId == "b").HasBreakpoint).IsTrue();
     }
 }

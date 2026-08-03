@@ -4,12 +4,12 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2a: MacroGraphJson is THE dialect for macro files — every node type, trigger type,
-// selector, and editor coordinate must survive a round trip, and malformed input must
-// fail with a clean JsonException (storage surfaces it as "file is broken", not a crash).
+// W0.2a: MacroGraphJson — ЭТО диалект файлов макросов: каждый тип ноды, каждый тип триггера,
+// селекторы и координаты редактора обязаны пережить round trip, а испорченный ввод обязан падать
+// чистым JsonException (хранилище показывает это как «файл битый», а не как крах).
 public class MacroGraphJsonTests
 {
-    // Shared with the IPC dialect tests — see FullMacroGraphFixture.
+    // Общий с тестами диалекта IPC — см. FullMacroGraphFixture.
     private static MacroGraph BuildFullGraph() => FullMacroGraphFixture.Build();
 
     [Test]
@@ -20,12 +20,12 @@ public class MacroGraphJsonTests
         var json = MacroGraphJson.Serialize(original);
         var reloaded = MacroGraphJson.Deserialize(json);
 
-        // Full-fidelity check: a second serialization of the reloaded graph must be
-        // byte-identical (records with List members don't value-compare, so the JSON
-        // form IS the equality witness).
+        // Проверка на полное соответствие: повторная сериализация перечитанного графа обязана
+        // совпасть байт в байт (записи с полями-List не сравниваются по значению, так что
+        // свидетелем равенства выступает форма JSON).
         await Assert.That(MacroGraphJson.Serialize(reloaded)).IsEqualTo(json);
 
-        // Spot checks on the typed model.
+        // Выборочные проверки по типизированной модели.
         await Assert.That(reloaded.Name).IsEqualTo("полный");
         await Assert.That(reloaded.StartNodeId).IsEqualTo("key");
         await Assert.That(reloaded.Triggers).Count().IsEqualTo(3);
@@ -77,7 +77,7 @@ public class MacroGraphJsonTests
             await Assert.That(json).Contains($"\"$type\": \"{discriminator}\"");
         }
 
-        // Enums serialize as names, not numbers.
+        // Перечисления сериализуются именами, а не числами.
         await Assert.That(json).Contains("\"F8\"");
         await Assert.That(json).Contains("Control, Shift");
         await Assert.That(json).Contains("XButton1");
@@ -86,7 +86,7 @@ public class MacroGraphJsonTests
     [Test]
     public async Task Deserialize_AppliesDocumentedDefaults()
     {
-        // Await, ApplyTag, ResultVar, Triggers omitted — defaults must kick in.
+        // Await, ApplyTag, ResultVar и Triggers опущены — обязаны сработать значения по умолчанию.
         const string json =
             """
             {

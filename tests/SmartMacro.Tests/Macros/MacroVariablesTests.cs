@@ -3,9 +3,9 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2a: run variables — trigger seeds `cursor`, reads of missing names throw (the
-// executor converts that into a run abort), {var} interpolation, and sub-run clones
-// that never share state with the parent.
+// W0.2a: переменные прогона — триггер кладёт затравкой `cursor`, чтение отсутствующего имени
+// бросает исключение (исполнитель превращает это в прерывание прогона), подстановка {var} и
+// клоны для под-прогонов, которые никогда не делят состояние с родителем.
 public class MacroVariablesTests
 {
     [Test]
@@ -53,7 +53,7 @@ public class MacroVariablesTests
 
         var result = variables.Interpolate("icons/{tag}-{n}{cursor}.png");
 
-        // Numbers render invariant-culture; points render via ScreenPoint.ToString().
+        // Числа печатаются в инвариантной культуре, точки — через ScreenPoint.ToString().
         await Assert.That(result).IsEqualTo("icons/виз-2.5(3,4).png");
     }
 

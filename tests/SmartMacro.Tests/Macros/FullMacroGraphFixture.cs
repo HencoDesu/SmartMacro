@@ -4,30 +4,33 @@ using SmartMacro.Native;
 namespace SmartMacro.Tests.Macros;
 
 /// <summary>
-/// One graph exercising EVERY node type, every trigger type, selectors, editor
-/// coordinates and both ClickNode shapes. Shared so that each serialization dialect
-/// (file JSON via <see cref="MacroGraphJson"/>, wire JSON via
-/// <c>IpcJson</c>) is tested against the same worst case — a node type added to the model
-/// and forgotten here goes untested in both places at once, which is the failure mode
-/// worth making loud.
+/// Один граф, задействующий КАЖДЫЙ тип ноды, каждый тип триггера, селекторы, координаты
+/// редактора и обе формы ClickNode. Общий на всех, чтобы каждый диалект сериализации (файловый
+/// JSON через <see cref="MacroGraphJson"/>, проводной через <c>IpcJson</c>) проверялся на одном
+/// и том же худшем случае: тип ноды, добавленный в модель и забытый здесь, разом остаётся без
+/// проверки в обоих местах — а это ровно тот режим отказа, о котором стоит кричать.
 /// </summary>
 public static class FullMacroGraphFixture
 {
-    /// <summary>Index of each node inside <see cref="Build"/>'s <c>Nodes</c> list, for spot checks.</summary>
+    /// <summary>Индекс каждой ноды в списке <c>Nodes</c> у <see cref="Build"/> — для выборочных проверок.</summary>
     public const int KeyPressIndex = 0;
+
     public const int ClickLiteralIndex = 1;
     public const int ClickVarIndex = 2;
     public const int RunMacroIndex = 7;
     public const int FindIndex = 8;
     public const int RecognizeIndex = 10;
 
-    /// <summary>Total node count — asserted so that adding a node type forces this file to be revisited.</summary>
+    /// <summary>
+    /// Всего нод — проверяется утверждением, чтобы добавление нового типа ноды заставило
+    /// вернуться в этот файл.
+    /// </summary>
     public const int NodeCount = 11;
 
-    /// <summary>Total trigger count.</summary>
+    /// <summary>Всего триггеров.</summary>
     public const int TriggerCount = 3;
 
-    /// <param name="name">Graph name; parameterized so a test can build a two-macro library.</param>
+    /// <param name="name">Имя графа; вынесено в параметр, чтобы тест мог собрать библиотеку из двух макросов.</param>
     public static MacroGraph Build(string name = "полный") => new()
     {
         Name = name,
@@ -48,7 +51,8 @@ public static class FullMacroGraphFixture
                 Next = "clickLiteral",
                 Editor = new NodeEditorInfo(10.5, -20.25),
             },
-            new ClickNode { Id = "clickLiteral", Point = new ScreenPoint(100, 200), DoubleClick = true, Next = "clickVar" },
+            new ClickNode
+                { Id = "clickLiteral", Point = new ScreenPoint(100, 200), DoubleClick = true, Next = "clickVar" },
             new ClickNode { Id = "clickVar", PointVar = "cursor", Next = "delay" },
             new DelayNode { Id = "delay", Ms = 250, Next = "addTag" },
             new AddTagNode { Id = "addTag", Tag = "класс-{tag}", Next = "removeTag" },

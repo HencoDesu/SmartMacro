@@ -5,13 +5,13 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// D3b: the walker's progress channel.
+// D3b: канал прогресса обходчика.
 //
-// Extends the walker suite rather than replacing any of it — every existing test still runs
-// with Observer = null, which is the untraced path and the one the daemon takes whenever no
-// panel is watching. These cover the other path: what is reported, what a WALK is (as
-// opposed to a run), and the guarantee the whole design rests on — that an unwatched daemon
-// pays for none of it.
+// Набор расширяет тесты обходчика, ничего в них не заменяя: каждый уже написанный тест
+// по-прежнему идёт с Observer = null — это путь без трассировки, и именно им демон идёт всякий
+// раз, когда никакая панель не смотрит. Здесь покрыт второй путь: о чём сообщают, что такое
+// ОБХОД (в отличие от прогона) и та гарантия, на которой держится вся конструкция, — что демон,
+// за которым не наблюдают, не платит за это ничем.
 public class MacroExecutorTracingTests
 {
     private const string Enter = "enter";
@@ -19,7 +19,7 @@ public class MacroExecutorTracingTests
     private const string WalkStart = "walk";
     private const string WalkEnd = "end";
 
-    // ---- the flooding guarantee ------------------------------------------------------
+    // ---- гарантия от затопления --------------------------------------------------------
 
     [Test]
     public async Task WithNobodyListening_NoNodeEventsAreProduced()
@@ -32,15 +32,16 @@ public class MacroExecutorTracingTests
             new DelayNode { Id = "a", Ms = 0, Next = "b" },
             new KeyPressNode { Id = "b", Key = VirtualKey.C });
 
-        await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer), CancellationToken.None);
+        await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
+            CancellationToken.None);
 
-        // This is the load-bearing assertion of the wave: the daemon is resident and the
-        // panel is not, so the common case must cost nothing on the walker's hot path.
+        // Это несущая проверка всей волны: демон резидентен, а панель нет, — значит, обычный
+        // случай обязан не стоить ничего на горячем пути обходчика.
         await Assert.That(observer.OfKind(Enter)).IsEmpty();
         await Assert.That(observer.OfKind(Exit)).IsEmpty();
 
-        // The walk-level pair still fires — it is twice per RUN, and it is what lets a panel
-        // connecting mid-run discover that a run exists at all.
+        // Пара событий уровня обхода срабатывает всё равно — это дважды за ПРОГОН, и именно она
+        // позволяет панели, подключившейся посреди прогона, вообще узнать, что прогон есть.
         await Assert.That(observer.OfKind(WalkStart)).Count().IsEqualTo(1);
         await Assert.That(observer.OfKind(WalkEnd)).Count().IsEqualTo(1);
     }
@@ -54,13 +55,14 @@ public class MacroExecutorTracingTests
             "a",
             new KeyPressNode { Id = "a", Key = VirtualKey.F1 });
 
-        var result = await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window), CancellationToken.None);
+        var result =
+            await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
         await Assert.That(harness.Primitives.Calls.Select(call => call.Op)).IsEquivalentTo(new[] { "PressKey" });
     }
 
-    // ---- what a node reports ---------------------------------------------------------
+    // ---- о чём сообщает нода -----------------------------------------------------------
 
     [Test]
     public async Task EveryNodeReportsAnEnterAndAnExit_InWalkOrder()
@@ -74,7 +76,8 @@ public class MacroExecutorTracingTests
             new ClickNode { Id = "b", Point = new ScreenPoint(1192, 1805), Next = "c" },
             new KeyPressNode { Id = "c", Key = VirtualKey.C });
 
-        await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer), CancellationToken.None);
+        await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
+            CancellationToken.None);
 
         await Assert.That(observer.Entries.Select(e => $"{e.Kind}:{e.NodeId}")).IsEquivalentTo(new[]
         {
@@ -95,7 +98,8 @@ public class MacroExecutorTracingTests
             new KeyPressNode { Id = "key", Key = VirtualKey.C, Next = "wait" },
             new DelayNode { Id = "wait", Ms = 500 });
 
-        await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer), CancellationToken.None);
+        await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
+            CancellationToken.None);
 
         var details = observer.OfKind(Exit).ToDictionary(e => e.NodeId!, e => e.Detail);
         await Assert.That(details["click"]).IsEqualTo("1192,1805");
@@ -118,14 +122,16 @@ public class MacroExecutorTracingTests
         var graph = ExecutorHarness.Graph(
             "веер",
             "a",
-            new KeyPressNode { Id = "a", Key = VirtualKey.F1, Target = new TargetSelector { RequireTags = ["Жрец"] }, Next = "b" },
-            new KeyPressNode { Id = "b", Key = VirtualKey.F2, Target = new TargetSelector { RequireTags = ["Оборотень"] } });
+            new KeyPressNode
+                { Id = "a", Key = VirtualKey.F1, Target = new TargetSelector { RequireTags = ["Жрец"] }, Next = "b" },
+            new KeyPressNode
+                { Id = "b", Key = VirtualKey.F2, Target = new TargetSelector { RequireTags = ["Оборотень"] } });
 
         await harness.Executor.RunAsync(graph, harness.Context(observer: observer), CancellationToken.None);
 
         var details = observer.OfKind(Exit).ToDictionary(e => e.NodeId!, e => e.Detail);
         await Assert.That(details["a"]).IsEqualTo("F1 ×2");
-        // Zero matches is a legal no-op, and the log is the only place it is visible.
+        // Ноль совпадений — законное «ничего не делаем», и увидеть это можно только в логе.
         await Assert.That(details["b"]).IsEqualTo("F2 ×0");
     }
 
@@ -145,10 +151,11 @@ public class MacroExecutorTracingTests
             new WaitForElementNode { Id = "lost", Template = "Nope", TimeoutMs = 1, Timeout = "tag" },
             new RecognizeTagNode { Id = "tag", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) });
 
-        await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer), CancellationToken.None);
+        await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
+            CancellationToken.None);
 
         var exits = observer.OfKind(Exit);
-        await Assert.That(exits.Select(e => e.Outcome)).IsEquivalentTo(new[]
+        await Assert.That(observer.OutcomesOf(Exit)).IsEquivalentTo(new[]
         {
             RunOutcomes.Found, RunOutcomes.Timeout, RunOutcomes.NotMatched,
         });
@@ -161,10 +168,11 @@ public class MacroExecutorTracingTests
     {
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
-        // No context window and no selector — the walker aborts inside this node.
+        // Ни контекстного окна, ни селектора — обходчик прерывается прямо внутри этой ноды.
         var graph = ExecutorHarness.Graph("падение", "a", new KeyPressNode { Id = "a", Key = VirtualKey.C });
 
-        var result = await harness.Executor.RunAsync(graph, harness.Context(observer: observer), CancellationToken.None);
+        var result =
+            await harness.Executor.RunAsync(graph, harness.Context(observer: observer), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
         var exit = observer.OfKind(Exit).Single();
@@ -180,10 +188,7 @@ public class MacroExecutorTracingTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         using var cts = new CancellationTokenSource();
-        harness.Primitives.PressKeyGate = async () =>
-        {
-            await cts.CancelAsync();
-        };
+        harness.Primitives.PressKeyGate = async () => { await cts.CancelAsync(); };
 
         var graph = ExecutorHarness.Graph(
             "отмена",
@@ -191,13 +196,14 @@ public class MacroExecutorTracingTests
             new KeyPressNode { Id = "a", Key = VirtualKey.C, Next = "b" },
             new DelayNode { Id = "b", Ms = 5000 });
 
-        var result = await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer), cts.Token);
+        var result = await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
+            cts.Token);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Cancelled);
         await Assert.That(observer.OfKind(WalkEnd).Single().Outcome).IsEqualTo(RunOutcomes.Cancelled);
     }
 
-    // ---- walks vs runs ---------------------------------------------------------------
+    // ---- обходы против прогонов ----------------------------------------------------------
 
     [Test]
     public async Task AFanOutOfSubMacrosIsOneWalkPerWindow_AllSharingTheRunId()
@@ -227,10 +233,11 @@ public class MacroExecutorTracingTests
                 Target = new TargetSelector { RequireTags = ["клиент"] },
             });
 
-        await harness.Executor.RunAsync(parent, harness.Context(observer: observer, runId: runId), CancellationToken.None);
+        await harness.Executor.RunAsync(parent, harness.Context(observer: observer, runId: runId),
+            CancellationToken.None);
 
-        // Four walks: the parent plus one per window. This is exactly why the panel follows a
-        // WALK — following the run would mean three windows fighting over one highlight.
+        // Четыре обхода: родитель плюс по одному на окно. Ровно поэтому панель и следит за
+        // ОБХОДОМ: следи она за прогоном — три окна дрались бы за одну подсветку.
         var walks = observer.Walks;
         await Assert.That(walks).Count().IsEqualTo(4);
         await Assert.That(walks.Select(w => w.WalkId).Distinct()).Count().IsEqualTo(4);
@@ -246,7 +253,7 @@ public class MacroExecutorTracingTests
         await Assert.That(children.Select(w => w.ContextWindow!.Value.ToInt64()).OrderBy(h => h))
             .IsEquivalentTo(new long[] { 0x11, 0x12, 0x13 });
 
-        // And the parent's own node line says what it fanned out to.
+        // А собственная строка ноды родителя говорит, на кого он развернулся веером.
         await Assert.That(observer.OfKind(Exit).Single(e => e.NodeId == "fan").Detail)
             .IsEqualTo("pw-identify-one ×3");
     }
@@ -268,12 +275,13 @@ public class MacroExecutorTracingTests
         var parent = ExecutorHarness.Graph(
             "parent",
             "fan",
-            new RunMacroNode { Id = "fan", MacroName = "sub", Target = new TargetSelector { RequireTags = ["клиент"] } });
+            new RunMacroNode
+                { Id = "fan", MacroName = "sub", Target = new TargetSelector { RequireTags = ["клиент"] } });
 
         await harness.Executor.RunAsync(parent, harness.Context(observer: observer), CancellationToken.None);
 
-        // Two 'press' nodes reported, under two DIFFERENT walk ids — otherwise the panel
-        // could not tell the ten boots of a party apart.
+        // Сообщено о двух нодах 'press' под РАЗНЫМИ id обходов — иначе панель не отличила бы друг
+        // от друга десять загрузок партии.
         var presses = observer.OfKind(Enter).Where(e => e.NodeId == "press").ToList();
         await Assert.That(presses).Count().IsEqualTo(2);
         await Assert.That(presses.Select(e => e.WalkId).Distinct()).Count().IsEqualTo(2);
@@ -284,10 +292,12 @@ public class MacroExecutorTracingTests
     {
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver { IsEnabled = false };
-        harness.Resolver.Add(ExecutorHarness.Graph("sub", "press", new KeyPressNode { Id = "press", Key = VirtualKey.C }));
+        harness.Resolver.Add(ExecutorHarness.Graph("sub", "press",
+            new KeyPressNode { Id = "press", Key = VirtualKey.C }));
         var parent = ExecutorHarness.Graph("parent", "call", new RunMacroNode { Id = "call", MacroName = "sub" });
 
-        await harness.Executor.RunAsync(parent, harness.Context(ExecutorHarness.Window, observer: observer), CancellationToken.None);
+        await harness.Executor.RunAsync(parent, harness.Context(ExecutorHarness.Window, observer: observer),
+            CancellationToken.None);
 
         await Assert.That(observer.Walks).Count().IsEqualTo(2);
         await Assert.That(observer.OfKind(WalkEnd)).Count().IsEqualTo(2);
@@ -311,9 +321,9 @@ public class MacroExecutorTracingTests
             harness.Context(ExecutorHarness.Window, onNodeEntered: entered.Add, observer: observer),
             CancellationToken.None);
 
-        // The registry's current-node hook predates D3b and still feeds «Прогоны»; the two
-        // channels are deliberately independent.
+        // Крючок текущей ноды у реестра старше D3b и по-прежнему питает «Прогоны»; эти два канала
+        // намеренно независимы.
         await Assert.That(entered).IsEquivalentTo(new[] { "a", "b" });
-        await Assert.That(observer.OfKind(Enter).Select(e => e.NodeId)).IsEquivalentTo(new[] { "a", "b" });
+        await Assert.That(observer.NodeIdsOf(Enter)).IsEquivalentTo(new[] { "a", "b" });
     }
 }

@@ -5,16 +5,17 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// W0.3: the graph ↔ editor-row mapping. This is the highest-stakes code in the wave —
-// every save runs a user's graph through NodeRowViewModel.FromNode/ToNode, so a field
-// dropped here is silent data loss on a file the user has been hand-tuning for months.
+// W0.3: отображение «граф ↔ строка редактора». Это код с самой высокой ставкой во всей волне:
+// каждое сохранение прогоняет граф пользователя через NodeRowViewModel.FromNode/ToNode, так что
+// потерянное здесь поле — это молчаливая потеря данных в файле, который человек руками
+// настраивал месяцами.
 //
-// Equality is compared on the canonical JSON rather than on record equality: the model's
-// records hold List<string> (TargetSelector tags), whose default equality is by reference,
-// so `==` would pass on graphs that differ. The JSON is also what actually lands on disk.
+// Равенство сверяется по каноническому JSON, а не по равенству записей: записи модели держат
+// List<string> (теги TargetSelector), а их равенство по умолчанию — по ссылке, так что `==`
+// прошёл бы и на различающихся графах. К тому же именно JSON и ложится на диск.
 public class NodeRowRoundTripTests
 {
-    /// <summary>Round-trips one node through the editor rows and returns both JSON forms.</summary>
+    /// <summary>Прогоняет одну ноду через строки редактора и возвращает обе формы JSON.</summary>
     private static (string Before, string After) RoundTrip(MacroNode node)
     {
         var row = NodeRowViewModel.FromNode(node);
@@ -24,7 +25,7 @@ public class NodeRowRoundTripTests
             JsonSerializer.Serialize(result, MacroGraphJson.Options));
     }
 
-    /// <summary>A graph exercising every node type, both selector shapes, and canvas coordinates.</summary>
+    /// <summary>Граф, задействующий каждый тип ноды, обе формы селектора и координаты на канве.</summary>
     public static MacroGraph EveryNodeType() => new()
     {
         Name = "полный-граф",
@@ -45,9 +46,9 @@ public class NodeRowRoundTripTests
                 Next = "click",
                 Editor = new NodeEditorInfo(12.5, -40),
             },
-            // Selector present but empty = "every registered window", which is NOT the
-            // same as a null selector; the editor's UseSelector flag is what keeps the two
-            // apart across a round-trip.
+            // Селектор есть, но он пустой — это «каждое зарегистрированное окно», и это НЕ то же
+            // самое, что отсутствующий селектор; различает их на протяжении round trip флаг
+            // UseSelector в редакторе.
             new ClickNode
             {
                 Id = "click",
@@ -90,7 +91,7 @@ public class NodeRowRoundTripTests
                 Found = "wait",
                 NotFound = null,
             },
-            // Region deliberately null — the "search the whole window" shape.
+            // Region намеренно пуст — это форма «искать по всему окну».
             new WaitForElementNode
             {
                 Id = "wait",
@@ -170,7 +171,7 @@ public class NodeRowRoundTripTests
         await Assert.That(key.Edges).Count().IsEqualTo(1);
     }
 
-    // ---- Delay: seconds ↔ milliseconds ----------------------------------------------
+    // ---- Delay: секунды ↔ миллисекунды ------------------------------------------------
 
     [Test]
     [Arguments(1500, "1.5")]
@@ -187,7 +188,8 @@ public class NodeRowRoundTripTests
     [Test]
     [Arguments("1.5", 1500)]
     [Arguments("2", 2000)]
-    // A Russian numpad emits a comma; invariant parsing would read "1,5" as 15 seconds.
+    // Русская раскладка на цифровом блоке выдаёт запятую; инвариантный разбор прочитал бы "1,5"
+    // как 15 секунд.
     [Arguments("1,5", 1500)]
     [Arguments("0", 0)]
     [Arguments("", 0)]
@@ -211,7 +213,7 @@ public class NodeRowRoundTripTests
         await Assert.That(row.GetInputErrors()).IsNotEmpty();
     }
 
-    // ---- Click: exactly one of Point / PointVar ---------------------------------------
+    // ---- Click: ровно одно из Point и PointVar ------------------------------------------
 
     [Test]
     public async Task Click_LiteralPoint_LeavesPointVarUnset()
@@ -254,7 +256,7 @@ public class NodeRowRoundTripTests
         await Assert.That(row.GetInputErrors()).IsNotEmpty();
     }
 
-    // ---- regions ----------------------------------------------------------------------
+    // ---- области ------------------------------------------------------------------------
 
     [Test]
     public async Task Region_ZeroSize_MeansWholeWindow()
@@ -276,7 +278,7 @@ public class NodeRowRoundTripTests
         await Assert.That(((RecognizeTagNode)row.ToNode()).Region).IsEqualTo(default(ScreenRect));
     }
 
-    // ---- triggers -----------------------------------------------------------------------
+    // ---- триггеры -------------------------------------------------------------------------
 
     [Test]
     public async Task Triggers_RoundTrip()
@@ -309,8 +311,8 @@ public class NodeRowRoundTripTests
         {
             var row = NodeRowViewModel.Create(option.Kind, "n1");
             await Assert.That(row.NodeId).IsEqualTo("n1");
-            // A freshly created row must be serialisable straight away, or "add node" would
-            // put the graph into a state that cannot even be written to disk.
+            // Только что созданная строка обязана сериализоваться сразу же, иначе «добавить ноду»
+            // приводило бы граф в состояние, которое и на диск-то не записать.
             await Assert.That(JsonSerializer.Serialize(row.ToNode(), MacroGraphJson.Options)).IsNotEmpty();
         }
     }

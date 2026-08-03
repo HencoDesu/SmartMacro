@@ -3,8 +3,8 @@ using SmartMacro.Windows;
 
 namespace SmartMacro.Tests;
 
-// W0.1: WindowRegistry — the sole owner of window tags. Covers the register/unregister
-// lifecycle, tag mutation semantics, event payloads, and snapshot isolation.
+// W0.1: WindowRegistry — единственный владелец тегов окон. Покрыты жизненный цикл регистрации
+// и снятия с учёта, семантика изменения тегов, нагрузки событий и изоляция снимков.
 public class WindowRegistryTests
 {
     private static WindowRegistry CreateRegistry() => new(NullLogger<WindowRegistry>.Instance);

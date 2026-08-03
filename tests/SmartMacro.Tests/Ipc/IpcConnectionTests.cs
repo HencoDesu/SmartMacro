@@ -4,13 +4,12 @@ using SmartMacro.Tests.Macros;
 
 namespace SmartMacro.Tests.Ipc;
 
-// Stage 2B: the framing layer on its own — one line per message, blank lines tolerated,
-// a bad line recoverable, and concurrent writers serialised.
+// Стадия 2B: слой нарезки на сообщения сам по себе — одна строка на сообщение, пустые строки
+// терпятся, кривая строка не смертельна, одновременные писатели выстраиваются в очередь.
 //
-// The last one is the test that earns its keep. IpcConnection has two independent writers
-// in production (the request/response loop and the event pump) and StreamWriter is not
-// thread-safe; delete the SemaphoreSlim and this file goes red while everything else
-// stays green.
+// Последний из них — тот тест, который отрабатывает свой хлеб. В бою у IpcConnection два
+// независимых писателя (цикл «запрос-ответ» и насос событий), а StreamWriter не потокобезопасен;
+// уберите SemaphoreSlim — и этот файл покраснеет, пока всё остальное останется зелёным.
 public class IpcConnectionTests
 {
     private static IpcConnection ServerSide(DuplexStreamPair pair) =>
@@ -43,8 +42,8 @@ public class IpcConnectionTests
             IpcJson.Write(new SaveMacroRequest(FullMacroGraphFixture.Build()))));
 
         var line = await pair.ReadLineAsync();
-        // If the graph's indentation leaked through, the reader would have stopped at the
-        // first inner newline and this deserialize would throw.
+        // Просочись отступы графа наружу — читатель остановился бы на первом же внутреннем
+        // переводе строки, и эта десериализация бросила бы исключение.
         var reloaded = JsonSerializer.Deserialize<IpcResponse>(line, IpcJson.Options)!;
         await Assert.That(IpcJson.Read<SaveMacroRequest>(reloaded.Payload)!.Macro.Nodes)
             .Count().IsEqualTo(FullMacroGraphFixture.NodeCount);
@@ -89,8 +88,8 @@ public class IpcConnectionTests
 
         await Assert.That(async () => await connection.ReadAsync<IpcRequest>()).Throws<JsonException>();
 
-        // The whole point of making the failure recoverable: the reader is positioned at
-        // the next line, so one bad message must not cost us the connection.
+        // Ради этого отказ и сделан не смертельным: читатель стоит на следующей строке, так что
+        // одно испорченное сообщение не имеет права стоить нам соединения.
         var next = await connection.ReadAsync<IpcRequest>();
         await Assert.That(next!.Id).IsEqualTo(2);
     }
@@ -98,34 +97,37 @@ public class IpcConnectionTests
     [Test]
     public async Task WriteAsync_ConcurrentWriters_ProduceWellFormedNewlineDelimitedJson()
     {
-        const int Responses = 40;
-        const int Events = 40;
+        const int responses = 40;
+        const int events = 40;
 
         using var pair = new DuplexStreamPair();
         await using var connection = ServerSide(pair);
 
-        // Two writers hammering one connection from many threads at once — production has
-        // exactly this shape (response loop + event pump), just less densely.
+        // Два писателя молотят по одному соединению со множества потоков разом — в бою форма
+        // ровно такая же (цикл ответов плюс насос событий), просто не такая плотная.
         var writers = new List<Task>();
-        for (var i = 0; i < Responses; i++)
+        for (var i = 0; i < responses; i++)
         {
             var id = i;
             writers.Add(Task.Run(() => connection.WriteAsync(new IpcResponse(id, Ok: true))));
         }
-        for (var i = 0; i < Events; i++)
+
+        for (var i = 0; i < events; i++)
         {
             writers.Add(Task.Run(() => connection.WriteAsync(
                 new IpcEvent(IpcMessageTypes.WindowClosed, IpcJson.Write(new WindowClosedEvent(0xABC))))));
         }
+
         await Task.WhenAll(writers);
 
-        var lines = await pair.ReadLinesAsync(Responses + Events);
+        var lines = await pair.ReadLinesAsync(responses + events);
 
         var seenIds = new HashSet<int>();
         var eventCount = 0;
         foreach (var line in lines)
         {
-            // Interleaved writes show up here as a JsonException, not as a subtle diff.
+            // Перемешавшиеся записи всплывут здесь как JsonException, а не как еле заметное
+            // расхождение.
             using var document = JsonDocument.Parse(line);
             if (document.RootElement.TryGetProperty("Id", out var id))
             {
@@ -139,7 +141,7 @@ public class IpcConnectionTests
             }
         }
 
-        await Assert.That(seenIds).Count().IsEqualTo(Responses);
-        await Assert.That(eventCount).IsEqualTo(Events);
+        await Assert.That(seenIds).Count().IsEqualTo(responses);
+        await Assert.That(eventCount).IsEqualTo(events);
     }
 }

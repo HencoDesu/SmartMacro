@@ -3,28 +3,27 @@ using SmartMacro.Contracts.Ipc;
 
 namespace SmartMacro.Tests.Ipc;
 
-/// <summary>One request the view-model under test sent.</summary>
-/// <param name="Type">The <see cref="IpcMessageTypes"/> constant used.</param>
-/// <param name="Payload">The payload object, exactly as the caller passed it.</param>
+/// <summary>Один запрос, отправленный проверяемой view-model.</summary>
+/// <param name="Type">Использованная константа из <see cref="IpcMessageTypes"/>.</param>
+/// <param name="Payload">Объект нагрузки ровно в том виде, в каком его передал вызывающий.</param>
 internal sealed record RecordedRequest(string Type, object? Payload);
 
 /// <summary>
-/// A scriptable <see cref="IIpcClient"/> for the view-model tests: record what was asked,
-/// answer with whatever the test staged, and push events on demand.
+/// Программируемый <see cref="IIpcClient"/> для тестов view-model: запоминает, о чём просили,
+/// отвечает тем, что подложил тест, и по требованию шлёт пуши.
 ///
-/// Hand-written rather than a FakeItEasy mock for two reasons. First, canned answers go
-/// through <see cref="IpcJson"/> on the way out, so a test that stages a
-/// <c>MacroGraph[]</c> exercises the real polymorphic <c>$type</c> round trip the daemon
-/// would put on the wire — a VM that only works against in-memory objects fails here.
-/// Second, everything completes synchronously, so a VM's fire-and-forget
-/// <c>_ = RefreshAsync()</c> is already finished when its constructor returns and the tests
-/// need no polling.
+/// Написан руками, а не взят моком FakeItEasy, по двум причинам. Во-первых, заготовленные ответы
+/// уходят через <see cref="IpcJson"/>, поэтому тест, подкладывающий <c>MacroGraph[]</c>, гоняет
+/// тот самый полиморфный round trip по <c>$type</c>, который демон и положил бы в провод, —
+/// view-model, работающая только с объектами в памяти, здесь развалится. Во-вторых, всё
+/// завершается синхронно, так что запущенный и брошенный <c>_ = RefreshAsync()</c> уже закончен
+/// к возврату из конструктора, и опрашивать тестам ничего не нужно.
 /// </summary>
 internal sealed class FakeIpcClient : IIpcClient
 {
     private readonly Dictionary<string, Func<object?, object?>> _responders = new(StringComparer.Ordinal);
 
-    /// <summary>Every request, in order.</summary>
+    /// <summary>Все запросы по порядку.</summary>
     public List<RecordedRequest> Requests { get; } = [];
 
     public bool IsConnected { get; set; } = true;
@@ -35,51 +34,53 @@ internal sealed class FakeIpcClient : IIpcClient
 
     public event Action<IpcEvent>? EventReceived;
 
-    // ---- scripting ---------------------------------------------------------------------
+    // ---- программирование ответов -------------------------------------------------------
 
-    /// <summary>Answers <paramref name="type"/> with a fixed value.</summary>
+    /// <summary>Отвечает на <paramref name="type"/> фиксированным значением.</summary>
     public FakeIpcClient Respond(string type, object? result)
     {
         _responders[type] = _ => result;
         return this;
     }
 
-    /// <summary>Answers <paramref name="type"/> with a value computed from the request payload.</summary>
+    /// <summary>Отвечает на <paramref name="type"/> значением, посчитанным по нагрузке запроса.</summary>
     public FakeIpcClient Respond(string type, Func<object?, object?> responder)
     {
         _responders[type] = responder;
         return this;
     }
 
-    /// <summary>Makes <paramref name="type"/> fail the way a daemon rejection does.</summary>
+    /// <summary>Заставляет <paramref name="type"/> падать так же, как падает отказ от демона.</summary>
     public FakeIpcClient Fail(string type, string error)
     {
         _responders[type] = _ => throw new IpcRequestException(type, error);
         return this;
     }
 
-    // ---- pushes ------------------------------------------------------------------------
+    // ---- пуши ----------------------------------------------------------------------------
 
     public void RaiseConnected() => Connected?.Invoke();
 
     public void RaiseDisconnected() => Disconnected?.Invoke();
 
-    /// <summary>Pushes an event, serialising <paramref name="payload"/> exactly as the daemon would.</summary>
+    /// <summary>Шлёт пуш, сериализуя <paramref name="payload"/> ровно так же, как это сделал бы демон.</summary>
     public void RaiseEvent(string type, object? payload = null) =>
         EventReceived?.Invoke(new IpcEvent(type, payload is null ? null : IpcJson.Write(payload)));
 
-    // ---- assertions --------------------------------------------------------------------
+    // ---- проверки --------------------------------------------------------------------------
 
-    /// <summary>How many times <paramref name="type"/> was requested.</summary>
+    /// <summary>Сколько раз запрашивали <paramref name="type"/>.</summary>
     public int CountOf(string type) =>
         Requests.Count(request => string.Equals(request.Type, type, StringComparison.Ordinal));
 
-    /// <summary>Payloads of every <paramref name="type"/> request, cast to <typeparamref name="T"/>.</summary>
+    /// <summary>Нагрузки всех запросов <paramref name="type"/>, приведённые к <typeparamref name="T"/>.</summary>
     public IReadOnlyList<T> PayloadsOf<T>(string type) =>
-        [.. Requests
+    [
+        .. Requests
             .Where(request => string.Equals(request.Type, type, StringComparison.Ordinal))
             .Select(request => request.Payload)
-            .OfType<T>()];
+            .OfType<T>()
+    ];
 
     // ---- IIpcClient --------------------------------------------------------------------
 
@@ -95,7 +96,7 @@ internal sealed class FakeIpcClient : IIpcClient
             return Task.FromResult<TResult?>(default);
         }
 
-        // Through the wire serialiser deliberately — see the class comment.
+        // Намеренно через проводной сериализатор — см. комментарий к классу.
         return Task.FromResult(IpcJson.Read<TResult>(IpcJson.Write(result)));
     }
 

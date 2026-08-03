@@ -13,19 +13,19 @@ using SmartMacro.Windows;
 namespace SmartMacro.Tests.Ipc;
 
 /// <summary>
-/// A dispatcher wired to as much of the real engine as is cheap to build.
+/// Диспетчер, собранный с настоящим движком настолько, насколько его дёшево построить.
 ///
-/// Real: <see cref="WindowRegistry"/>, <see cref="MacroRunRegistry"/>,
-/// <see cref="MacroGraphStore"/> over a temp folder, <see cref="CaptureDumpService"/> over
-/// a temp folder. These are the components whose BEHAVIOUR the handlers are supposed to
-/// expose, so faking them would only test that the dispatcher calls the methods we wrote
-/// it to call.
+/// Настоящие: <see cref="WindowRegistry"/>, <see cref="MacroRunRegistry"/>,
+/// <see cref="MacroGraphStore"/> над временной папкой, <see cref="CaptureDumpService"/> над
+/// временной папкой. Это те части, ПОВЕДЕНИЕ которых обработчики и обязаны наружу выставлять,
+/// так что, подделав их, мы проверяли бы разве что тот факт, что диспетчер зовёт методы, которые
+/// мы ему и написали звать.
 ///
-/// Faked: <see cref="IMacroRunner"/> and <see cref="IHotkeyRegistration"/> (a real
-/// <see cref="Orchestrator"/> or <see cref="HotkeyListener"/> drags in the process
-/// monitor, the agent factory and two Win32 monitors), <see cref="IClassMatcher"/>, and
-/// <see cref="IHostApplicationLifetime"/> — nobody wants a unit test that actually stops
-/// a host.
+/// Подделаны: <see cref="IMacroRunner"/> и <see cref="IHotkeyRegistration"/> (настоящий
+/// <see cref="Orchestrator"/> или <see cref="HotkeyListener"/> тянет за собой монитор процессов,
+/// фабрику агентов и два монитора Win32), <see cref="IClassMatcher"/> и
+/// <see cref="IHostApplicationLifetime"/> — модульный тест, который взаправду останавливает
+/// хост, не нужен никому.
 /// </summary>
 internal sealed class IpcDispatcherHarness : IDisposable
 {
@@ -78,21 +78,26 @@ internal sealed class IpcDispatcherHarness : IDisposable
 
     public CaptureDumpService Captures { get; }
 
-    /// <summary>Real: the run-event pump is what <c>SubscribeRunEvents</c> answers from.</summary>
+    /// <summary>Настоящий: именно из насоса событий прогона и отвечает <c>SubscribeRunEvents</c>.</summary>
     public RunEventPublisher RunEvents { get; }
 
-    /// <summary>Real: breakpoints and pause state — the debugger handlers are thin over it.</summary>
+    /// <summary>
+    /// Настоящая: точки останова и состояние пауз — обработчики отладчика над ней совсем тонкие.
+    /// </summary>
     public MacroDebugSession Debug { get; }
 
     public IpcRequestDispatcher Dispatcher { get; }
 
-    /// <summary>Folder the store writes <c>macros/</c> and the dump service writes <c>debug/</c> under.</summary>
+    /// <summary>
+    /// Папка, внутри которой хранилище пишет <c>macros/</c>, а служба дампов — <c>debug/</c>.
+    /// </summary>
     public string BaseDirectory => _baseDirectory;
 
-    /// <summary>Path of the file a macro of this name would occupy.</summary>
+    /// <summary>Путь к файлу, который занял бы макрос с таким именем.</summary>
     public string MacroFile(string name) => Path.Combine(_baseDirectory, MacroGraphStore.FolderName, $"{name}.json");
 
-    public Task<IpcResponse> DispatchAsync(string type, object? payload = null, int id = 1, IIpcSession? session = null) =>
+    public Task<IpcResponse> DispatchAsync(string type, object? payload = null, int id = 1,
+        IIpcSession? session = null) =>
         Dispatcher.DispatchAsync(new IpcRequest(id, type, payload is null ? null : IpcJson.Write(payload)), session);
 
     public void Dispose()
@@ -106,8 +111,8 @@ internal sealed class IpcDispatcherHarness : IDisposable
         }
         catch (IOException)
         {
-            // The store's watcher may still hold the folder for a moment; temp cleanup is
-            // not what any of these tests are asserting.
+            // Наблюдатель хранилища может ещё мгновение держать папку; уборка временных файлов —
+            // не то, что проверяет хоть один из этих тестов.
         }
     }
 }
