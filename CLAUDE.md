@@ -16,12 +16,26 @@ The refactoring plan is complete through stage 4. What follows is `docs/design/i
 
 - **D1 done** — `App/Themes/{Tokens,FluentBridge,Controls}.axaml`. Nocturne tokens as `ResourceDictionary` + `ControlTheme`s; no literal hex belongs in markup any more. Cross-dictionary references are `{DynamicResource}` — `{StaticResource}` across dictionaries is fragile here.
 - **D2 done** — the 1b shell. One window: 30px custom title bar (`ExtendClientAreaToDecorationsHint`, because the OS bar stays light regardless of `RequestedThemeVariant`), 172px mode rail (Окна / Макросы / Прогоны / Шаблоны / Лог) with a tag summary pinned at its foot, 30px run bar always present. `MacrosDialog` is gone — the editor is a mode. `MainWindowViewModel` → `WorkspaceViewModel`; `ShellViewModel` owns modes and derives every counter. Views toggle by `IsVisible` rather than swapping through a `ContentControl`, so a half-typed tag and the editor's dirty state survive a mode round trip. Hotkey suspension is scoped to the «Макросы» mode being selected, and closing the window waits for the resume — **the daemon does not re-register hotkeys when a client drops.**
-- **D3 in flight**, split in two: **D3a** the canvas editor (App-only, deletes the rows editor), **D3b** the run-event channel that lights it up.
-- **D4** hotkey capture + target-filter badge; **D5** the debugger. Both need engine work that does not exist yet (see `spec.md` §13).
+- **D3a done** — the canvas editor. `App/ViewModels/Canvas/` + `App/Controls/{EdgeLayer,CanvasBackdrop}.cs`; the rows editor is deleted. Boxes as wrapping rows, edges routed in the gutters, conditional outcomes as labelled rows on the box. An **unwired outcome produces no edge and no phantom terminal node** — ending a branch is a legitimate end of the macro. Single click fills the inspector (1d), double click expands the box in place (1e). Auto-layout DFS from the start node; graphs saved before this wave get positions on load. Library groups by prefix: text before the first `-`, and a prefix shared by **two or more** macros becomes a group (the mockup's «Баг госта · 5» holds both `Баг госта-Лучник` and plain `Баг госта`, so splitting strictly on the dash would break a family).
+- **D3b done** — the run-event channel. See below; it is the foundation D5 and the «Лог» mode both build on.
+- **D4 in flight** — hotkey capture (1f) + target-filter badge (1g). **D5** the debugger.
+
+### Run events (D3b)
+
+`MacroExecutor` reports progress through `IMacroRunObserver`; `Core/Ipc/RunEventPublisher` turns that into the `RunEvents` push. Four facts that constrain anything built on top:
+
+- **The unit is a WALK, not a run.** `RunMacroNode` with a selector forks one executor walk per window and they all share one `RunId` — a run id cannot tell them apart. Each walk gets its own id at `MacroWalkTrace.Begin`, and that walk id is the correlation key on every event. The canvas therefore has a walk picker and lights the node of the *selected* walk; otherwise a ten-window fan-out would light ten boxes on one graph.
+- **Nothing is produced unless someone subscribed** (`SubscribeRunEvents`). `IsEnabled` is one volatile read per node, checked in the walker before it times anything or formats a detail string — not merely documented there. The daemon is resident and the panel is not, so unsubscribed is the normal state and must cost nothing.
+- **Events are coalesced into batches, at most one envelope per 50 ms.** This is not an optimisation. `IpcServer` gives each connection a 256-deep queue and **drops a client that stops draining**; a ten-window fan-out is several hundred events in a few hundred milliseconds, so unbatched the panel would be dropped exactly when the user is watching. Measured: 344 events, one envelope, zero loss.
+- **Overflow is counted and reported, never silent.** The queue is bounded and `TryWrite` failures ride out as `RunEventBatch.Dropped` so the panel can say the log has a hole. The engine must never block — a walk runs between two Win32 messages to a live game.
+
+A panel connecting mid-run gets the live walks with `FromStart = false` and says so. There is deliberately no per-run history buffer: between a drop and a reconnect nobody was subscribed, so recording had stopped and a buffer would be stale.
 
 Stage 5 (translating comments to Russian) is deliberately last.
 
-**Шаблоны and Лог modes have no data behind them** and render an honest empty state with a blank counter, pinned by a test. `templates/` is not listed or fetchable over IPC, and the daemon's Serilog output never crosses the pipe. Both need protocol additions — the log wants the same event channel D5 does.
+**Шаблоны and Лог modes have no data behind them** and render an honest empty state with a blank counter, pinned by a test. `templates/` is not listed or fetchable over IPC, and the daemon's Serilog output never crosses the pipe. Both need protocol additions; «Лог» would be a second opt-in subscription reusing D3b's batch shape.
+
+**Two executables run elevated** (`requireAdministrator`), so a medium-integrity shell cannot terminate either one — `Stop-Process`/`taskkill` return access denied. A wedged panel has to be closed from an elevated context. It also holds the single-instance mutex and renames locked DLLs to `*.locked<pid>` in its `bin/`; those clear themselves when it finally exits.
 
 **The split is live.** `SmartMacro.Daemon.exe` is the resident engine (tray, hooks, vision, macro library, IPC server); `SmartMacro.App.exe` is an on-demand panel that owns nothing and reaches everything over the `smartmacro-control` pipe. Run the daemon; the tray's "Открыть панель" (or launching the App directly) brings the UI up. A second App launch does not open a second window — it asks the daemon to broadcast `ActivateWindow` and exits. If the daemon dies, the panel says so and closes.
 
