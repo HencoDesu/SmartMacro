@@ -1,30 +1,33 @@
 <!--
-  The 1b shell (wave D2). Source of truth: docs/design/opt-1b.html.
+  Оболочка 1b (волна D2). Источник истины: docs/design/opt-1b.html.
 
-  One window, four parts:
+  Одно окно, четыре части:
 
-    · a 30px CUSTOM title bar. ExtendClientAreaToDecorationsHint removes the OS frame —
-      D1 found the stock Windows caption renders light and cannot be darkened through
-      RequestedThemeVariant, and this is the fix. The bar therefore has to do the OS's job
-      itself: BeginMoveDrag to move, double-tap to maximise, three real buttons.
-    · a 172px mode rail. It is a ListBox on purpose: the ListBoxItem theme from D1 already
-      draws selection as a 2px accent rule over a 12% wash, which is exactly the mockup's
-      nav pattern, and keyboard navigation comes free.
-    · the work area, one view per mode. All five are constructed once and toggled with
-      IsVisible rather than swapped through a ContentControl, so a half-typed tag, a
-      scrolled node list and the editor's dirty state all survive a trip to another mode.
-    · a 30px run bar, always present. Its presence IS the feature — when nothing runs it
-      shows an idle line rather than collapsing.
+    · СВОЯ строка заголовка в 30px. ExtendClientAreaToDecorationsHint убирает рамку ОС: на
+      волне D1 выяснилось, что штатный виндовый заголовок рисуется светлым и потемнеть через
+      RequestedThemeVariant не может, — это и есть лекарство. Из-за чего строке приходится
+      делать работу ОС самой: BeginMoveDrag для перетаскивания, двойное касание для
+      разворота, три настоящие кнопки.
+    · рейка режимов в 172px. Это намеренно ListBox: тема ListBoxItem из D1 уже рисует
+      выделение как акцентную линейку в 2px поверх заливки 12%, а это ровно навигационный
+      приём макета, — и навигация с клавиатуры достаётся даром.
+    · рабочая область, по представлению на режим. Все пять создаются один раз и
+      переключаются через IsVisible, а не подменяются в ContentControl, — благодаря чему
+      недопечатанный тег, прокрученный список нод и несохранённое состояние редактора
+      переживают поход в другой режим.
+    · полоса прогона в 30px, присутствует всегда. Само её присутствие И ЕСТЬ фича: когда
+      ничего не работает, она показывает строку простоя, а не схлопывается.
 
-  D3a grew the window from the 900×482 of mockup 1b to 1520×840. The canvas editor is
-  mockup 1d, which is 1628px wide for a reason: at 900 the 172px rail plus a 228px library
-  plus a 308px inspector left the graph under 200px, which is not even one node box. 1500
-  is what it takes for the three-column wrapping layout (780px) to fit at 100% zoom. The minimum is
-  1100 — below that the canvas holds fewer than two columns and the layout stops making
-  sense (it still pans and zooms, so nothing is unreachable).
+  Волна D3a вырастила окно с 900×482 макета 1b до 1520×840. Canvas-редактор — это макет 1d, и
+  его ширина в 1628px взялась не случайно: при 900 рейка в 172px плюс библиотека в 228px плюс
+  инспектор в 308px оставляли графу меньше 200px, а это даже не одна коробка ноды. 1500 —
+  ровно столько, сколько нужно, чтобы трёхколоночная раскладка с переносом (780px) поместилась
+  при масштабе 100%. Минимум — 1100: ниже на canvas не влезает и двух колонок, и раскладка
+  перестаёт иметь смысл (панорамирование и масштабирование при этом работают, так что
+  недостижимого ничего не остаётся).
 
-  Every colour and padding comes from Themes/Tokens.axaml. If a value is missing, add a
-  token; do not type a hex here.
+  Каждый цвет и каждый отступ приезжают из Themes/Tokens.axaml. Если значения не хватает,
+  добавьте токен, а не вписывайте сюда hex.
 -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -43,8 +46,9 @@
         Title="SmartMacro">
 
     <Window.Styles>
-        <!-- Caption buttons. The mockup draws bare glyphs; a real window needs a hit target,
-             so these are 38×30 chrome-less buttons that only light up on hover. -->
+        <!-- Кнопки заголовка. Макет рисует голые глифы; настоящему окну нужна область
+             попадания, поэтому здесь кнопки 38×30 без оправы, загорающиеся лишь при
+             наведении. -->
         <Style Selector="Button.caption">
             <Setter Property="Width" Value="38" />
             <Setter Property="Height" Value="30" />
@@ -68,8 +72,9 @@
             <Setter Property="Foreground" Value="{DynamicResource NocturneDangerBrush}" />
         </Style>
 
-        <!-- Mode rail. The theme's 8.4,5.6 padding would make a 30px row impossible; 10px
-             on the left plus the item's own 2px rule reproduces the mockup's 12px inset. -->
+        <!-- Рейка режимов. С темовым padding 8.4,5.6 строка в 30px была бы невозможна; 10px
+             слева плюс собственная линейка элемента в 2px воспроизводят отступ в 12px с
+             макета. -->
         <Style Selector="ListBox.rail">
             <Setter Property="Background" Value="Transparent" />
         </Style>
@@ -78,7 +83,7 @@
             <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral500Brush}" />
         </Style>
 
-        <!-- The uppercase eyebrow over a section ("ТЕГИ", "НЕ ОПОЗНАНО · 3"). -->
+        <!-- Надзаголовок капслоком над разделом («ТЕГИ», «НЕ ОПОЗНАНО · 3»). -->
         <Style Selector="TextBlock.eyebrow">
             <Setter Property="FontSize" Value="9.5" />
             <Setter Property="LetterSpacing" Value="0.7" />
@@ -87,11 +92,11 @@
         </Style>
     </Window.Styles>
 
-    <!-- OffScreenMargin keeps a maximised extended-client-area window off the screen edges
-         (and out from under the taskbar); it is zero in every other state. -->
+    <!-- OffScreenMargin удерживает развёрнутое окно с расширенной клиентской областью от краёв
+         экрана (и от заезда под панель задач); во всех остальных состояниях он равен нулю. -->
     <Grid RowDefinitions="30,*" Margin="{Binding #Root.OffScreenMargin}">
 
-        <!-- ================================ title bar ================================ -->
+        <!-- ============================ строка заголовка ============================= -->
         <Border Grid.Row="0"
                 Background="{DynamicResource NocturneSurfaceOverlayBrush}"
                 BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
@@ -118,10 +123,10 @@
             </Grid>
         </Border>
 
-        <!-- ================================== body =================================== -->
+        <!-- ================================== тело =================================== -->
         <Grid Grid.Row="1" ColumnDefinitions="172,*">
 
-            <!-- =============================== sidebar =============================== -->
+            <!-- =========================== боковая панель ============================ -->
             <Border Grid.Column="0"
                     Background="{DynamicResource NocturneSurfaceSunkenBrush}"
                     BorderBrush="{DynamicResource NocturneDividerBrush}"
@@ -160,8 +165,8 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <!-- Tag summary, pinned to the bottom. The designer's note: this is the
-                         only place the whole party composition is visible at once. -->
+                    <!-- Сводка по тегам, приколоченная к низу. Пометка дизайнера: это
+                         единственное место, где состав всей пати виден разом. -->
                     <StackPanel Grid.Row="2" Margin="12,10,12,8" Spacing="6">
                         <TextBlock Classes="eyebrow" Text="ТЕГИ" />
                         <ItemsControl ItemsSource="{Binding TagSummary}" IsVisible="{Binding HasTagSummary}">
@@ -202,7 +207,7 @@
                 </Grid>
             </Border>
 
-            <!-- ========================= work area + run bar ========================= -->
+            <!-- ==================== рабочая область + полоса прогона ================= -->
             <Grid Grid.Column="1" RowDefinitions="*,30">
 
                 <Panel Grid.Row="0">
@@ -221,7 +226,7 @@
                         BorderThickness="0,1,0,0"
                         Padding="12,0">
                     <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
-                        <!-- Live: accent dot with its halo, then macro / elapsed / node. -->
+                        <!-- Идёт: акцентная точка со своим ореолом, дальше макрос / время / нода. -->
                         <Border Grid.Column="0"
                                 Width="7" Height="7"
                                 Margin="0,0,10,0"
@@ -271,7 +276,7 @@
                                    IsVisible="{Binding HasOtherRuns}"
                                    Text="{Binding OtherRunsText}" />
 
-                        <!-- Idle: the bar stays, and says so. -->
+                        <!-- Простой: полоса остаётся на месте и прямо об этом сообщает. -->
                         <TextBlock Grid.Column="1"
                                    FontSize="{DynamicResource NocturneFontSizeSmall}"
                                    Foreground="{DynamicResource NocturneTextFaintBrush}"

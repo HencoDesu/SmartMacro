@@ -6,14 +6,14 @@ using SmartMacro.App.ViewModels;
 namespace SmartMacro.App;
 
 /// <summary>
-/// Everything the panel process owns, which after stage 3 is a very short list: one IPC
-/// connection and three thin adapters over it.
+/// Всё, чем владеет процесс панели, — а после стадии 3 список очень короткий: одно
+/// IPC-соединение и три тонких переходника поверх него.
 ///
-/// This replaced a full <c>Microsoft.Extensions.Hosting</c> composition root. The container
-/// was carrying its weight when the UI hosted the engine — a dozen singletons with a
-/// resolution order that mattered — but a graph of four objects with no lifetimes to manage
-/// is cheaper to read than to configure, and dropping the host packages is part of the point
-/// of the split.
+/// Это пришло на смену полноценному корню композиции на <c>Microsoft.Extensions.Hosting</c>.
+/// Контейнер отрабатывал свой хлеб, пока движок жил внутри UI: дюжина синглтонов, у которых
+/// порядок разрешения имел значение. Но граф из четырёх объектов, где нечем управлять по времени
+/// жизни, дешевле прочитать, чем настроить, — а выкинуть пакеты хоста и было одной из целей
+/// разделения.
 /// </summary>
 internal sealed class AppServices : IAsyncDisposable
 {
@@ -27,41 +27,41 @@ internal sealed class AppServices : IAsyncDisposable
         HotkeySuspension = new IpcHotkeySuspension(client);
     }
 
-    /// <summary>The daemon connection. Everything the UI shows came through here.</summary>
+    /// <summary>Соединение с демоном. Всё, что показывает UI, пришло отсюда.</summary>
     public IIpcClient Client => _client;
 
-    /// <summary>UI-thread marshalling for daemon pushes.</summary>
+    /// <summary>Перекладывание пушей демона в поток UI.</summary>
     public IUiDispatcher Dispatcher { get; } = AvaloniaUiDispatcher.Instance;
 
-    /// <summary>"Run this macro" seam for the editor.</summary>
+    /// <summary>Шов «запусти этот макрос» для редактора.</summary>
     public IMacroLauncher MacroLauncher { get; }
 
-    /// <summary>Suspend/resume the daemon's global hotkeys around the chord picker.</summary>
+    /// <summary>Приостановка и возобновление глобальных хоткеев демона вокруг ловушки сочетания.</summary>
     public IHotkeySuspension HotkeySuspension { get; }
 
     /// <summary>
-    /// Absolute path of the daemon's <c>macros/</c> folder, for the editor's "open folder"
-    /// button. Resolved from where the daemon executable actually is — in the dev tree that
-    /// is a sibling bin directory, not ours.
+    /// Абсолютный путь к папке <c>macros/</c> демона — для кнопки «открыть папку» в редакторе.
+    /// Вычисляется от того места, где на самом деле лежит исполняемый файл демона: в дереве
+    /// разработки это соседний каталог bin, а не наш.
     /// </summary>
     public string MacroFolderPath { get; }
 
     /// <summary>
-    /// Builds the whole shell — the mode rail plus both mode view-models. Deliberately a
-    /// factory rather than a property: the VMs post through Avalonia's dispatcher as soon as
-    /// they are constructed, so they must not exist before the framework is initialised.
+    /// Собирает оболочку целиком — рейку режимов и обе режимные view-models. Намеренно фабрика, а
+    /// не свойство: VM начинают отправлять работу через диспетчер Avalonia сразу после создания,
+    /// значит, появляться на свет до инициализации фреймворка им нельзя.
     ///
-    /// D2 folded the macro editor into the shell: it used to be built per dialog, and is now
-    /// built once here and kept alive for the life of the window, which is what lets a
-    /// half-edited graph survive a trip through another mode.
+    /// Волна D2 вложила редактор макросов внутрь оболочки: раньше он строился на каждый диалог, а
+    /// теперь строится здесь один раз и живёт столько же, сколько окно, — именно это и позволяет
+    /// недоправленному графу пережить поход в другой режим.
     /// </summary>
     public ShellViewModel CreateShellViewModel() =>
         new(CreateWorkspaceViewModel(), CreateMacroEditorViewModel(), MacroLauncher);
 
-    /// <summary>Builds the windows-and-runs view-model on its own (used by the designer path).</summary>
+    /// <summary>Собирает view-model окон и прогонов саму по себе (нужно пути дизайнера).</summary>
     public WorkspaceViewModel CreateWorkspaceViewModel() => new(Client, Dispatcher);
 
-    /// <summary>Builds the macro-editor view-model behind the «Макросы» mode.</summary>
+    /// <summary>Собирает view-model редактора макросов, стоящую за режимом «Макросы».</summary>
     public MacroEditorViewModel CreateMacroEditorViewModel() =>
         new(Client, MacroLauncher, HotkeySuspension, Dispatcher, MacroFolderPath);
 

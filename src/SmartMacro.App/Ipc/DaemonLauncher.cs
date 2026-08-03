@@ -4,26 +4,26 @@ using Serilog;
 namespace SmartMacro.App.Ipc;
 
 /// <summary>
-/// Finds and starts <c>SmartMacro.Daemon.exe</c> when the panel is opened without one
-/// running.
+/// Находит и запускает <c>SmartMacro.Daemon.exe</c>, когда панель открыли, а работающего демона
+/// нет.
 ///
-/// The mirror image of the daemon's <c>UiExecutableLocator</c>, and for the same reason:
-/// either process may be the one the user launches first, so each has to be able to bring
-/// the other up. Deployed, the two executables sit in one directory and "next to me" is the
-/// whole search; in the dev tree they are in sibling <c>bin</c> folders, which is what the
-/// second candidate covers.
+/// Зеркальное отражение демонского <c>UiExecutableLocator</c>, и по той же причине: первым
+/// пользователь может запустить любой из двух процессов, значит, каждый обязан уметь поднять
+/// другой. В развёрнутом виде оба исполняемых файла лежат в одном каталоге, и весь поиск — это
+/// «рядом со мной»; в дереве разработки они разъехались по соседним папкам <c>bin</c>, и это как
+/// раз то, что закрывает второй кандидат.
 /// </summary>
 public static class DaemonLauncher
 {
-    /// <summary>File name of the daemon process, as produced by <c>SmartMacro.Daemon.csproj</c>.</summary>
+    /// <summary>Имя файла процесса демона в том виде, в каком его выдаёт <c>SmartMacro.Daemon.csproj</c>.</summary>
     public const string DaemonExecutableName = "SmartMacro.Daemon.exe";
 
     private const string AppProjectFolder = "SmartMacro.App";
     private const string DaemonProjectFolder = "SmartMacro.Daemon";
 
     /// <summary>
-    /// Paths that are checked, in order. Exposed so a failed <see cref="Resolve"/> can be
-    /// logged with what was actually looked at.
+    /// Пути, которые проверяются, по порядку. Выставлено наружу, чтобы неудачу <see cref="Resolve"/>
+    /// можно было записать в лог вместе с тем, куда на самом деле смотрели.
     /// </summary>
     public static IReadOnlyList<string> ProbePaths(string baseDirectory)
     {
@@ -31,9 +31,9 @@ public static class DaemonLauncher
 
         var candidates = new List<string>(2) { Path.Combine(baseDirectory, DaemonExecutableName) };
 
-        // Dev layout: .../src/SmartMacro.App/bin/Debug/net10.0-windows/ has a twin one
-        // directory up the project tree. Swapping the project folder name is enough — the
-        // configuration and TFM segments are identical for both projects.
+        // Раскладка разработки: у .../src/SmartMacro.App/bin/Debug/net10.0-windows/ есть
+        // близнец на уровень выше по дереву проектов. Подменить имя папки проекта достаточно:
+        // сегменты конфигурации и TFM у обоих проектов одинаковые.
         var sibling = SwapProjectFolder(baseDirectory);
         if (sibling is not null)
         {
@@ -43,9 +43,9 @@ public static class DaemonLauncher
         return candidates;
     }
 
-    /// <summary>Full path of the daemon executable, or <c>null</c> when it isn't anywhere we look.</summary>
-    /// <param name="baseDirectory">Normally <see cref="AppContext.BaseDirectory"/>.</param>
-    /// <param name="fileExists">Existence probe; defaults to <see cref="File.Exists(string)"/>.</param>
+    /// <summary>Полный путь к исполняемому файлу демона или <c>null</c>, если его нет ни в одном из мест, куда мы смотрим.</summary>
+    /// <param name="baseDirectory">Обычно <see cref="AppContext.BaseDirectory"/>.</param>
+    /// <param name="fileExists">Проба на существование; по умолчанию <see cref="File.Exists(string)"/>.</param>
     public static string? Resolve(string baseDirectory, Func<string, bool>? fileExists = null)
     {
         var exists = fileExists ?? File.Exists;
@@ -53,8 +53,8 @@ public static class DaemonLauncher
     }
 
     /// <summary>
-    /// Starts the daemon and returns <c>true</c> when the process was created. Says nothing
-    /// about readiness — the caller then retries the IPC connect until the pipe appears.
+    /// Запускает демона и возвращает <c>true</c>, когда процесс создан. О готовности не говорит
+    /// ничего: дальше вызывающий повторяет попытки подключиться по IPC, пока не появится труба.
     /// </summary>
     public static bool TryStart(string baseDirectory)
     {
@@ -69,8 +69,8 @@ public static class DaemonLauncher
 
         try
         {
-            // UseShellExecute so the shell honours the daemon's requireAdministrator
-            // manifest instead of us hand-rolling an elevated token.
+            // UseShellExecute — чтобы оболочка уважила манифест демона с requireAdministrator,
+            // а нам не пришлось вручную мастерить токен с повышенными правами.
             var process = Process.Start(new ProcessStartInfo(path)
             {
                 UseShellExecute = true,
@@ -88,7 +88,7 @@ public static class DaemonLauncher
         }
         catch (Exception ex)
         {
-            // A refused UAC prompt lands here as Win32Exception(ERROR_CANCELLED).
+            // Отклонённый запрос UAC прилетает сюда как Win32Exception(ERROR_CANCELLED).
             Log.Error(ex, "Не удалось запустить демона '{Path}'", path);
             return false;
         }

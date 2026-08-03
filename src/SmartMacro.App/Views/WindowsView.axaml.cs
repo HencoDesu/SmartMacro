@@ -8,21 +8,21 @@ using SmartMacro.Contracts.Ipc;
 namespace SmartMacro.App.Views;
 
 /// <summary>
-/// «Окна». The view-model does the work; this file is the event plumbing the rows editor
-/// style of this codebase uses instead of commands.
+/// «Окна». Всю работу делает view-model; этот файл — та самая проводка событий, которую в
+/// этом коде используют вместо команд.
 /// </summary>
 public partial class WindowsView : UserControl
 {
-    // Capturing N game windows takes seconds, not milliseconds — the daemon wakes each
-    // client, screenshots it and freezes it again. The default 10s request timeout would
-    // fire well before a nine-client sweep finished.
+    // Снять N игровых окон — это секунды, а не миллисекунды: демон каждого клиента будит,
+    // фотографирует и снова замораживает. Стандартный таймаут запроса в 10 секунд сработал бы
+    // задолго до того, как обход девяти клиентов дойдёт до конца.
     private static readonly TimeSpan DumpCapturesTimeout = TimeSpan.FromMinutes(2);
 
     public WindowsView() => InitializeComponent();
 
     private ShellViewModel? Vm => DataContext as ShellViewModel;
 
-    // ---- tags ------------------------------------------------------------------------
+    // ---- теги ------------------------------------------------------------------------
 
     private void OnAddTagClicked(object? sender, RoutedEventArgs e)
     {
@@ -40,8 +40,8 @@ public partial class WindowsView : UserControl
         }
     }
 
-    // Enter in the tag box is the fast path — typing a tag and reaching for the mouse for
-    // nine windows in a row gets old. Escape backs out of the inline box on a tagged row.
+    // Enter в поле тега — быстрый путь: набрать тег и потянуться за мышью девять окон подряд
+    // надоедает. Escape закрывает встроенное поле на строке, у которой теги уже есть.
     private void OnTagInputKeyDown(object? sender, KeyEventArgs e)
     {
         if (sender is not TextBox { DataContext: WindowRowViewModel row })
@@ -66,8 +66,8 @@ public partial class WindowsView : UserControl
         }
     }
 
-    // The inline box only exists once the user asked for it, so it should already be
-    // focused when it appears — otherwise the "+" costs a click AND a click.
+    // Встроенное поле появляется только после того, как пользователь его попросил, — значит, к
+    // моменту появления оно уже должно быть в фокусе, иначе «+» стоит клик И ещё клик.
     private void OnInlineTagBoxAttached(object? sender, VisualTreeAttachmentEventArgs e)
     {
         if (sender is TextBox box)
@@ -84,13 +84,13 @@ public partial class WindowsView : UserControl
         }
     }
 
-    // ---- header actions -----------------------------------------------------------------
+    // ---- действия в шапке -----------------------------------------------------------------
 
     private void OnIdentifyAllClicked(object? sender, RoutedEventArgs e) => Vm?.IdentifyAll();
 
-    // Diagnostic — dump the vision pipeline's view of each live window. The sweep itself
-    // runs in the daemon (it needs the window handles and OpenCV); all this does is ask for
-    // it and open the folder that comes back.
+    // Диагностика: выгружаем то, каким видит каждое живое окно конвейер vision. Сам обход идёт
+    // в демоне (ему нужны дескрипторы окон и OpenCV); здесь только просят его сделать и
+    // открывают папку, которая приходит в ответ.
     private async void OnDumpCapturesClicked(object? sender, RoutedEventArgs e)
     {
         if (Program.Services is not { } services)
@@ -116,7 +116,7 @@ public partial class WindowsView : UserControl
             return;
         }
 
-        // Pop the debug folder so the user can see results immediately.
+        // Открываем папку с отладкой, чтобы пользователь сразу увидел результат.
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -127,7 +127,7 @@ public partial class WindowsView : UserControl
         }
         catch (Exception ex)
         {
-            // Folder opening is best-effort; the files are there either way.
+            // Папку открываем по возможности; файлы на месте в любом случае.
             Serilog.Log.Debug(ex, "Не удалось открыть папку '{Folder}'", folder);
         }
     }

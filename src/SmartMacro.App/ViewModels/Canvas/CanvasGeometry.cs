@@ -3,67 +3,69 @@ using SmartMacro.App.ViewModels.Nodes;
 namespace SmartMacro.App.ViewModels.Canvas;
 
 /// <summary>
-/// A point in canvas space. Deliberately NOT <c>Avalonia.Point</c>: the whole canvas
-/// geometry is computed in view-models that are exercised headlessly, and the moment one
-/// of them takes an Avalonia type the tests need a rendering platform.
+/// Точка в пространстве canvas. Намеренно НЕ <c>Avalonia.Point</c>: вся геометрия canvas
+/// считается во view-моделях, которые гоняются headless, и в ту минуту, когда хоть одна из них
+/// возьмёт тип Avalonia, тестам понадобится платформа отрисовки.
 /// </summary>
 public readonly record struct CanvasPoint(double X, double Y);
 
 /// <summary>
-/// The fixed metrics of the canvas, taken from the mockup (<c>docs/design/opt-1d.html</c>).
+/// Постоянные метрики canvas, взятые из макета (<c>docs/design/opt-1d.html</c>).
 ///
-/// They are constants rather than options because the layout, the routing and the node
-/// template all have to agree on them: a box drawn 6px taller than the router believes
-/// puts every outgoing edge 6px off its port, and nothing in the code would say so.
+/// Это константы, а не настройки, потому что раскладка, маршрутизация и шаблон ноды обязаны
+/// сходиться на одних и тех же числах: коробка, нарисованная на 6px выше, чем считает
+/// маршрутизатор, уводит каждое исходящее ребро на 6px мимо порта — и ничто в коде об этом не
+/// скажет.
 /// </summary>
 public static class CanvasMetrics
 {
-    /// <summary>Width of a collapsed node box.</summary>
+    /// <summary>Ширина свёрнутой коробки ноды.</summary>
     public const double NodeWidth = 210;
 
-    /// <summary>Width of a node expanded into an editor of itself (1e).</summary>
+    /// <summary>Ширина ноды, развёрнутой в редактор самой себя (1e).</summary>
     public const double ExpandedNodeWidth = 300;
 
-    /// <summary>Height of an action box: header, id, summary, one outcome row.</summary>
+    /// <summary>Высота коробки действия: заголовок, id, сводка, одна строка исхода.</summary>
     public const double ActionNodeHeight = 70;
 
-    /// <summary>Height of a conditional box — two outcome rows instead of one.</summary>
+    /// <summary>Высота коробки условия — две строки исходов вместо одной.</summary>
     public const double ConditionalNodeHeight = 92;
 
-    /// <summary>Left-to-right distance between two node columns (75px of gutter).</summary>
+    /// <summary>Расстояние слева направо между двумя колонками нод (75px жёлоба).</summary>
     public const double ColumnPitch = 285;
 
-    /// <summary>Top-to-bottom distance between two rows (40px of gutter under a conditional).</summary>
+    /// <summary>Расстояние сверху вниз между двумя рядами (40px жёлоба под условием).</summary>
     public const double RowPitch = 132;
 
-    /// <summary>Columns before the layout wraps to the next row.</summary>
+    /// <summary>Сколько колонок помещается в ряд, прежде чем раскладка перенесётся на следующий.</summary>
     public const int ColumnsPerRow = 3;
 
-    /// <summary>One outcome row of a node box.</summary>
+    /// <summary>Одна строка исхода в коробке ноды.</summary>
     public const double OutcomeRowHeight = 15;
 
-    /// <summary>Padding under the last outcome row.</summary>
+    /// <summary>Отступ под последней строкой исхода.</summary>
     public const double OutcomeBlockPadding = 4;
 
-    /// <summary>Where an edge arriving from the LEFT enters a box, measured from its top.</summary>
+    /// <summary>Куда в коробку входит ребро, пришедшее СЛЕВА, считая от её верха.</summary>
     public const double SideEntryInset = 30;
 
-    /// <summary>How far past a box's right edge a routed path steps before turning.</summary>
+    /// <summary>Насколько дальше правого края коробки маршрут отходит, прежде чем повернуть.</summary>
     public const double ExitStub = 26;
 
-    /// <summary>How far above the target row a routed path runs before dropping in.</summary>
+    /// <summary>Насколько выше целевого ряда идёт маршрут, прежде чем нырнуть вниз.</summary>
     public const double GutterOffset = 12;
 
-    /// <summary>Horizontal spread between several edges entering the same box from above.</summary>
+    /// <summary>Горизонтальный разброс между несколькими рёбрами, входящими в одну коробку сверху.</summary>
     public const double FanPitch = 26;
 }
 
 /// <summary>
-/// One drawn edge: source node + outcome → target node, as a path in canvas space.
+/// Одно нарисованное ребро: нода-источник плюс исход → нода-цель, в виде пути в пространстве
+/// canvas.
 ///
-/// An outcome with no target produces NO edge at all. That is the rule the mockup calls
-/// out explicitly — "в конец" must not materialise a terminal node — and it lives here
-/// rather than in the renderer so nothing downstream can invent one.
+/// Исход без цели НЕ порождает ребра вообще. Это правило макет проговаривает отдельно — «в
+/// конец» не должно материализовать терминальную ноду, — и живёт оно здесь, а не в
+/// отрисовщике, чтобы никто ниже по течению не смог такую ноду выдумать.
 /// </summary>
 public sealed class CanvasEdgeViewModel
 {
@@ -81,43 +83,44 @@ public sealed class CanvasEdgeViewModel
         IsDirect = isDirect;
     }
 
-    /// <summary>Node the edge leaves.</summary>
+    /// <summary>Нода, из которой ребро выходит.</summary>
     public NodeRowViewModel Source { get; }
 
-    /// <summary>Which of <see cref="NodeRowViewModel.Edges"/> this is.</summary>
+    /// <summary>Который это из <see cref="NodeRowViewModel.Edges"/>.</summary>
     public int OutcomeIndex { get; }
 
-    /// <summary>Node the edge arrives at.</summary>
+    /// <summary>Нода, в которую ребро приходит.</summary>
     public NodeRowViewModel Target { get; }
 
     /// <summary>
-    /// Path in canvas space, from the source port to the arrow tip. Two points for a
-    /// direct hop (drawn as one cubic), five for a routed one (drawn as a rounded
-    /// polyline through the gutter).
+    /// Путь в пространстве canvas, от порта источника до кончика стрелки. Две точки на прямой
+    /// прыжок (рисуется одной кубической кривой) и пять на маршрутизированный (рисуется
+    /// скруглённой ломаной через жёлоб).
     /// </summary>
     public IReadOnlyList<CanvasPoint> Waypoints { get; }
 
-    /// <summary><c>true</c> = a straight right-to-left hop between neighbours on one row.</summary>
+    /// <summary><c>true</c> = прямой прыжок из правого бока в левый между соседями по одному ряду.</summary>
     public bool IsDirect { get; }
 
     /// <summary>
-    /// Lit while the run is standing on this edge's source. D3b sets it through
-    /// <c>MacroEditorViewModel.ExecutingNodeId</c>; until then it is always <c>false</c>.
+    /// Горит, пока прогон стоит на источнике этого ребра. Значение приходит из
+    /// <c>MacroEditorViewModel.ExecutingNodeId</c> — то есть из русла событий прогона, которое
+    /// построила D3b.
     /// </summary>
     public bool IsActive => Source.IsExecuting;
 }
 
 /// <summary>
-/// Turns "node A's outcome N points at node B" into a path.
+/// Превращает «исход N ноды A указывает на ноду B» в путь.
 ///
-/// Two shapes, matching the mockup: a short S-curve when the target sits to the right on
-/// the same row, and otherwise a route out to the right, along the gutter ABOVE the
-/// target's row and down into the top of the box. Edges never cross a node box — that is
-/// the entire reason for the second shape, and the reason rows wrap at a fixed pitch.
+/// Форм две, обе из макета: короткая S-образная кривая, когда цель стоит справа в том же ряду,
+/// и во всех остальных случаях — маршрут вправо, вдоль жёлоба НАД рядом цели и вниз, в верх
+/// коробки. Рёбра никогда не пересекают коробку ноды — ровно ради этого вторая форма и
+/// существует, и ровно поэтому ряды переносятся с постоянным шагом.
 /// </summary>
 public static class CanvasEdgeRouter
 {
-    /// <summary>Canvas-space point where a given outcome leaves its box (the port dot).</summary>
+    /// <summary>Точка в пространстве canvas, где данный исход покидает свою коробку (точка порта).</summary>
     public static CanvasPoint OutcomePort(NodeRowViewModel node, int outcomeIndex)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -131,10 +134,13 @@ public static class CanvasEdgeRouter
     }
 
     /// <summary>
-    /// Routes one edge.
+    /// Прокладывает одно ребро.
     /// </summary>
-    /// <param name="fanIndex">Position of this edge among all edges entering <paramref name="target"/> from above.</param>
-    /// <param name="fanCount">How many edges enter <paramref name="target"/> from above.</param>
+    /// <param name="source">Нода, из которой ребро выходит.</param>
+    /// <param name="outcomeIndex">Какой из исходов <paramref name="source"/> порождает это ребро.</param>
+    /// <param name="target">Нода, в которую ребро приходит.</param>
+    /// <param name="fanIndex">Место этого ребра среди всех рёбер, входящих в <paramref name="target"/> сверху.</param>
+    /// <param name="fanCount">Сколько рёбер входит в <paramref name="target"/> сверху.</param>
     public static CanvasEdgeViewModel Route(
         NodeRowViewModel source,
         int outcomeIndex,
@@ -171,23 +177,23 @@ public static class CanvasEdgeRouter
         return new CanvasEdgeViewModel(source, outcomeIndex, target, waypoints, isDirect: false);
     }
 
-    /// <summary><c>true</c> when the target is the next box along the same row.</summary>
+    /// <summary><c>true</c>, когда цель — следующая коробка по тому же ряду.</summary>
     public static bool IsSideEntry(NodeRowViewModel source, NodeRowViewModel target)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(target);
-        // Same row (within a pixel of slack, since a dragged node lands on fractional
-        // coordinates) and strictly to the right, with room for the curve.
+        // Тот же ряд (с точностью до пикселя запаса — перетащенная нода приземляется на дробные
+        // координаты) и строго правее, с местом на кривую.
         return Math.Abs(source.Y - target.Y) < 1
                && target.X >= source.X + CanvasMetrics.NodeWidth;
     }
 
     /// <summary>
-    /// Builds every edge of a graph, in node order then outcome order.
+    /// Строит все рёбра графа: в порядке нод, а внутри ноды — в порядке исходов.
     ///
-    /// Unwired outcomes and outcomes naming a node that is not in the list are skipped:
-    /// the first is a legitimate end state, the second is a broken file the validator will
-    /// complain about — neither is something to draw a line to.
+    /// Неподключённые исходы и исходы, называющие ноду, которой в списке нет, пропускаются:
+    /// первое — законное завершение, второе — битый файл, на который валидатор и так
+    /// пожалуется; ни к тому, ни к другому линию рисовать незачем.
     /// </summary>
     public static List<CanvasEdgeViewModel> BuildAll(IReadOnlyList<NodeRowViewModel> nodes)
     {
@@ -199,8 +205,8 @@ public static class CanvasEdgeRouter
             byId[node.NodeId] = node;
         }
 
-        // Pass one: collect the pairs, so the fan-in of a node is known before its
-        // arriving edges are placed.
+        // Проход первый: собираем пары, чтобы веер, сходящийся в ноду, был известен до того, как
+        // начнут расставлять входящие в неё рёбра.
         var pairs = new List<(NodeRowViewModel Source, int Outcome, NodeRowViewModel Target)>();
         foreach (var node in nodes)
         {
@@ -211,6 +217,7 @@ public static class CanvasEdgeRouter
                 {
                     continue;
                 }
+
                 pairs.Add((node, i, target));
             }
         }
@@ -222,6 +229,7 @@ public static class CanvasEdgeRouter
             {
                 continue;
             }
+
             fanTotals[target.NodeId] = fanTotals.TryGetValue(target.NodeId, out var n) ? n + 1 : 1;
         }
 
@@ -234,10 +242,12 @@ public static class CanvasEdgeRouter
                 edges.Add(Route(source, outcome, target));
                 continue;
             }
+
             var index = fanSeen.TryGetValue(target.NodeId, out var seen) ? seen : 0;
             fanSeen[target.NodeId] = index + 1;
             edges.Add(Route(source, outcome, target, index, fanTotals[target.NodeId]));
         }
+
         return edges;
     }
 }

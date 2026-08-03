@@ -1,13 +1,13 @@
 <!--
-  «Шаблоны» — chrome only, on purpose.
+  «Шаблоны» — намеренно одна оправа, без содержимого.
 
-  The mockup shows a counter of 31 and a browser of the daemon's templates/ tree. There is
-  no protocol behind either: IpcMessageTypes has no "list templates" request and no way to
-  read one back, so the sidebar counter for this mode is deliberately BLANK rather than a
-  made-up number, and the body says what is missing instead of pretending.
+  Макет показывает счётчик 31 и обозреватель дерева templates/ у демона. Ни за тем, ни за
+  другим протокола нет: в IpcMessageTypes нет ни запроса «перечисли шаблоны», ни способа
+  вычитать шаблон обратно. Поэтому счётчик этого режима в боковой рейке намеренно ПУСТ, а не
+  выдуман, а тело говорит, чего не хватает, вместо того чтобы притворяться.
 
-  What it needs: a request returning the template names (Assets/GameUiElements + the
-  "classes" set), and one returning a single template's bytes for the preview.
+  Что для него нужно: запрос, возвращающий имена шаблонов (Assets/GameUiElements плюс набор
+  "classes"), и второй, возвращающий байты одного шаблона для предпросмотра.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

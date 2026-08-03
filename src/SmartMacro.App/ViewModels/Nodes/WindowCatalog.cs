@@ -3,47 +3,52 @@ using SmartMacro.Contracts.Dto;
 namespace SmartMacro.App.ViewModels.Nodes;
 
 /// <summary>
-/// The editor's live picture of what the daemon is managing: every tracked window with its
-/// current tags.
+/// Живая картина того, чем управляет демон, глазами редактора: каждое отслеживаемое окно со
+/// своими текущими тегами.
 ///
-/// It exists so the targets badge (mockup 1g) can answer «сколько окон сейчас попадёт»
-/// without a round trip. One instance is owned by <c>MacroEditorViewModel</c> and handed to
-/// every <see cref="TargetSelectorViewModel"/> of the open graph — the same pattern the
-/// editor already uses for <c>NodeIdChoices</c> and <c>MacroChoices</c>, so a window
-/// appearing updates every badge on the canvas at once.
+/// Нужен, чтобы бейдж целей (макет 1g) отвечал на вопрос «сколько окон сейчас попадёт» без
+/// похода по трубе. Единственным экземпляром владеет <c>MacroEditorViewModel</c> и раздаёт его
+/// каждой <see cref="TargetSelectorViewModel"/> открытого графа — тем же приёмом, каким редактор
+/// уже раздаёт <c>NodeIdChoices</c> и <c>MacroChoices</c>, так что появление окна разом обновляет
+/// все бейджи на canvas.
 ///
-/// <b>Why a second copy of the window list</b> (<c>WorkspaceViewModel</c> has one too): the
-/// two are different shapes for different jobs. Workspace holds editable ROWS with tag
-/// chips, a half-typed tag box and focus state; this holds the raw DTOs and nothing else,
-/// and lives and dies with the editor. Injecting the workspace into the editor would tie two
-/// modes together and drag the whole «Окна» view-model into every editor test.
+/// <b>Зачем вторая копия списка окон</b> (у <c>WorkspaceViewModel</c> есть своя): это разные
+/// формы под разные задачи. Workspace держит редактируемые СТРОКИ с фишками тегов, полем
+/// недопечатанного тега и состоянием фокуса; здесь лежат голые DTO и ничего больше, и живёт это
+/// ровно столько, сколько редактор. Внедрить workspace в редактор значило бы связать два режима
+/// между собой и затащить всю view-model «Окна» в каждый тест редактора.
 ///
-/// Not an <c>ObservableObject</c>: nothing binds to it directly. Consumers subscribe to
-/// <see cref="Changed"/> and re-derive.
+/// Не <c>ObservableObject</c>: напрямую к нему ничто не привязывается. Потребители подписываются
+/// на <see cref="Changed"/> и пересчитывают своё.
 /// </summary>
 public sealed class WindowCatalog
 {
     private IReadOnlyList<WindowDto> _windows = [];
 
-    /// <summary>Raised after any change to the set of windows or to any window's tags.</summary>
+    /// <summary>Поднимается после любого изменения набора окон или тегов любого из них.</summary>
     public event Action? Changed;
 
-    /// <summary>Current snapshot, in the order the daemon reported it.</summary>
+    /// <summary>Текущий снимок, в том порядке, в каком его сообщил демон.</summary>
     public IReadOnlyList<WindowDto> Windows => _windows;
 
-    /// <summary>How many windows the daemon is tracking right now.</summary>
+    /// <summary>Сколько окон демон отслеживает прямо сейчас.</summary>
     public int Count => _windows.Count;
 
-    /// <summary>Replaces the whole snapshot — the answer to <c>GetWindows</c>.</summary>
+    /// <summary>Заменяет снимок целиком — это ответ на <c>GetWindows</c>.</summary>
     public void Reset(IReadOnlyList<WindowDto> windows)
     {
+        // `?? []` не избыточен, что бы ни говорил анализатор. Родословная этого списка —
+        // десериализованный ответ демона на GetWindows: аннотация о ненулевости держится на
+        // честном слове DTO, а не на проверке во время выполнения, и демон, не положивший поле,
+        // приведёт сюда null. Единственный сегодняшний вызывающий уже прикрылся таким же `?? []`
+        // у себя, но ловит он свой ответ, а не чужие вызовы этого public-метода.
         _windows = windows ?? [];
         Changed?.Invoke();
     }
 
     /// <summary>
-    /// Add-or-replace by handle. Serves both <c>WindowAppeared</c> and
-    /// <c>WindowTagsChanged</c>, which carry the same full-state payload.
+    /// Добавить или заменить по дескриптору. Обслуживает и <c>WindowAppeared</c>, и
+    /// <c>WindowTagsChanged</c> — они несут одну и ту же нагрузку с полным состоянием.
     /// </summary>
     public void Upsert(WindowDto window)
     {
@@ -63,6 +68,7 @@ public sealed class WindowCatalog
                 next.Add(existing);
             }
         }
+
         if (!replaced)
         {
             next.Add(window);
@@ -72,7 +78,7 @@ public sealed class WindowCatalog
         Changed?.Invoke();
     }
 
-    /// <summary>Drops a window that closed. Unknown handles are a no-op.</summary>
+    /// <summary>Выбрасывает закрывшееся окно. Незнакомый дескриптор ничего не делает.</summary>
     public void Remove(long hwnd)
     {
         var next = _windows.Where(window => window.Hwnd != hwnd).ToList();
@@ -80,6 +86,7 @@ public sealed class WindowCatalog
         {
             return;
         }
+
         _windows = next;
         Changed?.Invoke();
     }

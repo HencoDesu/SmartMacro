@@ -5,37 +5,37 @@ using SmartMacro.Contracts.Ipc;
 namespace SmartMacro.App.Services;
 
 /// <summary>
-/// Lets the panel switch the daemon's global hotkeys off for as long as the macro editor is
-/// on screen. Since D2 that means "for as long as the «Макросы» mode is selected" — the
-/// bracket is applied by <c>ShellViewModel</c>, which used to be the dialog's open/close.
+/// Позволяет панели выключать глобальные хоткеи демона на всё время, пока редактор макросов на
+/// экране. С волны D2 это означает «пока выбран режим „Макросы“» — скобку ставит
+/// <c>ShellViewModel</c>, а раньше ею было открытие и закрытие диалога.
 ///
-/// Win32 <c>RegisterHotKey</c> swallows presses of a chord that is already registered:
-/// the owning window gets a WM_HOTKEY and nobody else sees the key at all. That owner is now
-/// a different PROCESS — the daemon — which makes no difference to the problem: while the
-/// hotkey-trigger picker is on screen, the very combinations the user most likely wants to
-/// re-bind (the ones already bound to a macro) would never reach it. Suspending while the
-/// editor is up is still the only fix.
+/// Win32-функция <c>RegisterHotKey</c> проглатывает нажатия уже зарегистрированного сочетания:
+/// окно-владелец получает WM_HOTKEY, и клавишу больше не видит вообще никто. Владелец теперь
+/// другой ПРОЦЕСС — демон, — но задачу это не меняет: пока на экране ловушка хоткея-триггера, до
+/// неё бы никогда не доходили ровно те сочетания, которые пользователь скорее всего и хочет
+/// переназначить (те, что уже привязаны к макросу). Приостановка на время работы редактора
+/// по-прежнему единственное лекарство.
 ///
-/// The daemon does NOT re-register on its own when a client disconnects, so whoever
-/// suspends owns the resume — including on the way out of the process.
+/// Сам демон при отключении клиента заново НЕ регистрирует, так что кто приостановил, тот и
+/// отвечает за возобновление — в том числе на выходе из процесса.
 ///
-/// It stays an interface so the editor VM can be tested headlessly without a daemon.
+/// Остаётся интерфейсом, чтобы VM редактора можно было тестировать headless, без демона.
 /// </summary>
 public interface IHotkeySuspension
 {
-    /// <summary>Unregisters every chord. Idempotent.</summary>
+    /// <summary>Снимает регистрацию со всех сочетаний. Идемпотентно.</summary>
     Task SuspendAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Re-registers from the current macro library. Idempotent.</summary>
+    /// <summary>Регистрирует заново по текущей библиотеке макросов. Идемпотентно.</summary>
     Task ResumeAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// Forwards suspend/resume to the daemon over the control pipe.
+/// Переправляет приостановку и возобновление демону по управляющей трубе.
 ///
-/// Failures are logged and swallowed: a picker that cannot suspend still works for every
-/// chord that isn't already bound, whereas an exception out of a mode switch would take the
-/// shell down with it.
+/// Отказы пишутся в лог и глушатся: ловушка, которой не удалось приостановить хоткеи, всё ещё
+/// работает для любого не занятого сочетания, тогда как исключение, вылетевшее из переключения
+/// режима, утащило бы за собой всю оболочку.
 /// </summary>
 public sealed class IpcHotkeySuspension : IHotkeySuspension
 {

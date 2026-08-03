@@ -7,7 +7,7 @@ using SmartMacro.Native;
 
 namespace SmartMacro.App.ViewModels.Nodes;
 
-/// <summary>The ten node types, in the order the "add node" menu offers them.</summary>
+/// <summary>Десять типов нод в том порядке, в каком их предлагает меню «добавить ноду».</summary>
 public enum MacroNodeKind
 {
     KeyPress,
@@ -22,18 +22,18 @@ public enum MacroNodeKind
     RecognizeTag,
 }
 
-/// <summary>One entry of the "add node" flyout: the kind plus its Russian menu label.</summary>
-/// <param name="Kind">Node type to create.</param>
-/// <param name="Label">Menu text.</param>
+/// <summary>Один пункт всплывающего меню «добавить ноду»: тип плюс его русская подпись.</summary>
+/// <param name="Kind">Тип ноды, которую создавать.</param>
+/// <param name="Label">Текст пункта меню.</param>
 public sealed record MacroNodeKindOption(MacroNodeKind Kind, string Label);
 
 /// <summary>
-/// One outgoing edge of a node, rendered as a drop-down of node ids.
+/// Одно исходящее ребро ноды, нарисованное выпадающим списком id нод.
 ///
-/// The empty string is a first-class value here and means "no target — the run ends on
-/// this outcome", which is exactly what a <c>null</c> edge means in the model. Keeping it
-/// as <c>""</c> rather than <c>null</c> lets a plain <c>ComboBox</c> of strings do the
-/// editing (a null <c>SelectedItem</c> is indistinguishable from "nothing selected yet").
+/// Пустая строка здесь — полноправное значение и означает «цели нет, на этом исходе прогон
+/// заканчивается», то есть ровно то же самое, что <c>null</c>-ребро в модели. Держать её как
+/// <c>""</c>, а не как <c>null</c>, позволяет обойтись обычным <c>ComboBox</c> из строк (null
+/// в <c>SelectedItem</c> неотличим от «ещё ничего не выбрали»).
 /// </summary>
 public sealed class NodeEdgeViewModel : ObservableObject
 {
@@ -46,24 +46,24 @@ public sealed class NodeEdgeViewModel : ObservableObject
         _targetId = targetId ?? string.Empty;
     }
 
-    /// <summary>Outcome name shown next to the drop-down ("Далее", "Найдено", …).</summary>
+    /// <summary>Название исхода рядом с выпадающим списком («Далее», «Найдено», …).</summary>
     public string Label { get; }
 
     /// <summary>
-    /// Same name in the canvas's lower-case voice ("далее", "нашёл"). The box rows are set
-    /// in 9.5px and a capital there reads as a heading rather than as a port label.
+    /// То же название, но строчными — так говорит canvas («далее», «нашёл»). Строки коробки
+    /// набраны в 9.5px, и заглавная буква там читается как заголовок, а не как подпись порта.
     /// </summary>
     public string ShortLabel => Label.Length == 0
         ? Label
         : string.Concat(char.ToLowerInvariant(Label[0]).ToString(), Label.AsSpan(1));
 
-    /// <summary>Selected node id; <c>""</c> = end of run.</summary>
+    /// <summary>Выбранный id ноды; <c>""</c> = конец прогона.</summary>
     public string TargetId
     {
         get => _targetId;
-        // A ComboBox pushes null when its SelectedItem leaves the ItemsSource (e.g. the
-        // list is rebuilt after a node is deleted). Normalising to "" turns that into the
-        // meaningful "no target" value instead of a null that would blow up later.
+        // ComboBox проталкивает null, когда его SelectedItem выпадает из ItemsSource (например,
+        // список пересобрали после удаления ноды). Нормализация к "" превращает это в
+        // осмысленное «цели нет» вместо null, который рванул бы позже.
         set
         {
             if (SetField(ref _targetId, value ?? string.Empty))
@@ -75,20 +75,20 @@ public sealed class NodeEdgeViewModel : ObservableObject
     }
 
     /// <summary>
-    /// <c>true</c> when this outcome ends the run. NOT an error and NOT a node: the canvas
-    /// says so in the port row itself rather than drawing an edge to a terminal box.
+    /// <c>true</c>, когда этот исход завершает прогон. Это НЕ ошибка и НЕ нода: canvas говорит
+    /// об этом прямо в строке порта, а не рисует ребро в терминальную коробку.
     /// </summary>
     public bool IsEnd => _targetId.Length == 0;
 
-    /// <summary>Port-row caption on the collapsed box: "нашёл" or "таймаут → конец".</summary>
+    /// <summary>Подпись строки порта на свёрнутой коробке: «нашёл» или «таймаут → конец».</summary>
     public string BoxLabel => IsEnd ? $"{ShortLabel} → конец" : ShortLabel;
 
-    /// <summary>Model form of <see cref="TargetId"/>.</summary>
+    /// <summary>Модельная форма <see cref="TargetId"/>.</summary>
     public string? TargetOrNull => string.IsNullOrEmpty(_targetId) ? null : _targetId;
 
     /// <summary>
-    /// Live list of selectable ids, owned by the editor and shared by every edge, so
-    /// adding/renaming/deleting a node updates all drop-downs at once.
+    /// Живой список доступных для выбора id: им владеет редактор, а делят его все рёбра, так
+    /// что добавление, переименование или удаление ноды разом обновляет все выпадающие списки.
     /// </summary>
     public ObservableCollection<string> Choices
     {
@@ -112,10 +112,29 @@ public sealed class RegionEditorViewModel : ObservableObject
     private string _widthText = "0";
     private string _heightText = "0";
 
-    public string XText { get => _xText; set => SetField(ref _xText, value); }
-    public string YText { get => _yText; set => SetField(ref _yText, value); }
-    public string WidthText { get => _widthText; set => SetField(ref _widthText, value); }
-    public string HeightText { get => _heightText; set => SetField(ref _heightText, value); }
+    public string XText
+    {
+        get => _xText;
+        set => SetField(ref _xText, value);
+    }
+
+    public string YText
+    {
+        get => _yText;
+        set => SetField(ref _yText, value);
+    }
+
+    public string WidthText
+    {
+        get => _widthText;
+        set => SetField(ref _widthText, value);
+    }
+
+    public string HeightText
+    {
+        get => _heightText;
+        set => SetField(ref _heightText, value);
+    }
 
     public static RegionEditorViewModel FromRect(ScreenRect? rect)
     {
@@ -167,6 +186,7 @@ internal static class NodeInput
         {
             return 0;
         }
+
         return int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
             ? value
             : null;
@@ -190,11 +210,14 @@ internal static class NodeInput
         {
             return 0;
         }
+
         var normalized = text.Trim().Replace(',', '.');
-        if (!double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) || seconds < 0)
+        if (!double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) ||
+            seconds < 0)
         {
             return null;
         }
+
         return (int)Math.Round(seconds * 1000.0);
     }
 }
@@ -264,6 +287,7 @@ public abstract class NodeRowViewModel : ObservableObject
                 OnPropertyChanged();
                 return;
             }
+
             var previous = _nodeId;
             _nodeId = trimmed;
             OnPropertyChanged();
@@ -293,6 +317,7 @@ public abstract class NodeRowViewModel : ObservableObject
                 _x = value.X;
                 _y = value.Y;
             }
+
             OnPropertyChanged(nameof(X));
             OnPropertyChanged(nameof(Y));
             OnPropertyChanged(nameof(HasPosition));
@@ -627,11 +652,16 @@ public abstract class NodeRowViewModel : ObservableObject
         MacroNodeKind.Delay => new DelayNodeRowViewModel(new DelayNode { Id = nodeId, Ms = 1000 }),
         MacroNodeKind.AddTag => new AddTagNodeRowViewModel(new AddTagNode { Id = nodeId, Tag = string.Empty }),
         MacroNodeKind.RemoveTag => new RemoveTagNodeRowViewModel(new RemoveTagNode { Id = nodeId, Tag = string.Empty }),
-        MacroNodeKind.SetIcon => new SetIconNodeRowViewModel(new SetIconNode { Id = nodeId, IconPath = "Assets/ClassIcons/{tag}.png" }),
-        MacroNodeKind.RunMacro => new RunMacroNodeRowViewModel(new RunMacroNode { Id = nodeId, MacroName = string.Empty }),
-        MacroNodeKind.FindElement => new FindElementNodeRowViewModel(new FindElementNode { Id = nodeId, Template = string.Empty }),
-        MacroNodeKind.WaitForElement => new WaitForElementNodeRowViewModel(new WaitForElementNode { Id = nodeId, Template = string.Empty, TimeoutMs = 10_000 }),
-        MacroNodeKind.RecognizeTag => new RecognizeTagNodeRowViewModel(new RecognizeTagNode { Id = nodeId, TemplateSet = string.Empty, Region = default }),
+        MacroNodeKind.SetIcon => new SetIconNodeRowViewModel(new SetIconNode
+            { Id = nodeId, IconPath = "Assets/ClassIcons/{tag}.png" }),
+        MacroNodeKind.RunMacro => new RunMacroNodeRowViewModel(new RunMacroNode
+            { Id = nodeId, MacroName = string.Empty }),
+        MacroNodeKind.FindElement => new FindElementNodeRowViewModel(new FindElementNode
+            { Id = nodeId, Template = string.Empty }),
+        MacroNodeKind.WaitForElement => new WaitForElementNodeRowViewModel(new WaitForElementNode
+            { Id = nodeId, Template = string.Empty, TimeoutMs = 10_000 }),
+        MacroNodeKind.RecognizeTag => new RecognizeTagNodeRowViewModel(new RecognizeTagNode
+            { Id = nodeId, TemplateSet = string.Empty, Region = default }),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown node kind."),
     };
 

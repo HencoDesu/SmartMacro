@@ -7,25 +7,25 @@ using SmartMacro.App.ViewModels;
 namespace SmartMacro.App;
 
 /// <summary>
-/// The shell window. Everything visible is a mode view; this class only owns the three
-/// things a view-model must not: the elapsed-time tick, the custom title bar's window
-/// operations, and the guarantee that global hotkeys come back before the process exits.
+/// Окно-оболочка. Всё видимое — это вид режима; этому классу принадлежат ровно три вещи,
+/// которых не должно быть у view-model: тик счётчика времени, оконные операции своей строки
+/// заголовка и гарантия того, что глобальные хоткеи вернутся до выхода из процесса.
 /// </summary>
 public partial class MainWindow : Window
 {
-    // The daemon does not re-register hotkeys when a client disconnects, so if we exit
-    // while «Макросы» has them suspended they stay dead until the daemon restarts. The
-    // resume is a local pipe round trip completed on the client's reader thread, so a
-    // bounded block on the UI thread cannot deadlock — and two seconds is far more than a
-    // named pipe needs.
+    // Демон не перерегистрирует хоткеи, когда клиент отваливается, поэтому, выйди мы в момент,
+    // когда «Макросы» держат их приостановленными, они останутся мёртвыми до перезапуска
+    // демона. Возобновление — это round trip по локальной трубе, который завершается на потоке
+    // чтения клиента, так что ограниченная по времени блокировка потока UI не может привести к
+    // взаимной блокировке, — а двух секунд named pipe нужно куда меньше.
     private static readonly TimeSpan HotkeyResumeOnExitTimeout = TimeSpan.FromSeconds(2);
 
-    // Elapsed times in the run bar and the «Прогоны» list are rendered by the VM but ticked
-    // from here: keeping the DispatcherTimer in the view is what lets every view-model in
-    // this assembly stay free of Avalonia types and therefore unit-testable.
+    // Время «сколько уже идёт» в полосе прогона и в списке «Прогоны» рисует VM, а тикает оно
+    // отсюда: именно то, что DispatcherTimer оставлен в виде, позволяет каждой view-model в
+    // этой сборке обходиться без типов Avalonia и потому покрываться модульными тестами.
     private readonly DispatcherTimer _elapsedTimer;
 
-    // Designer needs a parameterless ctor; the app uses the (vm) overload.
+    // Дизайнеру нужен конструктор без параметров; приложение пользуется перегрузкой с (vm).
     public MainWindow()
     {
         InitializeComponent();
@@ -43,8 +43,8 @@ public partial class MainWindow : Window
 
     private ShellViewModel? Vm => DataContext as ShellViewModel;
 
-    // Closing the window exits the panel process — the tray and the engine live in the
-    // daemon now, so there is nothing left here worth keeping alive in the background.
+    // Закрытие окна завершает процесс панели: трей и движок теперь живут в демоне, так что
+    // держать здесь что-то живым в фоне уже незачем.
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         _elapsedTimer.Stop();
@@ -52,26 +52,28 @@ public partial class MainWindow : Window
         {
             if (vm.HotkeysSuspended)
             {
-                // Best effort, bounded: better a two-second stall on exit than global
-                // hotkeys that never come back.
+                // По возможности и с ограничением по времени: лучше двухсекундная заминка на
+                // выходе, чем глобальные хоткеи, которые уже не вернутся.
                 vm.ResumeHotkeysIfSuspendedAsync().Wait(HotkeyResumeOnExitTimeout);
             }
+
             vm.Dispose();
         }
+
         base.OnClosing(e);
     }
 
-    // ---- custom title bar ----------------------------------------------------------------
+    // ---- своя строка заголовка -------------------------------------------------------------
 
-    // ExtendClientAreaToDecorationsHint took the OS caption away, so dragging the window is
-    // ours to implement. Left button only, and not when the press landed on one of the
-    // caption buttons (they handle their own click).
+    // ExtendClientAreaToDecorationsHint забрал системный заголовок, так что перетаскивание окна
+    // реализуем сами. Только левой кнопкой и только если нажатие не пришлось на одну из кнопок
+    // заголовка (они разбираются со своим кликом сами).
     //
-    // NOT while maximised. BeginMoveDrag on a maximised extended-client-area window was
-    // observed to leave the window HIDDEN (still a live process, WS_VISIBLE cleared, no
-    // exception) — a state nothing in the app can recover from. Windows' own "drag a
-    // maximised window to restore it" gesture is not worth reimplementing on top of that;
-    // double-tap restores, which is the discoverable half of the same interaction.
+    // НЕ в развёрнутом состоянии. Наблюдалось, что BeginMoveDrag на развёрнутом окне с
+    // расширенной клиентской областью оставляет окно СКРЫТЫМ (процесс жив, WS_VISIBLE снят,
+    // исключения нет) — состояние, из которого приложению уже не выбраться. Собственный жест
+    // Windows «потянуть развёрнутое окно, чтобы восстановить его» переизобретать поверх такого
+    // не стоит; восстанавливает двойное касание — доступная половина того же взаимодействия.
     private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (e.Source is Button
@@ -80,6 +82,7 @@ public partial class MainWindow : Window
         {
             return;
         }
+
         BeginMoveDrag(e);
     }
 
@@ -89,6 +92,7 @@ public partial class MainWindow : Window
         {
             return;
         }
+
         ToggleMaximised();
     }
 
@@ -101,7 +105,7 @@ public partial class MainWindow : Window
     private void ToggleMaximised() =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
-    // ---- run bar --------------------------------------------------------------------------
+    // ---- полоса прогона ----------------------------------------------------------------------
 
     private void OnStopPrimaryRunClicked(object? sender, RoutedEventArgs e)
     {

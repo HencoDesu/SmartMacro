@@ -11,16 +11,16 @@ using SmartMacro.Contracts.Ipc;
 namespace SmartMacro.App;
 
 /// <summary>
-/// The Avalonia application object, and the panel's two lifecycle rules.
+/// Объект приложения Avalonia и два правила жизненного цикла панели.
 ///
-/// <b>Closing the window exits the process.</b> Before stage 3 the X button hid to a tray
-/// icon, because this process WAS the engine and closing it would have stopped automation.
-/// It isn't any more: the daemon keeps running, owns the tray, and can bring the panel back
-/// on demand — so the window behaves like a window.
+/// <b>Закрыли окно — вышли из процесса.</b> До стадии 3 крестик прятал приложение в иконку
+/// трея, потому что этот процесс И БЫЛ движком, и его закрытие остановило бы автоматизацию.
+/// Больше это не так: демон продолжает работать, владеет треем и по требованию возвращает
+/// панель на экран, — так что окно ведёт себя как окно.
 ///
-/// <b>The daemon's liveness is ours.</b> A panel whose connection has dropped can neither
-/// show anything true nor change anything, so a lost connection is reported once and the
-/// process exits rather than sitting there rendering a frozen snapshot.
+/// <b>Жив демон — живы и мы.</b> Панель, у которой оборвалось соединение, не может ни
+/// показать ничего правдивого, ни изменить ничего, поэтому потеря соединения сообщается один
+/// раз и процесс завершается, а не сидит на экране, рисуя застывший снимок.
 /// </summary>
 public partial class App : Application
 {
@@ -37,8 +37,8 @@ public partial class App : Application
             _desktop = desktop;
             var services = Program.Services;
 
-            // The parameterless MainWindow is the designer's path; at runtime Services is
-            // always there, because Program refuses to start Avalonia without a connection.
+            // MainWindow без параметров — путь дизайнера; во время работы Services есть
+            // всегда, потому что Program отказывается запускать Avalonia без соединения.
             var window = services is null
                 ? new MainWindow()
                 : new MainWindow(services.CreateShellViewModel());
@@ -71,12 +71,13 @@ public partial class App : Application
         {
             return;
         }
+
         Dispatcher.UIThread.Post(SurfaceMainWindow);
     }
 
     /// <summary>
-    /// Brings the window back from minimised/buried and puts it in front. Raised by the
-    /// tray's "Открыть панель" and by a second launch of this executable.
+    /// Возвращает окно из свёрнутого или заваленного состояния и выводит его вперёд.
+    /// Поднимается по «Открыть панель» в трее и по второму запуску этого же исполняемого файла.
     /// </summary>
     private void SurfaceMainWindow()
     {
@@ -89,16 +90,18 @@ public partial class App : Application
         {
             main.Show();
         }
+
         if (main.WindowState == WindowState.Minimized)
         {
             main.WindowState = WindowState.Normal;
         }
+
         main.Activate();
 
-        // Windows refuses SetForegroundWindow to a process that isn't already the
-        // foreground one, and the game's clients are full-screen — Activate() alone often
-        // just flashes the taskbar button. The topmost bounce forces the z-order change
-        // without leaving the panel pinned above everything.
+        // Windows отказывает в SetForegroundWindow процессу, который и так не на переднем
+        // плане, а клиенты игры идут в полный экран — от одного только Activate() кнопка на
+        // панели задач часто просто помигает. Прыжок через topmost продавливает смену
+        // z-порядка, не оставляя панель приколотой поверх всего остального.
         main.Topmost = true;
         main.Topmost = false;
         Serilog.Log.Information("Панель выведена на передний план по запросу демона");
@@ -106,9 +109,10 @@ public partial class App : Application
 
     private void OnDaemonDisconnected()
     {
-        // The client reconnects on its own, but the UI does not resume from a gap it cannot
-        // see the far side of — and a daemon that stopped is usually the user pressing
-        // "Выход" in the tray. Report once; a reconnect loop must not stack dialogs.
+        // Клиент переподключается сам, но UI не умеет продолжить с разрыва, дальнего края
+        // которого он не видел, — а остановившийся демон обычно означает, что пользователь
+        // нажал «Выход» в трее. Сообщаем один раз: цикл переподключения не должен складывать
+        // диалоги стопкой.
         if (Interlocked.Exchange(ref _daemonLossReported, 1) != 0)
         {
             return;

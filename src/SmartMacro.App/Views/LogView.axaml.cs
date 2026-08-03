@@ -2,7 +2,7 @@ using Avalonia.Controls;
 
 namespace SmartMacro.App.Views;
 
-/// <summary>«Лог» — chrome and an honest empty state; the daemon's log never crosses the pipe.</summary>
+/// <summary>«Лог» — обрамление и честное пустое состояние: лог демона по трубе не ходит.</summary>
 public partial class LogView : UserControl
 {
     public LogView() => InitializeComponent();

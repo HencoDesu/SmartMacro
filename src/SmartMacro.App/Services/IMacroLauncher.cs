@@ -5,23 +5,23 @@ using SmartMacro.Contracts.Ipc;
 namespace SmartMacro.App.Services;
 
 /// <summary>
-/// Starts a macro from the UI — the manual equivalent of pressing its hotkey (no context
-/// window; the graph routes by tag selector, and the daemon seeds the cursor variable
-/// itself). Same testability rationale as <see cref="IHotkeySuspension"/>: the editor VM
-/// must not need a live daemon to be unit-tested.
+/// Запускает макрос из UI — ручной эквивалент нажатия его хоткея (контекстного окна нет; граф
+/// маршрутизируется тег-селектором, а переменную cursor демон засевает сам). Обоснование
+/// тестируемости то же, что у <see cref="IHotkeySuspension"/>: для юнит-теста VM редактора
+/// живой демон требоваться не должен.
 /// </summary>
 public interface IMacroLauncher
 {
-    /// <summary>Fire-and-forget start of <paramref name="macroName"/>. Failures are logged, never thrown.</summary>
+    /// <summary>Запуск <paramref name="macroName"/> без ожидания результата. Отказы уходят в лог, наружу не летят.</summary>
     void RunMacro(string macroName);
 }
 
 /// <summary>
-/// Sends <see cref="IpcMessageTypes.RunMacro"/> and forgets about it.
+/// Отправляет <see cref="IpcMessageTypes.RunMacro"/> и забывает о нём.
 ///
-/// Fire-and-forget is faithful to the protocol, not a shortcut: the daemon's reply means
-/// "started", never "finished" — a macro can run for hours — so there is nothing for the
-/// caller to await. An unknown macro name DOES fail the request, and that lands in the log.
+/// Отправить и забыть — это верность протоколу, а не срезанный угол: ответ демона означает
+/// «запустил», но никогда «закончил» — макрос может работать часами, — так что ждать вызывающему
+/// нечего. А вот неизвестное имя макроса запрос всё-таки проваливает, и это попадает в лог.
 /// </summary>
 public sealed class IpcMacroLauncher : IMacroLauncher
 {

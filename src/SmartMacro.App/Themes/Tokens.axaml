@@ -1,40 +1,41 @@
 <!--
-  Nocturne — the token layer (wave D1).
+  Nocturne — слой токенов (волна D1).
 
-  Source of truth: docs/design/nocturne-tokens.md, with the off-ramp values taken verbatim
-  from docs/design/opt-1b.html. Nothing here knows about controls; Controls.axaml and the
-  views consume these and only these. If a view needs a colour that is not in this file,
-  the fix is a new named token here — never a literal in the markup.
+  Источник истины: docs/design/nocturne-tokens.md, а значения, выходящие за шкалы, взяты
+  дословно из docs/design/opt-1b.html. Здесь никто ничего не знает о контролах; Controls.axaml
+  и представления потребляют эти токены и только их. Если представлению понадобился цвет,
+  которого в этом файле нет, лечится это новым именованным токеном здесь — но никак не
+  литералом в разметке.
 
-  NAMING (hold this — D2 and D3 will reference these constantly):
+  ИМЕНОВАНИЕ (держитесь его — D2 и D3 будут ссылаться на это постоянно):
 
-    Nocturne <Role|Ramp+Step|Semantic> <Kind?>
+    Nocturne <Роль|Шкала+Ступень|Семантика> <Вид?>
 
-    …Color        a Color        e.g. NocturneAccent500Color
-    …Brush        a SolidColorBrush over the same value,  e.g. NocturneAccent500Brush
-    NocturneSpaceN     double, N = the step number on the 0.7× scale (1 2 3 4 6 8)
+    …Color        Color,        например NocturneAccent500Color
+    …Brush        SolidColorBrush поверх того же значения, например NocturneAccent500Brush
+    NocturneSpaceN     double, где N — номер ступени на шкале 0.7× (1 2 3 4 6 8)
     NocturneRadius*    CornerRadius (Sm / Md / Lg / Pill)
-    NocturneInset*     Thickness for padding
+    NocturneInset*     Thickness под padding
     NocturneShadow*    BoxShadows (Sm / Md / Lg)
     NocturneFontSize*  double
     NocturneFontFamily / …Mono   FontFamily
 
-  Two ramps exist in full (neutral 100–900, accent 100–900) even where nothing consumes a
-  step yet: the ramps are a single lightness scale, and picking "the next step" is how the
-  system stays coherent. Do not add intermediate steps.
+  Обе шкалы существуют целиком (нейтральная 100–900, акцентная 100–900), даже там, где ступень
+  пока никто не потребляет: шкала — это единая лестница светлоты, и выбор «следующей ступени»
+  ровно то, чем система держится связной. Промежуточных ступеней не добавлять.
 
-  RULES that live in the values (see the token doc §"Правила"):
-    · Accent is a line and a glow, never a flood — hence the AccentTint* brushes and the
-      absence of any "accent fill" token.
-    · No pure black and no pure white anywhere except the shadows, where black is ambient
-      darkness rather than a colour.
-    · The spacing scale is small on purpose (density 0.7×). Do not round it up.
+  ПРАВИЛА, живущие прямо в значениях (см. §"Правила" в документе о токенах):
+    · Акцент — это линия и свечение, но никогда не заливка; отсюда кисти AccentTint* и полное
+      отсутствие токена вида «акцентная заливка».
+    · Нигде ни чисто чёрного, ни чисто белого, кроме теней, где чёрный — это окружающая тьма,
+      а не цвет.
+    · Шкала отступов мелкая намеренно (плотность 0.7×). Округлять её вверх не надо.
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ================================================================
-         ROLES
+         РОЛИ
          ================================================================ -->
 
     <Color x:Key="NocturneBgColor">#161826</Color>
@@ -47,12 +48,12 @@
     <SolidColorBrush x:Key="NocturneTextBrush" Color="{StaticResource NocturneTextColor}" />
     <SolidColorBrush x:Key="NocturneAccentBrush" Color="{StaticResource NocturneAccentColor}" />
 
-    <!-- The role token "color-divider": text @ 16%. The system's hairline; the mockup's
-         own dividers (below) are opaque and slightly cooler. -->
+    <!-- Ролевой токен "color-divider": текст с прозрачностью 16%. Это волосяная линия системы;
+         собственные разделители макета (ниже) непрозрачны и чуть холоднее. -->
     <SolidColorBrush x:Key="NocturneHairlineBrush" Color="#29e9e9ed" />
 
     <!-- ================================================================
-         NEUTRAL RAMP  (OKLCH, one lightness scale — equal step = equal weight)
+         НЕЙТРАЛЬНАЯ ШКАЛА  (OKLCH, единая лестница светлоты — равный шаг = равный вес)
          ================================================================ -->
 
     <Color x:Key="NocturneNeutral100Color">#f3f5fe</Color>
@@ -76,8 +77,8 @@
     <SolidColorBrush x:Key="NocturneNeutral900Brush" Color="{StaticResource NocturneNeutral900Color}" />
 
     <!-- ================================================================
-         ACCENT RAMP
-         accent-2 reads as accent in a mono scheme — there is no second accent role.
+         АКЦЕНТНАЯ ШКАЛА
+         В монохромной схеме accent-2 читается как акцент — второй акцентной роли не существует.
          ================================================================ -->
 
     <Color x:Key="NocturneAccent100Color">#f5f4ff</Color>
@@ -101,9 +102,9 @@
     <SolidColorBrush x:Key="NocturneAccent900Brush" Color="{StaticResource NocturneAccent900Color}" />
 
     <!-- ================================================================
-         ACCENT TINTS — the "glow" half of the accent rule.
-         Percentages of the accent over whatever sits behind it. These are the ONLY way
-         accent is allowed to occupy an area; a solid accent rectangle is a bug.
+         АКЦЕНТНЫЕ ОТТЕНКИ — та половина правила про акцент, что отвечает за «свечение».
+         Проценты акцента поверх того, что оказалось сзади. Это ЕДИНСТВЕННЫЙ способ, которым
+         акценту позволено занимать площадь; сплошной акцентный прямоугольник — это баг.
          ================================================================ -->
 
     <Color x:Key="NocturneAccentTint08Color">#149184d9</Color>
@@ -118,37 +119,39 @@
     <SolidColorBrush x:Key="NocturneAccentTint18Brush" Color="{StaticResource NocturneAccentTint18Color}" />
     <SolidColorBrush x:Key="NocturneAccentTint22Brush" Color="{StaticResource NocturneAccentTint22Color}" />
 
-    <!-- Semantic aliases for the two interaction states the token doc names explicitly. -->
+    <!-- Семантические псевдонимы для двух состояний взаимодействия, названных в документе о
+         токенах явно. -->
     <SolidColorBrush x:Key="NocturneHoverBrush" Color="{StaticResource NocturneAccentTint12Color}" />
     <SolidColorBrush x:Key="NocturnePressedBrush" Color="{StaticResource NocturneAccentTint22Color}" />
 
     <!-- ================================================================
-         SEMANTIC SURFACES
-         Values the mockup takes past the ramps (token doc §"Значения, взятые макетом
-         сверх системы"). Deliberate local shades for a dense tool — named, never inlined.
+         СЕМАНТИЧЕСКИЕ ПОВЕРХНОСТИ
+         Значения, которые макет берёт сверх шкал (документ о токенах, §"Значения, взятые
+         макетом сверх системы"). Осознанные локальные оттенки под плотный инструмент —
+         именованные, но никогда не вписанные по месту.
          ================================================================ -->
 
-    <!-- The ground the whole window sits on (body background of the design doc). -->
+    <!-- Земля, на которой стоит всё окно (фон body в документе дизайна). -->
     <Color x:Key="NocturneGroundColor">#0d0e16</Color>
     <SolidColorBrush x:Key="NocturneGroundBrush" Color="{StaticResource NocturneGroundColor}" />
 
-    <!-- Sunken: sidebars, gutters — reads as behind the content plane. -->
+    <!-- Утопленная: боковые панели, жёлоба — читается как то, что лежит за плоскостью контента. -->
     <SolidColorBrush x:Key="NocturneSurfaceSunkenBrush" Color="#131420" />
-    <!-- Raised: header and footer bars framing a work area. -->
+    <!-- Приподнятая: полосы шапки и подвала, обрамляющие рабочую область. -->
     <SolidColorBrush x:Key="NocturneSurfaceRaisedBrush" Color="#191b28" />
-    <!-- Overlay: title bar, popups, anything floating above the plane. -->
+    <!-- Накладная: строка заголовка, всплывающие окна, всё, что парит над плоскостью. -->
     <Color x:Key="NocturneSurfaceOverlayColor">#1c1e2a</Color>
     <SolidColorBrush x:Key="NocturneSurfaceOverlayBrush" Color="{StaticResource NocturneSurfaceOverlayColor}" />
-    <!-- Inset: the hairline gap between list rows, small code chips. -->
+    <!-- Вставка: волосяной зазор между строками списка, мелкие фишки с кодом. -->
     <SolidColorBrush x:Key="NocturneSurfaceInsetBrush" Color="#20222f" />
-    <!-- Alternating list row against NocturneBg. -->
+    <!-- Чередующаяся строка списка на фоне NocturneBg. -->
     <SolidColorBrush x:Key="NocturneSurfaceRowAltBrush" Color="#181a27" />
-    <!-- A row that is present but not yet identified — dimmer than either row colour. -->
+    <!-- Строка, которая есть, но пока не опознана, — тусклее обоих цветов строк. -->
     <SolidColorBrush x:Key="NocturneSurfaceRowMutedBrush" Color="#14151f" />
 
-    <!-- The fading rule beside the "не опознано · N" separator (D2). A gradient, not a
-         colour, so it belongs here rather than in the view: #332d1f is the warning border
-         darkened to a hairline, fading out to the right. -->
+    <!-- Затухающая линейка рядом с разделителем «не опознано · N» (D2). Это градиент, а не
+         цвет, поэтому ему место здесь, а не в представлении: #332d1f — это граница
+         предупреждения, притемнённая до волосяной линии и растворяющаяся вправо. -->
     <LinearGradientBrush x:Key="NocturneUntaggedRuleBrush" StartPoint="0%,0%" EndPoint="100%,0%">
         <GradientStop Offset="0" Color="#332d1f" />
         <GradientStop Offset="1" Color="#00332d1f" />
@@ -158,26 +161,26 @@
     <Color x:Key="NocturneDividerStrongColor">#2b2e3d</Color>
     <SolidColorBrush x:Key="NocturneDividerStrongBrush" Color="{StaticResource NocturneDividerStrongColor}" />
 
-    <!-- Form fields. Border stays neutral at rest; focus is the accent line. -->
+    <!-- Поля формы. В покое граница остаётся нейтральной; фокус — это акцентная линия. -->
     <SolidColorBrush x:Key="NocturneFieldBackgroundBrush" Color="#1b1d29" />
     <SolidColorBrush x:Key="NocturneFieldBorderBrush" Color="#33364a" />
 
     <!-- ================================================================
-         SEMANTIC TEXT
-         Accent-to-ground is ~3:1 — fine for icons, chrome and large text, NOT for body
-         copy. Paragraph text in accent uses NocturneAccent300Brush.
+         СЕМАНТИЧЕСКИЙ ТЕКСТ
+         Контраст акцента к земле примерно 3:1 — годится для иконок, оправы и крупного текста,
+         но НЕ для основного текста. Абзацы акцентом набираются NocturneAccent300Brush.
          ================================================================ -->
 
     <SolidColorBrush x:Key="NocturneTextSecondaryBrush" Color="{StaticResource NocturneNeutral300Color}" />
-    <!-- Muted: a row that is de-emphasised but still meant to be read. -->
+    <!-- Приглушённый: строка, с которой сняли акцент, но читать её всё ещё предполагается. -->
     <SolidColorBrush x:Key="NocturneTextMutedBrush" Color="#8b8fa2" />
-    <!-- Faint: counters, hwnd hex, elapsed times. -->
+    <!-- Бледный: счётчики, hwnd в шестнадцатеричном виде, прошедшее время. -->
     <SolidColorBrush x:Key="NocturneTextFaintBrush" Color="#5f6376" />
-    <!-- Ghost: uppercase eyebrow labels over a section. -->
+    <!-- Призрачный: надзаголовки капслоком над разделом. -->
     <SolidColorBrush x:Key="NocturneTextGhostBrush" Color="#4e5265" />
 
     <!-- ================================================================
-         STATUS
+         СТАТУСЫ
          ================================================================ -->
 
     <Color x:Key="NocturneWarningColor">#dbb277</Color>
@@ -189,92 +192,95 @@
     <SolidColorBrush x:Key="NocturneDangerBrush" Color="{StaticResource NocturneDangerColor}" />
     <SolidColorBrush x:Key="NocturneDangerSurfaceBrush" Color="#14dd8189" />
     <SolidColorBrush x:Key="NocturneDangerBorderBrush" Color="#5c3a40" />
-    <!-- Interaction steps for the destructive button: same wash, deeper. -->
+    <!-- Ступени взаимодействия для разрушительной кнопки: та же заливка, только гуще. -->
     <SolidColorBrush x:Key="NocturneDangerSurfaceHoverBrush" Color="#26dd8189" />
     <SolidColorBrush x:Key="NocturneDangerSurfacePressedBrush" Color="#38dd8189" />
     <SolidColorBrush x:Key="NocturneDangerBorderHoverBrush" Color="#7a3f47" />
 
     <!-- ================================================================
-         CHIPS (tags)
-         The pill is the mockup's one repeated composite; keeping it tokenised means D2's
-         sidebar summary and D3's canvas badges cannot drift apart.
+         ФИШКИ (теги)
+         Пилюля — единственный составной элемент, который макет повторяет; пока она собрана из
+         токенов, сводка в боковой панели у D2 и бейджи на canvas у D3 разъехаться не могут.
          ================================================================ -->
 
     <SolidColorBrush x:Key="NocturneChipFillBrush" Color="#269184d9" />
     <SolidColorBrush x:Key="NocturneChipBorderBrush" Color="#443f6b" />
     <SolidColorBrush x:Key="NocturneChipTextBrush" Color="#cfc8f0" />
-    <!-- Soft variant: same pill on a sunken surface, where it must recede. -->
+    <!-- Мягкий вариант: та же пилюля на утопленной поверхности, где ей положено отступить назад. -->
     <SolidColorBrush x:Key="NocturneChipFillSoftBrush" Color="#219184d9" />
     <SolidColorBrush x:Key="NocturneChipBorderSoftBrush" Color="#3a3560" />
     <SolidColorBrush x:Key="NocturneChipTextSoftBrush" Color="#c3bbe8" />
-    <!-- The accent-tinted input border the mockup uses for "add a tag" affordances. -->
+    <!-- Подкрашенная акцентом граница поля ввода, которой макет обозначает «добавить тег». -->
     <SolidColorBrush x:Key="NocturneChipInputBorderBrush" Color="#4a4470" />
 
     <!-- ================================================================
-         CANVAS (wave D3a)
-         The node editor is its own visual plane: a darker ground than the window so the
-         boxes read as floating on it, plus one shade per node chrome part. All of these
-         are the mockup's own values (opt-1d / opt-1e) and, like the surfaces above, they
-         sit past the ramps on purpose — a dense graph needs finer steps than 100-per-stop.
+         CANVAS (волна D3a)
+         Редактор нод — это собственная визуальная плоскость: земля темнее, чем у окна, чтобы
+         коробки читались как парящие над ней, плюс по оттенку на каждую деталь оправы ноды.
+         Все значения здесь — собственные значения макета (opt-1d / opt-1e) и, как и
+         поверхности выше, намеренно лежат вне шкал: плотному графу нужны ступени мельче, чем
+         по сотне на шаг.
          ================================================================ -->
 
-    <!-- The plane the graph is drawn on, and the dot grid over it. -->
+    <!-- Плоскость, на которой рисуется граф, и точечная сетка поверх неё. -->
     <SolidColorBrush x:Key="NocturneCanvasBrush" Color="#12131e" />
     <SolidColorBrush x:Key="NocturneCanvasGridBrush" Color="#242737" />
 
-    <!-- Deep panels flanking the canvas: the inspector and the run-log strip. -->
+    <!-- Глубокие панели по бокам от canvas: инспектор и лента лога прогона. -->
     <SolidColorBrush x:Key="NocturnePanelDeepBrush" Color="#141520" />
     <SolidColorBrush x:Key="NocturnePanelDeepDividerBrush" Color="#212434" />
 
-    <!-- An action node: neutral chrome. -->
+    <!-- Нода-действие: нейтральная оправа. -->
     <SolidColorBrush x:Key="NocturneNodeSurfaceBrush" Color="#1e2030" />
     <SolidColorBrush x:Key="NocturneNodeBorderBrush" Color="#343849" />
     <SolidColorBrush x:Key="NocturneNodeHeaderBrush" Color="#242739" />
     <SolidColorBrush x:Key="NocturneNodeHeaderBorderBrush" Color="#2e3243" />
 
-    <!-- A conditional node: the same box with an accent-leaning header, so the two
-         families are told apart before a single word is read. -->
+    <!-- Условная нода: та же коробка, но шапка уведена в акцент, чтобы два семейства
+         различались ещё до того, как прочитано хоть одно слово. -->
     <SolidColorBrush x:Key="NocturneNodeConditionalHeaderBrush" Color="#262238" />
     <SolidColorBrush x:Key="NocturneNodeConditionalHeaderBorderBrush" Color="#322d4a" />
 
-    <!-- The node the executor is standing on (D3b lights this up). -->
+    <!-- Нода, на которой стоит исполнитель (её и подсвечивает D3b). -->
     <SolidColorBrush x:Key="NocturneNodeRunningBrush" Color="#232038" />
     <SolidColorBrush x:Key="NocturneNodeRunningHeaderBrush" Color="#2e2951" />
     <SolidColorBrush x:Key="NocturneNodeRunningHeaderBorderBrush" Color="#46407a" />
 
-    <!-- A node the selected walk has already been through (D5): the mockup dims it and
-         stamps a ✓ with its time. Dimming, not a different colour — the point is that the
-         eye slides past it and lands on the one that is live. -->
+    <!-- Нода, через которую выбранный обход уже прошёл (D5): макет её притемняет и ставит ✓ с
+         затраченным временем. Именно притемнение, а не другой цвет: смысл в том, чтобы глаз
+         проскользнул мимо неё и приземлился на ту, что живая. -->
     <SolidColorBrush x:Key="NocturneNodePassedBrush" Color="#1b1d2b" />
     <SolidColorBrush x:Key="NocturneNodePassedHeaderBrush" Color="#212433" />
     <SolidColorBrush x:Key="NocturneNodePassedBorderBrush" Color="#2e3243" />
 
-    <!-- A node the walk is PARKED at. The accent of a live node plus the danger edge of the
-         thing holding it, so "stopped here" never reads as "running here". -->
+    <!-- Нода, на которой обход ПРИПАРКОВАН. Акцент живой ноды плюс тревожная кромка того, что
+         его удерживает, — чтобы «здесь остановились» никогда не читалось как «здесь идёт». -->
     <SolidColorBrush x:Key="NocturneNodePausedBorderBrush" Color="{StaticResource NocturneDangerColor}" />
 
-    <!-- Edges and their ports. Active = accent, and it is the ONLY accent line on the
-         canvas, which is what makes a live path readable at a glance. -->
+    <!-- Рёбра и их порты. Активное = акцент, и это ЕДИНСТВЕННАЯ акцентная линия на canvas —
+         именно поэтому живой путь читается с одного взгляда. -->
     <SolidColorBrush x:Key="NocturneEdgeBrush" Color="#464b61" />
     <SolidColorBrush x:Key="NocturneEdgeActiveBrush" Color="{StaticResource NocturneAccentColor}" />
 
-    <!-- A variable link: writer → reader, dashed, in the variable colour of the mockup's
-         legend. Never accent — it is not control flow and must not read as a branch. -->
+    <!-- Связь по переменной: пишущий → читающий, пунктиром, цветом переменной из легенды
+         макета. Никогда не акцентом: это не поток управления и читаться как ветвление не
+         должно. -->
     <SolidColorBrush x:Key="NocturneVariableBrush" Color="{StaticResource NocturneWarningColor}" />
     <SolidColorBrush x:Key="NocturneVariableSurfaceBrush" Color="#12dbb277" />
     <SolidColorBrush x:Key="NocturneVariableBorderBrush" Color="#5c4f33" />
 
-    <!-- A key label rendered as a keycap: flat top, thicker bottom edge. -->
+    <!-- Подпись клавиши, нарисованная кейкапом: плоский верх, кромка снизу потолще. -->
     <SolidColorBrush x:Key="NocturneKeycapBrush" Color="#2a2e40" />
 
-    <!-- Node elevation. Distinct from NocturneShadow* because a node is a small card on a
-         dark plane, not a popup: no bright edge, just the drop. -->
+    <!-- Высота ноды над плоскостью. Отличается от NocturneShadow* потому, что нода — это
+         маленькая карточка на тёмной плоскости, а не всплывающее окно: никакой светлой кромки,
+         только падающая тень. -->
     <BoxShadows x:Key="NocturneShadowNode">0 3 10 0 #80000000</BoxShadows>
-    <!-- Selected / expanded: the accent glow of the system, at card scale. -->
+    <!-- Выбранная или развёрнутая: системное акцентное свечение, в масштабе карточки. -->
     <BoxShadows x:Key="NocturneShadowNodeSelected">0 0 0 4 #1f9184d9, 0 10 28 0 #99000000</BoxShadows>
 
     <!-- ================================================================
-         SPACING — density 0.7×, steps 1 2 3 4 6 8
+         ОТСТУПЫ — плотность 0.7×, ступени 1 2 3 4 6 8
          ================================================================ -->
 
     <x:Double x:Key="NocturneSpace1">2.8</x:Double>
@@ -284,7 +290,7 @@
     <x:Double x:Key="NocturneSpace6">16.8</x:Double>
     <x:Double x:Key="NocturneSpace8">22.4</x:Double>
 
-    <!-- Inset* = padding presets. -->
+    <!-- Inset* = заготовки под padding. -->
     <Thickness x:Key="NocturneInsetTight">5.6,2.8</Thickness>
     <Thickness x:Key="NocturneInsetControl">11.2,5.6</Thickness>
     <Thickness x:Key="NocturneInsetField">8.4,5.6</Thickness>
@@ -293,60 +299,62 @@
     <Thickness x:Key="NocturneInsetCard">11.2</Thickness>
     <Thickness x:Key="NocturneInsetWindow">11.2</Thickness>
 
-    <!-- Space*Thickness = uniform margins, same scale. Directional margins stay literal
-         but must be picked off the scale above. -->
+    <!-- Space*Thickness = равномерные поля, шкала та же. Направленные поля остаются литералами,
+         но брать их значения полагается со шкалы выше. -->
     <Thickness x:Key="NocturneSpace1Thickness">2.8</Thickness>
     <Thickness x:Key="NocturneSpace2Thickness">5.6</Thickness>
     <Thickness x:Key="NocturneSpace3Thickness">8.4</Thickness>
     <Thickness x:Key="NocturneSpace4Thickness">11.2</Thickness>
 
     <!-- ================================================================
-         RADII
+         РАДИУСЫ СКРУГЛЕНИЯ
          ================================================================ -->
 
     <CornerRadius x:Key="NocturneRadiusSm">4</CornerRadius>
     <CornerRadius x:Key="NocturneRadiusMd">8</CornerRadius>
     <CornerRadius x:Key="NocturneRadiusLg">14</CornerRadius>
-    <!-- Not in the system proper: the tag pill, whose radius is just half its height. -->
+    <!-- В собственно систему не входит: пилюля тега, у которой радиус — это просто половина её
+         высоты. -->
     <CornerRadius x:Key="NocturneRadiusPill">10</CornerRadius>
 
     <!-- ================================================================
-         ELEVATION
-         On a dark ground, height is an edge plus a soft shadow. Never stack two recipes.
+         ВЫСОТА НАД ПЛОСКОСТЬЮ
+         На тёмной земле высота — это кромка плюс мягкая тень. Два рецепта друг на друга не
+         накладывать никогда.
          ================================================================ -->
 
     <BoxShadows x:Key="NocturneShadowSm">0 0 0 1 #3f424d</BoxShadows>
     <BoxShadows x:Key="NocturneShadowMd">0 0 0 1 #595d6c, 0 6 18 0 #8c000000</BoxShadows>
     <BoxShadows x:Key="NocturneShadowLg">0 0 0 1 #9397ab, 0 16 40 0 #a6000000</BoxShadows>
 
-    <!-- Not elevation: the halo around the run bar's "something is running" dot (D2).
-         A 3px spread of accent @20% — the accent-as-glow rule at its smallest. -->
+    <!-- Не высота: ореол вокруг точки «что-то работает» на полосе прогона (D2). Растекание на
+         3px акцентом с прозрачностью 20% — правило «акцент как свечение» в самом мелком виде. -->
     <BoxShadows x:Key="NocturneRunDotGlow">0 0 0 3 #339184d9</BoxShadows>
 
     <!-- ================================================================
-         TYPE
-         Inter ships embedded in the Avalonia.Fonts.Inter package and is registered by
-         Program.BuildAvaloniaApp().WithInterFont() — the "fonts:Inter" alias below is that
-         package's own collection key, so nothing depends on a system install.
-         The package carries Regular/Medium/SemiBold (400/500/600) among others.
+         ШРИФТ
+         Inter едет встроенным в пакет Avalonia.Fonts.Inter и регистрируется вызовом
+         Program.BuildAvaloniaApp().WithInterFont() — псевдоним "fonts:Inter" ниже это
+         собственный ключ коллекции того самого пакета, так что от установки в системе ничего
+         не зависит. Пакет несёт в себе, среди прочего, Regular/Medium/SemiBold (400/500/600).
 
-         Headings are never heavier than 500. Hierarchy is size and space.
+         Заголовки никогда не жирнее 500. Иерархию делают размер и воздух.
          ================================================================ -->
 
-    <!-- The trailing "$Default" is the fallback family for glyphs Inter does not carry
-         (arrows, geometric shapes). It is the same chain Fluent's own
-         ContentControlThemeFontFamily uses — do not drop it. -->
+    <!-- Хвостовой "$Default" — это запасное семейство для глифов, которых у Inter нет (стрелки,
+         геометрические фигуры). Цепочка та же самая, что использует собственный
+         ContentControlThemeFontFamily у Fluent, — выбрасывать её не надо. -->
     <FontFamily x:Key="NocturneFontFamily">fonts:Inter#Inter, $Default</FontFamily>
     <FontFamily x:Key="NocturneFontFamilyMono">Cascadia Mono,Consolas,$Default</FontFamily>
 
-    <!-- GLYPH BUTTONS, a trap worth writing down, because no font chain saves you from it.
-         Where a button's label IS a character (▸ ■ ↑ ↓ ×), the codepoint must not be one
-         with an emoji presentation: Windows serves those from Segoe UI Emoji, whose glyphs
-         are full colour and ignore Foreground entirely. U+25B6 ▶ rendered as a WHITE
-         triangle inside an accent-outlined button no matter what family was asked for.
-         U+25B8 ▸ (used for "run") has no emoji presentation and inherits Foreground like
-         ordinary text; ■ ↑ ↓ × are likewise safe. Check any new glyph against emoji-data
-         before shipping it as a label. -->
+    <!-- КНОПКИ-ГЛИФЫ — ловушка, которую стоит записать, потому что никакая цепочка шрифтов от
+         неё не спасает. Там, где подпись кнопки САМА является символом (▸ ■ ↑ ↓ ×), кодовая
+         точка не должна быть из тех, у кого есть эмодзи-представление: такие Windows подаёт из
+         Segoe UI Emoji, а его глифы полноцветные и Foreground игнорируют начисто. U+25B6 ▶
+         рисовался БЕЛЫМ треугольником внутри кнопки с акцентным контуром, какое семейство ни
+         проси. У U+25B8 ▸ (её используем для «запустить») эмодзи-представления нет, и она
+         наследует Foreground как обычный текст; ■ ↑ ↓ × так же безопасны. Любой новый глиф
+         сверяйте с emoji-data, прежде чем отправлять его в подпись. -->
 
     <x:Double x:Key="NocturneFontSizeMicro">10</x:Double>
     <x:Double x:Key="NocturneFontSizeSmall">11</x:Double>

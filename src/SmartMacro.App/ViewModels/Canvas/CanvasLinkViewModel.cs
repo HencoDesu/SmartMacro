@@ -3,22 +3,22 @@ using SmartMacro.App.ViewModels.Nodes;
 namespace SmartMacro.App.ViewModels.Canvas;
 
 /// <summary>
-/// A dashed hint line between two boxes: «эта нода пишет переменную, эта её читает».
+/// Пунктирная линия-подсказка между двумя коробками: «эта нода пишет переменную, эта её читает».
 ///
-/// Deliberately NOT a <see cref="CanvasEdgeViewModel"/>. An edge is control flow — it leaves
-/// a named outcome port, it routes through the gutters so it never crosses a box, and it
-/// carries an arrow that means "the walker goes there". A variable link means none of those
-/// things, and giving it the same shape would make the canvas claim a branch that does not
-/// exist. It is drawn straight, dashed and in the variable colour, exactly like the mockup's
-/// legend entry («— — переменная»).
+/// Намеренно НЕ <see cref="CanvasEdgeViewModel"/>. Ребро — это поток управления: оно выходит из
+/// именованного порта исхода, прокладывается по жёлобам, чтобы никогда не пересечь коробку, и
+/// несёт стрелку со смыслом «обход пойдёт туда». Связь по переменной не означает ничего из
+/// перечисленного, и придать ей ту же форму значило бы заставить canvas утверждать, что есть
+/// ветвление, которого нет. Рисуется прямой, пунктиром и цветом переменной — ровно как в записи
+/// легенды на макете («— — переменная»).
 /// </summary>
-/// <param name="From">Writer side, in canvas space.</param>
-/// <param name="To">Reader side, in canvas space.</param>
+/// <param name="From">Сторона пишущего, в координатах canvas.</param>
+/// <param name="To">Сторона читающего, в координатах canvas.</param>
 public sealed record CanvasLinkViewModel(CanvasPoint From, CanvasPoint To)
 {
     /// <summary>
-    /// Joins two boxes edge to edge: out of the right side of the left-hand one and into the
-    /// left side of the right-hand one, so the line does not start underneath its own box.
+    /// Соединяет две коробки от края до края: из правого бока левой в левый бок правой, чтобы
+    /// линия не начиналась под своей же коробкой.
     /// </summary>
     public static CanvasLinkViewModel Between(NodeRowViewModel from, NodeRowViewModel to)
     {

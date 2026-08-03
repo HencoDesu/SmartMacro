@@ -3,17 +3,17 @@ using System.Runtime.CompilerServices;
 
 namespace SmartMacro.App.Mvvm;
 
-// Tiny INotifyPropertyChanged base. CommunityToolkit.Mvvm would give us source-generated
-// observable properties, but pulling that in for ~3 view-models is overkill; the manual
-// pattern is fine and keeps dependencies minimal.
+// Крошечная база под INotifyPropertyChanged. CommunityToolkit.Mvvm дал бы observable-свойства
+// с генерацией исходников, но тащить его ради трёх с небольшим view-models — перебор; ручной
+// шаблон вполне устраивает и держит список зависимостей коротким.
 public abstract class ObservableObject : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    // Virtual so a derived type can fan one change out to its computed properties. The
-    // canvas needs it: a node box shows a one-line summary derived from whichever fields
-    // that node type happens to have, and hand-raising it from every setter is how one
-    // gets forgotten.
+    // Виртуальный, чтобы наследник мог разослать одно изменение веером по своим вычисляемым
+    // свойствам. Canvas без этого не обходится: коробка ноды показывает однострочную сводку,
+    // собранную из тех полей, какие у этого типа ноды нашлись, а поднимать событие вручную из
+    // каждого сеттера — верный способ однажды забыть.
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
@@ -23,6 +23,7 @@ public abstract class ObservableObject : INotifyPropertyChanged
         {
             return false;
         }
+
         field = value;
         OnPropertyChanged(propertyName);
         return true;

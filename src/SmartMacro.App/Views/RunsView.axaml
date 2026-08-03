@@ -1,9 +1,10 @@
 <!--
-  «Прогоны» — the full list of what the daemon is running.
+  «Прогоны» — полный список того, что демон сейчас выполняет.
 
-  The run bar below it names one run and is always on screen; this mode is where the rest
-  of them live, one 30px row each. Same three facts per row as the bar (macro, elapsed,
-  current node) so the eye does not have to re-learn the layout when it looks down.
+  Полоса прогона снизу называет один прогон и висит на экране всегда; этот режим — место, где
+  живут все остальные, по строке в 30px на каждый. В строке те же три факта, что и в полосе
+  (макрос, время, текущая нода), чтобы глазу не приходилось заново разбирать раскладку, когда
+  он опускается вниз.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

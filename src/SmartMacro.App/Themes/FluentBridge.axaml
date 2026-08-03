@@ -1,29 +1,29 @@
 <!--
-  Nocturne — bridge onto FluentTheme (wave D1).
+  Nocturne — мостик к FluentTheme (волна D1).
 
-  Controls.axaml replaces the Fluent control themes we care about. What is left over —
-  Window, Popup, FlyoutPresenter, MenuFlyout, ToolTip, TitleBar — still renders through
-  Fluent's own templates, which read their colours from Fluent's resource KEYS. This file
-  re-points those keys at Nocturne tokens, so the un-themed leftovers stop being grey
-  Windows chrome without anyone having to write a template for them.
+  Controls.axaml заменяет те темы контролов Fluent, которые нам важны. Всё оставшееся —
+  Window, Popup, FlyoutPresenter, MenuFlyout, ToolTip, TitleBar — по-прежнему рисуется
+  шаблонами самой Fluent, а те берут цвета из КЛЮЧЕЙ ресурсов Fluent. Этот файл
+  перенаправляет такие ключи на токены Nocturne, и остатки без своей темы перестают быть
+  серой виндовой оправой, притом что шаблон для них никому писать не пришлось.
 
-  Why this works: a DynamicResource lookup walks the logical tree to Application, and
-  Application.Resources (where this dictionary is merged) is consulted BEFORE
-  Application.Styles (where FluentTheme keeps its dictionaries). Same key, ours wins.
+  Почему это работает: поиск DynamicResource идёт по логическому дереву вверх до Application,
+  а Application.Resources (куда подмешан этот словарь) просматривается РАНЬШЕ, чем
+  Application.Styles (где FluentTheme держит свои словари). Ключ тот же — побеждает наш.
 
-  Keep this file SMALL and boring. Anything that deserves real design attention should get
-  a ControlTheme in Controls.axaml instead of another key here. D2 is expected to delete
-  entries from this file, not add to it.
+  Держите этот файл МАЛЕНЬКИМ и скучным. Всё, что заслуживает настоящего внимания дизайнера,
+  должно получить ControlTheme в Controls.axaml, а не ещё один ключ здесь. От волны D2 ждут,
+  что записи отсюда будут удаляться, а не добавляться.
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ================================================================
-         THE STOCK BLUE
-         Fluent derives every "accent" brush from these six colours, and the Windows
-         default is a blue that has nothing to do with this system. Overriding the palette
-         at the root retires it everywhere at once — selection, highlights, focus visuals
-         in controls we never touched.
+         ШТАТНЫЙ СИНИЙ
+         Fluent выводит каждую «акцентную» кисть из этих шести цветов, а виндовое значение по
+         умолчанию — синий, не имеющий к этой системе никакого отношения. Перекрытие палитры в
+         корне отправляет его на пенсию разом и повсюду: выделение, подсветка, отрисовка
+         фокуса в контролах, которых мы вообще не касались.
          ================================================================ -->
 
     <StaticResource x:Key="SystemAccentColor" ResourceKey="NocturneAccentColor" />
@@ -35,9 +35,9 @@
     <StaticResource x:Key="SystemAccentColorDark3" ResourceKey="NocturneAccent800Color" />
 
     <!-- ================================================================
-         NO PURE BLACK, NO PURE WHITE
-         Dark Fluent grounds windows on #000000 and writes text in #FFFFFF. Both are out
-         of the system; these two keys are where they enter.
+         НИ ЧИСТО ЧЁРНОГО, НИ ЧИСТО БЕЛОГО
+         Тёмная Fluent кладёт окна на #000000 и пишет текст в #FFFFFF. Оба цвета из системы
+         исключены; эти два ключа — та самая дверь, через которую они входят.
          ================================================================ -->
 
     <SolidColorBrush x:Key="SystemRegionBrush" Color="{DynamicResource NocturneGroundColor}" />
@@ -45,15 +45,15 @@
     <SolidColorBrush x:Key="SystemControlForegroundBaseHighBrush" Color="{DynamicResource NocturneTextColor}" />
 
     <!-- ================================================================
-         FLOATING SURFACES — flyouts, menus, tooltips.
-         Fluent funnels all three through these transient/chrome keys.
+         ПЛАВАЮЩИЕ ПОВЕРХНОСТИ — flyout'ы, меню, подсказки.
+         Все три Fluent пропускает через эти ключи transient/chrome.
          ================================================================ -->
 
     <SolidColorBrush x:Key="SystemControlTransientBackgroundBrush" Color="{DynamicResource NocturneSurfaceOverlayColor}" />
     <SolidColorBrush x:Key="SystemControlTransientBorderBrush" Color="{DynamicResource NocturneDividerStrongColor}" />
     <SolidColorBrush x:Key="SystemControlBackgroundChromeMediumLowBrush" Color="{DynamicResource NocturneSurfaceOverlayColor}" />
 
-    <!-- Hover/press wash inside menus, straight off the accent tint scale. -->
+    <!-- Заливка при наведении и нажатии внутри меню, прямо со шкалы акцентных оттенков. -->
     <SolidColorBrush x:Key="SystemControlHighlightListLowBrush" Color="{DynamicResource NocturneAccentTint12Color}" />
     <SolidColorBrush x:Key="SystemControlHighlightListMediumBrush" Color="{DynamicResource NocturneAccentTint22Color}" />
     <SolidColorBrush x:Key="SystemControlHighlightAltBaseHighBrush" Color="{DynamicResource NocturneTextColor}" />
@@ -65,15 +65,15 @@
     <Thickness x:Key="ToolTipBorderThemePadding">8.4,5.6</Thickness>
     <x:Double x:Key="ToolTipContentThemeFontSize">11</x:Double>
 
-    <!-- The 1px block Fluent parks where the two scrollbars meet. Ours are overlays. -->
+    <!-- Квадратик в 1px, который Fluent ставит на стыке двух полос прокрутки. Наши — накладные. -->
     <SolidColorBrush x:Key="ScrollViewerScrollBarsSeparatorBackground" Color="Transparent" />
 
     <!-- ================================================================
-         TYPE
-         Fluent already asks for "fonts:Inter#Inter, $Default" here — the Avalonia.Fonts.Inter
-         collection that Program.BuildAvaloniaApp().WithInterFont() registers, with Segoe UI
-         behind it for the glyphs Inter lacks. Same chain as NocturneFontFamily; only the
-         body size changes, down to the 0.7× scale.
+         ШРИФТ
+         Fluent и так просит здесь "fonts:Inter#Inter, $Default" — ту самую коллекцию
+         Avalonia.Fonts.Inter, которую регистрирует Program.BuildAvaloniaApp().WithInterFont(),
+         а за ней Segoe UI на те глифы, которых у Inter нет. Цепочка та же, что и у
+         NocturneFontFamily; меняется только размер основного текста — вниз, до масштаба 0.7×.
          ================================================================ -->
 
     <FontFamily x:Key="ContentControlThemeFontFamily">fonts:Inter#Inter, $Default</FontFamily>

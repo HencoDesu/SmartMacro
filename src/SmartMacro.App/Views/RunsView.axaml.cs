@@ -4,7 +4,9 @@ using SmartMacro.App.ViewModels;
 
 namespace SmartMacro.App.Views;
 
-/// <summary>«Прогоны» — the full run list. The run bar in the shell is its one-line summary.</summary>
+/// <summary>
+/// «Прогоны» — полный список прогонов. Полоса прогона в оболочке — его сводка в одну строку.
+/// </summary>
 public partial class RunsView : UserControl
 {
     public RunsView() => InitializeComponent();

@@ -1,28 +1,31 @@
 <!--
-  Nocturne — control themes (wave D1).
+  Nocturne — темы контролов (волна D1).
 
-  These are full `ControlTheme`s keyed by type, so they REPLACE the FluentTheme default for
-  every control listed here. FluentTheme is still in Application.Styles: it supplies the
-  controls nobody has restyled yet (Window, Popup, MenuFlyout, ToolTip, PathIcon…), and
-  FluentBridge.axaml re-points that leftover's colour keys at these tokens.
+  Это полноценные `ControlTheme`, ключуемые по типу, поэтому они ЗАМЕНЯЮТ фолбэк FluentTheme
+  для каждого перечисленного здесь контрола. FluentTheme при этом остаётся в
+  Application.Styles: он даёт те контролы, которые никто пока не перестилил (Window, Popup,
+  MenuFlyout, ToolTip, PathIcon…), а FluentBridge.axaml перенаправляет цветовые ключи этих
+  остатков на здешние токены.
 
-  Everything references Tokens.axaml through {DynamicResource} rather than {StaticResource}.
-  Merged dictionaries resolve statics against a parse-time parent chain that is easy to get
-  wrong across files; DynamicResource resolves at runtime through the whole chain and always
-  finds the token. Inside THIS file, statics are fine and used for the local sub-themes
-  (thumb, page button) because they are declared above their use.
+  Всё ссылается на Tokens.axaml через {DynamicResource}, а не через {StaticResource}.
+  Подмешанные словари разрешают статические ссылки по родительской цепочке времени разбора, а
+  её между файлами легко построить неверно; DynamicResource разрешается во время выполнения по
+  всей цепочке и находит токен всегда. Внутри ЭТОГО файла статические ссылки допустимы и
+  используются для локальных подтем (ползунок, кнопка страницы), потому что объявлены они выше
+  места применения.
 
-  The system's rules, and where each is enforced:
+  Правила системы и место, где каждое из них обеспечивается:
 
-    accent is a line and a glow      Button.Background is Transparent in every state; the
-                                     only accent areas are the AccentTint* washes.
-    no filled-accent button          there is no `accent`-filled variant. `Button.accent`
-                                     is an accent OUTLINE; `Button.danger` likewise.
-    focus = 2px accent, 2px offset   AdornerLayer.DefaultFocusAdorner below, which replaces
-                                     Fluent's near-white two-tone ring globally — including
-                                     on controls this file does not theme.
-    density 0.7×                     every padding comes from NocturneInset*, every gap
-                                     from NocturneSpace*.
+    акцент — это линия и свечение   Button.Background прозрачен во всех состояниях;
+                                    единственные акцентные площади — заливки AccentTint*.
+    нет кнопки с акцентной          варианта с акцентной заливкой не существует.
+    заливкой                        `Button.accent` — это акцентный КОНТУР; `Button.danger`
+                                    точно так же.
+    фокус = 2px акцента,            AdornerLayer.DefaultFocusAdorner ниже; он глобально
+    отступ 2px                      заменяет почти белое двухтоновое кольцо от Fluent — в том
+                                    числе на контролах, которым этот файл темы не даёт.
+    плотность 0.7×                  каждый padding приходит из NocturneInset*, каждый зазор —
+                                    из NocturneSpace*.
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -30,19 +33,20 @@
                     xmlns:conv="using:SmartMacro.App.Converters">
 
     <!-- ================================================================
-         FOCUS
-         Avalonia draws AdornerLayer.DefaultFocusAdorner for any control that does not set
-         FocusAdorner itself, and only for keyboard/directional focus. Fluent's default is
-         a 2px SystemBaseHigh ring with a 1px inner line — the stock look this wave exists
-         to remove. Margin -4 puts the 2px stroke 2px clear of the control.
+         ФОКУС
+         Avalonia рисует AdornerLayer.DefaultFocusAdorner для любого контрола, который не
+         задал FocusAdorner сам, и только для фокуса с клавиатуры или направленного. Значение
+         по умолчанию у Fluent — кольцо в 2px цветом SystemBaseHigh с внутренней линией в 1px,
+         тот самый штатный вид, ради избавления от которого эта волна и существует. Margin -4
+         отодвигает штрих в 2px на 2px от контрола.
          ================================================================ -->
 
     <ControlTheme x:Key="{x:Type AdornerLayer}" TargetType="AdornerLayer">
         <Setter Property="DefaultFocusAdorner">
             <FocusAdornerTemplate>
-                <!-- AdornerLayer.IsClipEnabled defaults to TRUE, which clips an adorner to
-                     the bounds of the thing it adorns — so the negative margin that buys
-                     the 2px offset would silently clip the ring away to nothing. -->
+                <!-- AdornerLayer.IsClipEnabled по умолчанию ИСТИНА, а это обрезает украшение
+                     по границам того, что оно украшает, — так что отрицательный отступ, на
+                     котором и держатся наши 2px зазора, тихо срезал бы кольцо в ничто. -->
                 <Border AdornerLayer.IsClipEnabled="False"
                         BorderThickness="2"
                         BorderBrush="{DynamicResource NocturneAccentBrush}"
@@ -53,9 +57,10 @@
     </ControlTheme>
 
     <!-- ================================================================
-         BUTTON
-         Default = neutral outline on transparent. `.accent` promotes the outline to the
-         accent; `.danger` to the danger edge over its 8% wash. Nothing here ever fills.
+         КНОПКА
+         По умолчанию — нейтральный контур на прозрачном. `.accent` поднимает контур до
+         акцента, `.danger` — до тревожной кромки поверх её 8-процентной заливки. Ничто здесь
+         никогда не заливается.
          ================================================================ -->
 
     <ControlTheme x:Key="{x:Type Button}" TargetType="Button">

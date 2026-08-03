@@ -1,24 +1,25 @@
 <!--
-  Composition of the visual layer (wave D1).
+  Composition визуального слоя (волна D1).
 
-  Order matters and is not arbitrary:
+  Порядок важен и не произволен:
 
     Application.Resources  Tokens → FluentBridge → Controls.
-                           Resources are consulted BEFORE Styles, which is what lets
-                           FluentBridge.axaml override FluentTheme's own resource keys and
-                           lets Controls.axaml's ControlThemes replace Fluent's per-type
-                           defaults. Tokens comes first because everything else reads it.
+                           Ресурсы просматриваются РАНЬШЕ стилей — именно это и позволяет
+                           FluentBridge.axaml перекрыть собственные ключи ресурсов
+                           FluentTheme, а ControlTheme'ам из Controls.axaml — заменить
+                           фолбэки Fluent по типам. Tokens идёт первым, потому что из него
+                           читают все остальные.
 
-    Application.Styles     FluentTheme stays: it still supplies the controls nobody has
-                           written a Nocturne theme for. The Window style after it is the
-                           one place a Style (rather than a ControlTheme) is the right
-                           tool — Style priority beats ControlTheme priority, so these four
-                           inherited properties win over Fluent's Window theme and cascade
-                           into every control in the tree.
+    Application.Styles     FluentTheme остаётся: он по-прежнему даёт те контролы, для
+                           которых никто не написал темы Nocturne. Стиль Window после него —
+                           единственное место, где правильный инструмент именно Style, а не
+                           ControlTheme: приоритет Style выше приоритета ControlTheme, так
+                           что эти четыре наследуемых свойства побеждают тему Window от
+                           Fluent и каскадом расходятся по всем контролам дерева.
 
-  Inter comes from the Avalonia.Fonts.Inter package and is registered in
-  Program.BuildAvaloniaApp().WithInterFont(); "fonts:Inter#Inter" is that package's
-  embedded collection, so the panel looks right on a machine with no Inter installed.
+  Inter приезжает из пакета Avalonia.Fonts.Inter и регистрируется в
+  Program.BuildAvaloniaApp().WithInterFont(); "fonts:Inter#Inter" — это встроенная коллекция
+  того самого пакета, поэтому панель выглядит как надо и на машине, где Inter не установлен.
 -->
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

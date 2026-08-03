@@ -1,17 +1,18 @@
 <!--
-  «Окна» — the dense window list of opt-1b.html.
+  «Окна» — плотный список окон из opt-1b.html.
 
-  Two groups, and the split is the whole point of the layout:
+  Две группы, и в этом разделении весь смысл раскладки:
 
-    · tagged windows first, 32px rows on a 160 / 88 / 1fr grid with alternating
-      backgrounds. Their tags are chips with an ×; adding another is a quiet "+" that
-      reveals the box, because these rows are already done.
-    · untagged windows below a dim "НЕ ОПОЗНАНО · N" separator, rendered muted — except
-      their tag box, which is the ONE emphasised control on the screen (accent border),
-      because tagging them is the only thing left to do with them.
+    · сначала окна с тегами: строки по 32px на сетке 160 / 88 / 1fr с чередующимися фонами.
+      Их теги — фишки с ×, а добавление ещё одного спрятано за тихим «+», который открывает
+      поле: с этими строками уже всё сделано.
+    · окна без тегов ниже тусклого разделителя «НЕ ОПОЗНАНО · N», нарисованные приглушённо —
+      кроме их поля тега, которое является ЕДИНСТВЕННЫМ выделенным контролом на экране
+      (акцентная граница), потому что проставить им теги — это всё, что с ними осталось
+      сделать.
 
-  The 1px gaps between rows are the inset surface showing through, exactly as the mockup's
-  flex `gap` over a #20222f container.
+  Зазоры в 1px между строками — это просвечивающая поверхность-вставка, ровно как flex `gap`
+  макета поверх контейнера #20222f.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -21,8 +22,8 @@
              x:DataType="vm:ShellViewModel">
 
     <UserControl.Styles>
-        <!-- Shared by both groups. ColumnDefinitions is not an AvaloniaProperty, so the
-             160 / 88 / 1fr grid has to be repeated on each row rather than set here. -->
+        <!-- Общее для обеих групп. ColumnDefinitions не является AvaloniaProperty, поэтому
+             сетку 160 / 88 / 1fr приходится повторять в каждой строке, а не задавать здесь. -->
         <Style Selector="Grid.windowrow">
             <Setter Property="Height" Value="32" />
         </Style>
@@ -33,7 +34,7 @@
 
     <Grid RowDefinitions="Auto,*">
 
-        <!-- ================================ header ================================= -->
+        <!-- ================================= шапка ================================= -->
         <Border Grid.Row="0"
                 Background="{DynamicResource NocturneSurfaceRaisedBrush}"
                 BorderBrush="{DynamicResource NocturneDividerBrush}"
@@ -68,12 +69,12 @@
             </Grid>
         </Border>
 
-        <!-- ================================= rows ================================== -->
+        <!-- ================================= строки ================================ -->
         <Border Grid.Row="1" Background="{DynamicResource NocturneSurfaceInsetBrush}">
             <ScrollViewer>
                 <StackPanel>
 
-                    <!-- ==== tagged ==== -->
+                    <!-- ==== с тегами ==== -->
                     <ItemsControl ItemsSource="{Binding Workspace.TaggedWindows}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:WindowRowViewModel">
@@ -90,9 +91,9 @@
                                                    FontSize="{DynamicResource NocturneFontSizeSmall}"
                                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                                    Foreground="{DynamicResource NocturneNeutral600Brush}" />
-                                        <!-- Chips, then the add affordance immediately after
-                                             them: parked at the far right of the 1fr column
-                                             it reads as an unrelated row action. -->
+                                        <!-- Фишки, а сразу за ними — кнопка добавления:
+                                             припаркованная у правого края колонки 1fr, она
+                                             читалась бы как постороннее действие над строкой. -->
                                         <Grid Grid.Column="2" ColumnDefinitions="Auto,Auto,*">
                                             <ItemsControl Grid.Column="0" ItemsSource="{Binding Tags}" VerticalAlignment="Center">
                                                 <ItemsControl.ItemsPanel>
@@ -129,7 +130,7 @@
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
 
-                                            <!-- Quiet add-tag: a "+" that opens the box only when asked. -->
+                                            <!-- Тихое добавление тега: «+», открывающий поле только по просьбе. -->
                                             <Button Grid.Column="1"
                                                     Content="+"
                                                     Classes="ghost"
@@ -166,7 +167,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <!-- ==== separator ==== -->
+                    <!-- ==== разделитель ==== -->
                     <Border Background="{DynamicResource NocturneSurfaceSunkenBrush}"
                             Height="26"
                             Margin="0,0,0,1"
@@ -187,7 +188,7 @@
                         </Grid>
                     </Border>
 
-                    <!-- ==== untagged ==== -->
+                    <!-- ==== без тегов ==== -->
                     <ItemsControl ItemsSource="{Binding Workspace.UntaggedWindows}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:WindowRowViewModel">
@@ -231,7 +232,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <!-- ==== empty state ==== -->
+                    <!-- ==== пустое состояние ==== -->
                     <StackPanel Margin="12,40" Spacing="6" IsVisible="{Binding Workspace.HasNoWindows}">
                         <TextBlock Text="Демон не видит ни одного окна."
                                    FontSize="{DynamicResource NocturneFontSizeTitle}"

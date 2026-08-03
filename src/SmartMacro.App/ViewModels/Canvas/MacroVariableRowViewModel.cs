@@ -5,19 +5,20 @@ using SmartMacro.Macros.Analysis;
 namespace SmartMacro.App.ViewModels.Canvas;
 
 /// <summary>
-/// One card of the inspector's «переменные макроса» block: <c>{tag} · строка · «Жрец»</c> over
-/// «пишет recognize-class» and «читает set-icon — в пути к иконке».
+/// Одна карточка блока «переменные макроса» в инспекторе: <c>{tag} · строка · «Жрец»</c>, а под
+/// ней «пишет recognize-class» и «читает set-icon — в пути к иконке».
 ///
-/// Two sources, joined here and nowhere else:
+/// Два источника, сходящиеся здесь и больше нигде:
 ///
-///   · the STRUCTURE comes from <see cref="MacroVariableAnalysis"/> — a pure function of the
-///     graph, so it is there before anything has ever run and it updates as the graph is
-///     edited;
-///   · the VALUE comes from the selected walk's <c>VariableSet</c> events, so it is present
-///     only while (and after) that walk has actually assigned it.
+///   · СТРУКТУРА приходит из <see cref="MacroVariableAnalysis"/> — это чистая функция от графа,
+///     поэтому она есть ещё до того, как хоть что-нибудь запускалось, и обновляется по мере
+///     правки графа;
+///   · ЗНАЧЕНИЕ приходит из событий <c>VariableSet</c> выбранного обхода, поэтому оно есть
+///     только с того момента, как этот обход действительно его присвоил.
 ///
-/// Keeping the Russian on this side is the same rule the run log follows: the analysis names
-/// a <see cref="VariableSlot"/>, the panel decides it reads «в пути к иконке».
+/// То, что русский язык живёт на этой стороне, — то же правило, которому следует лог прогона:
+/// анализ называет <see cref="VariableSlot"/>, а панель решает, что читается это как
+/// «в пути к иконке».
 /// </summary>
 public sealed class MacroVariableRowViewModel : ObservableObject
 {
@@ -43,10 +44,10 @@ public sealed class MacroVariableRowViewModel : ObservableObject
         ReadBy = info.Reads.Count == 0
             ? "никто"
             : string.Join(", ", info.Reads.Select(r => r.NodeId));
-        // The trailing «в пути к иконке» is only printed when EVERY reader reads it in the
-        // same field. With mixed slots the one-line form was flatly wrong — «step-3, step-5 ·
-        // в точке клика» claimed the tag node read a click point — so the slots move into the
-        // tooltip and the line just names the readers.
+        // Хвостовое «в пути к иконке» печатается, только если ВСЕ читатели читают переменную в
+        // одном и том же поле. При разных слотах однострочная форма была прямо неверной —
+        // «step-3, step-5 · в точке клика» утверждала, что нода тега читала точку клика, — так
+        // что слоты уезжают в tooltip, а в строке остаются одни имена читателей.
         var slots = info.Reads.Select(r => r.Slot).Distinct().ToList();
         ReadWhere = slots.Count == 1 ? Describe(slots[0]) : null;
         ReadDetail = info.Reads.Count == 0
@@ -54,40 +55,40 @@ public sealed class MacroVariableRowViewModel : ObservableObject
             : string.Join("\n", info.Reads.Select(r => $"{r.NodeId} — {Describe(r.Slot)}"));
     }
 
-    /// <summary>The analysis behind this row — what the canvas highlight is derived from.</summary>
+    /// <summary>Анализ, стоящий за этой строкой, — из него выводится подсветка на canvas.</summary>
     public MacroVariableInfo Info { get; }
 
-    /// <summary>Rendered with braces, the way it is written in a node: <c>{tag}</c>.</summary>
+    /// <summary>С фигурными скобками, ровно как переменную пишут в ноде: <c>{tag}</c>.</summary>
     public string Name { get; }
 
-    /// <summary>Bare name, for matching against a node's fields.</summary>
+    /// <summary>Голое имя — для сопоставления с полями ноды.</summary>
     public string RawName => Info.Name;
 
     /// <summary>«точка» / «строка» / «значение».</summary>
     public string KindText { get; }
 
-    /// <summary>Node ids that assign it, or «триггер (сид)» / «никто».</summary>
+    /// <summary>Идентификаторы нод, которые её присваивают, либо «триггер (сид)» / «никто».</summary>
     public string WrittenBy { get; }
 
-    /// <summary>Node ids that consume it, or «никто».</summary>
+    /// <summary>Идентификаторы нод, которые её потребляют, либо «никто».</summary>
     public string ReadBy { get; }
 
     /// <summary>
-    /// Which field it is read in, but ONLY when every reader agrees — otherwise <c>null</c>
-    /// and the per-reader breakdown lives in <see cref="ReadDetail"/>.
+    /// В каком поле её читают, но ТОЛЬКО когда все читатели сходятся; иначе <c>null</c>, а
+    /// разбивка по каждому читателю живёт в <see cref="ReadDetail"/>.
     /// </summary>
     public string? ReadWhere { get; }
 
-    /// <summary>One «нода — поле» line per reader, for the tooltip. <c>null</c> when nobody reads it.</summary>
+    /// <summary>По строке «нода — поле» на каждого читателя, для tooltip. <c>null</c>, если её никто не читает.</summary>
     public string? ReadDetail { get; }
 
-    /// <summary><c>true</c> when a node reads it and nothing ever assigns it — an aborted run waiting to happen.</summary>
+    /// <summary><c>true</c>, когда нода её читает, а не присваивает никто, — это прерванный прогон, который только и ждёт своего часа.</summary>
     public bool IsUndefined => !Info.IsDefined;
 
     /// <summary>
-    /// Value from the selected walk, or <c>null</c> when that walk has not assigned it yet.
-    /// Deliberately blank rather than «—»: an empty cell reads as "not yet", a dash reads as
-    /// "empty string", and those are different bugs.
+    /// Значение из выбранного обхода либо <c>null</c>, если этот обход его ещё не присвоил.
+    /// Намеренно пусто, а не «—»: пустая ячейка читается как «ещё нет», а прочерк — как «пустая
+    /// строка», и это разные баги.
     /// </summary>
     public string? Value
     {
@@ -101,17 +102,17 @@ public sealed class MacroVariableRowViewModel : ObservableObject
         }
     }
 
-    /// <summary><c>true</c> when the selected walk has a value for it.</summary>
+    /// <summary><c>true</c>, когда у выбранного обхода для неё есть значение.</summary>
     public bool HasValue => _value is not null;
 
-    /// <summary>The pointer is over this card — the canvas is lighting its writer and its readers.</summary>
+    /// <summary>Указатель над этой карточкой — canvas подсвечивает того, кто пишет, и тех, кто читает.</summary>
     public bool IsHighlighted
     {
         get => _isHighlighted;
         internal set => SetField(ref _isHighlighted, value);
     }
 
-    /// <summary>Russian for a <see cref="VariableSlot"/> — the mockup's «в пути к иконке».</summary>
+    /// <summary>Русское название для <see cref="VariableSlot"/> — то самое «в пути к иконке» с макета.</summary>
     public static string Describe(VariableSlot slot) => slot switch
     {
         VariableSlot.FoundPointVar => "точка находки",

@@ -5,19 +5,19 @@ using SmartMacro.Contracts.Dto;
 namespace SmartMacro.App.ViewModels.Canvas;
 
 /// <summary>
-/// One line of the run-log strip under the canvas:
+/// Одна строка ленты лога прогона под canvas:
 /// <c>0:01.2 · click-server-select · ок · PostMessage 1192,1805 · 40 мс</c>.
 ///
-/// <b>A row is written twice.</b> It appears the moment the walker ENTERS a node, with no
-/// outcome and no duration, and is completed in place when the node exits. That is what the
-/// mockup's live row is — the bottom line reading <c>▸ ждёт … 2.4 с / 60 с</c> while
-/// everything above it is settled — and it is why this is a mutable observable rather than
-/// the record D3a reserved: replacing the item would rebuild its container and make the
-/// strip flicker on every node of every run.
+/// <b>Строка пишется дважды.</b> Она появляется в тот момент, когда обход ВХОДИТ в ноду, — без
+/// исхода и без длительности, — и дописывается на месте, когда нода завершается. Именно это и
+/// есть живая строка с макета: нижняя строчка вида <c>▸ ждёт … 2.4 с / 60 с</c>, пока всё, что
+/// над ней, уже устоялось. И именно поэтому здесь изменяемый observable, а не запись, которую
+/// приберегала волна D3a: подмена элемента пересобрала бы его контейнер, и лента моргала бы на
+/// каждой ноде каждого прогона.
 ///
-/// The Russian lives here, not on the wire. The daemon sends
-/// <see cref="RunOutcomes"/> symbols and a free-form detail; the wording and the colour of
-/// an outcome are the panel's to choose.
+/// Русский язык живёт здесь, а не на проводе. Демон присылает символы
+/// <see cref="RunOutcomes"/> и деталь в свободной форме; формулировка и цвет исхода — это выбор
+/// панели.
 /// </summary>
 public sealed class RunLogRowViewModel : ObservableObject
 {
@@ -36,44 +36,44 @@ public sealed class RunLogRowViewModel : ObservableObject
         _outcomeIsAccent = true;
     }
 
-    /// <summary>The marker an unfinished row carries in the outcome column.</summary>
+    /// <summary>Метка, которую незавершённая строка несёт в колонке исхода.</summary>
     public const string PendingOutcome = "▸ идёт";
 
-    /// <summary>Time since the walk started, <c>m:ss.f</c>.</summary>
+    /// <summary>Время с начала обхода, <c>m:ss.f</c>.</summary>
     public string Elapsed { get; }
 
-    /// <summary>Node the row belongs to.</summary>
+    /// <summary>Нода, которой принадлежит строка.</summary>
     public string NodeId { get; }
 
-    /// <summary>Which way the node went, in Russian: <c>ок</c>, <c>нашёл</c>, <c>таймаут</c>, …</summary>
+    /// <summary>Куда нода в итоге пошла, по-русски: <c>ок</c>, <c>нашёл</c>, <c>таймаут</c>, …</summary>
     public string Outcome
     {
         get => _outcome;
         private set => SetField(ref _outcome, value);
     }
 
-    /// <summary>Specifics plus the duration — the daemon's detail line with <c>· 40 мс</c> appended.</summary>
+    /// <summary>Подробности плюс длительность — строка детали от демона с приписанным <c>· 40 мс</c>.</summary>
     public string Detail
     {
         get => _detail;
         private set => SetField(ref _detail, value);
     }
 
-    /// <summary>The node the walker is standing on right now. Exactly one row per walk has it.</summary>
+    /// <summary>Нода, на которой обход стоит прямо сейчас. Такая строка на обход ровно одна.</summary>
     public bool IsCurrent
     {
         get => _isCurrent;
         private set => SetField(ref _isCurrent, value);
     }
 
-    /// <summary>Outcome worth the accent colour: a conditional that matched, or a row still running.</summary>
+    /// <summary>Исход, заслуживающий акцентного цвета: сработавшее условие либо ещё идущая строка.</summary>
     public bool OutcomeIsAccent
     {
         get => _outcomeIsAccent;
         private set => SetField(ref _outcomeIsAccent, value);
     }
 
-    /// <summary>Fills in what the node did. Called once, when its <c>NodeExited</c> arrives.</summary>
+    /// <summary>Дописывает, что нода сделала. Вызывается один раз, когда приходит её <c>NodeExited</c>.</summary>
     internal void Complete(string? outcome, string? detail, int durationMs)
     {
         Outcome = DescribeOutcome(outcome);
@@ -83,13 +83,13 @@ public sealed class RunLogRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Turns the row off as "current" without completing it. Used when a walk ends while a
-    /// node is still open — a cancelled run leaves its last row unfinished, and pretending
-    /// otherwise would invent an outcome the daemon never reported.
+    /// Снимает со строки признак «текущая», не дописывая её. Нужно, когда обход закончился, а
+    /// нода осталась открытой: отменённый прогон оставляет последнюю строку незавершённой, и
+    /// притвориться, что это не так, значило бы выдумать исход, о котором демон не сообщал.
     /// </summary>
     internal void Settle() => IsCurrent = false;
 
-    /// <summary>Russian wording for a <see cref="RunOutcomes"/> symbol.</summary>
+    /// <summary>Русская формулировка для символа <see cref="RunOutcomes"/>.</summary>
     public static string DescribeOutcome(string? outcome) => outcome switch
     {
         RunOutcomes.Ok => "ок",
@@ -102,17 +102,18 @@ public sealed class RunLogRowViewModel : ObservableObject
         RunOutcomes.Completed => "готово",
         RunOutcomes.Aborted => "прервано",
         RunOutcomes.Cancelled => "отменено",
-        // A daemon newer than this panel (wave D5 adds kinds and outcomes). Showing the raw
-        // symbol beats showing nothing — and beats crashing on an unexpected value.
+        // Исхода нет вообще — значит, нода ещё не завершилась, и строка остаётся с меткой «идёт».
         null or "" => PendingOutcome,
+        // Демон новее этой панели (волна D5 добавляет и виды, и исходы). Показать сырой символ
+        // лучше, чем не показать ничего, — и лучше, чем упасть на неожиданном значении.
         var other => other,
     };
 
-    /// <summary>Which outcomes are worth the accent colour — the branches that went somewhere.</summary>
+    /// <summary>Какие исходы заслуживают акцентного цвета — те ветки, что куда-то привели.</summary>
     public static bool IsAccentOutcome(string? outcome) =>
         outcome is RunOutcomes.Found or RunOutcomes.Matched or RunOutcomes.Completed;
 
-    /// <summary><c>m:ss.f</c>, the log's left column.</summary>
+    /// <summary><c>m:ss.f</c> — левая колонка лога.</summary>
     public static string FormatElapsed(int elapsedMs)
     {
         var span = TimeSpan.FromMilliseconds(Math.Max(elapsedMs, 0));
@@ -121,7 +122,7 @@ public sealed class RunLogRowViewModel : ObservableObject
             $"{(int)span.TotalMinutes}:{span.Seconds:00}.{span.Milliseconds / 100}");
     }
 
-    /// <summary>Milliseconds under a second, seconds with one decimal above it.</summary>
+    /// <summary>До секунды — миллисекунды, свыше — секунды с одним знаком после запятой.</summary>
     public static string FormatDuration(int durationMs) => durationMs < 1000
         ? string.Create(CultureInfo.InvariantCulture, $"{durationMs} мс")
         : string.Create(CultureInfo.InvariantCulture, $"{durationMs / 1000.0:0.0} с");

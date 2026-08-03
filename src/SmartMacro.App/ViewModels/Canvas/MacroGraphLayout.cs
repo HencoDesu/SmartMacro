@@ -3,22 +3,23 @@ using SmartMacro.App.ViewModels.Nodes;
 namespace SmartMacro.App.ViewModels.Canvas;
 
 /// <summary>
-/// «Авто-раскладка» — rows with wrapping, which is the layout the mockup specifies and the
-/// reason its edges never cross a box.
+/// «Авто-раскладка» — ряды с переносом; именно её задаёт макет, и именно из-за неё его рёбра
+/// никогда не пересекают коробку.
 ///
-/// The order is a depth-first walk from the start node, following each node's outcomes in
-/// their declared order (Found before NotFound, and so on). Depth-first rather than
-/// breadth-first on purpose: a macro is overwhelmingly a chain with the odd branch, and DFS
-/// keeps a chain in reading order — pw-boot lays out exactly as the mockup draws it. Nodes
-/// the start cannot reach are appended afterwards in list order; they are a warning the
-/// validator already reports, and hiding them off-layout would make that warning unfindable.
+/// Порядок — обход в глубину от стартовой ноды, по исходам каждой ноды в том порядке, в каком
+/// они объявлены (Found раньше NotFound и так далее). В глубину, а не в ширину, и это
+/// намеренно: макрос в подавляющем большинстве случаев — цепочка с редким ветвлением, а обход
+/// в глубину сохраняет цепочку в порядке чтения — pw-boot раскладывается ровно так, как его
+/// рисует макет. Ноды, до которых от старта не добраться, дописываются следом в порядке списка:
+/// это предупреждение, которое валидатор и так выдаёт, а спрятав их за пределами раскладки, мы
+/// сделали бы это предупреждение ненаходимым.
 /// </summary>
 public static class MacroGraphLayout
 {
     /// <summary>
-    /// Re-places every node on the grid. This is what the toolbar button calls, and it
-    /// always overwrites — an explicit request to tidy up is not the moment to preserve
-    /// hand-placed coordinates.
+    /// Заново расставляет каждую ноду по сетке. Это то, что вызывает кнопка на панели
+    /// инструментов, и она всегда затирает: явная просьба прибраться — не тот момент, когда
+    /// нужно беречь расставленные вручную координаты.
     /// </summary>
     public static void Apply(IReadOnlyList<NodeRowViewModel> nodes, string? startNodeId)
     {
@@ -34,17 +35,17 @@ public static class MacroGraphLayout
     }
 
     /// <summary>
-    /// Gives every node a position without disturbing the ones that already have one.
+    /// Даёт позицию каждой ноде, не трогая те, у которых она уже есть.
     ///
-    /// Called on load, because graphs authored before this wave carry no coordinates at
-    /// all and would otherwise open as a single pile at the origin. Two cases:
-    ///   * nothing is placed — lay the whole graph out, which is what a first open of an
-    ///     old macro should look like;
-    ///   * some are placed (a hand-arranged graph plus a node someone added by editing the
-    ///     JSON) — leave those alone and drop the strays into fresh rows underneath, where
-    ///     they are visible rather than stacked on top of existing boxes.
+    /// Вызывается при загрузке, потому что графы, написанные до этой волны, не несут координат
+    /// вовсе и иначе открывались бы одной кучей в начале координат. Два случая:
+    ///   * не расставлено ничего — раскладываем весь граф, и именно так должно выглядеть первое
+    ///     открытие старого макроса;
+    ///   * часть расставлена (разложенный руками граф плюс нода, которую кто-то добавил правкой
+    ///     JSON) — эти не трогаем, а бесхозные сбрасываем в свежие ряды снизу, где они видны, а
+    ///     не свалены поверх существующих коробок.
     /// </summary>
-    /// <returns><c>true</c> when anything moved.</returns>
+    /// <returns><c>true</c>, если хоть что-нибудь сдвинулось.</returns>
     public static bool EnsurePositions(IReadOnlyList<NodeRowViewModel> nodes, string? startNodeId)
     {
         ArgumentNullException.ThrowIfNull(nodes);
@@ -68,8 +69,8 @@ public static class MacroGraphLayout
         var baseY = nodes
             .Where(node => node.HasPosition)
             .Max(node => node.Y + node.LayoutHeight);
-        // Start on the row after the lowest existing box, snapped to the pitch so the new
-        // boxes sit on the same grid as everything else.
+        // Начинаем с ряда, следующего за самой нижней существующей коробкой, притянув его к шагу
+        // сетки, чтобы новые коробки встали на ту же сетку, что и всё остальное.
         var firstRow = Math.Ceiling((baseY + CanvasMetrics.GutterOffset) / CanvasMetrics.RowPitch);
         for (var i = 0; i < unplaced.Count; i++)
         {
@@ -77,12 +78,14 @@ public static class MacroGraphLayout
             var row = firstRow + (i / CanvasMetrics.ColumnsPerRow);
             unplaced[i].SetPosition(column * CanvasMetrics.ColumnPitch, row * CanvasMetrics.RowPitch);
         }
+
         return true;
     }
 
     /// <summary>
-    /// Finds a free spot for a brand-new node: the first grid slot no existing box covers,
-    /// scanning rows top to bottom. Adding a node must never drop it under another one.
+    /// Ищет свободное место для совсем новой ноды: первый слот сетки, который не накрыт ни одной
+    /// существующей коробкой, просматривая ряды сверху вниз. Добавление ноды не имеет права
+    /// уронить её под другую.
     /// </summary>
     public static (double X, double Y) NextFreeSlot(IReadOnlyList<NodeRowViewModel> nodes)
     {
@@ -91,10 +94,10 @@ public static class MacroGraphLayout
         var taken = nodes
             .Where(node => node.HasPosition)
             .Select(node => (Column: (int)Math.Round(node.X / CanvasMetrics.ColumnPitch),
-                             Row: (int)Math.Round(node.Y / CanvasMetrics.RowPitch)))
+                Row: (int)Math.Round(node.Y / CanvasMetrics.RowPitch)))
             .ToHashSet();
 
-        for (var row = 0; ; row++)
+        for (var row = 0;; row++)
         {
             for (var column = 0; column < CanvasMetrics.ColumnsPerRow; column++)
             {
@@ -106,7 +109,7 @@ public static class MacroGraphLayout
         }
     }
 
-    /// <summary>Depth-first from the start node, then whatever it could not reach.</summary>
+    /// <summary>В глубину от стартовой ноды, а следом всё, до чего она не дотянулась.</summary>
     internal static List<NodeRowViewModel> Order(IReadOnlyList<NodeRowViewModel> nodes, string? startNodeId)
     {
         var byId = new Dictionary<string, NodeRowViewModel>(StringComparer.Ordinal);
@@ -130,6 +133,7 @@ public static class MacroGraphLayout
                 ordered.Add(node);
             }
         }
+
         return ordered;
 
         void Walk(NodeRowViewModel node)
@@ -138,6 +142,7 @@ public static class MacroGraphLayout
             {
                 return;
             }
+
             ordered.Add(node);
             foreach (var edge in node.Edges)
             {

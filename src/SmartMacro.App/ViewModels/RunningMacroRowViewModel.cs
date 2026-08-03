@@ -5,12 +5,11 @@ using SmartMacro.Contracts.Dto;
 namespace SmartMacro.App.ViewModels;
 
 /// <summary>
-/// One entry of the "running macros" panel: what is running, for how long, and where the
-/// walker currently is.
+/// Одна запись панели «работающие макросы»: что работает, сколько уже, и где сейчас обход.
 ///
-/// <see cref="Elapsed"/> is refreshed by an external tick (the main window drives a 1s
-/// timer) rather than by the VM owning a <c>DispatcherTimer</c> — that keeps every VM in
-/// this assembly free of Avalonia types and therefore unit-testable.
+/// <see cref="Elapsed"/> обновляется внешним тиком (секундный таймер крутит главное окно), а не
+/// собственным <c>DispatcherTimer</c> внутри VM: так все VM этой сборки остаются без типов
+/// Avalonia, а значит, пригодными для юнит-тестов.
 /// </summary>
 public sealed class RunningMacroRowViewModel : ObservableObject
 {
@@ -27,20 +26,20 @@ public sealed class RunningMacroRowViewModel : ObservableObject
         Refresh(DateTimeOffset.UtcNow);
     }
 
-    /// <summary>Daemon-side run id — what a <c>StopMacro</c> request takes.</summary>
+    /// <summary>Идентификатор прогона на стороне демона — то, что принимает запрос <c>StopMacro</c>.</summary>
     public Guid RunId { get; }
 
-    /// <summary>Name of the macro being run.</summary>
+    /// <summary>Имя работающего макроса.</summary>
     public string MacroName { get; }
 
     /// <summary>
-    /// Run start time. A <see cref="DateTimeOffset"/> rather than a <see cref="DateTime"/>
-    /// because it crossed a process boundary: the wire DTO carries the offset explicitly so
-    /// neither end has to guess a <c>DateTimeKind</c>.
+    /// Время начала прогона. <see cref="DateTimeOffset"/>, а не <see cref="DateTime"/>, потому
+    /// что значение пересекло границу процессов: проводной DTO несёт смещение явно, чтобы ни
+    /// одной из сторон не пришлось гадать про <c>DateTimeKind</c>.
     /// </summary>
     public DateTimeOffset StartedUtc { get; }
 
-    /// <summary>Id of the node the walker last entered; <c>null</c> before the first node.</summary>
+    /// <summary>Идентификатор ноды, в которую обход вошёл последней; <c>null</c> до первой ноды.</summary>
     public string? CurrentNodeId
     {
         get => _currentNodeId;
@@ -53,10 +52,10 @@ public sealed class RunningMacroRowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Display form of <see cref="CurrentNodeId"/>.</summary>
+    /// <summary>Отображаемая форма <see cref="CurrentNodeId"/>.</summary>
     public string CurrentNodeText => string.IsNullOrEmpty(_currentNodeId) ? "—" : _currentNodeId;
 
-    /// <summary>Wall-clock time since the run started, as <c>m:ss</c> (or <c>h:mm:ss</c>).</summary>
+    /// <summary>Время по часам с начала прогона, как <c>m:ss</c> (или <c>h:mm:ss</c>).</summary>
     public string Elapsed
     {
         get => _elapsed;
@@ -64,8 +63,8 @@ public sealed class RunningMacroRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Re-renders <see cref="Elapsed"/> and picks up the walker's latest node. Called on a
-    /// timer tick and whenever the daemon pushes a new run snapshot.
+    /// Перерисовывает <see cref="Elapsed"/> и подхватывает последнюю ноду обхода. Вызывается по
+    /// тику таймера и всякий раз, когда демон присылает новый снимок прогонов.
     /// </summary>
     public void Refresh(DateTimeOffset nowUtc, string? currentNodeId = null)
     {
@@ -79,6 +78,7 @@ public sealed class RunningMacroRowViewModel : ObservableObject
         {
             elapsed = TimeSpan.Zero;
         }
+
         Elapsed = elapsed.TotalHours >= 1
             ? elapsed.ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture)
             : elapsed.ToString(@"m\:ss", CultureInfo.InvariantCulture);

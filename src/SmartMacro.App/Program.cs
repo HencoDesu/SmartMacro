@@ -8,40 +8,41 @@ using SmartMacro.Contracts.Ipc;
 namespace SmartMacro.App;
 
 /// <summary>
-/// The panel's entry point.
+/// Точка входа панели.
 ///
-/// Stage 3 turned this file from a composition root into a bootstrapper. There is no engine
-/// here any more — no process monitor, no hotkeys, no vision, no macro store — only a
-/// connection to <c>SmartMacro.Daemon</c>, which owns all of it. That is the whole point of
-/// the split: OpenCV, Tesseract and their native blobs no longer load into the process the
-/// user opens and closes all day.
+/// Стадия 3 превратила этот файл из корня композиции в загрузчик. Движка здесь больше нет —
+/// ни монитора процессов, ни хоткеев, ни vision, ни хранилища макросов, — только соединение с
+/// <c>SmartMacro.Daemon</c>, которому всё это и принадлежит. В этом весь смысл разделения:
+/// OpenCV, Tesseract и их нативные блобы больше не грузятся в процесс, который пользователь
+/// открывает и закрывает по десять раз на дню.
 ///
-/// Startup, in order:
+/// Запуск, по порядку:
 ///
-///   1. <b>Single instance.</b> A second launch must not open a second window. It connects,
-///      asks the daemon to broadcast <c>ActivateWindow</c> at the panel already running, and
-///      exits — so re-running the shortcut reads as "show me the panel".
-///   2. <b>Daemon or bust.</b> If nothing is listening we start the daemon ourselves and
-///      keep retrying the connect (it has a whole engine to build). Still nothing ⇒ an error
-///      box and exit 1, because a panel with no daemon can display nothing and change nothing.
-///   3. <b>Avalonia.</b> Closing the window now exits the process — the tray moved to the
-///      daemon, and automation keeps running without us.
+///   1. <b>Единственный экземпляр.</b> Второй запуск не имеет права открыть второе окно. Он
+///      подключается, просит демона разослать <c>ActivateWindow</c> уже работающей панели и
+///      выходит, — так что повторный клик по ярлыку читается как «покажи мне панель».
+///   2. <b>Или демон, или ничего.</b> Если никто не слушает, мы запускаем демона сами и
+///      продолжаем стучаться (ему целый движок собирать). По-прежнему пусто ⇒ окно с ошибкой
+///      и выход с кодом 1: панель без демона ничего не покажет и ничего не изменит.
+///   3. <b>Avalonia.</b> Закрытие окна теперь завершает процесс: трей переехал к демону, и
+///      автоматизация продолжает работать без нас.
 /// </summary>
 internal static class Program
 {
-    // Enough for the daemon to be already up (it either answers at once or isn't there).
+    // Хватает на случай, когда демон уже поднят (он либо отвечает сразу, либо его нет).
     private static readonly TimeSpan ExistingDaemonWindow = TimeSpan.FromSeconds(2);
 
-    // Enough for a cold start: composition root, macro library load, hotkey registration.
+    // Хватает на холодный старт: корень композиции, загрузка библиотеки макросов, регистрация
+    // хоткеев.
     private static readonly TimeSpan LaunchedDaemonWindow = TimeSpan.FromSeconds(20);
 
-    // A second instance is talking to a daemon that is provably running (the first instance
-    // needed it too), so this only has to cover a busy pipe.
+    // Второй экземпляр разговаривает с демоном, который заведомо работает (первому экземпляру
+    // он тоже был нужен), так что здесь надо перекрыть разве что занятую трубу.
     private static readonly TimeSpan ActivateWindow = TimeSpan.FromSeconds(3);
 
     /// <summary>
-    /// The process-wide service holder. Set once before Avalonia starts, cleared on exit.
-    /// Windows and dialogs reach their dependencies through it.
+    /// Держатель служб на весь процесс. Ставится один раз до старта Avalonia, очищается на
+    /// выходе. Окна и диалоги добираются до своих зависимостей через него.
     /// </summary>
     public static AppServices? Services { get; private set; }
 
@@ -95,6 +96,7 @@ internal static class Program
                 Services = null;
                 services?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
+
             return 0;
         }
         catch (Exception ex)
@@ -109,9 +111,9 @@ internal static class Program
     }
 
     /// <summary>
-    /// Second-instance path: poke the daemon and leave. Never opens a window, and never
-    /// fails the launch — if the daemon is unreachable there is nothing useful to say to a
-    /// user who already has a panel on screen.
+    /// Путь второго экземпляра: толкнуть демона и уйти. Окно не открывается никогда, и запуск
+    /// никогда не считается неудачным: если до демона не достучаться, пользователю, у которого
+    /// панель и так на экране, сказать нечего.
     /// </summary>
     private static int ActivateRunningPanel()
     {
@@ -135,6 +137,7 @@ internal static class Program
         {
             client.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
+
         return 0;
     }
 
@@ -154,8 +157,8 @@ internal static class Program
         return client.StartAsync(LaunchedDaemonWindow).GetAwaiter().GetResult();
     }
 
-    // The macro folder belongs to the daemon, so it is resolved relative to the daemon's
-    // executable — which in the dev tree is a sibling bin directory, not ours.
+    // Папка с макросами принадлежит демону, поэтому её ищут относительно его исполняемого
+    // файла, — а в дереве разработки это соседний каталог bin, а не наш.
     private static string ResolveMacroFolder()
     {
         var daemon = DaemonLauncher.Resolve(AppContext.BaseDirectory);
@@ -165,7 +168,8 @@ internal static class Program
         return Path.Combine(directory, "macros");
     }
 
-    // Used by the Avalonia previewer/designer; must be parameterless and named exactly this way.
+    // Используется предпросмотром и дизайнером Avalonia; обязан быть без параметров и
+    // называться ровно так.
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>()
         .UsePlatformDetect()
         .WithInterFont()

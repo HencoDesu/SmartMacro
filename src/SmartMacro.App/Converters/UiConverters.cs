@@ -6,17 +6,17 @@ using Avalonia.Media;
 
 namespace SmartMacro.App.Converters;
 
-// Binding-side value mappings. Immutable singletons, referenced from XAML via x:Static so
-// no resource dictionary lookup is involved.
+// Преобразования значений на стороне binding. Неизменяемые синглтоны, на которые ссылаются из
+// XAML через x:Static, так что поиск по словарю ресурсов вообще не задействован.
 
 /// <summary>
-/// Pulls a brush out of the Nocturne token dictionary by key.
+/// Достаёт кисть из словаря токенов Nocturne по ключу.
 ///
-/// Converters are the one place a colour cannot be written as XAML, and hard-coding one
-/// here is how a design system starts to drift — so the value is looked up in
-/// Themes/Tokens.axaml at first use instead. The <paramref name="fallback"/> only matters
-/// before <c>Application.Current</c> exists (the designer, and unit tests), which is also
-/// why a miss is not cached.
+/// Конвертеры — единственное место, где цвет невозможно записать как XAML, а зашить его прямо
+/// здесь — это ровно то, с чего начинается расползание дизайн-системы. Поэтому значение при
+/// первом обращении ищется в Themes/Tokens.axaml. Аргумент <c>fallback</c> имеет значение только
+/// до того, как появился <c>Application.Current</c> (дизайнер и юнит-тесты), — по этой же причине
+/// промах не кэшируется.
 /// </summary>
 internal static class NocturneBrushes
 {
@@ -45,8 +45,8 @@ internal static class NocturneBrushes
 }
 
 /// <summary>
-/// True iff the source value is non-null / non-empty — hides the error and status labels
-/// when there is nothing to say.
+/// Истина тогда и только тогда, когда исходное значение не null и не пусто, — прячет подписи
+/// ошибок и статуса, когда сказать нечего.
 /// </summary>
 public sealed class NotNullToBoolConverter : IValueConverter
 {
@@ -65,9 +65,9 @@ public sealed class NotNullToBoolConverter : IValueConverter
 }
 
 /// <summary>
-/// Renders an edge's target node id. The empty string is the model's <c>null</c> edge, so
-/// it needs a visible name of its own — a blank drop-down row would read as "not filled in
-/// yet" rather than "the run ends here".
+/// Рисует идентификатор ноды, куда ведёт ребро. Пустая строка — это <c>null</c>-ребро модели, и
+/// ему нужно собственное видимое имя: пустая строка в выпадающем списке читалась бы как «ещё не
+/// заполнено», а не как «здесь прогон заканчивается».
 /// </summary>
 public sealed class NodeIdDisplayConverter : IValueConverter
 {
@@ -81,13 +81,14 @@ public sealed class NodeIdDisplayConverter : IValueConverter
 }
 
 /// <summary>
-/// Picks one of two Nocturne tokens from a boolean, named by the converter parameter as
-/// <c>"TrueKey|FalseKey"</c> — e.g. <c>"NocturneAccent400Brush|NocturneTextFaintBrush"</c>.
+/// Выбирает один из двух токенов Nocturne по булеву значению; какие именно — задаёт параметр
+/// конвертера в виде <c>"TrueKey|FalseKey"</c>, например
+/// <c>"NocturneAccent400Brush|NocturneTextFaintBrush"</c>.
 ///
-/// One parameterised converter rather than a family of one-off classes: D2 alone needs
-/// "accent when live", "alternate row background" and "muted when untagged", and every one
-/// of them is the same two-token choice. The keys are still real token names, so the
-/// "no literal colours in markup" rule holds.
+/// Один параметризованный конвертер вместо выводка одноразовых классов: одной только волне D2
+/// нужны «акцент, когда живое», «фон чередующейся строки» и «приглушить, когда без тегов», и
+/// каждый из трёх — тот же самый выбор из двух токенов. Ключи при этом остаются настоящими
+/// именами токенов, так что правило «никаких литеральных цветов в разметке» держится.
 /// </summary>
 public sealed class TokenBrushConverter : IValueConverter
 {
@@ -109,8 +110,8 @@ public sealed class TokenBrushConverter : IValueConverter
         var key = value is true
             ? spec[..separator]
             : spec[(separator + 1)..];
-        // Fallback is deliberately the neutral mid-grey: only reachable in the designer and
-        // in unit tests, where Application.Current has no resources yet.
+        // Запасной цвет намеренно нейтральный серый: досюда добираются только дизайнер и
+        // юнит-тесты, где у Application.Current ещё нет никаких ресурсов.
         return NocturneBrushes.Get(key, 0xFF9397AB);
     }
 
@@ -119,13 +120,13 @@ public sealed class TokenBrushConverter : IValueConverter
 }
 
 /// <summary>
-/// Strikethrough when true, nothing when false. Used by the targets badge (D4) for the
-/// windows a selector deliberately excludes — they are struck out rather than omitted,
-/// because "who fell out and why" is half of what the expansion is for.
+/// Зачёркивание, когда истина, и ничего, когда ложь. Этим пользуется бейдж целей (D4) для окон,
+/// которые селектор намеренно исключает: их зачёркивают, а не убирают из списка, потому что
+/// «кто выпал и почему» — это половина того, ради чего разворот вообще нужен.
 ///
-/// A converter rather than a style class because <c>TextDecorations</c> is a collection
-/// property with no boolean form, and Avalonia's own <c>TextDecorations.Strikethrough</c>
-/// static is the value to hand back.
+/// Конвертер, а не класс стиля, потому что <c>TextDecorations</c> — свойство-коллекция, булевой
+/// формы у него нет, а отдавать назад надо именно статическое значение
+/// <c>TextDecorations.Strikethrough</c> из самой Avalonia.
 /// </summary>
 public sealed class StrikethroughConverter : IValueConverter
 {
@@ -138,7 +139,7 @@ public sealed class StrikethroughConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
-/// <summary>Danger for validation errors (which block the save), warning amber for the rest.</summary>
+/// <summary>Опасность для ошибок валидации (тех, что блокируют сохранение), янтарь предупреждения для всего остального.</summary>
 public sealed class IssueSeverityToBrushConverter : IValueConverter
 {
     public static readonly IssueSeverityToBrushConverter Instance = new();
@@ -153,10 +154,12 @@ public sealed class IssueSeverityToBrushConverter : IValueConverter
 }
 
 /// <summary>
-/// Full text once a window carries at least one tag, warning amber while it is untagged.
+/// Обычный цвет текста, как только у окна появился хоть один тег, и янтарь предупреждения, пока
+/// тегов нет.
 ///
-/// The pre-D1 version used green-for-good; Nocturne is monochrome plus one accent, so
-/// "fine" is simply normal text and only the state that wants attention is coloured.
+/// Версия до D1 красила «хорошо» зелёным; Nocturne же — это монохром плюс один акцент, поэтому
+/// «всё в порядке» здесь просто обычный текст, а цветом выделяется только то состояние, которое
+/// требует внимания.
 /// </summary>
 public sealed class TaggedToBrushConverter : IValueConverter
 {

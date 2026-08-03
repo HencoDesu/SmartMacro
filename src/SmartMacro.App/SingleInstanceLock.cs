@@ -1,25 +1,25 @@
 namespace SmartMacro.App;
 
 /// <summary>
-/// Named-mutex lock that lets exactly one panel process run at a time.
+/// Замок на именованном мьютексе, дающий работать ровно одному процессу панели за раз.
 ///
-/// Unlike the daemon's guard this one is <c>Local\</c>-scoped, and deliberately so: what it
-/// protects is a WINDOW the user is looking at, which belongs to one interactive session.
-/// Two panels in two sessions are not a conflict — two daemons would be, because their
-/// contended resources (global hotkeys, the mouse hook, the game clients) are machine-wide.
+/// В отличие от стража демона, этот живёт в области <c>Local\</c>, и это осознанно: защищает он
+/// ОКНО, на которое смотрит пользователь, а окно принадлежит одному интерактивному сеансу. Две
+/// панели в двух сеансах — не конфликт; два демона были бы конфликтом, потому что ресурсы, за
+/// которые они дерутся (глобальные хоткеи, мышиный хук, клиенты игры), общемашинные.
 ///
-/// A losing instance does not merely exit: it asks the daemon to push
-/// <c>ActivateWindow</c> so the panel already on screen comes forward, which is what makes
-/// re-launching the shortcut feel like "show me the panel" instead of nothing happening.
+/// Проигравший экземпляр не просто завершается: он просит демона разослать
+/// <c>ActivateWindow</c>, чтобы уже открытая панель вышла на передний план. Именно от этого
+/// повторный запуск ярлыка ощущается как «покажи мне панель», а не как «ничего не произошло».
 ///
-/// It is a near-copy of <c>SmartMacro.Daemon.SingleInstanceGuard</c>, and stays one on
-/// purpose — sharing it would mean either a reference from the UI process to the daemon
-/// assembly (which drags Core, OpenCV and Tesseract back in — the whole point of stage 3)
-/// or a process-lifecycle utility in Contracts, which is a vocabulary assembly.
+/// Это почти копия <c>SmartMacro.Daemon.SingleInstanceGuard</c>, и остаётся ею намеренно:
+/// обобщить их значило бы либо сослаться из процесса UI на сборку демона (а она тянет назад
+/// Core, OpenCV и Tesseract — то самое, ради избавления от чего делалась стадия 3), либо
+/// положить утилиту жизненного цикла процесса в Contracts, который является сборкой словаря.
 /// </summary>
 internal sealed class SingleInstanceLock : IDisposable
 {
-    /// <summary>Mutex name the panel actually uses.</summary>
+    /// <summary>Имя мьютекса, которым панель пользуется на самом деле.</summary>
     public const string AppMutexName = @"Local\SmartMacro.App";
 
     private Mutex? _mutex;
@@ -27,9 +27,9 @@ internal sealed class SingleInstanceLock : IDisposable
     private SingleInstanceLock(Mutex mutex) => _mutex = mutex;
 
     /// <summary>
-    /// Tries to become the single instance identified by <paramref name="mutexName"/>.
+    /// Пытается стать единственным экземпляром, обозначенным именем <paramref name="mutexName"/>.
     /// </summary>
-    /// <returns>The lock when this process won, or <c>null</c> when another already holds it.</returns>
+    /// <returns>Замок, если этот процесс выиграл, или <c>null</c>, если им уже владеет другой.</returns>
     public static SingleInstanceLock? TryAcquire(string mutexName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(mutexName);
@@ -42,8 +42,8 @@ internal sealed class SingleInstanceLock : IDisposable
         }
         catch (AbandonedMutexException)
         {
-            // The previous panel died without releasing. The mutex is ours now, which is
-            // exactly the state we want — it guards a process identity, not shared data.
+            // Предыдущая панель умерла, не освободив мьютекс. Теперь он наш, и это ровно то
+            // состояние, которое нам нужно: он стережёт идентичность процесса, а не общие данные.
             acquired = true;
         }
 
@@ -69,7 +69,7 @@ internal sealed class SingleInstanceLock : IDisposable
         }
         catch (ApplicationException)
         {
-            // Not the owning thread. The handle's disposal releases it anyway.
+            // Поток не тот, что владеет мьютексом. Освобождение дескриптора всё равно его отпустит.
         }
 
         _mutex.Dispose();

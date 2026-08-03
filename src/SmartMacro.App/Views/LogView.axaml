@@ -1,12 +1,12 @@
 <!--
-  «Лог» — chrome only, same reasoning as TemplatesView.
+  «Лог» — одна оправа, без содержимого, и по тем же соображениям, что и TemplatesView.
 
-  The daemon writes Serilog files under its own logs/ folder and the protocol carries
-  nothing about them: no tail request, no log event on the wire. The mode exists so the rail
-  matches the design and the gap is visible; its counter stays blank.
+  Демон пишет файлы Serilog в собственную папку logs/, а протокол не несёт о них ничего: ни
+  запроса «дочитай хвост», ни события лога на проводе. Режим существует, чтобы рейка совпадала
+  с дизайном, а пробел был виден; счётчик у него остаётся пустым.
 
-  What it needs: either a streamed log event (the same channel plan D5 wants for run
-  events), or a "read the last N lines" request.
+  Что для него нужно: либо потоковое событие лога (тот же план канала, которого волна D5 хочет
+  для событий прогона), либо запрос «прочитай последние N строк».
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"

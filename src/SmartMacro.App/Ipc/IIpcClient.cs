@@ -3,67 +3,74 @@ using SmartMacro.Contracts.Ipc;
 namespace SmartMacro.App.Ipc;
 
 /// <summary>
-/// The panel's only way to reach the engine: a request/response + event connection to the
-/// daemon's control pipe.
+/// Единственный способ панели дотянуться до движка: соединение «запрос/ответ» плюс события с
+/// управляющей трубой демона.
 ///
-/// After stage 3 the UI process owns no domain state at all — every window, tag, macro and
-/// run it shows arrived through here. Two consequences shape this interface:
+/// После стадии 3 процесс UI не владеет вообще никаким доменным состоянием — каждое окно, тег,
+/// макрос и прогон, которые он показывает, приехали отсюда. Из этого вытекают две вещи, которые
+/// и определили форму интерфейса:
 ///
-///   * <b>Events are the truth, responses are a snapshot.</b> A view-model subscribes to
-///     <see cref="EventReceived"/> and treats the daemon's pushes as authoritative; the
-///     <c>Get*</c> requests exist only to seed that stream.
-///   * <b><see cref="Connected"/> is a re-fetch signal, not a nicety.</b> The server DROPS a
-///     client that stops draining events, and the reconnect that follows leaves a hole in
-///     the stream. Every view-model must therefore re-fetch its snapshots on this event —
-///     that is the ONLY thing keeping the UI from silently diverging after a hiccup.
+///   * <b>Истина — в событиях, ответ — это снимок.</b> View-model подписывается на
+///     <see cref="EventReceived"/> и считает пуши демона источником истины; запросы <c>Get*</c>
+///     существуют лишь для того, чтобы засеять этот поток.
+///   * <b><see cref="Connected"/> — сигнал перечитать, а не любезность.</b> Сервер ВЫБРАСЫВАЕТ
+///     клиента, переставшего вычерпывать события, и переподключение вслед за этим оставляет в
+///     потоке дыру. Поэтому каждая view-model обязана по этому событию перезапросить свои
+///     снимки — это ЕДИНСТВЕННОЕ, что удерживает UI от тихого расхождения после сбоя.
 ///
-/// Kept as an interface so every view-model in this assembly can be exercised headlessly
-/// against a fake, with no pipe, no daemon and no desktop session.
+/// Оставлен интерфейсом, чтобы любую view-model этой сборки можно было гонять headless против
+/// подделки — без трубы, без демона и без сессии рабочего стола.
 /// </summary>
 public interface IIpcClient : IAsyncDisposable
 {
-    /// <summary>Whether a live connection exists right now. Racy by nature — a request may still fail.</summary>
+    /// <summary>Есть ли живое соединение прямо сейчас. По природе своей гонка — запрос всё равно может провалиться.</summary>
     bool IsConnected { get; }
 
     /// <summary>
-    /// Raised after every successful (re)connect, on a thread-pool thread. Subscribers
-    /// re-fetch their snapshots; see the note on the interface.
+    /// Поднимается после каждого удачного (пере)подключения, в потоке пула. Подписчики
+    /// перезапрашивают свои снимки; см. заметку на самом интерфейсе.
     /// </summary>
     event Action? Connected;
 
     /// <summary>
-    /// Raised when a live connection is lost, on a thread-pool thread. NOT raised for an
-    /// orderly <see cref="IAsyncDisposable.DisposeAsync"/> — that is the UI shutting itself
-    /// down, not the daemon going away.
+    /// Поднимается, когда живое соединение потеряно, в потоке пула. НЕ поднимается при
+    /// упорядоченном <see cref="IAsyncDisposable.DisposeAsync"/> — это UI гасит сам себя, а не
+    /// демон уходит.
     /// </summary>
     event Action? Disconnected;
 
     /// <summary>
-    /// Raised for every unsolicited daemon push, on a thread-pool thread. Handlers must
-    /// return promptly and must marshal to the UI thread themselves.
+    /// Поднимается на каждый непрошеный пуш демона, в потоке пула. Обработчики обязаны быстро
+    /// возвращать управление и сами перекладывать работу в поток UI.
     /// </summary>
     event Action<IpcEvent>? EventReceived;
 
     /// <summary>
-    /// Sends a request and materialises its response payload.
+    /// Отправляет запрос и материализует нагрузку ответа.
     /// </summary>
-    /// <param name="type">One of the <see cref="IpcMessageTypes"/> request constants.</param>
-    /// <param name="payload">Typed request payload, or <c>null</c> for the argument-less requests.</param>
-    /// <param name="timeout">Overrides the client's default; use a generous one for <c>DumpCaptures</c>.</param>
-    /// <returns>The deserialized payload, or <c>default</c> when the daemon replied without one.</returns>
-    /// <exception cref="IpcRequestException">No connection, or the daemon answered <c>Ok = false</c>.</exception>
-    /// <exception cref="TimeoutException">No reply within the timeout. The request may still have been executed.</exception>
-    Task<TResult?> RequestAsync<TResult>(string type, object? payload = null, TimeSpan? timeout = null, CancellationToken cancellationToken = default);
+    /// <param name="type">Одна из констант-запросов <see cref="IpcMessageTypes"/>.</param>
+    /// <param name="payload">Типизированная нагрузка запроса либо <c>null</c> для запросов без аргументов.</param>
+    /// <param name="timeout">Перекрывает значение по умолчанию у клиента; для <c>DumpCaptures</c> берите с запасом.</param>
+    /// <param name="cancellationToken">
+    /// Снимает с ожидания ответа нас, но не демона: отменённый запрос уже ушёл в трубу, и
+    /// выполнить его демон вполне может — ровно как при <see cref="TimeoutException"/>.
+    /// </param>
+    /// <returns>Десериализованная нагрузка либо <c>default</c>, если демон ответил без неё.</returns>
+    /// <exception cref="IpcRequestException">Соединения нет либо демон ответил <c>Ok = false</c>.</exception>
+    /// <exception cref="TimeoutException">Ответа в отведённое время не пришло. Запрос при этом мог и выполниться.</exception>
+    Task<TResult?> RequestAsync<TResult>(string type, object? payload = null, TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default);
 
-    /// <summary>Sends a request and waits for the acknowledgement, discarding any payload.</summary>
+    /// <summary>Отправляет запрос и ждёт подтверждения, отбрасывая любую нагрузку.</summary>
     /// <inheritdoc cref="RequestAsync{TResult}"/>
-    Task RequestAsync(string type, object? payload = null, TimeSpan? timeout = null, CancellationToken cancellationToken = default);
+    Task RequestAsync(string type, object? payload = null, TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// A request that did not succeed: the daemon answered <c>Ok = false</c>, or there was no
-/// connection to send it on in the first place. Carries the request type so a handler that
-/// catches it can say what failed without threading the name through itself.
+/// Запрос, который не удался: демон ответил <c>Ok = false</c> либо соединения, по которому его
+/// было бы отправить, изначально не было. Несёт в себе тип запроса, чтобы поймавший исключение
+/// обработчик мог сказать, что именно провалилось, не протаскивая имя через себя сам.
 /// </summary>
 public sealed class IpcRequestException : Exception
 {
@@ -94,6 +101,6 @@ public sealed class IpcRequestException : Exception
         RequestType = string.Empty;
     }
 
-    /// <summary>The <see cref="IpcMessageTypes"/> constant the failed call used.</summary>
+    /// <summary>Константа <see cref="IpcMessageTypes"/>, с которой шёл провалившийся вызов.</summary>
     public string RequestType { get; }
 }
