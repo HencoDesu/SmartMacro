@@ -67,7 +67,7 @@ public class HotkeyListenerTests
         var dir = CreateTempDir();
         try
         {
-            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance, seedDefaults: false);
+            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
             await store.SaveAsync(WithTriggers("immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
             await store.SaveAsync(WithTriggers("cursor",
                 new HotkeyTrigger(HotkeyModifiers.Control, VirtualKey.F22),
@@ -108,7 +108,7 @@ public class HotkeyListenerTests
         var dir = CreateTempDir();
         try
         {
-            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance, seedDefaults: false);
+            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
             await store.SaveAsync(WithTriggers("first", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
 
             using var listener = CreateListener(store);
@@ -143,7 +143,7 @@ public class HotkeyListenerTests
         var dir = CreateTempDir();
         try
         {
-            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance, seedDefaults: false);
+            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
             await store.SaveAsync(WithTriggers("broken", new HotkeyTrigger(HotkeyModifiers.Control, 0)));
             await store.SaveAsync(WithTriggers("fine", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F20)));
 

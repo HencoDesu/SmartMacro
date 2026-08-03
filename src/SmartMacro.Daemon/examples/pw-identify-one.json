@@ -1,0 +1,51 @@
+{
+  "Name": "pw-identify-one",
+  "Triggers": [],
+  "StartNodeId": "open-stats",
+  "Nodes": [
+    {
+      "$type": "keyPress",
+      "Key": "C",
+      "Next": "await-stats",
+      "Id": "open-stats"
+    },
+    {
+      "$type": "delay",
+      "Ms": 500,
+      "Next": "recognize-class",
+      "Id": "await-stats"
+    },
+    {
+      "$type": "recognizeTag",
+      "TemplateSet": "classes",
+      "Region": {
+        "X": 3200,
+        "Y": 1060,
+        "Width": 160,
+        "Height": 35,
+        "TopLeft": {
+          "X": 3200,
+          "Y": 1060
+        },
+        "Right": 3360,
+        "Bottom": 1095
+      },
+      "ApplyTag": true,
+      "ResultVar": "tag",
+      "Matched": "set-icon",
+      "NotMatched": "close-stats",
+      "Id": "recognize-class"
+    },
+    {
+      "$type": "setIcon",
+      "IconPath": "Assets/ClassIcons/{tag}.png",
+      "Next": "close-stats",
+      "Id": "set-icon"
+    },
+    {
+      "$type": "keyPress",
+      "Key": "C",
+      "Id": "close-stats"
+    }
+  ]
+}

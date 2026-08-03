@@ -43,6 +43,20 @@ public sealed record DeleteMacroRequest(string Name);
 /// </param>
 public sealed record SubscribeRunEventsRequest(bool Enabled);
 
+/// <summary>Нагрузка <see cref="IpcMessageTypes.SubscribeLog"/>.</summary>
+/// <param name="Enabled">
+/// <c>true</c> включает ленту журнала для ЭТОГО соединения, <c>false</c> выключает. Настройка на
+/// соединение, как и у <see cref="SubscribeRunEventsRequest"/>, и по тем же причинам: второму
+/// клиенту, который ни о чём не просил, шум демона на <c>Debug</c> вываливать нельзя, а расплата
+/// за неразобранную очередь здесь — отключение.
+///
+/// Уровня в запросе НЕТ намеренно. Фильтр живёт в панели, потому что он обязан работать в обе
+/// стороны: сдвинув его вниз, пользователь должен УВИДЕТЬ то, что уже приехало, а серверный
+/// фильтр этого не умеет — он может только не прислать. Рычаг, уменьшающий трафик по-настоящему,
+/// — это <c>MinimumLevel</c> самого Serilog у демона, и он относится к будущему экрану настроек.
+/// </param>
+public sealed record SubscribeLogRequest(bool Enabled);
+
 /// <summary>
 /// Нагрузка <see cref="IpcMessageTypes.GetTemplateImage"/>. Пара «набор + имя» и есть
 /// идентичность шаблона: имя уникально только внутри своей папки, и <c>Лучник</c> из набора

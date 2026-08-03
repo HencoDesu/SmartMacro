@@ -72,6 +72,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     private readonly MacroGraphStore _macros;
     private readonly MacroRunRegistry _runs;
     private readonly RunEventPublisher _runEvents;
+    private readonly LogEventPublisher _log;
     private readonly MacroDebugSession _debug;
     private readonly ILogger<IpcServer> _logger;
 
@@ -89,6 +90,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         MacroGraphStore macros,
         MacroRunRegistry runs,
         RunEventPublisher runEvents,
+        LogEventPublisher log,
         MacroDebugSession debug,
         ILogger<IpcServer> logger)
     {
@@ -97,6 +99,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         _macros = macros;
         _runs = runs;
         _runEvents = runEvents;
+        _log = log;
         _debug = debug;
         _logger = logger;
 
@@ -107,6 +110,8 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         // Тот же цикл, то же решение: насос событий прогона толкает через нас, а мы держим его,
         // чтобы каждое соединение могло щёлкать своей подпиской.
         runEvents.AttachBroadcaster(this);
+        // И то же самое для ленты журнала — второй подписки на том же русле.
+        log.AttachBroadcaster(this);
     }
 
     /// <summary>Сколько клиентов подключено прямо сейчас. Диагностика и тесты.</summary>
@@ -328,7 +333,11 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);
 
-        var client = new ClientConnection(new IpcConnection(input, output, leaveOpen: true), _runEvents, _debug);
+        var client = new ClientConnection(
+            new IpcConnection(input, output, leaveOpen: true),
+            _runEvents,
+            _log,
+            _debug);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             _stopping.Token,
@@ -348,8 +357,10 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         {
             _clients.TryRemove(client, out _);
             // Прежде всего прочего: клиент, умерший, не отписавшись, не имеет права оставить
-            // исполнителя под съёмом показаний до конца жизни демона.
+            // исполнителя под съёмом показаний до конца жизни демона. Ленту журнала это
+            // касается ровно так же — она сериализуется в никуда.
             client.SetRunEventSubscription(false);
+            client.SetLogSubscription(false);
             client.CompleteEvents();
             // Насос может стоять в записи в трубу, которую никто не читает; разблокирует его
             // именно отмена, а WhenAny страхует случай, когда даже она не помогла.
@@ -496,6 +507,36 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         }
     }
 
+    /// <summary>
+    /// Ставит <paramref name="evt"/> в очередь тем соединениям, которые просили ленту журнала, и
+    /// никаким другим.
+    ///
+    /// Второе частое сообщение протокола и второй адресный канал. Флаг у него СВОЙ, отдельный от
+    /// <see cref="BroadcastToRunSubscribers"/>: панель включает события прогона в режиме
+    /// «Макросы», а ленту журнала — в режиме «Лог», и общий флаг заставил бы каждый из них
+    /// оплачивать трафик другого.
+    ///
+    /// Синхронность здесь несущая, а не случайная: <see cref="LogEventPublisher"/> подавляет
+    /// собственные записи ровно на время этого вызова, и <see cref="LogClientBacklogged"/> ниже
+    /// попадает под подавление именно потому, что случается внутри него.
+    /// </summary>
+    public void BroadcastToLogSubscribers(IpcEvent evt)
+    {
+        ArgumentNullException.ThrowIfNull(evt);
+        if (_clients.IsEmpty)
+        {
+            return;
+        }
+
+        foreach (var client in _clients.Keys)
+        {
+            if (client.WantsLog)
+            {
+                Deliver(client, evt);
+            }
+        }
+    }
+
     private void Deliver(ClientConnection client, IpcEvent evt)
     {
         if (client.TryEnqueue(evt))
@@ -596,14 +637,21 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             });
 
         private readonly RunEventPublisher _runEvents;
+        private readonly LogEventPublisher _log;
         private readonly MacroDebugSession _debug;
         private readonly Lock _subscriptionLock = new();
         private bool _wantsRunEvents;
+        private bool _wantsLog;
 
-        public ClientConnection(IpcConnection connection, RunEventPublisher runEvents, MacroDebugSession debug)
+        public ClientConnection(
+            IpcConnection connection,
+            RunEventPublisher runEvents,
+            LogEventPublisher log,
+            MacroDebugSession debug)
         {
             Connection = connection;
             _runEvents = runEvents;
+            _log = log;
             _debug = debug;
         }
 
@@ -657,6 +705,50 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             {
                 _runEvents.Release();
                 _debug.Release();
+            }
+        }
+
+        /// <inheritdoc />
+        public bool WantsLog
+        {
+            get
+            {
+                lock (_subscriptionLock)
+                {
+                    return _wantsLog;
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public void SetLogSubscription(bool enabled)
+        {
+            // По фронту и под тем же замком, что и подписка на события прогона, и ровно по той
+            // же причине: публикатор журнала запирается на СЧЁТЧИКЕ подписчиков, и утёкшая
+            // ссылка оставила бы демон сериализующим свой журнал в трубу, которую никто не
+            // читает, до самого перезапуска.
+            //
+            // Счёт подключённых отладчиков сюда НЕ подвязан — в отличие от событий прогона.
+            // Обход на паузе способно распустить только соединение, которое эту паузу видит, а
+            // ленту журнала смотрят из другого режима панели, и права отпускать чужой обход она
+            // не даёт.
+            lock (_subscriptionLock)
+            {
+                if (_wantsLog == enabled)
+                {
+                    return;
+                }
+
+                _wantsLog = enabled;
+            }
+
+            if (enabled)
+            {
+                _log.Acquire();
+            }
+            else
+            {
+                _log.Release();
             }
         }
 

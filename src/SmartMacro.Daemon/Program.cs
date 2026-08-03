@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using SmartMacro.Config;
+using SmartMacro.Daemon.Logging;
 using SmartMacro.GameWindows;
 using SmartMacro.Hotkeys;
 using SmartMacro.Input;
@@ -72,7 +73,21 @@ internal static class Program
             builder.Services.AddSerilog((sp, lc) => lc
                 .ReadFrom.Configuration(builder.Configuration)
                 .ReadFrom.Services(sp)
-                .Enrich.FromLogContext());
+                .Enrich.FromLogContext()
+                // Третий адресат журнала, рядом с консолью и файлом: лента режима «Лог» у
+                // панели. Разрешается отсюда, а не описывается в appsettings.json, потому что
+                // стоку нужен синглтон из этого же контейнера.
+                //
+                // Цикла в DI тут нет ровно потому, что ни у стока, ни у публикатора НЕТ логгера
+                // — иначе построение логгера потребовало бы логгера. Это же и есть первый срез
+                // защиты от рекурсии; см. IpcLogSink и LogEventPublisher.
+                //
+                // Записи, сделанные до сборки хоста (строка «daemon starting» и отказ второго
+                // экземпляра), уходят в bootstrap-логгер, у которого этого стока ещё нет, и в
+                // ленту не попадают — проверено глазами, лента начинается со следующей строки,
+                // «Composition root built». Их видно в консоли и в файле, где им и место: панель
+                // не может быть подключена к демону, который ещё не поднял канал.
+                .WriteTo.Sink(new IpcLogSink(sp.GetRequiredService<LogEventPublisher>())));
 
             ConfigureServices(builder.Services, builder.Configuration);
 
@@ -145,6 +160,14 @@ internal static class Program
         services.AddSingleton<RunEventPublisher>();
         services.AddSingleton<IMacroRunObserver>(sp => sp.GetRequiredService<RunEventPublisher>());
 
+        // Вторая подписка на том же русле: журнал самого демона, выведенный в трубу. Сток,
+        // который его сюда отводит, вставлен в конвейер Serilog выше по файлу; здесь только
+        // объект, у которого кольцо, очередь и склейка.
+        //
+        // Регистрируется ДО IpcServer, потому что тот берёт его конструктором (соединение
+        // щёлкает своей подпиской) и вручает ему себя как рассылку.
+        services.AddSingleton<LogEventPublisher>();
+
         // Волна D5: управляющий канал отладчика — брат-близнец отчётного канала публикатора.
         // Тоже инертен, пока не подключится панель, — а подключение здесь ТО ЖЕ САМОЕ событие,
         // что и подписка на события прогона (см. IpcServer.ClientConnection), и именно это не
@@ -202,8 +225,11 @@ internal static class Program
         // как начнут разбираться прогоны, окна и горячие клавиши, — и панель узнаёт, что демон
         // уходит, а не висит на полумёртвом движке.
         // Насос пакетирования запускается до канала, чтобы у клиента, подписавшегося сразу
-        // после подключения, было кому разбирать его очередь.
+        // после подключения, было кому разбирать его очередь. У ленты журнала насос свой, и
+        // поднимается он там же и по той же причине. Кольцо предыстории при этом наполняется с
+        // того момента, как Serilog собрал конвейер, — то есть задолго до обоих насосов.
         services.AddHostedService(sp => sp.GetRequiredService<RunEventPublisher>());
+        services.AddHostedService(sp => sp.GetRequiredService<LogEventPublisher>());
 
         services.AddHostedService(sp => sp.GetRequiredService<IpcServer>());
 

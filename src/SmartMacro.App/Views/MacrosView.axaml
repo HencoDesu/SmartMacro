@@ -1017,9 +1017,15 @@
                 BorderThickness="0,0,0,1"
                 Padding="12,8">
             <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto">
+                <!-- Padding + VerticalContentAlignment вместе с жёсткой Height — см. ловушку у
+                     темы TextBox в Themes/Controls.axaml: без них отступ темы оставлял под
+                     строку меньше, чем она занимает, и хвосты «р»/«у»/«д» в имени макроса
+                     срезались по базовой линии. -->
                 <TextBox Grid.Column="0"
                          Width="170"
                          Height="26"
+                         Padding="8,0"
+                         VerticalContentAlignment="Center"
                          FontWeight="Medium"
                          FontSize="{DynamicResource NocturneFontSizeBody}"
                          IsEnabled="{Binding HasOpenMacro}"
@@ -1199,9 +1205,13 @@
                     BorderBrush="{DynamicResource NocturneDividerBrush}"
                     BorderThickness="0,0,1,0">
                 <Grid RowDefinitions="Auto,*,Auto">
+                    <!-- Padding + VerticalContentAlignment — та же ловушка жёсткой высоты, что и
+                         у поля имени макроса выше. -->
                     <TextBox Grid.Row="0"
                              Margin="8"
                              Height="24"
+                             Padding="8,0"
+                             VerticalContentAlignment="Center"
                              Watermark="поиск…"
                              Text="{Binding LibrarySearch, Mode=TwoWay}" />
 
@@ -1356,15 +1366,42 @@
                         </ItemsControl>
                     </Canvas>
 
-                    <!-- пустое состояние -->
+                    <!-- пустое состояние: макрос не открыт, но библиотека не пуста -->
                     <StackPanel VerticalAlignment="Center"
                                 HorizontalAlignment="Center"
                                 Spacing="8.4"
-                                IsVisible="{Binding !HasOpenMacro}">
+                                IsVisible="{Binding ShowPickMacroHint}">
                         <TextBlock FontSize="{DynamicResource NocturneFontSizeTitle}"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource NocturneTextMutedBrush}"
                                    Text="Выберите макрос слева или создайте новый." />
+                        <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                   Foreground="{DynamicResource NocturneTextGhostBrush}"
+                                   HorizontalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding FolderPath}" />
+                    </StackPanel>
+
+                    <!-- пустое состояние: в macros/ у демона нет вообще ничего.
+                         Свежая установка теперь открывается именно так — примеры демон больше
+                         не сеет, — поэтому здесь сказано, где их взять. Без этого первое
+                         впечатление от панели было бы «ничего не работает». -->
+                    <StackPanel VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                MaxWidth="460"
+                                Spacing="8.4"
+                                IsVisible="{Binding ShowEmptyLibraryHint}">
+                        <TextBlock FontSize="{DynamicResource NocturneFontSizeTitle}"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource NocturneTextMutedBrush}"
+                                   Text="Библиотека пуста." />
+                        <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
+                                   HorizontalAlignment="Center"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                   Text="Создайте макрос кнопкой слева внизу — или возьмите готовый: примеры pw-* лежат в папке examples рядом с SmartMacro.Daemon.exe, скопируйте нужный .json в macros и он подхватится сам." />
                         <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                    Foreground="{DynamicResource NocturneTextGhostBrush}"

@@ -18,9 +18,22 @@ namespace SmartMacro.Macros.Storage;
 ///   * CRUD через <see cref="SaveAsync"/> / <see cref="DeleteAsync"/> с проверкой имени по
 ///     правилам NTFS;
 ///   * горячую перезагрузку через <see cref="FileSystemWatcher"/> с гашением дребезга, где
-///     собственные записи подавляются сравнением подписи папки по временам последней записи;
-///   * одноразовую миграцию унаследованного <c>macros.json</c> и посев набора примеров PW,
-///     когда папка оказывается пустой.
+///     собственные записи подавляются сравнением подписи папки по временам последней записи.
+///
+/// ИНВАРИАНТ: КОНСТРУКТОР НЕ ПИШЕТ НИ ОДНОГО ФАЙЛА. Он заводит саму папку, если её ещё нет
+/// (иначе некуда класть первый макрос и не на что натравливать наблюдателя), читает её — и на
+/// этом всё: содержимое библиотеки сразу после создания хранилища ровно такое, каким его
+/// оставил пользователь.
+///
+/// Так было НЕ ВСЕГДА, и потому это записано инвариантом, а не подразумевается. До отмены
+/// обратной совместимости конструктор ещё и мигрировал унаследованный <c>macros.json</c>,
+/// переименовывал его вместе с <c>hotkeys.json</c> в <c>*.migrated</c>, сеял шесть примеров
+/// <c>pw-*</c> и ставил маркер <c>.examples-seeded</c>. То есть «создать объект» означало
+/// «изменить состояние на диске»: тест не мог построить хранилище, не получив в придачу чужих
+/// файлов, а пользователь не мог понять, откуда в его папке макросы, которых он не писал.
+/// Примеры теперь раздаются файлами (<c>examples/</c> рядом с демоном) и копируются руками, а
+/// мигрировать больше нечего. Побочные эффекты сюда не возвращать: если что-то нужно записать
+/// на старте, это отдельный метод, видимый на месте вызова.
 ///
 /// Реализует <see cref="IMacroGraphResolver"/>, так что <c>RunMacroNode</c> разрешает
 /// под-макросы прямо из живой библиотеки.
@@ -56,25 +69,17 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     {
     }
 
-    /// <param name="baseDirectory">Папка, в которой лежит (или появится) <c>macros/</c> и, возможно, унаследованный <c>macros.json</c>.</param>
+    /// <param name="baseDirectory">Папка, в которой лежит (или появится) <c>macros/</c>.</param>
     /// <param name="logger">Приёмник диагностики.</param>
-    /// <param name="seedDefaults">
-    /// Записывать встроенные графы-примеры PW, когда папка оказывается пустой. Тесты, которым
-    /// нужна голая библиотека, передают <c>false</c>.
-    /// </param>
-    public MacroGraphStore(string baseDirectory, ILogger<MacroGraphStore> logger, bool seedDefaults = true)
+    public MacroGraphStore(string baseDirectory, ILogger<MacroGraphStore> logger)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
         _logger = logger;
         _directory = Path.Combine(baseDirectory, FolderName);
 
-        MigrateLegacyIfNeeded(baseDirectory);
+        // Единственное обращение к диску на запись за весь конструктор — и то это папка, а не
+        // её содержимое. См. инвариант в комментарии класса.
         Directory.CreateDirectory(_directory);
-        if (seedDefaults)
-        {
-            SeedDefaultsIfEmpty();
-        }
-
         Reload(raiseEvent: false);
 
         // Наблюдатель ставится по возможности: горячая перезагрузка — приятное дополнение, так
@@ -416,158 +421,6 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
 
         return seen != current.Count;
-    }
-
-    // ---- начальная подготовка при первом запуске -----------------------------------
-
-    private void MigrateLegacyIfNeeded(string baseDirectory)
-    {
-        var legacyPath = Path.Combine(baseDirectory, LegacyMacroMigration.LegacyFileName);
-        if (Directory.Exists(_directory) || !File.Exists(legacyPath))
-        {
-            return;
-        }
-
-        string json;
-        try
-        {
-            json = File.ReadAllText(legacyPath);
-        }
-        catch (Exception ex)
-        {
-            LogMigrationReadFailed(ex, legacyPath);
-            return;
-        }
-
-        // Хоткеи едут прицепом: весь их смысл в новой модели в том, чтобы жить внутри того
-        // макроса, который они запускают.
-        var legacyHotkeysPath = Path.Combine(baseDirectory, LegacyMacroMigration.LegacyHotkeysFileName);
-        string? hotkeysJson = null;
-        if (File.Exists(legacyHotkeysPath))
-        {
-            try
-            {
-                hotkeysJson = File.ReadAllText(legacyHotkeysPath);
-            }
-            catch (Exception ex)
-            {
-                LogMigrationReadFailed(ex, legacyHotkeysPath);
-            }
-        }
-
-        LegacyMacroMigration.Result migration;
-        try
-        {
-            migration = LegacyMacroMigration.Convert(json, hotkeysJson);
-        }
-        catch (Exception ex)
-        {
-            LogMigrationParseFailed(ex, legacyPath);
-            return;
-        }
-
-        if (migration.SkippedMacros > 0)
-        {
-            LogMigrationSkipped(migration.SkippedMacros);
-        }
-
-        if (migration.AttachedHotkeys > 0)
-        {
-            LogMigrationHotkeysAttached(migration.AttachedHotkeys);
-        }
-
-        if (migration.OrphanedHotkeys > 0)
-        {
-            LogMigrationHotkeysOrphaned(migration.OrphanedHotkeys);
-        }
-
-        Directory.CreateDirectory(_directory);
-        var written = 0;
-        foreach (var graph in migration.Graphs)
-        {
-            try
-            {
-                File.WriteAllText(PathFor(graph.Name), MacroGraphJson.Serialize(graph));
-                written++;
-            }
-            catch (Exception ex)
-            {
-                LogMigrationWriteFailed(ex, graph.Name);
-            }
-        }
-
-        // Исходные данные сохраняем, просто убираем с дороги, чтобы никогда не мигрировать
-        // дважды.
-        RenameMigrated(legacyPath);
-        if (hotkeysJson is not null)
-        {
-            RenameMigrated(legacyHotkeysPath);
-        }
-
-        LogMigrated(written, legacyPath, _directory);
-    }
-
-    private void RenameMigrated(string path)
-    {
-        try
-        {
-            File.Move(path, path + LegacyMacroMigration.MigratedSuffix, overwrite: true);
-        }
-        catch (Exception ex)
-        {
-            LogMigrationRenameFailed(ex, path);
-        }
-    }
-
-    // Посев происходит ровно один раз на установку, и отслеживается это файлом-маркером, а не
-    // вопросом «пуста ли папка». Проверка на пустую папку выглядела равнозначной, но таковой не
-    // была: пользователь, переезжающий с прежнего конвейера, попадает сюда с непустой папкой
-    // (там его собственные макросы) и примеров pw-* не получил бы никогда, — а ведь они
-    // ЕДИНСТВЕННАЯ оставшаяся реализация встроенных рассылок (имун / помощь / клик по курсору /
-    // опознание), которые миграция удаляет. Маркер заодно делает удаления окончательными:
-    // выбросил ненужный пример — он больше не вернётся.
-    private void SeedDefaultsIfEmpty()
-    {
-        var marker = Path.Combine(_directory, ".examples-seeded");
-        if (File.Exists(marker))
-        {
-            return;
-        }
-
-        var written = 0;
-        foreach (var graph in DefaultMacroGraphs.Build())
-        {
-            // Никогда не затираем собственный макрос пользователя, если имя случайно совпало.
-            var path = PathFor(graph.Name);
-            if (File.Exists(path))
-            {
-                continue;
-            }
-
-            try
-            {
-                File.WriteAllText(path, MacroGraphJson.Serialize(graph));
-                written++;
-            }
-            catch (Exception ex)
-            {
-                LogSeedFailed(ex, graph.Name);
-            }
-        }
-
-        try
-        {
-            File.WriteAllText(marker, string.Empty);
-        }
-        catch (Exception ex)
-        {
-            // Маркер записать не удалось — при следующем старте примеры предложатся снова. Это
-            // безобидно (проверка File.Exists выше превращает повторный посев в
-            // ничегонеделание), так что просто пишем в лог.
-            LogSeedFailed(ex, ".examples-seeded");
-        }
-
-        LogSeeded(written, _directory);
     }
 
     // Идемпотентно — и обязано таким быть: хранилище зарегистрировано дважды (само по себе и как

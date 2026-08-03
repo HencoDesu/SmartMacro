@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using Serilog;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.Services;
 
@@ -21,10 +20,11 @@ public enum ShellMode
 /// <summary>
 /// Одна строка полосы режимов: имя и счётчик.
 ///
-/// Счётчик — <see cref="int"/>? намеренно. За «Логом» пока нет никакого IPC, а выдуманное число
-/// хуже, чем никакого, — поэтому его счётчик <c>null</c>, и строка попросту рисуется без него.
-/// «Шаблоны» из этого положения вышли: у них появились <c>GetTemplates</c> и настоящее число
-/// файлов, — а <c>null</c> остался ровно там, где по-прежнему нечего считать.
+/// Счётчик — <see cref="int"/>? намеренно: выдуманное число хуже, чем никакого, поэтому режим,
+/// за которым нет данных, рисуется вовсе без счётчика. К этому моменту таких режимов не
+/// осталось — «Шаблоны» вышли из положения с <c>GetTemplates</c>, «Лог» с <c>SubscribeLog</c>, —
+/// но <c>null</c> остаётся законным значением и должен им остаться: следующий пустой режим
+/// обязан выглядеть пустым, а не показывать ноль, которого никто не считал.
 /// </summary>
 public sealed class ShellModeViewModel : ObservableObject
 {
@@ -153,15 +153,18 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         WorkspaceViewModel workspace,
         MacroEditorViewModel editor,
         TemplatesViewModel templates,
+        LogViewModel log,
         IMacroLauncher? launcher = null)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(editor);
         ArgumentNullException.ThrowIfNull(templates);
+        ArgumentNullException.ThrowIfNull(log);
 
         Workspace = workspace;
         Editor = editor;
         Templates = templates;
+        Log = log;
         _launcher = launcher;
 
         Modes =
@@ -180,11 +183,20 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Workspace.Runs.CollectionChanged += OnRunsChanged;
         Editor.Macros.CollectionChanged += OnMacrosChanged;
         Templates.TemplatesChanged += OnTemplatesChanged;
+        Log.LogChanged += OnLogChanged;
 
         RefreshWindowState();
         RefreshRunState();
         RefreshMacroState();
         RefreshTemplateState();
+        RefreshLogState();
+
+        // Лента журнала включается сразу и на всю жизнь панели — в отличие от событий прогона,
+        // которые живут ровно столько, сколько открыт режим «Макросы». Разница обоснована у
+        // LogViewModel и сводится к одному: счётчик «сколько раз что-то пошло не так» обязан
+        // быть виден из любого режима, а значит, лента должна идти и тогда, когда «Лог» не на
+        // экране. Сигнал, который появляется, только если пойти и посмотреть, — не сигнал.
+        _ = SafeAsync(Log.SetSubscriptionAsync(true), "log-subscribe");
     }
 
     /// <summary>Окна и прогоны — тело «Окон» и «Прогонов», а заодно полоса прогонов.</summary>
@@ -195,6 +207,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>Дерево шаблонов машинного зрения — тело «Шаблонов».</summary>
     public TemplatesViewModel Templates { get; }
+
+    /// <summary>Лента журнала демона — тело «Лога».</summary>
+    public LogViewModel Log { get; }
 
     /// <summary>Строки боковой полосы, в порядке показа.</summary>
     public IReadOnlyList<ShellModeViewModel> Modes { get; }
@@ -330,9 +345,15 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Workspace.Runs.CollectionChanged -= OnRunsChanged;
         Editor.Macros.CollectionChanged -= OnMacrosChanged;
         Templates.TemplatesChanged -= OnTemplatesChanged;
+        Log.LogChanged -= OnLogChanged;
         Workspace.Dispose();
         Editor.Dispose();
         Templates.Dispose();
+        // Отписываться от ленты у демона отдельным запросом не нужно и негде: этот путь ведёт к
+        // закрытию панели, а разрыв трубы сервер разбирает сам — соединение уходит вместе со
+        // своей подпиской. (Хоткеи — исключение ровно потому, что их демон обратно НЕ
+        // регистрирует.)
+        Log.Dispose();
     }
 
     // ---- внутренности -----------------------------------------------------------------------
@@ -404,7 +425,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "Фоновая операция режима '{What}' не выполнена", what);
+            // Полное имя намеренно: у оболочки есть собственное свойство Log — режим «Лог», — и
+            // простое имя разрешалось бы в него.
+            Serilog.Log.Warning(ex, "Фоновая операция режима '{What}' не выполнена", what);
         }
     }
 
@@ -416,9 +439,26 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     private void OnTemplatesChanged() => RefreshTemplateState();
 
+    private void OnLogChanged() => RefreshLogState();
+
     // Ноль — честное число, а не пустота: за счётчиком стоит GetTemplates, и «файлов нет» — это
-    // ответ демона, а не отсутствие протокола (чем «Шаблоны» и отличаются теперь от «Лога»).
+    // ответ демона.
     private void RefreshTemplateState() => Mode(ShellMode.Templates).SetCount(Templates.Templates.Count);
+
+    /// <summary>
+    /// Счётчик «Лога» — это ПРОБЛЕМЫ (предупреждения и хуже) в ленте, а не число записей в ней.
+    ///
+    /// Единственный счётчик рейки, который считает не все свои строки, и отступление намеренное.
+    /// Число записей упирается в потолок ленты и после этого стоит на месте — константа, а
+    /// значит, не сообщение. А вот «три раза что-то пошло не так» — ровно то, ради чего в этот
+    /// режим и заходят, и остаётся при этом счётом СТРОК: тех самых, что видны при фильтре
+    /// «предупреждения и выше».
+    ///
+    /// Точка рядом с числом — акцент режима «Прогоны», означающий «прямо сейчас что-то идёт», и
+    /// перегружать её вторым смыслом «а тут есть ошибки» нельзя: два разных факта одним пятном
+    /// делают бесполезными оба.
+    /// </summary>
+    private void RefreshLogState() => Mode(ShellMode.Log).SetCount(Log.ProblemCount);
 
     private void RefreshWindowState()
     {

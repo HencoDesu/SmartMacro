@@ -20,7 +20,7 @@ The refactoring plan is complete through stage 4. What follows is `docs/design/i
 - **D3b done** — the run-event channel. See below; it is the foundation D5 and the «Лог» mode both build on.
 - **D4 done** — hotkey capture (1f) + target-filter badge (1g). See below.
 - **D5 done** — the debugger. See below. **The design waves are complete.**
-- **After D5** — the asset trees collapsed into one `Assets/templates/`, and «Шаблоны» stopped being an empty frame. See «Vision» and «The template browser» below.
+- **After D5** — the asset trees collapsed into one `Assets/templates/`, and «Шаблоны» stopped being an empty frame. See «Vision» and «The template browser» below. Then **example seeding and the legacy migrator were deleted**: backwards compatibility is off, so `MacroGraphStore`'s constructor no longer writes anything, and the six `pw-*` graphs ship as ordinary files under `src/SmartMacro.Daemon/examples/`. See «Core pipeline» and «Runtime state files». And **«Лог» stopped being an empty frame** — the daemon's Serilog output now crosses the pipe as a second opt-in subscription. See «The log feed» below.
 
 ### The targets badge and the hotkey trap (D4)
 
@@ -76,7 +76,18 @@ Two requests, `GetTemplates` (metadata) and `GetTemplateImage` (bytes of one fil
 
 `GetTemplates` is a pull, but for a different reason than `GetHotkeyFailures`: the tree is changed by the user in Explorer, not by the panel, and the `FileSystemWatcher` watches `macros/`, not `Assets/`. So the list is re-read on entering the mode and on «Обновить».
 
-**Лог still has no data behind it** and renders an honest empty state with a blank counter, pinned by a test. The daemon's Serilog output never crosses the pipe; it would need a second opt-in subscription reusing D3b's batch shape.
+### The log feed (Лог)
+
+One request (`SubscribeLog`) and one push (`LogEntries`) — the **second subscription on D3b's channel**, deliberately reusing its batch shape rather than inventing a mechanism. `Core/Ipc/LogEventPublisher` is the engine half (ring + queue + pump + broadcast); `Daemon/Logging/IpcLogSink` is the Serilog adapter, and it lives in the daemon because **Core has no Serilog reference** and must not grow one. Four things constrain anything built on it:
+
+- **Recursion is cut by construction, in three places.** A sink that ships records over IPC lives inside the process that logs. (1) *Neither the sink nor the publisher has a logger* — and cannot be given one, because the logger is built from the very Serilog pipeline the sink is plugged into, so injecting it is a DI cycle that fails at host build. The emit path is `Append` → ring + `TryWrite`, with no place a second record could come from. (2) The pump sets an `AsyncLocal` suppression flag around the *synchronous* broadcast, which covers the one thing on that path that does log — `IpcServer`'s backlogged-client warning. The record still reaches console and file; only the feed drops it. (3) The 100 ms dwell is the backstop: an escapee logged from another task costs one extra line per flush window, never a loop, because the pump cannot outrun its own timer.
+- **The ring buffer exists here and deliberately does not for run events.** Run events have no history because nothing is recorded while unsubscribed, so a buffer would be stale. The log is written whether or not anyone is watching, and «Лог» is opened precisely to see what just happened — so the daemon keeps `LogLimits.HistoryCapacity` (1000) entries always, and `SubscribeLog` answers with them. The cost is named: rendering + storing every record is paid with the panel closed.
+- **`SubscribeLog` enables the stream BEFORE snapshotting the ring.** The other order leaves an unfillable gap; this one can only duplicate the single record that lands between the two lines, and `LogEntryDto.Seq` lets the panel drop it. Reconnect **replaces** the feed rather than appending — `Seq` is only monotonic within one daemon lifetime.
+- **The subscription lives as long as the panel, not as long as the mode** — the one place this departs from run events (which are scoped to «Макросы»). The question the log answers is "did something go wrong", and it is asked from whatever mode you are in; a counter that only updates while you are looking at it is not a signal. So the rail counter is **problems (Warning+) in the feed**, the only counter that counts a subset of its rows: total entries saturate at the cap and a constant is not information.
+
+Filtering (level + substring) is **panel-side only**, because moving the filter down must *reveal* what already arrived — something a server-side filter cannot do. The lever that actually reduces wire volume is the daemon's own Serilog `MinimumLevel`; a `LoggingLevelSwitch` for it belongs to a settings screen and is not wired.
+
+⚠️ **The fixed-height `TextBox` trap.** The theme's field padding is 11.2px vertical and the text sits inside a clipping `ScrollViewer`; a caller-supplied `Height` of 24–26 leaves less room than the line needs and severs descenders exactly at the baseline — letters stay legible, only the tails of «р»/«у»/«д» vanish. Three sites had it (log search, macro name, library search); all now pass `Padding="8,0"` + `VerticalContentAlignment="Center"` alongside their `Height`, and the trap is written up at the theme. Build and tests cannot see this class of defect — it was found by measuring glyph ink rows against a reference `TextBlock`.
 
 **Two executables run elevated** (`requireAdministrator`), so a medium-integrity shell cannot terminate either one — `Stop-Process`/`taskkill` return access denied. A wedged panel has to be closed from an elevated context. It also holds the single-instance mutex and renames locked DLLs to `*.locked<pid>` in its `bin/`; those clear themselves when it finally exits.
 
@@ -109,19 +120,20 @@ Five projects, two executables:
 
 `Native` is Win32 P/Invoke via `LibraryImport`, no dependencies.
 
-**`SmartMacro.Contracts`** is what the two processes speak: the macro graph model (`SmartMacro.Macros.Model`) and its pure validator (`SmartMacro.Macros.Validation`) — namespaces deliberately kept as they were when these lived in Core — plus `SmartMacro.Contracts.Dto` (`WindowDto`, `RunningMacroDto`, `ValidationIssueDto`, `TemplateDto`) and `SmartMacro.Contracts.Ipc` (envelope, `IpcMessageTypes` catalog, `IpcJson`, `IpcPipe`, and the shared `IpcConnection` framing both ends use). **It references Native and nothing else.** Anything needing OpenCV/Tesseract/file IO belongs in Core; mappers from live Core types to DTOs therefore live in `Core/Ipc/DtoMappers.cs`, not in Contracts.
+**`SmartMacro.Contracts`** is what the two processes speak: the macro graph model (`SmartMacro.Macros.Model`) and its pure validator (`SmartMacro.Macros.Validation`) — namespaces deliberately kept as they were when these lived in Core — plus `SmartMacro.Contracts.Dto` (`WindowDto`, `RunningMacroDto`, `ValidationIssueDto`, `TemplateDto`, `LogEntryDto`) and `SmartMacro.Contracts.Ipc` (envelope, `IpcMessageTypes` catalog, `IpcJson`, `IpcPipe`, and the shared `IpcConnection` framing both ends use). **It references Native and nothing else.** Anything needing OpenCV/Tesseract/file IO belongs in Core; mappers from live Core types to DTOs therefore live in `Core/Ipc/DtoMappers.cs`, not in Contracts.
 
 ### IPC
 
 `Core/Ipc/IpcServer` accepts on the named pipe and fans engine events out; `Core/Ipc/IpcRequestDispatcher` turns one envelope into one envelope. `App/Ipc/IpcClient` is the other end: a single reader loop demultiplexing `Id`-bearing responses into pending `TaskCompletionSource`s versus raising events, with a reconnect loop for the process's lifetime.
 
-Three protocol facts every caller has to respect:
+Four protocol facts every caller has to respect:
 
 - **Responses may arrive out of order.** The server does not await a handler before reading the next request. Correlate by `Id`; never by arrival.
 - **A client that stops draining events is dropped.** So `IIpcClient.Connected` is a re-fetch signal, not a nicety — every view-model re-seeds its snapshots there, and reconciles (drops rows the daemon no longer reports) rather than merely upserting.
 - **`SaveMacro` → `[]` means saved.** A non-empty issue list means nothing was written. Warnings on a *successful* save are NOT returned, so the editor re-derives them by running `MacroGraphValidator` locally.
+- **Two of the pushes are opt-in and per-connection**, and they are the only two frequent ones: `RunEvents` (`SubscribeRunEvents`) and `LogEntries` (`SubscribeLog`). Their flags are separate on purpose — one is scoped to «Макросы», the other to the panel's whole life — so neither mode pays the other's traffic. Both are forgotten with the connection, so both must be re-requested on every `Connected`.
 
-`IIpcBroadcaster` (Core) exists so `RequestActivate` and the tray can push `ActivateWindow` without a DI cycle: `IpcServer` implements it and hands itself to the dispatcher in its own constructor.
+`IIpcBroadcaster` (Core) exists so `RequestActivate` and the tray can push `ActivateWindow` without a DI cycle: `IpcServer` implements it and hands itself to the dispatcher in its own constructor. Its two `BroadcastTo*Subscribers` lanes must stay **synchronous and non-blocking** — `LogEventPublisher`'s recursion guard is scoped to the duration of the call.
 
 ### Core pipeline
 
@@ -139,8 +151,8 @@ hotkey / process-appeared / UI Run
 - **WindowRegistry** (`Core/Windows`) is the sole owner of window tags AND the `hwnd → IGameWindow` lookup. Tag selectors (`RequireTags`/`ExcludeTags`) route every fan-out; "identified" just means "has at least one tag".
 - **Orchestrator** (`Core/Orchestration`) turns triggers into runs. Hotkey runs have no context window (macros must route by selector) and are single-flight per macro NAME; process-appeared runs get the new window as context and are single-flight per (macro, window) so N clients launching at once each boot. Both seed the `cursor` variable via `CursorPositionProvider`. Its `OnProcessAppeared` is also the only place a window is *adopted*, and **`Register` and `StartProcessAppearedMacros` are deliberately adjacent, synchronous lines** — a node reaching an unregistered hwnd fails at execution, so nothing may go between them. Ordering at shutdown is the mirror image: `WindowLifetimeMonitor` is registered in the host BEFORE the orchestrator so it stops AFTER it, and windows leave the registry only once in-flight runs have been cancelled.
 - **Macros** — the model (polymorphic `$type` nodes + triggers) and its validator now live in `Contracts/Macros`; `Core/Macros` keeps the daemon-side halves: `Execution` (`MacroExecutor` walker, `MacroPrimitives`, `MacroRunRegistry`, run variables) and `Storage`. See `docs/refactoring-plan-split.md` §0.2–0.3 for the node catalogue and semantics.
-- **`MacroGraphStore`** (`Core/Macros/Storage`) is the library of record: one JSON file per graph under `macros/`, filename stem = macro name. It resolves sub-macros for `RunMacroNode`, supplies `HotkeyListener`'s bindings (re-registered on every change), and tells the orchestrator which graphs a new process should boot. On first run it migrates a legacy `macros.json` (+ `hotkeys.json` macro bindings → triggers) and seeds the six `pw-*` examples. Seeding is gated by the marker file `macros/.examples-seeded`, NOT by the folder being empty — deleting an example does not bring it back, and the `SeedDefaultsIfEmpty` name understates this.
-- **Identification** is no longer built in: it's the `pw-identify` / `pw-boot` example macros — `KeyPress(C)` → `Delay` → `RecognizeTagNode` (template set `"classes"` → `Assets/templates/classes/{tag}.png`) → `SetIconNode` → `KeyPress(C)`. Master/ignored characters are just tags in a selector (`ExcludeTags: ["Лучник", "Шаман"]`).
+- **`MacroGraphStore`** (`Core/Macros/Storage`) is the library of record: one JSON file per graph under `macros/`, filename stem = macro name. It resolves sub-macros for `RunMacroNode`, supplies `HotkeyListener`'s bindings (re-registered on every change), and tells the orchestrator which graphs a new process should boot. **Its constructor writes nothing**: it creates the folder if missing, reads it, and stops. That is an invariant written on the class, not an accident — until backwards compatibility was dropped the same constructor migrated a legacy `macros.json`, renamed it and `hotkeys.json` to `*.migrated`, seeded six `pw-*` examples and dropped a `.examples-seeded` marker, so *constructing the object* meant *changing state on disk*. `DefaultMacroGraphs` and `LegacyMacroMigration` are gone; do not hang start-up side effects back on the ctor.
+- **Identification** is no longer built in: it's the `pw-identify` / `pw-boot` example graphs (shipped as files in `examples/`, copied into `macros/` by hand) — `KeyPress(C)` → `Delay` → `RecognizeTagNode` (template set `"classes"` → `Assets/templates/classes/{tag}.png`) → `SetIconNode` → `KeyPress(C)`. Master/ignored characters are just tags in a selector (`ExcludeTags: ["Лучник", "Шаман"]`).
 
 ### Win32 input model (the hard-won part — do not "simplify" without re-testing in game)
 
@@ -169,7 +181,9 @@ The provider has **two read paths on purpose**. `TryGetTemplate`/`GetSet` is the
 
 The panel's own directory holds only `logs/smartmacro-ui-*.log`. Its `appsettings.json` configures Serilog and nothing else — every engine knob (`Agent`, `ProcessProfiles`, `Vision:*`) is the daemon's.
 
-`hotkeys.json` and the single `macros.json` are GONE. Both are migrated once on first run and renamed to `*.migrated`; a hotkey is now a `HotkeyTrigger` inside the macro it starts. Legacy bindings for the deleted built-in broadcast actions have no destination and are reported as orphaned in the log — the equivalent behaviors are the `pw-*` example macros.
+`hotkeys.json` and the single `macros.json` are GONE — and so is the one-shot migrator that used to convert them. Backwards compatibility is off: a file in either legacy format is now just an unknown file the store ignores. A hotkey is a `HotkeyTrigger` inside the macro it starts.
+
+**A fresh install starts with an empty library.** Nothing seeds `macros/` any more. `src/SmartMacro.Daemon/examples/` ships the six `pw-*` graphs as files (`PreserveNewest`, like the assets) plus a README that says what they are; the daemon neither writes to that folder nor reads from it — copying a `.json` into `macros/` is a user action, and the watcher picks it up live. The «Макросы» mode has its own empty state saying exactly that, kept separate from «выберите макрос слева» because an empty list with "pick one" on it reads as a broken panel.
 
 ### Conventions
 

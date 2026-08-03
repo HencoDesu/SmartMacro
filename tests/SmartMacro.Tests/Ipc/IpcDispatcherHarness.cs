@@ -38,7 +38,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
 
         Windows = new WindowRegistry(NullLogger<WindowRegistry>.Instance);
         Runs = new MacroRunRegistry(NullLogger<MacroRunRegistry>.Instance);
-        Macros = new MacroGraphStore(_baseDirectory, NullLogger<MacroGraphStore>.Instance, seedDefaults: false);
+        Macros = new MacroGraphStore(_baseDirectory, NullLogger<MacroGraphStore>.Instance);
 
         Runner = A.Fake<IMacroRunner>();
         Hotkeys = A.Fake<IHotkeyRegistration>();
@@ -50,6 +50,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
             Path.Combine(_baseDirectory, "Assets"),
             NullLogger<TemplateSetProvider>.Instance);
         RunEvents = new RunEventPublisher(NullLogger<RunEventPublisher>.Instance);
+        Log = new LogEventPublisher();
         Debug = new MacroDebugSession(NullLogger<MacroDebugSession>.Instance);
 
         Dispatcher = new IpcRequestDispatcher(
@@ -62,6 +63,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
             Templates,
             Lifetime,
             RunEvents,
+            Log,
             Debug,
             NullLogger<IpcRequestDispatcher>.Instance);
     }
@@ -102,6 +104,13 @@ internal sealed class IpcDispatcherHarness : IDisposable
     public RunEventPublisher RunEvents { get; }
 
     /// <summary>
+    /// Настоящий: кольцо предыстории и подписка на ленту — это он, а обработчик
+    /// <c>SubscribeLog</c> над ним совсем тонкий. Стока Serilog здесь нет и не нужно —
+    /// тест кладёт записи прямо через <c>Append</c>, ровно как это делает сток в демоне.
+    /// </summary>
+    public LogEventPublisher Log { get; }
+
+    /// <summary>
     /// Настоящая: точки останова и состояние пауз — обработчики отладчика над ней совсем тонкие.
     /// </summary>
     public MacroDebugSession Debug { get; }
@@ -123,6 +132,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
     public void Dispose()
     {
         RunEvents.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        Log.DisposeAsync().AsTask().GetAwaiter().GetResult();
         Macros.Dispose();
         Runs.Dispose();
         try

@@ -27,7 +27,7 @@ public class MacroGraphStoreTests
     }
 
     private static MacroGraphStore CreateStore(string baseDirectory) =>
-        new(baseDirectory, NullLogger<MacroGraphStore>.Instance, seedDefaults: false);
+        new(baseDirectory, NullLogger<MacroGraphStore>.Instance);
 
     private static void DeleteTempDir(string dir)
     {
@@ -52,9 +52,53 @@ public class MacroGraphStoreTests
             {
                 return true;
             }
+
             await Task.Delay(25);
         }
+
         return condition();
+    }
+
+    // Инвариант хранилища: построить объект — значит прочитать папку, и только. Раньше
+    // конструктор мигрировал старый macros.json, переименовывал его в *.migrated, сеял шесть
+    // примеров pw-* и ставил маркер .examples-seeded — то есть «создать объект» означало
+    // «изменить состояние на диске». Тест стоит здесь именно затем, чтобы побочные эффекты не
+    // навесили обратно: примеры теперь раздаются файлами из examples/ рядом с демоном.
+    [Test]
+    public async Task Construction_ReadsTheFolder_AndWritesNothingIntoIt()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var macrosDir = Path.Combine(dir, "macros");
+
+            using (var fresh = CreateStore(dir))
+            {
+                // Папку завести можно — это единственная уступка; класть в неё что-либо нельзя.
+                await Assert.That(Directory.Exists(macrosDir)).IsTrue();
+                await Assert.That(Directory.EnumerateFileSystemEntries(macrosDir)).IsEmpty();
+                await Assert.That(fresh.All).IsEmpty();
+            }
+
+            // Второй заход, уже с содержимым: чужой файл рядом не трогается, своих не появляется.
+            File.WriteAllText(Path.Combine(macrosDir, "мой.json"), MacroGraphJson.Serialize(SimpleMacro("мой")));
+            var legacy = Path.Combine(dir, "macros.json");
+            File.WriteAllText(legacy, """{"Macros":[{"Name":"старьё","ActionsByClass":{"Лучник":[]}}]}""");
+
+            using var store = CreateStore(dir);
+
+            await Assert.That(store.All.Select(graph => graph.Name).ToList())
+                .IsEquivalentTo(new List<string> { "мой" });
+            await Assert.That(Directory.EnumerateFiles(macrosDir).Select(Path.GetFileName).ToList())
+                .IsEquivalentTo(new List<string?> { "мой.json" });
+            // Унаследованный файл остаётся ровно там, где лежал: ни разбора, ни переименования.
+            await Assert.That(File.Exists(legacy)).IsTrue();
+            await Assert.That(File.Exists(legacy + ".migrated")).IsFalse();
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
     }
 
     [Test]
@@ -121,7 +165,8 @@ public class MacroGraphStoreTests
             var macrosDir = Path.Combine(dir, "macros");
             Directory.CreateDirectory(macrosDir);
             // Изображает переименование файла пользователем: основа имени и есть личность макроса.
-            File.WriteAllText(Path.Combine(macrosDir, "renamed.json"), MacroGraphJson.Serialize(SimpleMacro("old-name")));
+            File.WriteAllText(Path.Combine(macrosDir, "renamed.json"),
+                MacroGraphJson.Serialize(SimpleMacro("old-name")));
 
             using var store = CreateStore(dir);
 

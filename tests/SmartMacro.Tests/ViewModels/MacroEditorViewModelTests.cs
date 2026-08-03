@@ -93,6 +93,7 @@ public class MacroEditorViewModelTests
             {
                 Client.RaiseEvent(IpcMessageTypes.MacrosChanged);
             }
+
             return null;
         }
 
@@ -364,6 +365,42 @@ public class MacroEditorViewModelTests
     };
 
     // ---- библиотека и перезагрузка на лету ------------------------------------------------
+
+    // Свежая установка: демон примеров больше не сеет, поэтому «библиотека пуста» — это ПЕРВОЕ,
+    // что видит пользователь, и подсказка «выберите макрос слева» на пустом списке читалась бы
+    // как поломка. Пустой канве нужны РАЗНЫЕ слова в зависимости от того, есть ли что выбирать.
+    [Test]
+    public async Task EmptyLibrary_GetsItsOwnHint_NotThePickOneHint()
+    {
+        var daemon = new DaemonLibraryStub();
+        using var vm = CreateEditor(daemon);
+
+        await Assert.That(vm.IsLibraryEmpty).IsTrue();
+        await Assert.That(vm.ShowEmptyLibraryHint).IsTrue();
+        await Assert.That(vm.ShowPickMacroHint).IsFalse();
+
+        // Как только в библиотеке что-то появилось, возвращается обычная подсказка.
+        daemon.WriteExternally(Chain("первый"));
+
+        await Assert.That(vm.IsLibraryEmpty).IsFalse();
+        await Assert.That(vm.ShowEmptyLibraryHint).IsFalse();
+        await Assert.That(vm.ShowPickMacroHint).IsTrue();
+    }
+
+    // Черновик при пустой библиотеке — законное состояние, и подсказка обязана уйти с дороги
+    // его графа: иначе «библиотека пуста» легло бы поверх нод, которые пользователь только что
+    // расставил.
+    [Test]
+    public async Task DraftOnAnEmptyLibrary_ShowsNeitherHint()
+    {
+        using var vm = CreateEditor(new DaemonLibraryStub());
+
+        vm.NewMacro();
+
+        await Assert.That(vm.IsLibraryEmpty).IsTrue();
+        await Assert.That(vm.ShowEmptyLibraryHint).IsFalse();
+        await Assert.That(vm.ShowPickMacroHint).IsFalse();
+    }
 
     [Test]
     public async Task Construction_FetchesTheLibrary_AndSelectingAMacroLoadsIt()

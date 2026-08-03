@@ -45,7 +45,11 @@ public class ShellViewModelTests
             new MacroEditorViewModel(client, launcher, hotkeys, ImmediateUiDispatcher.Instance,
                 @"C:\smartmacro\macros"),
             new TemplatesViewModel(client, ImmediateUiDispatcher.Instance),
+            new LogViewModel(client, ImmediateUiDispatcher.Instance),
             launcher);
+
+    private static LogEntryDto Entry(long seq, LogLevelDto level, string message = "строка") =>
+        new(seq, DateTimeOffset.UtcNow, level, "SmartMacro.Windows.WindowRegistry", message, null);
 
     private static ShellModeViewModel Row(ShellViewModel shell, ShellMode mode) =>
         shell.Modes.Single(row => row.Mode == mode);
@@ -111,15 +115,70 @@ public class ShellViewModelTests
     }
 
     [Test]
-    public async Task Log_StillHasNoCounterBecauseTheProtocolHasNoNumberForIt()
+    public async Task LogCounter_CountsProblems_NotEntries()
     {
+        // Единственный счётчик рейки, который считает не все свои строки. Число записей упёрлось
+        // бы в потолок ленты и стало константой; «сколько раз что-то пошло не так» — сообщение.
+        // Раньше на этом месте стоял тест, придерживавший пустоту: за «Логом» не было ни одного
+        // сообщения IPC. Теперь есть SubscribeLog, и счётчик обязан быть настоящим.
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.SubscribeLog, new[]
+        {
+            Entry(1, LogLevelDto.Information),
+            Entry(2, LogLevelDto.Debug),
+            Entry(3, LogLevelDto.Warning),
+            Entry(4, LogLevelDto.Error),
+        });
+
+        using var shell = CreateShell(client);
+
+        await Assert.That(Row(shell, ShellMode.Log).HasCounter).IsTrue();
+        await Assert.That(Row(shell, ShellMode.Log).CounterText).IsEqualTo("2");
+    }
+
+    [Test]
+    public async Task LogCounter_IsZeroRatherThanBlank_WhenNothingHasGoneWrong()
+    {
+        // Ноль — это ответ демона («в ленте проблем нет»), а пустота была бы признанием, что
+        // спросить не у кого. Спросить теперь есть у кого.
         using var shell = CreateShell(new FakeIpcClient());
 
-        // Намеренно пусто, а не выдумано: за «Логом» по-прежнему нет ни одного сообщения IPC.
-        // Когда появится — меняться должен именно этот тест, как поменялся он же, когда
-        // «Шаблоны» получили GetTemplates.
-        await Assert.That(Row(shell, ShellMode.Log).HasCounter).IsFalse();
-        await Assert.That(Row(shell, ShellMode.Log).CounterText).IsNull();
+        await Assert.That(Row(shell, ShellMode.Log).HasCounter).IsTrue();
+        await Assert.That(Row(shell, ShellMode.Log).CounterText).IsEqualTo("0");
+    }
+
+    [Test]
+    public async Task LogCounter_StaysLive_WhileAnotherModeIsOnScreen()
+    {
+        // Ровно то, ради чего лента подписана на всю жизнь панели, а не на время своего режима:
+        // сигнал «что-то пошло не так» задают из любого места, и счётчик, который обновляется,
+        // только когда на него смотрят, — не сигнал.
+        var client = new FakeIpcClient();
+        using var shell = CreateShell(client);
+        await Assert.That(shell.IsWindowsMode).IsTrue();
+
+        client.RaiseEvent(
+            IpcMessageTypes.LogEntries,
+            new LogEntryBatch([Entry(1, LogLevelDto.Error, "нода упала")], 0));
+
+        await Assert.That(Row(shell, ShellMode.Log).CounterText).IsEqualTo("1");
+        await Assert.That(shell.IsWindowsMode).IsTrue();
+    }
+
+    [Test]
+    public async Task Log_IsSubscribedOnce_AtStartup_AndModeChangesDoNotToggleIt()
+    {
+        // В отличие от событий прогона, которые ложатся и поднимаются вместе с «Макросами».
+        var client = new FakeIpcClient();
+        using var shell = CreateShell(client);
+
+        await Assert.That(client.CountOf(IpcMessageTypes.SubscribeLog)).IsEqualTo(1);
+        await Assert.That(client.PayloadsOf<SubscribeLogRequest>(IpcMessageTypes.SubscribeLog).Single().Enabled)
+            .IsTrue();
+
+        shell.SelectMode(ShellMode.Log);
+        shell.SelectMode(ShellMode.Windows);
+
+        await Assert.That(client.CountOf(IpcMessageTypes.SubscribeLog)).IsEqualTo(1);
     }
 
     [Test]

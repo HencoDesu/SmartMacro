@@ -1,0 +1,49 @@
+{
+  "Name": "pw-assist",
+  "Triggers": [
+    {
+      "$type": "hotkey",
+      "Modifiers": "None",
+      "Key": "F19",
+      "MouseButton": "None"
+    }
+  ],
+  "StartNodeId": "select-master",
+  "Nodes": [
+    {
+      "$type": "click",
+      "Point": {
+        "X": 285,
+        "Y": 456
+      },
+      "DoubleClick": false,
+      "Target": {
+        "RequireTags": [],
+        "ExcludeTags": [
+          "\u041B\u0443\u0447\u043D\u0438\u043A",
+          "\u0428\u0430\u043C\u0430\u043D"
+        ]
+      },
+      "Next": "settle",
+      "Id": "select-master"
+    },
+    {
+      "$type": "delay",
+      "Ms": 200,
+      "Next": "assist-key",
+      "Id": "settle"
+    },
+    {
+      "$type": "keyPress",
+      "Key": "F2",
+      "Target": {
+        "RequireTags": [],
+        "ExcludeTags": [
+          "\u041B\u0443\u0447\u043D\u0438\u043A",
+          "\u0428\u0430\u043C\u0430\u043D"
+        ]
+      },
+      "Id": "assist-key"
+    }
+  ]
+}

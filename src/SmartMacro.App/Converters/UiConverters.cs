@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
+using SmartMacro.Contracts.Dto;
 
 namespace SmartMacro.App.Converters;
 
@@ -137,6 +138,74 @@ public sealed class StrikethroughConverter : IValueConverter
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
         => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Цвет строки журнала по её уровню. Параметр выбирает, ЧТО красим:
+///
+/// <list type="bullet">
+///   <item><c>badge</c> — трёхбуквенный жетон уровня;</item>
+///   <item><c>rule</c> — линейка слева от строки: цветная только у предупреждений и хуже;</item>
+///   <item><c>message</c> — сам текст: отладка приглушена, остальное обычным цветом.</item>
+/// </list>
+///
+/// <b>Линейка, а не заливка.</b> В Nocturne акцент — это линия: строка проблемы отмечена
+/// двухпиксельной полосой у левого края и цветным жетоном, а фон у неё тот же, что у соседей.
+/// Залитые красным строки в ленте, где ошибки идут пачками, превращают экран в сплошное пятно, в
+/// котором как раз и не видно, где пачка началась.
+///
+/// Отдельным конвертером, а не через <see cref="TokenBrushConverter"/>: там выбор из двух по
+/// булеву значению, здесь — из четырёх по перечислению, и вписывать в параметр четыре ключа
+/// через палку значило бы завести собственный микроязык ради одного места.
+/// </summary>
+public sealed class LogLevelBrushConverter : IValueConverter
+{
+    public static readonly LogLevelBrushConverter Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not LogLevelDto level)
+        {
+            return null;
+        }
+
+        var role = parameter as string ?? "badge";
+
+        // Линейка есть только у того, на что стоит смотреть. У остальных строк её нет вовсе —
+        // серая полоса вдоль всей ленты была бы просто вторым разделителем.
+        if (string.Equals(role, "rule", StringComparison.Ordinal))
+        {
+            return level switch
+            {
+                LogLevelDto.Warning => Warning,
+                >= LogLevelDto.Error => Danger,
+                _ => Brushes.Transparent,
+            };
+        }
+
+        if (string.Equals(role, "message", StringComparison.Ordinal))
+        {
+            // Отладка — это фон, на котором ищут остальное: она приглушена, но читаема.
+            return level <= LogLevelDto.Debug
+                ? NocturneBrushes.Get("NocturneTextMutedBrush", 0xFF8B8FA2)
+                : NocturneBrushes.Get("NocturneTextSecondaryBrush", 0xFFCFD3E5);
+        }
+
+        return level switch
+        {
+            <= LogLevelDto.Debug => NocturneBrushes.Get("NocturneTextGhostBrush", 0xFF4E5265),
+            LogLevelDto.Information => NocturneBrushes.Get("NocturneNeutral600Brush", 0xFF75798C),
+            LogLevelDto.Warning => Warning,
+            _ => Danger,
+        };
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+
+    private static IBrush Warning => NocturneBrushes.Get("NocturneWarningBrush", 0xFFDBB277);
+
+    private static IBrush Danger => NocturneBrushes.Get("NocturneDangerBrush", 0xFFDD8189);
 }
 
 /// <summary>Опасность для ошибок валидации (тех, что блокируют сохранение), янтарь предупреждения для всего остального.</summary>

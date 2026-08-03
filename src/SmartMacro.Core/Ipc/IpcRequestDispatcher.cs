@@ -42,6 +42,7 @@ public sealed partial class IpcRequestDispatcher
     private readonly TemplateSetProvider _templates;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly RunEventPublisher _runEvents;
+    private readonly LogEventPublisher _log;
     private readonly MacroDebugSession _debug;
     private readonly ILogger<IpcRequestDispatcher> _logger;
 
@@ -60,6 +61,7 @@ public sealed partial class IpcRequestDispatcher
         TemplateSetProvider templates,
         IHostApplicationLifetime lifetime,
         RunEventPublisher runEvents,
+        LogEventPublisher log,
         MacroDebugSession debug,
         ILogger<IpcRequestDispatcher> logger)
     {
@@ -72,6 +74,7 @@ public sealed partial class IpcRequestDispatcher
         _templates = templates;
         _lifetime = lifetime;
         _runEvents = runEvents;
+        _log = log;
         _debug = debug;
         _logger = logger;
     }
@@ -282,6 +285,27 @@ public sealed partial class IpcRequestDispatcher
 
             case IpcMessageTypes.GetTemplateImage:
                 return GetTemplateImage(request);
+
+            // ------------------------------------------------------------------ журнал
+
+            case IpcMessageTypes.SubscribeLog:
+            {
+                var payload = Require<SubscribeLogRequest>(request);
+                var connection = session
+                                 ?? throw new IpcRequestRejectedException(
+                                     "Подписка на журнал возможна только по соединению.");
+
+                // ПОРЯДОК ЗДЕСЬ ЗНАЧИМ. Сперва включаем ленту, и только потом снимаем
+                // предысторию: в обратном порядке между снимком и подпиской образовалась бы
+                // дыра, которую уже ничем не заполнить, — а в этом возможен лишь ПОВТОР записи,
+                // попавшей ровно между двумя строками, и от него у панели есть Seq.
+                connection.SetLogSubscription(payload.Enabled);
+
+                // Выключение отвечает пустым массивом: предыстория без ленты никому не нужна.
+                return Ok(request, IpcJson.Write(payload.Enabled
+                    ? _log.History()
+                    : Array.Empty<LogEntryDto>()));
+            }
 
             // ------------------------------------------------------------ диагностика
 

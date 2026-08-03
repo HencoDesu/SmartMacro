@@ -1,0 +1,25 @@
+{
+  "Name": "pw-immunity",
+  "Triggers": [
+    {
+      "$type": "hotkey",
+      "Modifiers": "None",
+      "Key": "F23",
+      "MouseButton": "None"
+    }
+  ],
+  "StartNodeId": "immunity",
+  "Nodes": [
+    {
+      "$type": "keyPress",
+      "Key": "F8",
+      "Target": {
+        "RequireTags": [],
+        "ExcludeTags": [
+          "\u0428\u0430\u043C\u0430\u043D"
+        ]
+      },
+      "Id": "immunity"
+    }
+  ]
+}

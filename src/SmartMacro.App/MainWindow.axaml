@@ -219,7 +219,9 @@
                     <Panel IsVisible="{Binding IsTemplatesMode}">
                         <views:TemplatesView DataContext="{Binding Templates}" />
                     </Panel>
-                    <views:LogView IsVisible="{Binding IsLogMode}" />
+                    <Panel IsVisible="{Binding IsLogMode}">
+                        <views:LogView DataContext="{Binding Log}" />
+                    </Panel>
                 </Panel>
 
                 <Border Grid.Row="1"

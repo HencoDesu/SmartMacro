@@ -1,0 +1,109 @@
+{
+  "Name": "pw-boot",
+  "Triggers": [
+    {
+      "$type": "process",
+      "ProcessName": "elementclient_64"
+    }
+  ],
+  "StartNodeId": "wait-server-select",
+  "Nodes": [
+    {
+      "$type": "waitForElement",
+      "Template": "ServerSelectButton",
+      "TimeoutMs": 60000,
+      "Found": "click-server-select",
+      "Id": "wait-server-select"
+    },
+    {
+      "$type": "click",
+      "Point": {
+        "X": 1192,
+        "Y": 1805
+      },
+      "DoubleClick": false,
+      "Next": "wait-character-select",
+      "Id": "click-server-select"
+    },
+    {
+      "$type": "waitForElement",
+      "Template": "CharacterSelectButton",
+      "TimeoutMs": 60000,
+      "Found": "click-character-select",
+      "Id": "wait-character-select"
+    },
+    {
+      "$type": "click",
+      "Point": {
+        "X": 1958,
+        "Y": 2053
+      },
+      "DoubleClick": false,
+      "Next": "wait-in-world",
+      "Id": "click-character-select"
+    },
+    {
+      "$type": "waitForElement",
+      "Template": "ChatPanelButtons",
+      "Region": {
+        "X": 0,
+        "Y": 2100,
+        "Width": 160,
+        "Height": 60,
+        "TopLeft": {
+          "X": 0,
+          "Y": 2100
+        },
+        "Right": 160,
+        "Bottom": 2160
+      },
+      "TimeoutMs": 60000,
+      "Found": "open-stats",
+      "Id": "wait-in-world"
+    },
+    {
+      "$type": "keyPress",
+      "Key": "C",
+      "Next": "await-stats",
+      "Id": "open-stats"
+    },
+    {
+      "$type": "delay",
+      "Ms": 500,
+      "Next": "recognize-class",
+      "Id": "await-stats"
+    },
+    {
+      "$type": "recognizeTag",
+      "TemplateSet": "classes",
+      "Region": {
+        "X": 3200,
+        "Y": 1060,
+        "Width": 160,
+        "Height": 35,
+        "TopLeft": {
+          "X": 3200,
+          "Y": 1060
+        },
+        "Right": 3360,
+        "Bottom": 1095
+      },
+      "ApplyTag": true,
+      "ResultVar": "tag",
+      "Matched": "set-icon",
+      "NotMatched": "close-stats",
+      "Id": "recognize-class"
+    },
+    {
+      "$type": "setIcon",
+      "IconPath": "Assets/ClassIcons/{tag}.png",
+      "Next": "close-stats",
+      "Id": "set-icon"
+    },
+    {
+      "$type": "keyPress",
+      "Key": "C",
+      "Id": "close-stats"
+    }
+  ]
+}

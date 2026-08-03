@@ -242,6 +242,17 @@
         <Setter Property="SelectionBrush" Value="{DynamicResource NocturneAccentTint22Brush}" />
         <Setter Property="SelectionForegroundBrush" Value="{DynamicResource NocturneTextBrush}" />
         <Setter Property="CornerRadius" Value="{DynamicResource NocturneRadiusSm}" />
+        <!-- ⚠️ ЛОВУШКА ЖЁСТКОЙ ВЫСОТЫ. Отступ здесь 8.4,5.6, то есть 11.2 px по вертикали, а
+             текст живёт внутри PART_ScrollViewer, который свою область просмотра ОБРЕЗАЕТ. Пока
+             высоту определяет MinHeight ниже, всё в порядке: контрол вырастает под строку. Но
+             стоит вызывающему задать жёсткий Height (24 или 26 — самые ходовые в шапках), как
+             под строку остаётся Height − 2 − 11.2 ≈ 11..13 px при её высоте ~14, и низ строки
+             срезается ровно по базовой линии. Дефект коварен тем, что буквы остаются целыми и
+             читаемыми — пропадают только хвосты «р», «у», «д», «ц», и заметить это можно лишь
+             глазами, вплотную.
+             Лекарство на месте вызова: вместе с Height задавать Padding="8,0" и
+             VerticalContentAlignment="Center". Здесь отступ НЕ уменьшен намеренно — на нём стоит
+             высота всех полей инспектора макросов, которые высоту не фиксируют. -->
         <Setter Property="Padding" Value="{DynamicResource NocturneInsetField}" />
         <Setter Property="MinHeight" Value="24" />
         <Setter Property="MinWidth" Value="0" />

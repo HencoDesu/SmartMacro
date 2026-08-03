@@ -1,52 +1,296 @@
 <!--
-  «Лог» — одна оправа, без содержимого, и по тем же соображениям, что и TemplatesView.
+  «Лог» — лента журнала демона, приезжающая по трубе (SubscribeLog / LogEntries).
 
-  Демон пишет файлы Serilog в собственную папку logs/, а протокол не несёт о них ничего: ни
-  запроса «дочитай хвост», ни события лога на проводе. Режим существует, чтобы рейка совпадала
-  с дизайном, а пробел был виден; счётчик у него остаётся пустым.
+  Макет своего экрана для этого режима не рисует, поэтому раскладка собрана из уже принятых в
+  проекте приёмов: шапка как в «Окнах» и «Шаблонах», плотные моноширинные строки, надзаголовок
+  капслоком над проблемным разделом.
 
-  Что для него нужно: либо потоковое событие лога (тот же план канала, которого волна D5 хочет
-  для событий прогона), либо запрос «прочитай последние N строк».
+  Три вещи, которые здесь стоит знать.
+
+    · СПИСОК ВИРТУАЛИЗОВАН. Это ListBox, а не ItemsControl в ScrollViewer, и разница не
+      стилистическая: лента держит до пяти тысяч строк, и вторая раскладка отрисовала бы их все.
+      Заодно ListBox даёт выделение — в едущей ленте это единственный способ отметить, где ты
+      остановился.
+    · УРОВЕНЬ РАЗЛИЧАЕТСЯ ЛИНИЕЙ, А НЕ ЗАЛИВКОЙ. У проблемной строки цветная линейка в 2px слева
+      и цветной трёхбуквенный жетон; фон у неё тот же, что у соседей. Ошибки идут пачками, и
+      залитые строки превратили бы экран в сплошное пятно, в котором как раз и не видно, где
+      пачка началась. Это же общее правило Nocturne: акцент — линия.
+    · СТЕК СВЁРНУТ. Исключение приезжает отдельным полем и раскрывается шевроном у строки;
+      двадцать строк стека, вклеенные в ленту, вытесняют с экрана те записи, среди которых его и
+      ищут.
+
+  Цвета — из Themes/Tokens.axaml, литеральным hex здесь места нет.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SmartMacro.App.ViewModels"
+             xmlns:conv="using:SmartMacro.App.Converters"
              x:Class="SmartMacro.App.Views.LogView"
-             x:DataType="vm:ShellViewModel">
+             x:DataType="vm:LogViewModel">
 
-    <Grid RowDefinitions="Auto,*">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.eyebrow">
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="LetterSpacing" Value="0.7" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextGhostBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Ячейка ленты. Моноширинный всюду, включая сообщение: колонки времени и уровня без
+             этого «дышат», а сама строка журнала — это ровно тот текст, который лежит в
+             logs/smartmacro-*.log, и выглядеть он должен так же. -->
+        <Style Selector="TextBlock.cell">
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeSmall}" />
+            <Setter Property="FontFamily" Value="{DynamicResource NocturneFontFamilyMono}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Строки ленты стоят вплотную: у темы ListBoxItem отступ рассчитан на списки в
+             десяток элементов, здесь их тысячи. -->
+        <Style Selector="ListBox.log ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+
+        <!-- Шеврон раскрывашки стека: только там, где стек есть. -->
+        <Style Selector="Button.chev">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- ================================= шапка ================================= -->
         <Border Grid.Row="0"
                 Background="{DynamicResource NocturneSurfaceRaisedBrush}"
                 BorderBrush="{DynamicResource NocturneDividerBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="12,9">
-            <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="Лог"
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="Лог"
                            FontSize="{DynamicResource NocturneFontSizeBody}"
                            FontWeight="Medium"
                            VerticalAlignment="Center" />
-                <TextBlock Text="нет данных"
+                <TextBlock Grid.Column="1"
+                           Margin="10,0,0,0"
+                           Text="{Binding SummaryText}"
                            FontSize="{DynamicResource NocturneFontSizeSmall}"
                            FontFamily="{DynamicResource NocturneFontFamilyMono}"
                            Foreground="{DynamicResource NocturneNeutral600Brush}"
                            VerticalAlignment="Center" />
+
+                <ComboBox Grid.Column="3"
+                          Width="170"
+                          Height="24"
+                          VerticalAlignment="Center"
+                          ItemsSource="{Binding LevelOptions}"
+                          SelectedItem="{Binding LevelFilter, Mode=TwoWay}"
+                          ToolTip.Tip="Фильтр на стороне панели. Ниже уровня, заданного в appsettings.json демона, записи сюда просто не приходят.">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:LogLevelOption">
+                            <TextBlock Text="{Binding Title}"
+                                       FontSize="{DynamicResource NocturneFontSizeSmall}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <!-- Padding="8,0" здесь НЕСУЩИЙ, а не косметика.
+                     У темы TextBox вертикальный отступ 5.6 с каждой стороны, а текст лежит
+                     внутри PART_ScrollViewer, который свою область просмотра ОБРЕЗАЕТ. При
+                     Height=24 остаётся 24 − 2 (рамка) − 11.2 (отступ) = 10.8 px под строку
+                     высотой ~14 — и низ строки срезается ровно по базовой линии: буквы целы, а
+                     хвосты «р», «у», «д» исчезают. Замерено по пикселям: до правки чернила
+                     кончались на строке 55 экрана, у соседней подписи-эталона — на 57.
+                     Тот же рецепт применён к двум полям в MacrosView; ловушка описана в
+                     Themes/Controls.axaml у самой темы. -->
+                <TextBox Grid.Column="4"
+                         Margin="6,0,0,0"
+                         Width="230"
+                         Height="24"
+                         MinHeight="24"
+                         Padding="8,0"
+                         VerticalAlignment="Center"
+                         VerticalContentAlignment="Center"
+                         FontSize="{DynamicResource NocturneFontSizeSmall}"
+                         Watermark="поиск по строке"
+                         Text="{Binding Search, Mode=TwoWay}"
+                         ToolTip.Tip="Ищет в сообщении, источнике и тексте исключения; регистр не важен" />
+
+                <CheckBox Grid.Column="5"
+                          Margin="10,0,0,0"
+                          VerticalAlignment="Center"
+                          IsChecked="{Binding AutoScroll, Mode=TwoWay}"
+                          ToolTip.Tip="Держать ленту на последней записи. Снимите, чтобы читать: на живом демоне она едет сама.">
+                    <TextBlock Text="автопрокрутка" FontSize="{DynamicResource NocturneFontSizeSmall}" />
+                </CheckBox>
+
+                <Button Grid.Column="6"
+                        Margin="10,0,0,0"
+                        Content="Очистить"
+                        Height="24"
+                        Padding="10,0"
+                        ToolTip.Tip="Убирает то, что накопила панель. Журнал демона не трогается — переподключение принесёт его обратно."
+                        Click="OnClearClicked" />
+            </Grid>
+        </Border>
+
+        <!-- ==== дыра в ленте ====
+             Демон переполнил свою очередь и выбросил записи. Об этом сообщают, а не прячут:
+             лента с молчаливым пропуском хуже, чем лента, которая честно сказала, где она
+             неполна. -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource NocturneWarningSurfaceBrush}"
+                BorderBrush="{DynamicResource NocturneWarningBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,4"
+                IsVisible="{Binding HasGap}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="{Binding GapText}"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           Foreground="{DynamicResource NocturneWarningBrush}"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="очередь демона переполнялась — в ленте пропуск; полный журнал в logs/ рядом с SmartMacro.Daemon.exe"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           Foreground="{DynamicResource NocturneTextFaintBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" />
             </StackPanel>
         </Border>
 
-        <StackPanel Grid.Row="1"
-                    MaxWidth="420"
-                    VerticalAlignment="Center"
-                    HorizontalAlignment="Center"
-                    Spacing="8">
-            <TextBlock Text="Журнал ещё не подключён."
-                       FontSize="{DynamicResource NocturneFontSizeTitle}"
-                       HorizontalAlignment="Center"
-                       Foreground="{DynamicResource NocturneTextMutedBrush}" />
-            <TextBlock TextWrapping="Wrap"
-                       TextAlignment="Center"
-                       FontSize="{DynamicResource NocturneFontSizeSmall}"
-                       Foreground="{DynamicResource NocturneTextFaintBrush}"
-                       Text="Демон пишет свой лог файлами, и по IPC он не передаётся ни строкой, ни событием. Пока — logs/ рядом с SmartMacro.Daemon.exe." />
-        </StackPanel>
+        <!-- ================================= лента ================================= -->
+        <Panel Grid.Row="2" Background="{DynamicResource NocturneCanvasBrush}">
+            <ListBox x:Name="LogList"
+                     Classes="log"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     ItemsSource="{Binding Rows}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:LogRowViewModel">
+                        <StackPanel>
+                            <!-- Колонка шеврона ФИКСИРОВАННАЯ, а не Auto. С Auto она схлопывалась
+                                 у строк без стека, и сообщения тех строк, у которых стек есть,
+                                 уезжали на 18px правее остальных: в колоночном списке это
+                                 читается как сбитая вёрстка. Найдено глазами.
+                                 Ширина времени — 88: «17:22:16.259» это двенадцать знаков
+                                 моноширинного 11px, и на 74 последняя цифра налезала на жетон
+                                 уровня. Тоже найдено глазами. -->
+                            <Grid ColumnDefinitions="2,88,32,150,18,*" Height="18">
+                                <!-- Линейка уровня. Прозрачная у всего, что ниже
+                                     предупреждения: серая полоса вдоль каждой строки была бы
+                                     просто вторым разделителем. -->
+                                <Border Grid.Column="0"
+                                        Background="{Binding Level, Converter={x:Static conv:LogLevelBrushConverter.Instance}, ConverterParameter=rule}" />
+
+                                <TextBlock Grid.Column="1"
+                                           Classes="cell"
+                                           Margin="8,0,0,0"
+                                           Text="{Binding TimeText}"
+                                           Foreground="{DynamicResource NocturneTextGhostBrush}" />
+
+                                <TextBlock Grid.Column="2"
+                                           Classes="cell"
+                                           Text="{Binding LevelText}"
+                                           Foreground="{Binding Level, Converter={x:Static conv:LogLevelBrushConverter.Instance}, ConverterParameter=badge}" />
+
+                                <TextBlock Grid.Column="3"
+                                           Classes="cell"
+                                           Text="{Binding SourceText}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                           ToolTip.Tip="{Binding SourceFull}" />
+
+                                <Button Grid.Column="4"
+                                        Classes="chev ghost"
+                                        HorizontalAlignment="Left"
+                                        IsVisible="{Binding HasException}"
+                                        Click="OnToggleExceptionClicked"
+                                        ToolTip.Tip="Показать стек">
+                                    <Panel>
+                                        <TextBlock Text="▸" IsVisible="{Binding !IsExpanded}" />
+                                        <TextBlock Text="▾" IsVisible="{Binding IsExpanded}" />
+                                    </Panel>
+                                </Button>
+
+                                <TextBlock Grid.Column="5"
+                                           Classes="cell"
+                                           Text="{Binding Message}"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{Binding Level, Converter={x:Static conv:LogLevelBrushConverter.Instance}, ConverterParameter=message}" />
+                            </Grid>
+
+                            <!-- Стек. Выделяемый (SelectableTextBlock): трассировку копируют,
+                                 а не разглядывают. -->
+                            <Border Margin="122,2,12,6"
+                                    Padding="8,6"
+                                    CornerRadius="{DynamicResource NocturneRadiusSm}"
+                                    Background="{DynamicResource NocturneSurfaceSunkenBrush}"
+                                    BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                                    BorderThickness="1"
+                                    IsVisible="{Binding IsExpanded}">
+                                <SelectableTextBlock Text="{Binding Exception}"
+                                                     FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                     FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                     TextWrapping="Wrap"
+                                                     Foreground="{DynamicResource NocturneTextMutedBrush}" />
+                            </Border>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- ==== лента пуста ====
+                 Настоящая пустота, а не «протокола нет»: демон ответил, просто сказать ему пока
+                 нечего. Так бывает ровно между подключением и первой записью.
+
+                 Заголовков ДВА, и это не придирка: после «Очистить» демон записал предостаточно,
+                 а «пока ничего не записал» было бы прямым враньём про него. Найдено глазами. -->
+            <StackPanel MaxWidth="460"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="8"
+                        IsVisible="{Binding IsEmpty}">
+                <TextBlock Text="Демон пока ничего не записал."
+                           FontSize="{DynamicResource NocturneFontSizeTitle}"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource NocturneTextMutedBrush}"
+                           IsVisible="{Binding !WasCleared}" />
+                <TextBlock Text="Лента очищена."
+                           FontSize="{DynamicResource NocturneFontSizeTitle}"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource NocturneTextMutedBrush}"
+                           IsVisible="{Binding WasCleared}" />
+                <TextBlock TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           Foreground="{DynamicResource NocturneTextFaintBrush}"
+                           Text="{Binding EmptyHint}" />
+            </StackPanel>
+
+            <!-- ==== всё отфильтровано ====
+                 Отдельное состояние, а не то же пустое: «записей нет» и «ни одна не подошла» —
+                 это разные новости, и вторая означает, что чинить надо фильтр. -->
+            <StackPanel MaxWidth="420"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="6"
+                        IsVisible="{Binding IsFilteredOut}">
+                <TextBlock Text="Под фильтр не попала ни одна запись."
+                           FontSize="{DynamicResource NocturneFontSizeTitle}"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource NocturneTextMutedBrush}" />
+                <TextBlock Text="{Binding SummaryText}"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                           HorizontalAlignment="Center"
+                           Foreground="{DynamicResource NocturneTextFaintBrush}" />
+            </StackPanel>
+        </Panel>
     </Grid>
 </UserControl>

@@ -56,7 +56,12 @@ internal sealed class AppServices : IAsyncDisposable
     /// недоправленному графу пережить поход в другой режим.
     /// </summary>
     public ShellViewModel CreateShellViewModel() =>
-        new(CreateWorkspaceViewModel(), CreateMacroEditorViewModel(), CreateTemplatesViewModel(), MacroLauncher);
+        new(
+            CreateWorkspaceViewModel(),
+            CreateMacroEditorViewModel(),
+            CreateTemplatesViewModel(),
+            CreateLogViewModel(),
+            MacroLauncher);
 
     /// <summary>Собирает view-model окон и прогонов саму по себе (нужно пути дизайнера).</summary>
     public WorkspaceViewModel CreateWorkspaceViewModel() => new(Client, Dispatcher);
@@ -71,6 +76,14 @@ internal sealed class AppServices : IAsyncDisposable
     /// <c>GetTemplates</c> / <c>GetTemplateImage</c>.
     /// </summary>
     public TemplatesViewModel CreateTemplatesViewModel() => new(Client, Dispatcher);
+
+    /// <summary>
+    /// Собирает view-model ленты журнала, стоящую за режимом «Лог». Своего пути к файлам она,
+    /// как и браузер шаблонов, не получает: <c>logs/</c> лежит рядом с демоном, и панель видит
+    /// журнал только через <c>SubscribeLog</c>. Собственный файл этого процесса
+    /// (<c>logs/smartmacro-ui-*.log</c>) — другая история и в ленту не попадает.
+    /// </summary>
+    public LogViewModel CreateLogViewModel() => new(Client, Dispatcher);
 
     public ValueTask DisposeAsync() => _client.DisposeAsync();
 }

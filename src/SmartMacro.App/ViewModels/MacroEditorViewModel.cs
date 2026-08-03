@@ -328,6 +328,28 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// </summary>
     public ObservableCollection<MacroLibraryGroupViewModel> MacroGroups { get; } = [];
 
+    /// <summary>
+    /// У демона в <c>macros/</c> нет НИ ОДНОГО макроса. Считается по <see cref="Macros"/>, а не
+    /// по <see cref="MacroGroups"/>: поиск, не нашедший совпадений, — это другое состояние, и
+    /// подсказка «где взять примеры» на нём была бы неправдой.
+    ///
+    /// Отдельное состояние понадобилось, когда посев примеров убрали из демона: свежая
+    /// установка открывается с пустой библиотекой, и «Выберите макрос слева» на пустом списке
+    /// читалось бы как «панель сломалась».
+    /// </summary>
+    public bool IsLibraryEmpty => Macros.Count == 0;
+
+    /// <summary>Канва свободна, но выбирать есть из чего: «выберите макрос слева».</summary>
+    public bool ShowPickMacroHint => !HasOpenMacro && !IsLibraryEmpty;
+
+    /// <summary>
+    /// Канва свободна, и выбирать не из чего: «библиотека пуста, вот где взять примеры».
+    /// Именно ЭТИМ открывается свежая установка. Условие с <see cref="HasOpenMacro"/>
+    /// обязательно: черновик несохранённого макроса тоже живёт при пустой библиотеке, и
+    /// подсказка легла бы поверх его графа.
+    /// </summary>
+    public bool ShowEmptyLibraryHint => !HasOpenMacro && IsLibraryEmpty;
+
     /// <summary>Поле фильтра библиотеки. Подстрока в имени макроса, без учёта регистра.</summary>
     [AllowNull]
     public string LibrarySearch
@@ -361,7 +383,14 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     public bool HasOpenMacro
     {
         get => _hasOpenMacro;
-        private set => SetField(ref _hasOpenMacro, value);
+        private set
+        {
+            if (SetField(ref _hasOpenMacro, value))
+            {
+                OnPropertyChanged(nameof(ShowPickMacroHint));
+                OnPropertyChanged(nameof(ShowEmptyLibraryHint));
+            }
+        }
     }
 
     /// <summary>
@@ -2485,6 +2514,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             MacroGroups.Add(group);
         }
+
+        OnPropertyChanged(nameof(IsLibraryEmpty));
+        OnPropertyChanged(nameof(ShowPickMacroHint));
+        OnPropertyChanged(nameof(ShowEmptyLibraryHint));
     }
 
     // Переименование ноды обязано утащить за собой входящие в неё рёбра, иначе оно молча
