@@ -216,7 +216,9 @@
                         <views:MacrosView DataContext="{Binding Editor}" />
                     </Panel>
                     <views:RunsView IsVisible="{Binding IsRunsMode}" />
-                    <views:TemplatesView IsVisible="{Binding IsTemplatesMode}" />
+                    <Panel IsVisible="{Binding IsTemplatesMode}">
+                        <views:TemplatesView DataContext="{Binding Templates}" />
+                    </Panel>
                     <views:LogView IsVisible="{Binding IsLogMode}" />
                 </Panel>
 

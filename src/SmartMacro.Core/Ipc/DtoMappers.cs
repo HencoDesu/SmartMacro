@@ -1,5 +1,6 @@
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Macros.Execution;
+using SmartMacro.Vision;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Ipc;
@@ -44,6 +45,20 @@ public static class DtoMappers
     {
         ArgumentNullException.ThrowIfNull(runs);
         return [.. runs.Select(run => run.ToDto())];
+    }
+
+    /// <summary>Проецирует описание файла шаблона на его проводную форму.</summary>
+    public static TemplateDto ToDto(this TemplateFileInfo template)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        return new TemplateDto(template.Set, template.Name, template.Width, template.Height, template.Bytes);
+    }
+
+    /// <summary>Проецирует перечень файлов шаблонов на их проводную форму.</summary>
+    public static IReadOnlyList<TemplateDto> ToDto(this IEnumerable<TemplateFileInfo> templates)
+    {
+        ArgumentNullException.ThrowIfNull(templates);
+        return [.. templates.Select(template => template.ToDto())];
     }
 
     // Реестр штампует DateTime.UtcNow, так что значение и ЕСТЬ UTC, — но DateTime, попавший

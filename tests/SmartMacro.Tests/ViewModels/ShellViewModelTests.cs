@@ -42,7 +42,9 @@ public class ShellViewModelTests
         IHotkeySuspension? hotkeys = null) =>
         new(
             new WorkspaceViewModel(client, ImmediateUiDispatcher.Instance),
-            new MacroEditorViewModel(client, launcher, hotkeys, ImmediateUiDispatcher.Instance, @"C:\smartmacro\macros"),
+            new MacroEditorViewModel(client, launcher, hotkeys, ImmediateUiDispatcher.Instance,
+                @"C:\smartmacro\macros"),
+            new TemplatesViewModel(client, ImmediateUiDispatcher.Instance),
             launcher);
 
     private static ShellModeViewModel Row(ShellViewModel shell, ShellMode mode) =>
@@ -109,15 +111,62 @@ public class ShellViewModelTests
     }
 
     [Test]
-    public async Task TemplatesAndLog_HaveNoCounterBecauseTheProtocolHasNoNumber()
+    public async Task Log_StillHasNoCounterBecauseTheProtocolHasNoNumberForIt()
     {
         using var shell = CreateShell(new FakeIpcClient());
 
-        // Намеренно пусто, а не выдумано: ни за одним из этих режимов нет сообщения IPC. Если у
-        // какого-нибудь из них однажды появится запрос — меняться должен именно этот тест.
-        await Assert.That(Row(shell, ShellMode.Templates).HasCounter).IsFalse();
-        await Assert.That(Row(shell, ShellMode.Templates).CounterText).IsNull();
+        // Намеренно пусто, а не выдумано: за «Логом» по-прежнему нет ни одного сообщения IPC.
+        // Когда появится — меняться должен именно этот тест, как поменялся он же, когда
+        // «Шаблоны» получили GetTemplates.
         await Assert.That(Row(shell, ShellMode.Log).HasCounter).IsFalse();
+        await Assert.That(Row(shell, ShellMode.Log).CounterText).IsNull();
+    }
+
+    [Test]
+    public async Task TemplatesCounter_CountsTheFilesTheDaemonReports()
+    {
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetTemplates, new[]
+        {
+            new TemplateDto(null, "ServerSelectButton", 210, 44, 35889),
+            new TemplateDto("classes", "Лучник", 96, 18, 469),
+            new TemplateDto("classes", "Жрец", 96, 18, 415),
+        });
+
+        using var shell = CreateShell(client);
+
+        await Assert.That(Row(shell, ShellMode.Templates).HasCounter).IsTrue();
+        await Assert.That(Row(shell, ShellMode.Templates).CounterText).IsEqualTo("3");
+    }
+
+    [Test]
+    public async Task TemplatesCounter_IsZeroRatherThanBlank_WhenTheTreeIsEmpty()
+    {
+        // Разница принципиальная: «0» — это ответ демона, а пустота была бы признанием, что
+        // спросить не у кого. Спросить теперь есть у кого, и счётчик обязан это показывать.
+        using var shell = CreateShell(new FakeIpcClient());
+
+        await Assert.That(Row(shell, ShellMode.Templates).HasCounter).IsTrue();
+        await Assert.That(Row(shell, ShellMode.Templates).CounterText).IsEqualTo("0");
+    }
+
+    [Test]
+    public async Task EnteringTemplates_RereadsTheTree()
+    {
+        // Пуша про изменения в Assets/templates нет: наблюдатель заведён на macros/, а не на
+        // ассеты. Вход в режим — единственный момент, когда «я только что положил туда PNG»
+        // заведомо стоит перечитать.
+        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetTemplates, Array.Empty<TemplateDto>());
+        using var shell = CreateShell(client);
+        var before = client.CountOf(IpcMessageTypes.GetTemplates);
+
+        shell.SelectMode(ShellMode.Templates);
+
+        await Assert.That(client.CountOf(IpcMessageTypes.GetTemplates)).IsEqualTo(before + 1);
+
+        shell.SelectMode(ShellMode.Windows);
+
+        // На выходе гасить нечего — в отличие от событий прогона, тут нет ничего, что бы шло.
+        await Assert.That(client.CountOf(IpcMessageTypes.GetTemplates)).IsEqualTo(before + 1);
     }
 
     [Test]

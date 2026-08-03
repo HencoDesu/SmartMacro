@@ -23,8 +23,10 @@ public class MacroExecutorWalkerTests
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(2);
-        await Assert.That(h.Primitives.Calls[0]).IsEqualTo(new RecordingPrimitives.Call("PressKey", ExecutorHarness.Window, VirtualKey.F1));
-        await Assert.That(h.Primitives.Calls[1]).IsEqualTo(new RecordingPrimitives.Call("PressKey", ExecutorHarness.Window, VirtualKey.F2));
+        await Assert.That(h.Primitives.Calls[0])
+            .IsEqualTo(new RecordingPrimitives.Call("PressKey", ExecutorHarness.Window, VirtualKey.F1));
+        await Assert.That(h.Primitives.Calls[1])
+            .IsEqualTo(new RecordingPrimitives.Call("PressKey", ExecutorHarness.Window, VirtualKey.F2));
     }
 
     [Test]
@@ -36,7 +38,8 @@ public class MacroExecutorWalkerTests
             new KeyPressNode { Id = "k1", Key = VirtualKey.F1, Next = "k2" },
             new KeyPressNode { Id = "k2", Key = VirtualKey.F2, Next = null });
 
-        await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, onNodeEntered: entered.Add), CancellationToken.None);
+        await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, onNodeEntered: entered.Add),
+            CancellationToken.None);
 
         await Assert.That(string.Join(",", entered)).IsEqualTo("k1,k2");
     }
@@ -48,7 +51,8 @@ public class MacroExecutorWalkerTests
         h.Primitives.FindHandler = (_, _, _) => new ScreenPoint(50, 60);
         var context = h.Context(ExecutorHarness.Window);
         var graph = ExecutorHarness.Graph("м", "f",
-            new FindElementNode { Id = "f", Template = "кнопка", FoundPointVar = "btn", Found = "yes", NotFound = "no" },
+            new FindElementNode
+                { Id = "f", Template = "кнопка", FoundPointVar = "btn", Found = "yes", NotFound = "no" },
             new KeyPressNode { Id = "yes", Key = VirtualKey.F1, Next = null },
             new KeyPressNode { Id = "no", Key = VirtualKey.F2, Next = null });
 
@@ -65,7 +69,8 @@ public class MacroExecutorWalkerTests
         var h = new ExecutorHarness();
         var context = h.Context(ExecutorHarness.Window);
         var graph = ExecutorHarness.Graph("м", "f",
-            new FindElementNode { Id = "f", Template = "кнопка", FoundPointVar = "btn", Found = "yes", NotFound = "no" },
+            new FindElementNode
+                { Id = "f", Template = "кнопка", FoundPointVar = "btn", Found = "yes", NotFound = "no" },
             new KeyPressNode { Id = "yes", Key = VirtualKey.F1, Next = null },
             new KeyPressNode { Id = "no", Key = VirtualKey.F2, Next = null });
 
@@ -99,7 +104,8 @@ public class MacroExecutorWalkerTests
         h.Primitives.WaitHandler = (_, _, _, _) => new ScreenPoint(7, 8);
         var context = h.Context(ExecutorHarness.Window);
         var graph = ExecutorHarness.Graph("м", "w",
-            new WaitForElementNode { Id = "w", Template = "мир", TimeoutMs = 5000, FoundPointVar = "pt", Found = null, Timeout = null });
+            new WaitForElementNode
+                { Id = "w", Template = "мир", TimeoutMs = 5000, FoundPointVar = "pt", Found = null, Timeout = null });
 
         var result = await h.Executor.RunAsync(graph, context, CancellationToken.None);
 
@@ -246,7 +252,7 @@ public class MacroExecutorWalkerTests
         var result = await executor.RunAsync(graph, h.Context(window: null), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("context window");
+        await Assert.That(result.Error!).Contains("нет контекстного окна");
         A.CallTo(primitives).MustNotHaveHappened();
     }
 
@@ -260,7 +266,7 @@ public class MacroExecutorWalkerTests
         var result = await h.Executor.RunAsync(graph, h.Context(window: null), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("context window");
+        await Assert.That(result.Error!).Contains("нужно контекстное окно");
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
     }
 
@@ -288,7 +294,7 @@ public class MacroExecutorWalkerTests
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("duplicate");
+        await Assert.That(result.Error!).Contains("дубликат id ноды");
     }
 
     [Test]

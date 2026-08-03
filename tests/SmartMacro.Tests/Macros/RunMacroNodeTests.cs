@@ -24,7 +24,8 @@ public class RunMacroNodeTests
         var h = new ExecutorHarness();
         h.Resolver.Add(SubPressingF9());
 
-        var result = await h.Executor.RunAsync(ParentRunning("суб"), h.Context(ExecutorHarness.Window), CancellationToken.None);
+        var result = await h.Executor.RunAsync(ParentRunning("суб"), h.Context(ExecutorHarness.Window),
+            CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
         // Сперва клавиша под-прогона, потом Next родителя — вот и доказательство, что родитель
@@ -47,7 +48,8 @@ public class RunMacroNodeTests
             return gate.Task;
         };
 
-        var runTask = h.Executor.RunAsync(ParentRunning("суб"), h.Context(ExecutorHarness.Window), CancellationToken.None);
+        var runTask = h.Executor.RunAsync(ParentRunning("суб"), h.Context(ExecutorHarness.Window),
+            CancellationToken.None);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         await Assert.That(runTask.IsCompleted).IsFalse();
@@ -115,13 +117,14 @@ public class RunMacroNodeTests
             h.Resolver.Add(ExecutorHarness.Graph($"м{i}", "r",
                 new RunMacroNode { Id = "r", MacroName = $"м{i + 1}", Next = null }));
         }
+
         h.Resolver.Add(SubPressingF9("м5"));
 
         var result = await h.Executor.RunAsync(
             h.Resolver.TryGet("м0")!, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("depth limit");
+        await Assert.That(result.Error!).Contains("предел вложенности");
         // Нажатия клавиши в м5 не случилось.
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
     }
@@ -137,6 +140,7 @@ public class RunMacroNodeTests
             h.Resolver.Add(ExecutorHarness.Graph($"м{i}", "r",
                 new RunMacroNode { Id = "r", MacroName = $"м{i + 1}", Next = null }));
         }
+
         h.Resolver.Add(SubPressingF9("м4"));
 
         var result = await h.Executor.RunAsync(
@@ -159,7 +163,7 @@ public class RunMacroNodeTests
             h.Resolver.TryGet("а")!, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("cycle");
+        await Assert.That(result.Error!).Contains("цикл вызовов");
     }
 
     [Test]
@@ -173,7 +177,7 @@ public class RunMacroNodeTests
             h.Resolver.TryGet("а")!, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("cycle");
+        await Assert.That(result.Error!).Contains("цикл вызовов");
     }
 
     [Test]
@@ -247,7 +251,8 @@ public class RunMacroNodeTests
         var parent = ExecutorHarness.Graph("родитель", "r",
             new RunMacroNode { Id = "r", MacroName = "суб-{tag}", Next = null });
 
-        var result = await h.Executor.RunAsync(parent, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
+        var result = await h.Executor.RunAsync(parent, h.Context(ExecutorHarness.Window, variables),
+            CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(1);

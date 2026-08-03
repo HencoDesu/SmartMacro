@@ -1,14 +1,14 @@
 using System.Globalization;
-using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using SmartMacro.Agents;
+using SmartMacro.GameWindows;
 using SmartMacro.Hotkeys;
 using SmartMacro.Input;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Storage;
 using SmartMacro.ProcessMonitoring;
+using SmartMacro.Windows;
 
 namespace SmartMacro.Orchestration;
 
@@ -28,18 +28,19 @@ namespace SmartMacro.Orchestration;
 //                         загрузились каждый.
 // Оба засевают переменную `cursor`, потому что макрос не может знать, как именно его запустили.
 //
-// Сверх этого оркестратор владеет только жизненным циклом агентов: породить по одному на каждый
-// появившийся процесс и держать их, чтобы при выключении остановить всех. Наружу это множество
-// никто не наблюдает — с W0.3 UI смотрит на WindowRegistry и MacroRunRegistry. Команд агенты
-// тоже больше не получают: широковещательной рассылки во входящие нет, есть только прогоны
-// макросов по дескрипторам.
+// Сверх этого оркестратор берёт новые окна под управление: появился процесс — собрать фасад
+// IGameWindow, положить его в WindowRegistry и запустить макросы этого процесса. Собственного
+// состояния при этом не остаётся: список окон живёт в реестре, список прогонов — в
+// MacroRunRegistry, а смерть окна замечает WindowLifetimeMonitor. До W0.4 всё это было
+// множеством CharacterAgent'ов под блокировкой плюс канал сообщений «агент → оркестратор»,
+// единственным содержимым которого было «вот этот агент остановился».
 public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDisposable
 {
     private readonly ILogger<Orchestrator> _logger;
-    private readonly Channel<AgentMessage> _inbox;
     private readonly ProcessMonitor _processMonitor;
     private readonly HotkeyListener _hotkeyListener;
-    private readonly ICharacterAgentFactory _agentFactory;
+    private readonly IGameWindowFactory _windowFactory;
+    private readonly WindowRegistry _windows;
     private readonly MacroGraphStore _macros;
     private readonly MacroExecutor _executor;
     private readonly MacroRunRegistry _runs;
@@ -47,16 +48,11 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
     private readonly IMacroRunObserver? _observer;
     private readonly IMacroDebugger? _debugger;
 
-    private readonly Lock _agentsLock = new();
-    private readonly HashSet<CharacterAgent> _agents = [];
-
-    private CancellationTokenSource? _dispatchCts;
-    private Task? _dispatchLoop;
-
     public Orchestrator(
         ProcessMonitor processMonitor,
         HotkeyListener hotkeyListener,
-        ICharacterAgentFactory agentFactory,
+        IGameWindowFactory windowFactory,
+        WindowRegistry windows,
         MacroGraphStore macros,
         MacroExecutor executor,
         MacroRunRegistry runs,
@@ -66,7 +62,8 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         IMacroDebugger? debugger = null)
     {
         _logger = logger;
-        _agentFactory = agentFactory;
+        _windowFactory = windowFactory;
+        _windows = windows;
         _macros = macros;
         _executor = executor;
         _runs = runs;
@@ -82,16 +79,11 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
 
         _processMonitor = processMonitor;
         _processMonitor.ProcessAppeared += OnProcessAppeared;
-        // На ProcessDisappeared не подписываемся — агенты сами замечают мёртвые окна через
-        // IGameWindow.IsAlive и сами завершаются, сообщая об этом AgentStoppingMessage.
+        // На ProcessDisappeared не подписываемся — мёртвые окна замечает WindowLifetimeMonitor
+        // по IGameWindow.IsAlive, и снятие с регистрации там же.
 
         _hotkeyListener = hotkeyListener;
         _hotkeyListener.MacroTriggered += OnMacroTriggered;
-
-        _inbox = Channel.CreateUnbounded<AgentMessage>(new UnboundedChannelOptions
-        {
-            SingleReader = true,
-        });
     }
 
     /// <summary>
@@ -141,7 +133,7 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
             var result = await _executor.RunAsync(graph, context, handle.Token).ConfigureAwait(false);
             if (result.Status == MacroRunStatus.Aborted)
             {
-                LogMacroAborted(macroName, result.Error ?? "(no details)");
+                LogMacroAborted(macroName, result.Error ?? "(без подробностей)");
             }
         }
         catch (Exception ex)
@@ -162,34 +154,44 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         _ = RunAsync(macroName, contextWindow: null, singleFlightKey: null);
     }
 
+    // Единственный путь, которым окно попадает под управление. Работа синхронная и дешёвая
+    // (собрать фасад, спросить размер клиентской области, положить запись в реестр), поэтому
+    // выполняется прямо в обработчике — цикл опроса ProcessMonitor от неё не пострадает, а
+    // взамен видно, что регистрация закончилась ДО того, как стартовал первый макрос.
     private void OnProcessAppeared(ProcessInfo info)
     {
         LogProcessAppearedNotification(info.Pid, info.ProcessName, info.MainWindowHandle.ToInt64());
-        _ = HandleProcessAppearedAsync(info);
-    }
 
-    private async Task HandleProcessAppearedAsync(ProcessInfo info)
-    {
-        CharacterAgent agent;
+        IGameWindow window;
         try
         {
-            agent = await _agentFactory.CreateAsync(info, _inbox.Writer).ConfigureAwait(false);
-            lock (_agentsLock)
-            {
-                _agents.Add(agent);
-            }
+            window = _windowFactory.Create(info);
 
-            // Start регистрирует окно (и фасад управления им) в WindowRegistry — это обязано
-            // случиться раньше, чем какой-нибудь макрос нацелится на этот дескриптор.
-            agent.Start();
+            // Отсеиваем процессы, чьё главное окно нечего захватывать, — обычно это экземпляры
+            // elementclient.exe от лаунчера, у которых нет настоящей поверхности игрового
+            // клиента. ProcessMonitor сопоставляет по имени процесса, поэтому лаунчеры
+            // просачиваются; мы выбрасываем их здесь, чтобы ни реестр окон, ни макросы, ни UI
+            // никогда не увидели заведомо обречённой записи.
+            var (width, height) = window.ClientSize;
+            if (width <= 0 || height <= 0)
+            {
+                LogWindowSkippedZeroSize(info.Pid);
+                return;
+            }
         }
         catch (Exception ex)
         {
-            LogAgentCreationFailed(ex, info.Pid);
+            LogWindowAdoptionFailed(ex, info.Pid);
             return;
         }
 
-        StartProcessAppearedMacros(info.ProcessName, agent.Handle);
+        // ПОРЯДОК ЭТИХ ДВУХ СТРОК ОБЯЗАТЕЛЕН И ЗНАЧИМ. Регистрация должна завершиться раньше,
+        // чем стартует первый макрос на появление процесса: слой примитивов ходит от hwnd к
+        // управляемому окну только через WindowRegistry, и нода, добравшаяся до ещё не
+        // зарегистрированного дескриптора, падает на исполнении. Между ними ничего вставлять
+        // нельзя, и ничего асинхронного — тоже.
+        _windows.Register(window.Handle, info.ProcessName, window);
+        StartProcessAppearedMacros(info.ProcessName, window.Handle);
     }
 
     // По новому окну прогоняется каждый граф с подходящим ProcessAppearedTrigger. Подойти может
@@ -212,83 +214,23 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         }
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        if (_dispatchCts is not null)
-        {
-            throw new InvalidOperationException("Dispatch loop already running.");
-        }
+    // Подписки на ProcessMonitor и HotkeyListener наведены в конструкторе, так что запускать
+    // здесь нечего: оркестратор реагирует на события, а не крутит собственный цикл. Ролью
+    // IHostedService он остаётся исключительно ради StopAsync.
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-        _dispatchCts = new CancellationTokenSource();
-        _dispatchLoop = Task.Run(() => DispatchLoopAsync(_dispatchCts.Token), _dispatchCts.Token);
-        LogDispatchLoopStarted();
-        return Task.CompletedTask;
-    }
-
+    /// <summary>
+    /// Отменяет прогоны на лету и ждёт, пока они свернутся. Хост останавливает hosted-сервисы
+    /// в порядке, обратном регистрации, а <see cref="WindowLifetimeMonitor"/> зарегистрирован
+    /// РАНЬШЕ оркестратора, то есть остановится ПОЗЖЕ, — благодаря этому окна снимаются с
+    /// регистрации уже после отмены, и ни один прогон не бросают посреди активации, оставив
+    /// клиент разбуженным.
+    /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        // Сначала отменяем прогоны на лету: они управляют окнами, которые агенты вот-вот
-        // снесут, а прогон, брошенный посреди активации, оставил бы клиент разбуженным.
         try
         {
             await _runs.StopAllAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-
-        await StopAllAgentsAsync(cancellationToken).ConfigureAwait(false);
-
-        if (_dispatchCts is null)
-        {
-            return;
-        }
-
-        await _dispatchCts.CancelAsync();
-        try
-        {
-            if (_dispatchLoop is not null)
-            {
-                await _dispatchLoop.WaitAsync(cancellationToken).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        finally
-        {
-            _dispatchCts.Dispose();
-            _dispatchCts = null;
-            _dispatchLoop = null;
-            LogDispatchLoopStopped();
-        }
-    }
-
-    // Просит каждого агента остановиться и ждёт их RunningTask. По возможности укладывается в
-    // отведённый хостом срок на выключение; выжившие сносятся вместе с выходом процесса.
-    private async Task StopAllAgentsAsync(CancellationToken cancellationToken)
-    {
-        CharacterAgent[] snapshot;
-        lock (_agentsLock)
-        {
-            snapshot = _agents.ToArray();
-        }
-
-        if (snapshot.Length == 0)
-        {
-            return;
-        }
-
-        foreach (var agent in snapshot)
-        {
-            agent.Stop();
-        }
-
-        try
-        {
-            await Task.WhenAll(snapshot.Select(a => a.RunningTask ?? Task.CompletedTask))
-                .WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -299,57 +241,5 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
     {
         _processMonitor.ProcessAppeared -= OnProcessAppeared;
         _hotkeyListener.MacroTriggered -= OnMacroTriggered;
-        _dispatchCts?.Cancel();
-        _dispatchCts?.Dispose();
-        _dispatchCts = null;
-    }
-
-    private async Task ProcessIncomingAsync()
-    {
-        while (_inbox.Reader.TryRead(out var message))
-        {
-            try
-            {
-                await HandleMessageAsync(message).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to handle {MessageType} from agent", message.GetType().Name);
-            }
-        }
-    }
-
-    private Task HandleMessageAsync(AgentMessage message)
-    {
-        switch (message)
-        {
-            case AgentStoppingMessage stopping:
-                lock (_agentsLock)
-                {
-                    _agents.Remove(stopping.Agent);
-                }
-
-                break;
-
-            default:
-                LogUnhandledUpstreamMessageType(message.GetType().Name);
-                break;
-        }
-
-        return Task.CompletedTask;
-    }
-
-    private async Task DispatchLoopAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            while (await _inbox.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                await ProcessIncomingAsync().ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
     }
 }

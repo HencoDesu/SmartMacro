@@ -85,18 +85,14 @@
     <None Include="Assets\ClassIcons\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <!-- Tag templates for the stats-window template-match identification path
-         (filename stem = tag). -->
-    <None Include="Assets\GameClassNames\*.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <!-- Single UI-element templates, referenced by file stem from Find/Wait nodes. -->
-    <None Include="Assets\GameUiElements\*.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <!-- User-authored template SETS for RecognizeTag nodes: Assets/templates/{set}/{tag}.png.
-         Empty in the repo — the glob exists so a set dropped in here reaches the output on
-         the next build. -->
+    <!-- The whole vision-template tree, one glob because there is now one tree:
+           Assets\templates\{name}.png        single template, named by stem from Find/Wait
+           Assets\templates\{set}\{tag}.png   template set, named by folder from RecognizeTag
+         This replaces the separate GameUiElements\ and GameClassNames\ globs. The names macros
+         carry did not change — only where the files sit — so "classes" still means the same
+         set, it is just an ordinary subfolder now instead of a hard-wired alias in
+         TemplateSetProvider.
+         Recursive glob so a set the user drops in reaches the output on the next build. -->
     <None Include="Assets\templates\**\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

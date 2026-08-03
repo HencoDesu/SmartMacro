@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using Serilog;
 using SmartMacro.App.Mvvm;
@@ -20,9 +21,10 @@ public enum ShellMode
 /// <summary>
 /// Одна строка полосы режимов: имя и счётчик.
 ///
-/// Счётчик — <see cref="int"/>? намеренно. За «Шаблонами» и «Логом» пока нет никакого IPC, а
-/// выдуманное число хуже, чем никакого, — поэтому их счётчик <c>null</c>, и строка попросту
-/// рисуется без него.
+/// Счётчик — <see cref="int"/>? намеренно. За «Логом» пока нет никакого IPC, а выдуманное число
+/// хуже, чем никакого, — поэтому его счётчик <c>null</c>, и строка попросту рисуется без него.
+/// «Шаблоны» из этого положения вышли: у них появились <c>GetTemplates</c> и настоящее число
+/// файлов, — а <c>null</c> остался ровно там, где по-прежнему нечего считать.
 /// </summary>
 public sealed class ShellModeViewModel : ObservableObject
 {
@@ -147,13 +149,19 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private bool _hotkeysSuspended;
     private bool _runEventsSubscribed;
 
-    public ShellViewModel(WorkspaceViewModel workspace, MacroEditorViewModel editor, IMacroLauncher? launcher = null)
+    public ShellViewModel(
+        WorkspaceViewModel workspace,
+        MacroEditorViewModel editor,
+        TemplatesViewModel templates,
+        IMacroLauncher? launcher = null)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(editor);
+        ArgumentNullException.ThrowIfNull(templates);
 
         Workspace = workspace;
         Editor = editor;
+        Templates = templates;
         _launcher = launcher;
 
         Modes =
@@ -171,10 +179,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Workspace.WindowsChanged += OnWindowsChanged;
         Workspace.Runs.CollectionChanged += OnRunsChanged;
         Editor.Macros.CollectionChanged += OnMacrosChanged;
+        Templates.TemplatesChanged += OnTemplatesChanged;
 
         RefreshWindowState();
         RefreshRunState();
         RefreshMacroState();
+        RefreshTemplateState();
     }
 
     /// <summary>Окна и прогоны — тело «Окон» и «Прогонов», а заодно полоса прогонов.</summary>
@@ -182,6 +192,9 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     /// <summary>Библиотека макросов и редактор на canvas — тело «Макросов».</summary>
     public MacroEditorViewModel Editor { get; }
+
+    /// <summary>Дерево шаблонов машинного зрения — тело «Шаблонов».</summary>
+    public TemplatesViewModel Templates { get; }
 
     /// <summary>Строки боковой полосы, в порядке показа.</summary>
     public IReadOnlyList<ShellModeViewModel> Modes { get; }
@@ -195,7 +208,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Выбранная строка боковой полосы. Привязана двусторонне от <c>ListBox</c>; присвоение —
     /// единственный способ сменить видимый режим.
+    ///
+    /// <c>[AllowNull]</c> на записи — честная аннотация, а не подавление: <c>ListBox</c>
+    /// действительно проталкивает сюда <c>null</c>, пока перетряхивается его <c>ItemsSource</c>,
+    /// и сеттер этот случай обрабатывает. Читается свойство всегда ненулевым.
     /// </summary>
+    [AllowNull]
     public ShellModeViewModel SelectedMode
     {
         get => _selectedMode;
@@ -220,6 +238,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(IsLogMode));
 
             ApplyMacrosModeScope();
+            RefreshTemplatesOnEntry();
         }
     }
 
@@ -310,8 +329,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Workspace.WindowsChanged -= OnWindowsChanged;
         Workspace.Runs.CollectionChanged -= OnRunsChanged;
         Editor.Macros.CollectionChanged -= OnMacrosChanged;
+        Templates.TemplatesChanged -= OnTemplatesChanged;
         Workspace.Dispose();
         Editor.Dispose();
+        Templates.Dispose();
     }
 
     // ---- внутренности -----------------------------------------------------------------------
@@ -359,6 +380,22 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             : SafeAsync(Editor.ResumeHotkeysAsync(), "resume");
     }
 
+    /// <summary>
+    /// Перечитывает дерево шаблонов на каждый вход в режим.
+    ///
+    /// Пуша про изменения в <c>Assets/templates</c> в протоколе нет (наблюдатель заведён на
+    /// <c>macros/</c>, а не на ассеты), а типичный сценарий — «положил PNG в папку и пошёл
+    /// смотреть». Вход в режим — единственный момент, когда это заведомо интересно, и стоит он
+    /// двух коротких запросов; на выходе, в отличие от событий прогона, гасить нечего.
+    /// </summary>
+    private void RefreshTemplatesOnEntry()
+    {
+        if (CurrentMode == ShellMode.Templates)
+        {
+            _ = SafeAsync(Templates.RefreshAsync(), "templates");
+        }
+    }
+
     private static async Task SafeAsync(Task task, string what)
     {
         try
@@ -367,7 +404,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "Не удалось выполнить '{What}' для глобальных хоткеев", what);
+            Log.Warning(ex, "Фоновая операция режима '{What}' не выполнена", what);
         }
     }
 
@@ -376,6 +413,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     private void OnRunsChanged(object? sender, NotifyCollectionChangedEventArgs e) => RefreshRunState();
 
     private void OnMacrosChanged(object? sender, NotifyCollectionChangedEventArgs e) => RefreshMacroState();
+
+    private void OnTemplatesChanged() => RefreshTemplateState();
+
+    // Ноль — честное число, а не пустота: за счётчиком стоит GetTemplates, и «файлов нет» — это
+    // ответ демона, а не отсутствие протокола (чем «Шаблоны» и отличаются теперь от «Лога»).
+    private void RefreshTemplateState() => Mode(ShellMode.Templates).SetCount(Templates.Templates.Count);
 
     private void RefreshWindowState()
     {

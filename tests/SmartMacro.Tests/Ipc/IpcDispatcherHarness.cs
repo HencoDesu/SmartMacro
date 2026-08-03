@@ -46,6 +46,9 @@ internal sealed class IpcDispatcherHarness : IDisposable
         Lifetime = A.Fake<IHostApplicationLifetime>();
 
         Captures = new CaptureDumpService(_baseDirectory, Windows, Matcher, NullLogger<CaptureDumpService>.Instance);
+        Templates = new TemplateSetProvider(
+            Path.Combine(_baseDirectory, "Assets"),
+            NullLogger<TemplateSetProvider>.Instance);
         RunEvents = new RunEventPublisher(NullLogger<RunEventPublisher>.Instance);
         Debug = new MacroDebugSession(NullLogger<MacroDebugSession>.Instance);
 
@@ -56,6 +59,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
             Runner,
             Hotkeys,
             Captures,
+            Templates,
             Lifetime,
             RunEvents,
             Debug,
@@ -77,6 +81,22 @@ internal sealed class IpcDispatcherHarness : IDisposable
     public IHostApplicationLifetime Lifetime { get; }
 
     public CaptureDumpService Captures { get; }
+
+    /// <summary>
+    /// Настоящий, над пустой временной папкой <c>Assets/templates</c>: обработчики шаблонов —
+    /// это тонкий слой над ним, и подделав его, мы проверяли бы только собственный маппер.
+    /// </summary>
+    public TemplateSetProvider Templates { get; }
+
+    /// <summary>Кладёт файл в дерево шаблонов. <paramref name="set"/> = <c>null</c> — корень.</summary>
+    public void WriteTemplate(string? set, string name, byte[] bytes)
+    {
+        var directory = set is null
+            ? Templates.TemplatesRoot
+            : Path.Combine(Templates.TemplatesRoot, set);
+        Directory.CreateDirectory(directory);
+        File.WriteAllBytes(Path.Combine(directory, name + ".png"), bytes);
+    }
 
     /// <summary>Настоящий: именно из насоса событий прогона и отвечает <c>SubscribeRunEvents</c>.</summary>
     public RunEventPublisher RunEvents { get; }

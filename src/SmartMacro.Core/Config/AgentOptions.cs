@@ -17,6 +17,11 @@ public sealed class AgentOptions
     /// </summary>
     public int ProcessPollIntervalSeconds { get; init; } = 1;
 
-    /// <summary>Как часто каждый агент проверяет, живо ли ещё его окно.</summary>
+    /// <summary>
+    /// Как часто <c>WindowLifetimeMonitor</c> обходит реестр окон и проверяет, живы ли они ещё.
+    /// Имя досталось в наследство от CharacterAgent'а, который до W0.4 крутил такой опрос сам,
+    /// по экземпляру на клиента; переименовывать его — ломать секцию "Agent" в appsettings.json,
+    /// так что это отдельная волна.
+    /// </summary>
     public int AgentPollIntervalSeconds { get; init; } = 2;
 }

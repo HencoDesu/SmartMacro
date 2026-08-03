@@ -43,6 +43,19 @@ public sealed record DeleteMacroRequest(string Name);
 /// </param>
 public sealed record SubscribeRunEventsRequest(bool Enabled);
 
+/// <summary>
+/// Нагрузка <see cref="IpcMessageTypes.GetTemplateImage"/>. Пара «набор + имя» и есть
+/// идентичность шаблона: имя уникально только внутри своей папки, и <c>Лучник</c> из набора
+/// <c>classes</c> — это не тот же файл, что одиночный <c>Лучник</c> в корне дерева.
+/// </summary>
+/// <param name="Set">Набор (подпапка) либо <c>null</c> — одиночный шаблон в корне <c>templates/</c>.</param>
+/// <param name="Name">
+/// Основа имени файла из <c>TemplateDto.Name</c>. Сегменты пути в ней запрос отклоняют: это
+/// строка, приехавшая по проводу, и <c>..\</c> в ней означает попытку вычитать что-то за
+/// пределами <c>Assets/</c>, а не шаблон, которого не хватает.
+/// </param>
+public sealed record GetTemplateImageRequest(string? Set, string Name);
+
 /// <summary>Нагрузка события <see cref="IpcMessageTypes.WindowClosed"/>.</summary>
 /// <param name="Hwnd">Хендл исчезнувшего окна. Никакие другие его данные не переживают закрытия.</param>
 public sealed record WindowClosedEvent(long Hwnd);

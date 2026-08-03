@@ -28,8 +28,8 @@ public class MacroPrimitivesTests
         public Harness()
         {
             AssetsRoot = Path.Combine(Path.GetTempPath(), $"smartmacro-assets-{Guid.NewGuid():N}");
-            Directory.CreateDirectory(Path.Combine(AssetsRoot, "GameUiElements"));
-            Directory.CreateDirectory(Path.Combine(AssetsRoot, "GameClassNames"));
+            Directory.CreateDirectory(Path.Combine(AssetsRoot, "templates"));
+            Directory.CreateDirectory(Path.Combine(AssetsRoot, "templates", TemplateSetProvider.ClassesSetName));
 
             Registry = new WindowRegistry(NullLogger<WindowRegistry>.Instance);
             Window = A.Fake<IGameWindow>();
@@ -46,9 +46,18 @@ public class MacroPrimitivesTests
                 NullLogger<MacroPrimitives>.Instance);
         }
 
-        /// <summary>Пишет файл-заглушку шаблона; через шов едут только его байты.</summary>
-        public void WriteTemplate(string folder, string stem, string content) =>
-            File.WriteAllText(Path.Combine(AssetsRoot, folder, $"{stem}.png"), content);
+        /// <summary>
+        /// Пишет файл-заглушку шаблона; через шов едут только его байты.
+        /// <paramref name="set"/> = <c>null</c> кладёт его в корень <c>templates/</c>, то есть
+        /// делает одиночным шаблоном для Find/Wait.
+        /// </summary>
+        public void WriteTemplate(string? set, string stem, string content)
+        {
+            var directory = set is null
+                ? Path.Combine(AssetsRoot, "templates")
+                : Path.Combine(AssetsRoot, "templates", set);
+            File.WriteAllText(Path.Combine(directory, $"{stem}.png"), content);
+        }
 
         public void Dispose()
         {
@@ -66,7 +75,7 @@ public class MacroPrimitivesTests
     public async Task FindElement_ReturnsTheMatchCenter_FromTheWindow()
     {
         using var harness = new Harness();
-        harness.WriteTemplate("GameUiElements", "ServerSelectButton", "png-bytes");
+        harness.WriteTemplate(null, "ServerSelectButton", "png-bytes");
         var center = new ScreenPoint(640, 480);
         A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, A<ScreenRect>._, A<CancellationToken>._))
             .Returns(Task.FromResult<ScreenPoint?>(center));
@@ -84,7 +93,7 @@ public class MacroPrimitivesTests
     public async Task FindElement_NullRegion_BecomesTheEmptyRect_MeaningWholeClientArea()
     {
         using var harness = new Harness();
-        harness.WriteTemplate("GameUiElements", "Anywhere", "png-bytes");
+        harness.WriteTemplate(null, "Anywhere", "png-bytes");
 
         await harness.Primitives.FindElementAsync(Hwnd, "Anywhere", region: null, CancellationToken.None);
 
@@ -108,7 +117,7 @@ public class MacroPrimitivesTests
     public async Task WaitForElement_ConvertsTheTimeoutToABudget()
     {
         using var harness = new Harness();
-        harness.WriteTemplate("GameUiElements", "ChatPanelButtons", "png-bytes");
+        harness.WriteTemplate(null, "ChatPanelButtons", "png-bytes");
         A.CallTo(() => harness.Window.WaitForElementAsync(A<byte[]>._, A<ScreenRect>._, A<TimeSpan>._, A<CancellationToken>._))
             .Returns(Task.FromResult<ScreenPoint?>(new ScreenPoint(1, 2)));
 
@@ -124,8 +133,8 @@ public class MacroPrimitivesTests
     public async Task Recognize_MapsTheSetToItsTemplates_AndReturnsTheWinningTag()
     {
         using var harness = new Harness();
-        harness.WriteTemplate("GameClassNames", "Лучник", "archer-template");
-        harness.WriteTemplate("GameClassNames", "Жрец", "priest-template");
+        harness.WriteTemplate(TemplateSetProvider.ClassesSetName, "Лучник", "archer-template");
+        harness.WriteTemplate(TemplateSetProvider.ClassesSetName, "Жрец", "priest-template");
         A.CallTo(() => harness.Window.CaptureScreenshot()).Returns([1, 2, 3]);
 
         IReadOnlyDictionary<string, byte[]>? seen = null;
@@ -137,7 +146,7 @@ public class MacroPrimitivesTests
         var tag = await harness.Primitives.RecognizeAsync(Hwnd, TemplateSetProvider.ClassesSetName, region, CancellationToken.None);
 
         await Assert.That(tag).IsEqualTo("Лучник");
-        // Имя набора "classes" разрешается в поставляемую папку GameClassNames с ключом по
+        // Имя набора "classes" разрешается в подпапку templates/classes с ключом по
         // основе имени файла — эта основа И ЕСТЬ тег, который навешивает нода.
         await Assert.That(seen).IsNotNull();
         await Assert.That(seen!.Keys.Order().ToList()).IsEquivalentTo(new List<string> { "Жрец", "Лучник" });
@@ -149,7 +158,7 @@ public class MacroPrimitivesTests
     public async Task Recognize_NoMatch_IsNull()
     {
         using var harness = new Harness();
-        harness.WriteTemplate("GameClassNames", "Лучник", "archer-template");
+        harness.WriteTemplate(TemplateSetProvider.ClassesSetName, "Лучник", "archer-template");
         A.CallTo(() => harness.Window.CaptureScreenshot()).Returns([1]);
         A.CallTo(() => harness.Matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._, A<ScreenRect>._))
             .Returns(null);

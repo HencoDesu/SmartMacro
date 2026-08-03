@@ -16,7 +16,8 @@ public class MacroExecutorVariableTests
         var graph = ExecutorHarness.Graph("м", "c",
             new ClickNode { Id = "c", PointVar = "cursor", DoubleClick = true, Next = null });
 
-        var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
+        var result =
+            await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
         await Assert.That(h.Primitives.Calls[0])
@@ -59,7 +60,8 @@ public class MacroExecutorVariableTests
         var graph = ExecutorHarness.Graph("м", "c",
             new ClickNode { Id = "c", PointVar = "btn", Next = null });
 
-        var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
+        var result =
+            await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
@@ -73,10 +75,11 @@ public class MacroExecutorVariableTests
         var graph = ExecutorHarness.Graph("м", "c",
             new ClickNode { Id = "c", Point = new ScreenPoint(2, 2), PointVar = "cursor", Next = null });
 
-        var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
+        var result =
+            await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("exactly one");
+        await Assert.That(result.Error!).Contains("ровно одно");
     }
 
     [Test]
@@ -88,7 +91,7 @@ public class MacroExecutorVariableTests
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("exactly one");
+        await Assert.That(result.Error!).Contains("ровно одно");
     }
 
     [Test]
@@ -101,7 +104,8 @@ public class MacroExecutorVariableTests
         var graph = ExecutorHarness.Graph("м", "t",
             new AddTagNode { Id = "t", Tag = "класс-{tag}", Next = null });
 
-        var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
+        var result =
+            await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
         await Assert.That(h.Registry.HasTag(ExecutorHarness.Window, "класс-виз")).IsTrue();

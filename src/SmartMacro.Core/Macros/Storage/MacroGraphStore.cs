@@ -148,7 +148,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         {
             if (issue.Severity == ValidationSeverity.Error)
             {
-                LogValidationError(graph.Name, issue.NodeId ?? "(graph)", issue.Message);
+                LogValidationError(graph.Name, issue.NodeId ?? "(граф)", issue.Message);
             }
         }
 

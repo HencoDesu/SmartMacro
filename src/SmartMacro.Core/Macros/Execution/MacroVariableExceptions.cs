@@ -15,7 +15,7 @@ public abstract class MacroVariableException : Exception
 public sealed class MacroVariableNotFoundException : MacroVariableException
 {
     public MacroVariableNotFoundException(string name)
-        : base($"Variable '{name}' is not defined in this macro run.")
+        : base($"Переменная «{name}» в этом прогоне не определена.")
     {
         Name = name;
     }
@@ -27,8 +27,14 @@ public sealed class MacroVariableNotFoundException : MacroVariableException
 /// <summary>Бросается, когда переменная есть, но держит значение не того рода (например, PointVar называет строку).</summary>
 public sealed class MacroVariableTypeMismatchException : MacroVariableException
 {
+    /// <param name="name">Имя запрошенной переменной.</param>
+    /// <param name="expected">
+    /// Ожидавшийся род значения — русское существительное в именительном падеже («точка»):
+    /// оно встаёт прямо в текст сообщения, который читает пользователь панели.
+    /// </param>
+    /// <param name="actual">То, что в переменной лежит на самом деле.</param>
     public MacroVariableTypeMismatchException(string name, string expected, VariableValue actual)
-        : base($"Variable '{name}' is not a {expected} (actual value: {actual.DisplayString}).")
+        : base($"Переменная «{name}» — не {expected} (текущее значение: {actual.DisplayString}).")
     {
         Name = name;
     }

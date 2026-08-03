@@ -39,6 +39,7 @@ public sealed partial class IpcRequestDispatcher
     private readonly IMacroRunner _runner;
     private readonly IHotkeyRegistration _hotkeys;
     private readonly CaptureDumpService _captures;
+    private readonly TemplateSetProvider _templates;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly RunEventPublisher _runEvents;
     private readonly MacroDebugSession _debug;
@@ -56,6 +57,7 @@ public sealed partial class IpcRequestDispatcher
         IMacroRunner runner,
         IHotkeyRegistration hotkeys,
         CaptureDumpService captures,
+        TemplateSetProvider templates,
         IHostApplicationLifetime lifetime,
         RunEventPublisher runEvents,
         MacroDebugSession debug,
@@ -67,6 +69,7 @@ public sealed partial class IpcRequestDispatcher
         _runner = runner;
         _hotkeys = hotkeys;
         _captures = captures;
+        _templates = templates;
         _lifetime = lifetime;
         _runEvents = runEvents;
         _debug = debug;
@@ -272,6 +275,14 @@ public sealed partial class IpcRequestDispatcher
                 // а от реализации в этом же процессе, и интерфейс обещает его ненулевым.
                 return Ok(request, IpcJson.Write<HotkeyFailureDto[]>([.. _hotkeys.Failures]));
 
+            // ---------------------------------------------------------------- шаблоны
+
+            case IpcMessageTypes.GetTemplates:
+                return Ok(request, IpcJson.Write<TemplateDto[]>([.. _templates.Catalog().ToDto()]));
+
+            case IpcMessageTypes.GetTemplateImage:
+                return GetTemplateImage(request);
+
             // ------------------------------------------------------------ диагностика
 
             case IpcMessageTypes.DumpCaptures:
@@ -302,6 +313,43 @@ public sealed partial class IpcRequestDispatcher
                 return Fail(request, $"unknown request type: {request.Type}");
         }
     }
+
+    /// <summary>
+    /// Байты одного шаблона для превью.
+    ///
+    /// Оба отказа здесь — это отказы, а не пустой ответ, и намеренно: панель просит картинку по
+    /// строке, которую сама же нарисовала из <c>GetTemplates</c>, так что «нет такого файла»
+    /// означает, что список устарел (или что имя пришло не из списка), и молчаливая пустая
+    /// картинка спрятала бы ровно это. Потолок сверяется здесь ещё раз, хотя панель по размеру
+    /// из списка обычно и не спрашивает: между перечислением и запросом файл мог смениться, а
+    /// многомегабайтная строка base64 встала бы в трубе перед событиями работающего макроса
+    /// (см. <see cref="TemplateLimits.MaxImageBytes"/>).
+    /// </summary>
+    private IpcResponse GetTemplateImage(IpcRequest request)
+    {
+        var payload = Require<GetTemplateImageRequest>(request);
+        if (string.IsNullOrWhiteSpace(payload.Name))
+        {
+            throw new IpcRequestRejectedException("GetTemplateImage: имя шаблона не задано.");
+        }
+
+        // null = файла нет ЛИБО имя несло сегменты пути; провайдер уже написал в лог, какой
+        // именно из двух случаев это был.
+        var bytes = _templates.TryReadFile(payload.Set, payload.Name)
+                    ?? throw new IpcRequestRejectedException(
+                        $"Шаблон '{Describe(payload.Set, payload.Name)}' не найден.");
+
+        if (bytes.Length > TemplateLimits.MaxImageBytes)
+        {
+            throw new IpcRequestRejectedException(
+                $"Шаблон '{Describe(payload.Set, payload.Name)}' — {bytes.Length} Б, "
+                + $"это больше потолка превью в {TemplateLimits.MaxImageBytes} Б.");
+        }
+
+        return Ok(request, IpcJson.Write(new TemplateImageDto(payload.Set, payload.Name, bytes)));
+    }
+
+    private static string Describe(string? set, string name) => set is null ? name : $"{set}/{name}";
 
     /// <summary>
     /// Проверить → отказать или записать. Ответ И ЕСТЬ список замечаний: пустой означает, что

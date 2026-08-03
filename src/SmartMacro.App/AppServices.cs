@@ -56,7 +56,7 @@ internal sealed class AppServices : IAsyncDisposable
     /// недоправленному графу пережить поход в другой режим.
     /// </summary>
     public ShellViewModel CreateShellViewModel() =>
-        new(CreateWorkspaceViewModel(), CreateMacroEditorViewModel(), MacroLauncher);
+        new(CreateWorkspaceViewModel(), CreateMacroEditorViewModel(), CreateTemplatesViewModel(), MacroLauncher);
 
     /// <summary>Собирает view-model окон и прогонов саму по себе (нужно пути дизайнера).</summary>
     public WorkspaceViewModel CreateWorkspaceViewModel() => new(Client, Dispatcher);
@@ -64,6 +64,13 @@ internal sealed class AppServices : IAsyncDisposable
     /// <summary>Собирает view-model редактора макросов, стоящую за режимом «Макросы».</summary>
     public MacroEditorViewModel CreateMacroEditorViewModel() =>
         new(Client, MacroLauncher, HotkeySuspension, Dispatcher, MacroFolderPath);
+
+    /// <summary>
+    /// Собирает view-model браузера шаблонов, стоящую за режимом «Шаблоны». Пути к ассетам она не
+    /// получает и получить не может: дерево живёт у демона, и панель видит его только через
+    /// <c>GetTemplates</c> / <c>GetTemplateImage</c>.
+    /// </summary>
+    public TemplatesViewModel CreateTemplatesViewModel() => new(Client, Dispatcher);
 
     public ValueTask DisposeAsync() => _client.DisposeAsync();
 }

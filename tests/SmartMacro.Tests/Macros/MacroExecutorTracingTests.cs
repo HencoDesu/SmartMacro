@@ -178,7 +178,7 @@ public class MacroExecutorTracingTests
         var exit = observer.OfKind(Exit).Single();
         await Assert.That(exit.NodeId).IsEqualTo("a");
         await Assert.That(exit.Outcome).IsEqualTo(RunOutcomes.Error);
-        await Assert.That(exit.Detail).Contains("no Target selector");
+        await Assert.That(exit.Detail).Contains("нет селектора Target");
         await Assert.That(observer.OfKind(WalkEnd).Single().Outcome).IsEqualTo(RunOutcomes.Aborted);
     }
 

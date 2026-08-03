@@ -15,24 +15,30 @@
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.8" />
     <PackageReference Include="OpenCvSharp4" Version="4.10.0.20241108" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.10.0.20241108" />
-    <!-- PrivateAssets="all" (stage 4B): Tesseract compiles TesseractCoordinateReader here but
-         does NOT flow to projects that reference Core. The reader is parked — nothing in the
-         daemon resolves ICoordinateReader — yet the package was laying 16.2 MB of native
-         blobs (x64/ + x86/ leptonica + tesseract50) plus a 4 MB eng.traineddata into
-         SmartMacro.Daemon's output for code that never loads.
-         ⚠️ CONSEQUENCE: SmartMacro.Core.dll ships to the daemon with a metadata reference to
-         Tesseract.dll that is NOT next to it. That is harmless only while nothing in the
-         daemon touches TesseractCoordinateReader — the CLR resolves the assembly lazily, on
-         first use of that type. Un-parking the reader (stuck detection) means deleting
-         PrivateAssets here so the payload flows again. Its live consumer,
-         tools/VisionSampleRunner, carries its own Tesseract PackageReference and tessdata.
-         ExcludeAssets="build" is the other half and is NOT redundant: PrivateAssets only
-         stops lib/ (Tesseract.dll) from flowing. The package's build/Tesseract.targets adds
-         four plain <None CopyToOutputDirectory> items for x64\ + x86\ leptonica+tesseract50,
-         and None items with CopyToOutputDirectory propagate through a ProjectReference no
-         matter what PrivateAssets says — that is how 12.2 MB of natives kept landing next to
-         the daemon. Skipping the targets in Core drops them at the source; the runner
-         imports its own copy of the same targets and still gets them. -->
+    <!-- PrivateAssets="all" (стадия 4B): Tesseract нужен здесь, чтобы компилировался
+         TesseractCoordinateReader, но дальше, в проекты, которые ссылаются на Core, он уже НЕ
+         течёт. Читатель законсервирован — ICoordinateReader в демоне никто не резолвит, — а
+         пакет при этом укладывал в выхлоп SmartMacro.Daemon 12,1 МБ нативных блобов (x64\ и
+         x86\, в каждой leptonica-1.82.0 + tesseract50) ради кода, который никогда не грузится.
+         ⚠️ ПОСЛЕДСТВИЕ: SmartMacro.Core.dll уезжает к демону с метаданной ссылкой на
+         Tesseract.dll, которой рядом НЕТ. Это безобидно ровно до тех пор, пока в демоне никто
+         не трогает TesseractCoordinateReader: сборку CLR резолвит лениво, при первом обращении
+         к типу. Расконсервировать читателя (детект застреваний) — значит убрать отсюда
+         PrivateAssets, чтобы полезная нагрузка снова потекла. Его живой потребитель,
+         tools/VisionSampleRunner, держит собственный PackageReference на Tesseract и
+         собственный tessdata\.
+         ExcludeAssets="build;buildTransitive" — вторая половина, и она НЕ избыточна:
+         PrivateAssets останавливает только lib\ (Tesseract.dll). В build\Tesseract.targets
+         пакета лежат четыре обычных <None CopyToOutputDirectory> на x86\ и x64\
+         leptonica+tesseract50, а None-элементы с CopyToOutputDirectory протекают через
+         ProjectReference независимо от того, что говорит PrivateAssets, — именно так эти
+         12,1 МБ нативов и продолжали приземляться рядом с демоном. Пропуск targets в Core
+         убирает их в источнике; раннер импортирует свою копию тех же targets и всё равно их
+         получает.
+         Про цифры: сам пакет весит 12,1 МБ нативов и больше ничего в выхлоп не кладёт.
+         Оставшиеся ~4 МБ из «107 → 91 МБ» в SmartMacro.Daemon.csproj — это eng.traineddata,
+         который лежал отдельным закоммиченным каталогом src/SmartMacro.Daemon/tessdata\ и
+         удалён той же стадией 4B, но не этими атрибутами. -->
     <PackageReference Include="Tesseract" Version="5.2.0" PrivateAssets="all" ExcludeAssets="build;buildTransitive" />
   </ItemGroup>
 
@@ -42,9 +48,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Update="Agents\CharacterAgent.Logging.cs">
-      <DependentUpon>CharacterAgent.cs</DependentUpon>
-    </Compile>
     <Compile Update="Ipc\IpcRequestDispatcher.Logging.cs">
       <DependentUpon>IpcRequestDispatcher.cs</DependentUpon>
     </Compile>

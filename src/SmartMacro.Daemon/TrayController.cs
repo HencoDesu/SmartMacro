@@ -11,7 +11,7 @@ namespace SmartMacro.Daemon;
 //
 //   Открыть панель — запускает SmartMacro.App.exe из нашего же выходного каталога.
 //   Выход          — просит хост завершиться, что расчищает hosted-сервисы (прогоны макросов
-//                    отменяются → агенты останавливаются → горячие клавиши
+//                    отменяются → окна снимаются с регистрации → горячие клавиши
 //                    разрегистрируются → StopAsync этого контроллера разбирает иконку).
 //
 // Win32TrayIcon поднимает ItemClicked в потоке своего насоса сообщений, изнутри модального
@@ -122,7 +122,7 @@ internal sealed partial class TrayController : IHostedService, IDisposable
             var path = UiExecutableLocator.Resolve(AppContext.BaseDirectory);
             if (path is null)
             {
-                LogPanelNotFound(UiExecutableLocator.ProbePath(AppContext.BaseDirectory));
+                LogPanelNotFound(string.Join(", ", UiExecutableLocator.ProbePaths(AppContext.BaseDirectory)));
                 return;
             }
 
@@ -136,7 +136,10 @@ internal sealed partial class TrayController : IHostedService, IDisposable
                 _uiProcess = Process.Start(new ProcessStartInfo(path)
                 {
                     UseShellExecute = true,
-                    WorkingDirectory = AppContext.BaseDirectory,
+                    // Папка НАЙДЕННОГО файла, а не своя: в дереве разработки панель лежит в
+                    // соседнем bin, и её собственные logs/ и appsettings.json должны
+                    // разрешаться там, а не рядом с демоном.
+                    WorkingDirectory = Path.GetDirectoryName(path) ?? AppContext.BaseDirectory,
                 });
 
                 if (_uiProcess is null)
@@ -166,8 +169,8 @@ internal sealed partial class TrayController : IHostedService, IDisposable
     [LoggerMessage(LogLevel.Information, "Панель уже запущена (pid {Pid}) — просим её выйти на передний план")]
     partial void LogPanelAlreadyRunning(int pid);
 
-    [LoggerMessage(LogLevel.Error, "Не найден исполняемый файл панели — искали '{ProbedPath}'")]
-    partial void LogPanelNotFound(string probedPath);
+    [LoggerMessage(LogLevel.Error, "Не найден исполняемый файл панели — искали: {ProbedPaths}")]
+    partial void LogPanelNotFound(string probedPaths);
 
     [LoggerMessage(LogLevel.Error, "Не удалось запустить панель '{Path}'")]
     partial void LogPanelStartFailed(Exception ex, string path);

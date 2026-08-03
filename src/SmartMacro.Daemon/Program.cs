@@ -2,7 +2,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
-using SmartMacro.Agents;
 using SmartMacro.Config;
 using SmartMacro.GameWindows;
 using SmartMacro.Hotkeys;
@@ -110,8 +109,8 @@ internal static class Program
         services.AddSingleton<IGameWindowFactory, GameWindowFactory>();
 
         // Единственный владелец тегов окон И поиска hwnd → IGameWindow: всё остальное —
-        // агенты, примитивы макросов, а со стадии 2B и слой IPC — читает состояние окон
-        // отсюда.
+        // оркестратор, примитивы макросов, слежение за временем жизни окон, а со стадии 2B и
+        // слой IPC — читает состояние окон отсюда.
         services.AddSingleton<WindowRegistry>();
 
         services.AddSingleton<IClassMatcher, ClassMatcher>();
@@ -126,7 +125,6 @@ internal static class Program
         services.AddSingleton<WindowIconService>();
         services.AddSingleton<AgentInputDispatcher>();
         services.AddSingleton<CursorPositionProvider>();
-        services.AddSingleton<ICharacterAgentFactory, CharacterAgentFactory>();
         services.AddSingleton<Win32HotkeyMonitor>();
         services.AddSingleton<Win32MouseHookMonitor>();
 
@@ -167,8 +165,17 @@ internal static class Program
         services.AddSingleton<HotkeyListener>();
         services.AddHostedService(sp => sp.GetRequiredService<HotkeyListener>());
 
-        // Единственный экземпляр Orchestrator; он же ведёт жизненный цикл цикла диспетчеризации
-        // через IHostedService.
+        // Одна служба на все окна вместо агента на клиента (W0.4): по общему таймеру обходит
+        // реестр и снимает с регистрации окна, которых больше нет.
+        //
+        // Зарегистрирована ДО оркестратора намеренно: hosted-сервисы останавливаются в обратном
+        // порядке, поэтому она свернётся ПОСЛЕ него — то есть окна уходят из реестра уже после
+        // того, как Orchestrator.StopAsync отменил прогоны на лету. Наоборот было бы плохо:
+        // прогон, брошенный посреди активации, оставил бы клиент разбуженным.
+        services.AddHostedService<WindowLifetimeMonitor>();
+
+        // Единственный экземпляр Orchestrator; ролью IHostedService он остаётся ради StopAsync,
+        // который гасит прогоны на выключении.
         services.AddSingleton<Orchestrator>();
         services.AddHostedService(sp => sp.GetRequiredService<Orchestrator>());
 
@@ -192,7 +199,7 @@ internal static class Program
         // когда ProcessMonitor/HotkeyListener/Orchestrator уже подняты, и клиент, подключившийся
         // в ту же секунду, как увидел канал, получает живой реестр; останавливаются же они в
         // ОБРАТНОМ порядке, поэтому канал сворачивается рано — сразу за иконкой в трее, до того
-        // как начнут разбираться агенты и горячие клавиши, — и панель узнаёт, что демон
+        // как начнут разбираться прогоны, окна и горячие клавиши, — и панель узнаёт, что демон
         // уходит, а не висит на полумёртвом движке.
         // Насос пакетирования запускается до канала, чтобы у клиента, подписавшегося сразу
         // после подключения, было кому разбирать его очередь.
@@ -202,7 +209,7 @@ internal static class Program
 
         // Трей последним: hosted-сервисы останавливаются в обратном порядке регистрации,
         // поэтому иконка исчезает первой, когда пользователь выбирает «Выход», — никакой
-        // мёртвой иконки, висящей в трее, пока доигрывают агенты и горячие клавиши.
+        // мёртвой иконки, висящей в трее, пока доигрывают прогоны и горячие клавиши.
         services.AddSingleton<Win32TrayIcon>();
         services.AddHostedService<TrayController>();
     }

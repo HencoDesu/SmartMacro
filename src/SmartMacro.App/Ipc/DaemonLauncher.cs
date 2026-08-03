@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Serilog;
+using SmartMacro.Contracts.Ipc;
 
 namespace SmartMacro.App.Ipc;
 
@@ -9,9 +10,7 @@ namespace SmartMacro.App.Ipc;
 ///
 /// Зеркальное отражение демонского <c>UiExecutableLocator</c>, и по той же причине: первым
 /// пользователь может запустить любой из двух процессов, значит, каждый обязан уметь поднять
-/// другой. В развёрнутом виде оба исполняемых файла лежат в одном каталоге, и весь поиск — это
-/// «рядом со мной»; в дереве разработки они разъехались по соседним папкам <c>bin</c>, и это как
-/// раз то, что закрывает второй кандидат.
+/// другой. Сам поиск живёт в <see cref="PeerExecutableLocator"/> — здесь только имена и запуск.
 /// </summary>
 public static class DaemonLauncher
 {
@@ -25,32 +24,15 @@ public static class DaemonLauncher
     /// Пути, которые проверяются, по порядку. Выставлено наружу, чтобы неудачу <see cref="Resolve"/>
     /// можно было записать в лог вместе с тем, куда на самом деле смотрели.
     /// </summary>
-    public static IReadOnlyList<string> ProbePaths(string baseDirectory)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
-
-        var candidates = new List<string>(2) { Path.Combine(baseDirectory, DaemonExecutableName) };
-
-        // Раскладка разработки: у .../src/SmartMacro.App/bin/Debug/net10.0-windows/ есть
-        // близнец на уровень выше по дереву проектов. Подменить имя папки проекта достаточно:
-        // сегменты конфигурации и TFM у обоих проектов одинаковые.
-        var sibling = SwapProjectFolder(baseDirectory);
-        if (sibling is not null)
-        {
-            candidates.Add(Path.Combine(sibling, DaemonExecutableName));
-        }
-
-        return candidates;
-    }
+    public static IReadOnlyList<string> ProbePaths(string baseDirectory) =>
+        PeerExecutableLocator.ProbePaths(baseDirectory, DaemonExecutableName, AppProjectFolder, DaemonProjectFolder);
 
     /// <summary>Полный путь к исполняемому файлу демона или <c>null</c>, если его нет ни в одном из мест, куда мы смотрим.</summary>
     /// <param name="baseDirectory">Обычно <see cref="AppContext.BaseDirectory"/>.</param>
     /// <param name="fileExists">Проба на существование; по умолчанию <see cref="File.Exists(string)"/>.</param>
-    public static string? Resolve(string baseDirectory, Func<string, bool>? fileExists = null)
-    {
-        var exists = fileExists ?? File.Exists;
-        return ProbePaths(baseDirectory).FirstOrDefault(exists);
-    }
+    public static string? Resolve(string baseDirectory, Func<string, bool>? fileExists = null) =>
+        PeerExecutableLocator.Resolve(
+            baseDirectory, DaemonExecutableName, AppProjectFolder, DaemonProjectFolder, fileExists ?? File.Exists);
 
     /// <summary>
     /// Запускает демона и возвращает <c>true</c>, когда процесс создан. О готовности не говорит
@@ -92,21 +74,5 @@ public static class DaemonLauncher
             Log.Error(ex, "Не удалось запустить демона '{Path}'", path);
             return false;
         }
-    }
-
-    private static string? SwapProjectFolder(string baseDirectory)
-    {
-        var normalized = baseDirectory.Replace('/', Path.DirectorySeparatorChar);
-        var needle = $"{Path.DirectorySeparatorChar}{AppProjectFolder}{Path.DirectorySeparatorChar}";
-        var index = normalized.LastIndexOf(needle, StringComparison.OrdinalIgnoreCase);
-        if (index < 0)
-        {
-            return null;
-        }
-
-        return string.Concat(
-            normalized.AsSpan(0, index + 1),
-            DaemonProjectFolder,
-            normalized.AsSpan(index + needle.Length - 1));
     }
 }
