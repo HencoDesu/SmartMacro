@@ -161,14 +161,15 @@ public sealed class ValidationIssueViewModel
 }
 
 /// <summary>
-/// The macro editor: library list on the left, the selected graph's triggers and nodes on
-/// the right.
+/// The macro editor: library on the left, the selected graph on the canvas, the run log
+/// below it and the inspector on the right.
 ///
-/// This is the rows editor of plan §0.5 — every node's PARAMETERS are editable, and its
-/// outgoing edges are edited as drop-downs of node ids rather than by drawing links. That
-/// covers branchy graphs as well as chains (unlike the pre-graph editor, which could only
-/// express linear lists); the canvas in W0.4 adds direct manipulation on top of the same
-/// model, it does not unlock anything that is unreachable here.
+/// <b>It backs the canvas (wave D3a), not the rows editor that used to live here.</b> The
+/// rows editor was rejected on design review and deleted, not kept alongside — so a node's
+/// outgoing edges are drawn as links rather than picked from drop-downs of node ids. What
+/// survived the swap is this class's shape: the graph↔VM mapping, the save protocol and the
+/// library handling below are the same ones the rows editor used, which is why the canvas
+/// could be built without touching them.
 ///
 /// <b>Stage 3: the library is remote.</b> Where this VM used to hold a <c>MacroGraphStore</c>
 /// it now holds a snapshot fetched over IPC, refreshed on <c>MacrosChanged</c> and on every

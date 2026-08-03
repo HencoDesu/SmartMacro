@@ -178,7 +178,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// <summary>Windows and runs — the body of «Окна» and «Прогоны», and the run bar.</summary>
     public WorkspaceViewModel Workspace { get; }
 
-    /// <summary>The macro library and its rows editor — the body of «Макросы». D3 rebuilds its innards.</summary>
+    /// <summary>The macro library and the canvas editor — the body of «Макросы».</summary>
     public MacroEditorViewModel Editor { get; }
 
     /// <summary>The sidebar's rows, in display order.</summary>
