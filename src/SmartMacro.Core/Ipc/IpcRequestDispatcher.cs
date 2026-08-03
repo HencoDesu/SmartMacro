@@ -42,6 +42,7 @@ public sealed partial class IpcRequestDispatcher
     private readonly CaptureDumpService _captures;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly RunEventPublisher _runEvents;
+    private readonly MacroDebugSession _debug;
     private readonly ILogger<IpcRequestDispatcher> _logger;
 
     // Set by IpcServer's constructor, not by DI — see AttachBroadcaster. Null in the
@@ -58,6 +59,7 @@ public sealed partial class IpcRequestDispatcher
         CaptureDumpService captures,
         IHostApplicationLifetime lifetime,
         RunEventPublisher runEvents,
+        MacroDebugSession debug,
         ILogger<IpcRequestDispatcher> logger)
     {
         _windows = windows;
@@ -68,6 +70,7 @@ public sealed partial class IpcRequestDispatcher
         _captures = captures;
         _lifetime = lifetime;
         _runEvents = runEvents;
+        _debug = debug;
         _logger = logger;
     }
 
@@ -209,6 +212,35 @@ public sealed partial class IpcRequestDispatcher
                 return Ok(request, IpcJson.Write(payload.Enabled
                     ? _runEvents.LiveWalks()
                     : Array.Empty<RunWalkDto>()));
+            }
+
+            // ----------------------------------------------------------------- debugger
+
+            case IpcMessageTypes.SetBreakpoints:
+            {
+                var payload = Require<SetBreakpointsRequest>(request);
+                // No "does this macro exist" check on purpose: a breakpoint can legitimately
+                // be armed on an unsaved draft, and the set is keyed by name — the moment the
+                // draft is saved under that name it starts biting.
+                _debug.SetBreakpoints(payload.MacroName, payload.NodeIds ?? []);
+                return Ok(request);
+            }
+
+            case IpcMessageTypes.GetBreakpoints:
+                return Ok(request, IpcJson.Write<BreakpointSetDto[]>([.. _debug.Breakpoints()]));
+
+            case IpcMessageTypes.DebugCommand:
+            {
+                var payload = Require<DebugCommandRequest>(request);
+                // Rejecting an unattached caller is not pedantry: the attach count is what
+                // guarantees a paused walk has someone able to release it, and a command from
+                // a connection outside that count could park a walk nobody would ever unpark.
+                if (session is not { WantsRunEvents: true })
+                {
+                    throw new IpcRequestRejectedException(
+                        "Команды отладчика доступны только подписчику событий прогона.");
+                }
+                return Ok(request, IpcJson.Write(_debug.Command(payload.WalkId, payload.Command, payload.NodeId)));
             }
 
             // ------------------------------------------------------------------ hotkeys

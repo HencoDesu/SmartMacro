@@ -47,6 +47,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
 
         Captures = new CaptureDumpService(_baseDirectory, Windows, Matcher, NullLogger<CaptureDumpService>.Instance);
         RunEvents = new RunEventPublisher(NullLogger<RunEventPublisher>.Instance);
+        Debug = new MacroDebugSession(NullLogger<MacroDebugSession>.Instance);
 
         Dispatcher = new IpcRequestDispatcher(
             Windows,
@@ -57,6 +58,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
             Captures,
             Lifetime,
             RunEvents,
+            Debug,
             NullLogger<IpcRequestDispatcher>.Instance);
     }
 
@@ -78,6 +80,9 @@ internal sealed class IpcDispatcherHarness : IDisposable
 
     /// <summary>Real: the run-event pump is what <c>SubscribeRunEvents</c> answers from.</summary>
     public RunEventPublisher RunEvents { get; }
+
+    /// <summary>Real: breakpoints and pause state — the debugger handlers are thin over it.</summary>
+    public MacroDebugSession Debug { get; }
 
     public IpcRequestDispatcher Dispatcher { get; }
 

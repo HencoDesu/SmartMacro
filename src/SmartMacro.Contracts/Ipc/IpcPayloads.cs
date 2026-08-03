@@ -1,3 +1,4 @@
+using SmartMacro.Contracts.Dto;
 using SmartMacro.Macros.Model;
 
 namespace SmartMacro.Contracts.Ipc;
@@ -44,3 +45,18 @@ public sealed record SubscribeRunEventsRequest(bool Enabled);
 /// <summary>Payload of the <see cref="IpcMessageTypes.WindowClosed"/> event.</summary>
 /// <param name="Hwnd">Handle of the window that went away. No other data survives it.</param>
 public sealed record WindowClosedEvent(long Hwnd);
+
+/// <summary>
+/// Payload of <see cref="IpcMessageTypes.SetBreakpoints"/>. Replaces the whole set for one
+/// macro — the editor always knows every breakpoint it has, so a full replacement removes an
+/// entire class of "add/remove got out of order" bugs for the price of a few extra bytes.
+/// </summary>
+/// <param name="MacroName">Graph the breakpoints belong to. The macro need not exist yet — an unsaved draft can carry them.</param>
+/// <param name="NodeIds">Nodes that should halt a walk. An EMPTY array clears the macro's breakpoints.</param>
+public sealed record SetBreakpointsRequest(string MacroName, IReadOnlyList<string> NodeIds);
+
+/// <summary>Payload of <see cref="IpcMessageTypes.DebugCommand"/>.</summary>
+/// <param name="WalkId">Walk to act on, from <c>RunWalkDto.WalkId</c>. An unknown (finished) walk answers <c>Accepted = false</c>.</param>
+/// <param name="Command">What to do.</param>
+/// <param name="NodeId">Target node for <see cref="DebugCommand.RunToNode"/>; ignored otherwise.</param>
+public sealed record DebugCommandRequest(Guid WalkId, DebugCommand Command, string? NodeId = null);

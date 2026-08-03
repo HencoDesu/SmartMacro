@@ -43,6 +43,7 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
     private readonly MacroRunRegistry _runs;
     private readonly CursorPositionProvider _cursor;
     private readonly IMacroRunObserver? _observer;
+    private readonly IMacroDebugger? _debugger;
 
     private readonly Lock _agentsLock = new();
     private readonly HashSet<CharacterAgent> _agents = [];
@@ -59,7 +60,8 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         MacroRunRegistry runs,
         CursorPositionProvider cursor,
         ILogger<Orchestrator> logger,
-        IMacroRunObserver? observer = null)
+        IMacroRunObserver? observer = null,
+        IMacroDebugger? debugger = null)
     {
         _logger = logger;
         _agentFactory = agentFactory;
@@ -71,6 +73,9 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         // host without it (or a test) runs uninstrumented, which is also what the daemon
         // effectively does while nobody is subscribed.
         _observer = observer;
+        // Same shape: inert until a panel attaches, at which point it can park a walk between
+        // two nodes. A host without one simply cannot be paused.
+        _debugger = debugger;
 
         _processMonitor = processMonitor;
         _processMonitor.ProcessAppeared += OnProcessAppeared;
@@ -128,6 +133,7 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
                 RunId = handle.RunId,
                 OnNodeEntered = nodeId => handle.CurrentNodeId = nodeId,
                 Observer = _observer,
+                Debugger = _debugger,
             };
             var result = await _executor.RunAsync(graph, context, handle.Token).ConfigureAwait(false);
             if (result.Status == MacroRunStatus.Aborted)

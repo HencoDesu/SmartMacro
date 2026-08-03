@@ -1,4 +1,4 @@
-<!--
+﻿<!--
   «Макросы» — the canvas node editor (wave D3a).
   Source of truth: docs/design/opt-1d.html (canvas + inspector) and opt-1e.html (a box
   expanded into an editor of itself). The rows editor this replaces is gone.
@@ -92,9 +92,76 @@
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
             <Setter Property="BoxShadow" Value="{DynamicResource NocturneShadowNodeSelected}" />
         </Style>
+        <!-- Passed BEFORE running/paused, so a box that is both (a loop back onto a node
+             the walk has already crossed) reads as live. Order is the whole rule here:
+             equal-specificity selectors in Avalonia are won by the LAST one, which is the
+             trap D1 hit with .accent losing to :disabled. -->
+        <Style Selector="Border.node.passed">
+            <Setter Property="Background" Value="{DynamicResource NocturneNodePassedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneNodePassedBorderBrush}" />
+            <Setter Property="Opacity" Value="0.72" />
+        </Style>
         <Style Selector="Border.node.running">
             <Setter Property="Background" Value="{DynamicResource NocturneNodeRunningBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <!-- Parked: the accent surface of a live node, edged in danger. "Stopped here" must
+             never look like "running here" — they are one keypress apart in consequence. -->
+        <Style Selector="Border.node.paused">
+            <Setter Property="Background" Value="{DynamicResource NocturneNodeRunningBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneNodePausedBorderBrush}" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <!-- Ends of a hovered variable link. An outline, not a fill: the box may also be
+             passed or live, and this must sit on top of either without hiding it. -->
+        <Style Selector="Border.node.varSource, Border.node.varConsumer">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneVariableBrush}" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+
+        <!-- The breakpoint marker.
+             The mockup draws it as a dot hanging half off the box's top-left corner. That
+             does not survive here: something above the item container clips at the box's
+             bounds — setting ClipToBounds="False" on the generated ContentPresenter changed
+             nothing — so a node at canvas x=0 lost the outer half of its dot and rendered a
+             red sliver. Rather than ship a marker whose visibility depends on where the node
+             happens to sit, it became a gutter bar down the box's inside edge: the shape
+             every IDE uses for the same meaning, unclippable at any position or zoom. -->
+        <Style Selector="Border.breakpointBar">
+            <Setter Property="Width" Value="4" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="CornerRadius" Value="5,0,0,5" />
+            <Setter Property="Background" Value="{DynamicResource NocturneDangerBrush}" />
+        </Style>
+
+        <!-- The mockup's pulsing current node. A separate ring rather than animating the box:
+             fading the Border itself would fade its text with it, and the whole point is that
+             the live node stays the most readable one. Invisible and INERT until the class is
+             on — Avalonia runs a style's animation only while its selector matches, so an
+             idle canvas has no timers at all. -->
+        <Style Selector="Border.pulseRing">
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent300Brush}" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Border.pulseRing.pulsing">
+            <Style.Animations>
+                <Animation Duration="0:0:1.8" IterationCount="INFINITE">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="Opacity" Value="0.15" />
+                    </KeyFrame>
+                    <KeyFrame Cue="50%">
+                        <Setter Property="Opacity" Value="0.9" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="Opacity" Value="0.15" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
         </Style>
         <Style Selector="Border.nodeHeader">
             <Setter Property="Height" Value="19" />
@@ -534,7 +601,11 @@
         <DataTemplate x:Key="NodeBoxTemplate" x:DataType="nodes:NodeRowViewModel">
             <Border Classes="node"
                     Classes.selected="{Binding IsSelected}"
+                    Classes.passed="{Binding IsPassed}"
                     Classes.running="{Binding IsExecuting}"
+                    Classes.paused="{Binding IsPaused}"
+                    Classes.varSource="{Binding IsVariableSource}"
+                    Classes.varConsumer="{Binding IsVariableConsumer}"
                     Width="{Binding BoxWidth}"
                     Height="{Binding BoxHeight}"
                     PointerPressed="OnNodePressed"
@@ -581,6 +652,26 @@
                                             IsVisible="{Binding ShowsTargetChip}"
                                             Content="{Binding Target}"
                                             ContentTemplate="{StaticResource TargetBadgeCompactTemplate}" />
+                            <!-- The run stamp replaces the targets chip while a walk is being
+                                 watched: ✓ with the time for a passed node, ▸ for the live
+                                 one. Same slot on purpose — the header is 210px wide and the
+                                 type label is what must never be squeezed out. -->
+                            <TextBlock Grid.Column="2"
+                                       Margin="6,0,0,0"
+                                       FontSize="10"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding IsPassed}"
+                                       ToolTip.Tip="{Binding PassedOutcome}"
+                                       Foreground="{DynamicResource NocturneAccentBrush}"
+                                       Text="{Binding PassedTime, StringFormat='✓ {0}'}" />
+                            <TextBlock Grid.Column="2"
+                                       Margin="6,0,0,0"
+                                       FontSize="10"
+                                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding IsPaused}"
+                                       Foreground="{DynamicResource NocturneDangerBrush}"
+                                       Text="&#x25A0;" />
                         </Grid>
                     </Border>
 
@@ -636,6 +727,20 @@
                         <ItemsControl ItemsSource="{Binding Edges}"
                                       ItemTemplate="{StaticResource EdgeEditorTemplate}" />
                     </Border>
+
+                    <!-- Spans every row so the bar runs the full height of the box. Last in
+                         the Grid, so it paints over the header's background. -->
+                    <Border Grid.Row="0" Grid.RowSpan="3"
+                            Classes="breakpointBar"
+                            IsVisible="{Binding HasBreakpoint}"
+                            ToolTip.Tip="Брейкпоинт: прогон встанет ПЕРЕД этой нодой" />
+
+                    <!-- Only while the walk is actually running this node: a PARKED walk gets
+                         the static danger edge instead, because "stopped here" and "running
+                         here" must not share an animation. -->
+                    <Border Grid.Row="0" Grid.RowSpan="3"
+                            Classes="pulseRing"
+                            Classes.pulsing="{Binding IsRunningLive}" />
                 </Grid>
             </Border>
         </DataTemplate>
@@ -905,7 +1010,7 @@
                 BorderBrush="{DynamicResource NocturneDividerBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="12,8">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto">
                 <TextBox Grid.Column="0"
                          Width="170"
                          Height="26"
@@ -950,9 +1055,86 @@
                     </Button.Flyout>
                 </Button>
 
+                <!-- ==== debugger (D5) ====
+                     Present only once a walk of this graph is on record: four permanently
+                     dead buttons is how a toolbar stops being read. The mockup puts the
+                     progress counter inside the run chip; here it sits with the controls it
+                     is about, and the WALK PICKER stays in the log strip below with the
+                     ◂ ▸ arrows — two different numbers, each next to what it counts. -->
+                <StackPanel Grid.Column="5"
+                            Orientation="Horizontal"
+                            Spacing="4"
+                            VerticalAlignment="Center"
+                            Margin="10,0,0,0"
+                            IsVisible="{Binding HasDebugTarget}">
+                    <Border Width="1" Height="18" Margin="0,0,6,0"
+                            Background="{DynamicResource NocturneDividerStrongBrush}" />
+
+                    <!-- Pause and Resume share a slot: they are mutually exclusive states of
+                         one walk, and a 1520px toolbar has no room for a permanently dead
+                         twin. The mockup's ⏸ / ⤼ / ▷| glyphs are NOT used — U+23F8 carries
+                         Emoji_Presentation and would arrive as a colour pictogram ignoring
+                         Foreground, the same trap D1 hit on U+25B6 and D4 on U+26A0. U+25B8
+                         and U+25A0 are the two that were verified to render as text. -->
+                    <Button Height="26"
+                            Content="Пауза"
+                            IsVisible="{Binding !SelectedRunIsPaused}"
+                            IsEnabled="{Binding CanPause}"
+                            ToolTip.Tip="Встать на паузу перед следующей нодой этого обхода"
+                            Click="OnDebugPauseClicked" />
+                    <Button Height="26"
+                            Classes="accent"
+                            Content="&#x25B8; Дальше"
+                            IsVisible="{Binding SelectedRunIsPaused}"
+                            IsEnabled="{Binding CanResume}"
+                            ToolTip.Tip="Снять обход с паузы"
+                            Click="OnDebugResumeClicked" />
+                    <Button Height="26"
+                            Content="Шаг"
+                            IsEnabled="{Binding CanResume}"
+                            ToolTip.Tip="Выполнить одну ноду и встать снова"
+                            Click="OnDebugStepClicked" />
+                    <Button Height="26"
+                            Content="До курсора"
+                            IsEnabled="{Binding CanRunToCursor}"
+                            ToolTip.Tip="Идти до ноды, выбранной на canvas, и встать перед ней"
+                            Click="OnDebugRunToCursorClicked" />
+                    <Button Height="26"
+                            Classes="danger"
+                            Content="{Binding StopLabel}"
+                            IsEnabled="{Binding CanStop}"
+                            ToolTip.Tip="{Binding StopTooltip}"
+                            Click="OnDebugStopClicked" />
+
+                    <!-- Counter and clock only. The walk's IDENTITY and its pause reason are
+                         in the log strip's header, next to the ◂ ▸ that choose it — printing
+                         them twice cost 260px and pushed «Сохранить» off the window edge,
+                         which is exactly the button you reach for after a debugging session. -->
+                    <Border Height="26"
+                            Margin="6,0,0,0"
+                            Padding="8,0"
+                            CornerRadius="{DynamicResource NocturneRadiusSm}"
+                            Background="{DynamicResource NocturneSurfaceInsetBrush}"
+                            BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                            BorderThickness="1"
+                            ToolTip.Tip="Пройдено нод / всего в графе · время обхода">
+                        <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                            <TextBlock FontSize="10.5"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                       Text="{Binding RunProgressText}" />
+                            <TextBlock FontSize="10.5"
+                                       VerticalAlignment="Center"
+                                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                       Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                       Text="{Binding RunElapsedText}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
                 <!-- Feedback lives in the middle of the bar: it is about the whole macro,
                      not about whatever the inspector happens to be showing. -->
-                <StackPanel Grid.Column="5" Margin="14,0" VerticalAlignment="Center" Spacing="1">
+                <StackPanel Grid.Column="6" Margin="14,0" VerticalAlignment="Center" Spacing="1">
                     <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
                                Foreground="{DynamicResource NocturneWarningBrush}"
                                TextTrimming="CharacterEllipsis"
@@ -971,26 +1153,26 @@
                                Text="{Binding StatusMessage}" />
                 </StackPanel>
 
-                <Button Grid.Column="6"
+                <Button Grid.Column="7"
                         Content="Папка макросов"
                         Height="26"
                         ToolTip.Tip="{Binding FolderPath}"
                         Click="OnOpenFolderClicked" />
-                <Button Grid.Column="7"
+                <Button Grid.Column="8"
                         Content="Перечитать"
                         Height="26"
                         Margin="6,0,0,0"
                         IsEnabled="{Binding HasOpenMacro}"
                         ToolTip.Tip="Отбросить правки и взять версию с диска"
                         Click="OnReloadClicked" />
-                <Button Grid.Column="8"
+                <Button Grid.Column="9"
                         Content="Авто-раскладка"
                         Height="26"
                         Margin="6,0,0,0"
                         IsEnabled="{Binding HasOpenMacro}"
                         ToolTip.Tip="Разложить граф строками с переносом от стартовой ноды"
                         Click="OnAutoLayoutClicked" />
-                <Button Grid.Column="9"
+                <Button Grid.Column="10"
                         Content="Сохранить"
                         Classes="accent"
                         Height="26"
@@ -1142,7 +1324,8 @@
                         <controls:EdgeLayer x:Name="Edges"
                                             Width="4000"
                                             Height="4000"
-                                            Edges="{Binding CanvasEdges}" />
+                                            Edges="{Binding CanvasEdges}"
+                                            Links="{Binding VariableLinks}" />
                         <ItemsControl ItemsSource="{Binding Nodes}"
                                       ItemTemplate="{StaticResource NodeBoxTemplate}">
                             <ItemsControl.ItemsPanel>
@@ -1152,10 +1335,14 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.Styles>
                                 <!-- The generated container is what carries the position;
-                                     the box template itself knows nothing about where it is. -->
+                                     the box template itself knows nothing about where it is.
+                                     ClipToBounds is turned OFF explicitly: the breakpoint dot
+                                     hangs off the box's top-left corner on a negative margin,
+                                     and a node at canvas x=0 had its left half sliced away. -->
                                 <Style Selector="ItemsControl > ContentPresenter" x:DataType="nodes:NodeRowViewModel">
                                     <Setter Property="Canvas.Left" Value="{Binding X}" />
                                     <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                    <Setter Property="ClipToBounds" Value="False" />
                                 </Style>
                             </ItemsControl.Styles>
                         </ItemsControl>
@@ -1231,6 +1418,12 @@
                                         Background="{DynamicResource NocturneTextFaintBrush}" />
                                 <TextBlock Classes="hint" Text="действие" />
                             </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <Border Width="12" Height="1"
+                                        VerticalAlignment="Center"
+                                        Background="{DynamicResource NocturneVariableBrush}" />
+                                <TextBlock Classes="hint" Text="переменная" />
+                            </StackPanel>
                             <TextBlock Classes="hint" Text="СКМ или пустое место — панорама · колесо — зум" />
                         </StackPanel>
                     </Border>
@@ -1302,10 +1495,36 @@
                                                Text="{Binding RunLogNotice}" />
                                 </Border>
 
+                                <!-- Mockup 1d's red pill, widened to every pause reason: this
+                                     is the ONE place that names both the state and the node
+                                     it is parked at, so it has to cover a step and a manual
+                                     pause too, not only a breakpoint. Danger tint only for a
+                                     breakpoint — the others are the user's own doing. -->
+                                <Border Grid.Column="3"
+                                        Margin="10,0,0,0"
+                                        Padding="7,1"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        CornerRadius="9"
+                                        Background="{Binding SelectedRunAtBreakpoint, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneDangerSurfaceBrush|NocturneAccentTint12Brush}"
+                                        BorderBrush="{Binding SelectedRunAtBreakpoint, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneDangerBorderBrush|NocturneAccent700Brush}"
+                                        BorderThickness="1"
+                                        IsVisible="{Binding SelectedRunPauseVisible}">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <Ellipse Width="5" Height="5"
+                                                 VerticalAlignment="Center"
+                                                 Fill="{Binding SelectedRunAtBreakpoint, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneDangerBrush|NocturneAccentBrush}" />
+                                        <TextBlock FontSize="9.5"
+                                                   Foreground="{Binding SelectedRunAtBreakpoint, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneDangerBrush|NocturneAccent300Brush}"
+                                                   Text="{Binding PauseNotice}" />
+                                    </StackPanel>
+                                </Border>
+
                                 <TextBlock Grid.Column="3"
                                            Classes="hint"
                                            Margin="10,0,0,0"
                                            TextTrimming="CharacterEllipsis"
+                                           IsVisible="{Binding !SelectedRunPauseVisible}"
                                            Text="нода · исход · деталь · длительность" />
 
                                 <Button Grid.Column="4"
@@ -1439,6 +1658,14 @@
                                         <TextBlock Classes="hint"
                                                    TextWrapping="Wrap"
                                                    Text="«— конец —» — прогон заканчивается на этом исходе. Это не ошибка и не отдельная нода." />
+                                        <!-- Mockup 1d puts the breakpoint checkbox here, at
+                                             the foot of the outputs block. It is NOT part of
+                                             the graph: it goes to the daemon's session and
+                                             never into the macro file. -->
+                                        <CheckBox Margin="0,4,0,0"
+                                                  Content="Брейкпоинт на этой ноде"
+                                                  ToolTip.Tip="Прогон встанет ПЕРЕД этой нодой. Хранится в демоне, не в файле макроса."
+                                                  IsChecked="{Binding SelectedNode.HasBreakpoint, Mode=TwoWay}" />
                                     </StackPanel>
                                 </Border>
 
@@ -1489,6 +1716,103 @@
                                          armed state (1f), which is the moment it is
                                          actionable; two copies of the same sentence, one of
                                          them permanent, is how a warning stops being read. -->
+                                </StackPanel>
+                            </Border>
+
+                            <!-- ==== variables (D5) ====
+                                 Structure from the static analysis in Contracts, value from
+                                 the selected walk. Shown whatever the inspector's other half
+                                 is doing, like validation: it is about the MACRO, and hiding
+                                 it behind a node selection would make «кто пишет {tag}»
+                                 answerable only from the node that happens to be selected. -->
+                            <Border Padding="12,9"
+                                    BorderThickness="0,1,0,0"
+                                    BorderBrush="{DynamicResource NocturnePanelDeepDividerBrush}"
+                                    Background="{DynamicResource NocturneCanvasBrush}"
+                                    IsVisible="{Binding HasOpenMacro}">
+                                <StackPanel Spacing="8.4">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Classes="eyebrow" Text="ПЕРЕМЕННЫЕ МАКРОСА" />
+                                        <TextBlock Grid.Column="1" Classes="hint" Text="{Binding VariableCountText}" />
+                                    </Grid>
+
+                                    <ItemsControl ItemsSource="{Binding Variables}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="canvas:MacroVariableRowViewModel">
+                                                <Border Margin="0,0,0,5.6"
+                                                        CornerRadius="6"
+                                                        BorderThickness="1"
+                                                        Background="{DynamicResource NocturneSurfaceRowAltBrush}"
+                                                        BorderBrush="{Binding IsHighlighted, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneVariableBrush|NocturneDividerStrongBrush}"
+                                                        PointerEntered="OnVariableHovered"
+                                                        PointerExited="OnVariableUnhovered">
+                                                    <StackPanel>
+                                                        <Border Padding="8,5"
+                                                                BorderThickness="0,0,0,1"
+                                                                BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                                                                Background="{DynamicResource NocturneVariableSurfaceBrush}">
+                                                            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                                                                <TextBlock Grid.Column="0"
+                                                                           FontSize="11"
+                                                                           FontWeight="Medium"
+                                                                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                                           Foreground="{DynamicResource NocturneVariableBrush}"
+                                                                           Text="{Binding Name}" />
+                                                                <TextBlock Grid.Column="1"
+                                                                           Margin="7,0,0,0"
+                                                                           Classes="hint"
+                                                                           Text="{Binding KindText}" />
+                                                                <!-- Nothing rather than a dash when the walk
+                                                                     has not set it: an empty cell reads as
+                                                                     "not yet", a dash reads as "empty
+                                                                     string", and those are different bugs. -->
+                                                                <TextBlock Grid.Column="3"
+                                                                           FontSize="10"
+                                                                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           IsVisible="{Binding HasValue}"
+                                                                           Text="{Binding Value}" />
+                                                            </Grid>
+                                                        </Border>
+                                                        <Grid ColumnDefinitions="46,*" Margin="8,4,8,0">
+                                                            <TextBlock Grid.Column="0" Classes="hint" Text="пишет" />
+                                                            <TextBlock Grid.Column="1"
+                                                                       FontSize="10.5"
+                                                                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Foreground="{DynamicResource NocturneNeutral300Brush}"
+                                                                       Text="{Binding WrittenBy}" />
+                                                        </Grid>
+                                                        <Grid ColumnDefinitions="46,*" Margin="8,1,8,5"
+                                                              ToolTip.Tip="{Binding ReadDetail}">
+                                                            <TextBlock Grid.Column="0" Classes="hint" Text="читает" />
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                                                <TextBlock FontSize="10.5"
+                                                                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource NocturneNeutral300Brush}"
+                                                                           Text="{Binding ReadBy}" />
+                                                                <TextBlock Classes="hint" Text="{Binding ReadWhere}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                        <!-- A read with no writer aborts the run at that
+                                                             node (spec §5.3). Saying so here is cheaper
+                                                             than finding out from a log line. -->
+                                                        <TextBlock Margin="8,0,8,5"
+                                                                   FontSize="9.5"
+                                                                   TextWrapping="Wrap"
+                                                                   IsVisible="{Binding IsUndefined}"
+                                                                   Foreground="{DynamicResource NocturneDangerBrush}"
+                                                                   Text="никто не пишет — прогон прервётся на первом чтении" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <TextBlock Classes="hint"
+                                               TextWrapping="Wrap"
+                                               Text="Наведение подсвечивает на canvas ноду-источник и потребителей и рисует между ними пунктир." />
                                 </StackPanel>
                             </Border>
                         </StackPanel>

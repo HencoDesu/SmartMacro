@@ -33,6 +33,14 @@ namespace SmartMacro.Macros.Execution;
 /// they are only distinguishable downstream because each got its own id here. Node-level
 /// events — and the detail strings that go with them — are produced ONLY while the observer
 /// says someone is listening, so an unwatched daemon pays one flag read per node.
+///
+/// <b>Debugging (wave D5).</b> <see cref="MacroRunContext.Debugger"/> can park the walk
+/// BETWEEN two nodes — never inside one. That boundary is the whole safety argument: every
+/// input node's <c>ActivateAsync</c>/<c>DeactivateAsync</c> bracket and every vision tick's
+/// wake/re-freeze live entirely inside <see cref="IMacroPrimitives"/>, so by the time control
+/// is back here no game window is left woken. Pausing here cannot strand a frozen client;
+/// pausing anywhere deeper could. Same <c>IsActive</c> gate discipline as the observer — an
+/// undebugged walk pays one volatile read per node and allocates nothing.
 /// </summary>
 public sealed partial class MacroExecutor
 {
@@ -96,6 +104,9 @@ public sealed partial class MacroExecutor
             result = MacroRunResult.Aborted(ex.Message);
         }
 
+        // Before the finish event, so a panel that reacts to WalkFinished by re-reading the
+        // debugger cannot see a walk that is both over and still registered.
+        context.Debugger?.WalkFinished(trace.WalkId);
         trace.Finished(WalkOutcome(result.Status), result.Error);
         return result;
     }
@@ -123,6 +134,17 @@ public sealed partial class MacroExecutor
         callChain.AddRange(context.CallChain);
         callChain.Add(macro.Name);
 
+        // The variables a walk starts with — in practice the trigger's `cursor` seed, plus
+        // whatever a parent walk passed down. Reported once, so the panel's variables panel
+        // has a live value for the one variable no node ever writes.
+        if (trace.IsTracing)
+        {
+            foreach (var (name, value) in context.Variables.Entries)
+            {
+                trace.VariableSet(name, value.DisplayString, nodeId: null);
+            }
+        }
+
         var currentId = macro.StartNodeId;
         while (currentId is not null)
         {
@@ -134,6 +156,12 @@ public sealed partial class MacroExecutor
 
             context.OnNodeEntered?.Invoke(node.Id);
             trace.NodeEntered(node.Id);
+
+            // THE DEBUGGER GATE. Between two nodes and before the node's clock starts, so a
+            // pause costs the paused node no measured time and — see the class comment — no
+            // game window is sitting woken while we wait.
+            await GateAsync(context, trace, macro.Name, node.Id, ct).ConfigureAwait(false);
+
             var nodeStart = MacroWalkTrace.Now;
 
             NodeStep step;
@@ -160,6 +188,48 @@ public sealed partial class MacroExecutor
 
         LogCompleted(macro.Name);
         return MacroRunResult.Completed;
+    }
+
+    /// <summary>
+    /// Holds the walk before <paramref name="nodeId"/> if the debugger says so.
+    ///
+    /// Structured as one non-async fast path plus an async slow path so that the ordinary
+    /// case — no debugger, or nothing armed — is a volatile read and a returned
+    /// <see cref="Task.CompletedTask"/>, with no state machine allocated per node.
+    /// </summary>
+    private static Task GateAsync(
+        MacroRunContext context,
+        MacroWalkTrace trace,
+        string macroName,
+        string nodeId,
+        CancellationToken ct)
+    {
+        if (context.Debugger is not { IsActive: true } debugger)
+        {
+            return Task.CompletedTask;
+        }
+        // Breakpoints are keyed by (macro, node) — the same pair the editor sets them with.
+        if (debugger.Arm(trace.WalkId, macroName, nodeId) is not { } gate)
+        {
+            return Task.CompletedTask;
+        }
+        return WaitAsync(debugger, gate, trace, ct);
+
+        static async Task WaitAsync(IMacroDebugger debugger, MacroDebugGate gate, MacroWalkTrace trace, CancellationToken ct)
+        {
+            trace.Paused(gate.NodeId, gate.Reason);
+            try
+            {
+                // Cancellation (■ Стоп, daemon shutdown) unparks: the OCE propagates and the
+                // walk ends Cancelled, rather than sitting here holding its single-flight slot.
+                await gate.WaitAsync(ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                debugger.Disarm(gate);
+            }
+            trace.Resumed(gate.NodeId);
+        }
     }
 
     /// <summary>
@@ -242,7 +312,7 @@ public sealed partial class MacroExecutor
                 {
                     if (n.FoundPointVar is not null)
                     {
-                        context.Variables.Set(n.FoundPointVar, point);
+                        SetVariable(trace, context, n.Id, n.FoundPointVar, point);
                     }
                     return new NodeStep(n.Found, RunOutcomes.Found, Detail(trace, () => $"{n.Template} @ {point.X},{point.Y}"));
                 }
@@ -256,7 +326,7 @@ public sealed partial class MacroExecutor
                 {
                     if (n.FoundPointVar is not null)
                     {
-                        context.Variables.Set(n.FoundPointVar, point);
+                        SetVariable(trace, context, n.Id, n.FoundPointVar, point);
                     }
                     return new NodeStep(n.Found, RunOutcomes.Found, Detail(trace, () => $"{n.Template} @ {point.X},{point.Y}"));
                 }
@@ -268,7 +338,7 @@ public sealed partial class MacroExecutor
                 var tag = await _primitives.RecognizeAsync(hwnd, n.TemplateSet, n.Region, ct).ConfigureAwait(false);
                 if (tag is not null)
                 {
-                    context.Variables.Set(n.ResultVar, tag);
+                    SetVariable(trace, context, n.Id, n.ResultVar, tag);
                     if (n.ApplyTag)
                     {
                         _windows.AddTag(hwnd, tag);
@@ -280,6 +350,15 @@ public sealed partial class MacroExecutor
             default:
                 throw new MacroRunAbortException($"Macro '{macro.Name}': node '{node.Id}' has unsupported type {node.GetType().Name}.");
         }
+    }
+
+    // The only three places a node writes a variable (spec §5.3). Routed through one helper
+    // so the report cannot be forgotten at one of them — the variables panel showing a stale
+    // value for {tag} would be indistinguishable from the recognition having failed.
+    private static void SetVariable(MacroWalkTrace trace, MacroRunContext context, string nodeId, string name, VariableValue value)
+    {
+        context.Variables.Set(name, value);
+        trace.VariableSet(name, value.DisplayString, nodeId);
     }
 
     // Detail strings exist only for the log strip, so they are built only when something is
@@ -391,6 +470,10 @@ public sealed partial class MacroExecutor
             // what makes a ten-window fan-out ten separately followable walks that still
             // report one RunId.
             Observer = parent.Observer,
+            // Same reasoning: the session is a singleton, the per-walk pause state is keyed
+            // by the CHILD's own walk id, so each fork of a fan-out is paused and stepped
+            // independently.
+            Debugger = parent.Debugger,
         };
     }
 

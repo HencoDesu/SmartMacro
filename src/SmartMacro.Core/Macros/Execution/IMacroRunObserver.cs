@@ -57,6 +57,30 @@ public interface IMacroRunObserver
     /// <param name="outcome"><see cref="RunOutcomes.Completed"/>, <see cref="RunOutcomes.Aborted"/> or <see cref="RunOutcomes.Cancelled"/>.</param>
     /// <param name="detail">Abort reason, or <c>null</c>.</param>
     void WalkFinished(Guid walkId, int elapsedMs, string outcome, string? detail);
+
+    // -------------------------------------------------------------------- debugger (D5)
+
+    /// <summary>
+    /// A run variable was assigned. Only called while <see cref="IsEnabled"/>.
+    ///
+    /// A handful per walk, not two per node: the writers are the trigger's <c>cursor</c> seed
+    /// (reported once at the head of the walk, with <paramref name="nodeId"/> <c>null</c>) and
+    /// the conditional nodes' <c>FoundPointVar</c>/<c>ResultVar</c>.
+    /// </summary>
+    /// <param name="name">Variable name.</param>
+    /// <param name="value">Its display string — what <c>{name}</c> would interpolate to.</param>
+    /// <param name="nodeId">Node that wrote it, or <c>null</c> for the trigger seed.</param>
+    void VariableSet(Guid walkId, int elapsedMs, string name, string value, string? nodeId);
+
+    /// <summary>
+    /// The walk parked before <paramref name="nodeId"/> and is waiting to be released. Only
+    /// called while <see cref="IsEnabled"/> — with nobody attached nothing can pause anyway.
+    /// </summary>
+    /// <param name="reason">Drives which event kind the panel gets and how it is worded.</param>
+    void WalkPaused(Guid walkId, int elapsedMs, string nodeId, DebugPauseReason reason);
+
+    /// <summary>The walk was released and is about to run <paramref name="nodeId"/>. Only called while <see cref="IsEnabled"/>.</summary>
+    void WalkResumed(Guid walkId, int elapsedMs, string nodeId);
 }
 
 /// <summary>
@@ -120,6 +144,30 @@ internal readonly struct MacroWalkTrace
 
     public void Finished(string outcome, string? detail) =>
         _observer?.WalkFinished(WalkId, ElapsedMs, outcome, detail);
+
+    public void VariableSet(string name, string value, string? nodeId)
+    {
+        if (_observer is { IsEnabled: true } observer)
+        {
+            observer.VariableSet(WalkId, ElapsedMs, name, value, nodeId);
+        }
+    }
+
+    public void Paused(string nodeId, DebugPauseReason reason)
+    {
+        if (_observer is { IsEnabled: true } observer)
+        {
+            observer.WalkPaused(WalkId, ElapsedMs, nodeId, reason);
+        }
+    }
+
+    public void Resumed(string nodeId)
+    {
+        if (_observer is { IsEnabled: true } observer)
+        {
+            observer.WalkResumed(WalkId, ElapsedMs, nodeId);
+        }
+    }
 
     private static int ToMs(long ticks) => (int)(ticks * 1000 / Stopwatch.Frequency);
 }

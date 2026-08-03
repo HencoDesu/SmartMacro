@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+using SmartMacro.Macros.Model;
 using SmartMacro.Native;
 
 namespace SmartMacro.Macros.Execution;
@@ -13,10 +13,14 @@ namespace SmartMacro.Macros.Execution;
 /// Not thread-safe by design: only the single walker of one run writes; parallel fan-outs
 /// only read, and sub-runs own their clones.
 /// </summary>
-public sealed partial class MacroVariables
+public sealed class MacroVariables
 {
-    /// <summary>Variable every trigger writes: the cursor position at fire time.</summary>
-    public const string CursorVariableName = "cursor";
+    /// <summary>
+    /// Variable every trigger writes: the cursor position at fire time. Aliases the Contracts
+    /// constant rather than repeating the literal — the panel's variables panel labels the
+    /// same name as «триггер (сид)» and the two must not be able to drift.
+    /// </summary>
+    public const string CursorVariableName = MacroVariableNames.Cursor;
 
     private readonly Dictionary<string, VariableValue> _values;
 
@@ -33,6 +37,13 @@ public sealed partial class MacroVariables
 
     /// <summary>Number of defined variables.</summary>
     public int Count => _values.Count;
+
+    /// <summary>
+    /// Every variable currently set, for the run-event stream's <c>VariableSet</c> report at
+    /// the head of a walk. Enumerated on the walker's own thread before the first node, which
+    /// is the only moment nothing can be writing — see the thread-safety note above.
+    /// </summary>
+    public IEnumerable<KeyValuePair<string, VariableValue>> Entries => _values;
 
     /// <summary>
     /// Creates the variable set for a fresh trigger-initiated run: <c>cursor</c> is set to
@@ -88,7 +99,7 @@ public sealed partial class MacroVariables
     public string Interpolate(string template)
     {
         ArgumentNullException.ThrowIfNull(template);
-        return PlaceholderRegex().Replace(template, match => Get(match.Groups[1].Value).DisplayString);
+        return MacroVariableNames.Placeholder().Replace(template, match => Get(match.Groups[1].Value).DisplayString);
     }
 
     /// <summary>Independent copy for a sub-run: reads inherit, writes never flow back.</summary>
@@ -96,7 +107,4 @@ public sealed partial class MacroVariables
     {
         return new MacroVariables(new Dictionary<string, VariableValue>(_values, StringComparer.Ordinal));
     }
-
-    [GeneratedRegex(@"\{([^{}]+)\}")]
-    private static partial Regex PlaceholderRegex();
 }

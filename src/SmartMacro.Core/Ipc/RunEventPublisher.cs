@@ -78,6 +78,17 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
     private int _dropped;
     private int _disposed;
 
+    /// <summary>
+    /// Completed by an urgent enqueue to cut a coalescing dwell short.
+    ///
+    /// A signal rather than a flag, because the flag version only worked when the urgent
+    /// event was the one that WOKE the pump. In practice it never is: a breakpoint hit is
+    /// preceded by <c>WalkStarted</c> and <c>NodeEntered</c> in the same millisecond, so a
+    /// flag checked once at the top of the loop had already been read as "not urgent" and the
+    /// pause still paid the full 50 ms. Measured 63 ms before, single digits after.
+    /// </summary>
+    private volatile TaskCompletionSource _urgent = NewUrgentSignal();
+
     public RunEventPublisher(ILogger<RunEventPublisher> logger) => _logger = logger;
 
     /// <inheritdoc />
@@ -173,6 +184,40 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
         }
     }
 
+    public void VariableSet(Guid walkId, int elapsedMs, string name, string value, string? nodeId) =>
+        Enqueue(new RunEventDto(walkId, RunEventKind.VariableSet, elapsedMs, nodeId, Detail: value, Variable: name));
+
+    /// <summary>
+    /// A walk parked. <b>Flushed immediately</b>, bypassing the coalescing window: this is
+    /// the acknowledgement of a button press, and 50 ms of dwell on top of a pipe round trip
+    /// is the difference between a step that feels instant and one that feels stuck. Safe to
+    /// exempt because it is a handful of events per session — the burst this class exists to
+    /// tame is node traffic, which is untouched.
+    /// </summary>
+    public void WalkPaused(Guid walkId, int elapsedMs, string nodeId, DebugPauseReason reason) =>
+        Enqueue(
+            new RunEventDto(
+                walkId,
+                reason == DebugPauseReason.Breakpoint ? RunEventKind.BreakpointHit : RunEventKind.Paused,
+                elapsedMs,
+                nodeId,
+                Detail: Describe(reason)),
+            urgent: true);
+
+    /// <inheritdoc cref="WalkPaused" />
+    public void WalkResumed(Guid walkId, int elapsedMs, string nodeId) =>
+        Enqueue(new RunEventDto(walkId, RunEventKind.Resumed, elapsedMs, nodeId), urgent: true);
+
+    // Russian, like every other Detail: the panel renders it verbatim in the log strip and
+    // the toolbar, and the daemon is the only side that knows which of the four it was.
+    private static string Describe(DebugPauseReason reason) => reason switch
+    {
+        DebugPauseReason.Breakpoint => "брейкпоинт",
+        DebugPauseReason.Step => "шаг",
+        DebugPauseReason.Cursor => "до курсора",
+        _ => "пауза",
+    };
+
     // -------------------------------------------------------------------- the pump
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -219,7 +264,12 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
         {
             while (await _queue.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                await Task.Delay(FlushIntervalMs, cancellationToken).ConfigureAwait(false);
+                await DwellAsync(cancellationToken).ConfigureAwait(false);
+
+                // Re-armed BEFORE the drain, so an urgent write that raced us either lands in
+                // THIS batch (it was queued before the drain) or fires the new signal and gets
+                // its own immediate flush. Never both, never neither.
+                _urgent = NewUrgentSignal();
 
                 batch.Clear();
                 while (batch.Count < MaxBatchSize && _queue.Reader.TryRead(out var evt))
@@ -247,6 +297,26 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
         }
     }
 
+    /// <summary>
+    /// The coalescing window — cut short the moment a debugger event is queued.
+    /// </summary>
+    private async Task DwellAsync(CancellationToken cancellationToken)
+    {
+        var urgent = _urgent.Task;
+        if (urgent.IsCompleted)
+        {
+            return;
+        }
+        // The delay gets its own token so the loser of the race is cancelled rather than left
+        // pending on a timer for every flush cycle of the daemon's life.
+        using var dwell = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        await Task.WhenAny(urgent, Task.Delay(FlushIntervalMs, dwell.Token)).ConfigureAwait(false);
+        await dwell.CancelAsync().ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private static TaskCompletionSource NewUrgentSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     private void Publish(List<RunEventDto> batch, int dropped)
     {
         if (_broadcaster is not { } broadcaster)
@@ -262,10 +332,18 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
             IpcJson.Write(new RunEventBatch([.. batch], dropped))));
     }
 
-    private void Enqueue(RunEventDto evt)
+    private void Enqueue(RunEventDto evt, bool urgent = false)
     {
         if (_queue.Writer.TryWrite(evt))
         {
+            if (urgent)
+            {
+                // AFTER the write, so a pump woken by the signal is guaranteed to find the
+                // item. (Before the write would be the safe order for a flag read once at the
+                // top of the loop; for a signal that interrupts the dwell it is the wrong way
+                // round.)
+                _urgent.TrySetResult();
+            }
             return;
         }
         // Never block, never grow: the caller is an engine thread between two game inputs.

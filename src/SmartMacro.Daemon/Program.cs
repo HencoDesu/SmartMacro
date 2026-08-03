@@ -146,6 +146,13 @@ internal static class Program
         services.AddSingleton<RunEventPublisher>();
         services.AddSingleton<IMacroRunObserver>(sp => sp.GetRequiredService<RunEventPublisher>());
 
+        // Wave D5: the debugger's control channel, the sibling of the publisher's reporting
+        // one. Also inert until a panel attaches — and attaching is the SAME edge as
+        // subscribing to run events (see IpcServer.ClientConnection), which is what keeps a
+        // paused walk from outliving the only process that could resume it.
+        services.AddSingleton<MacroDebugSession>();
+        services.AddSingleton<IMacroDebugger>(sp => sp.GetRequiredService<MacroDebugSession>());
+
         // ProcessMonitor and HotkeyListener are registered first because Orchestrator
         // subscribes to their events during construction. DI resolves them before
         // Orchestrator regardless of registration order, but listing them first reads

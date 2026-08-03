@@ -242,10 +242,27 @@
     <SolidColorBrush x:Key="NocturneNodeRunningHeaderBrush" Color="#2e2951" />
     <SolidColorBrush x:Key="NocturneNodeRunningHeaderBorderBrush" Color="#46407a" />
 
+    <!-- A node the selected walk has already been through (D5): the mockup dims it and
+         stamps a ✓ with its time. Dimming, not a different colour — the point is that the
+         eye slides past it and lands on the one that is live. -->
+    <SolidColorBrush x:Key="NocturneNodePassedBrush" Color="#1b1d2b" />
+    <SolidColorBrush x:Key="NocturneNodePassedHeaderBrush" Color="#212433" />
+    <SolidColorBrush x:Key="NocturneNodePassedBorderBrush" Color="#2e3243" />
+
+    <!-- A node the walk is PARKED at. The accent of a live node plus the danger edge of the
+         thing holding it, so "stopped here" never reads as "running here". -->
+    <SolidColorBrush x:Key="NocturneNodePausedBorderBrush" Color="{StaticResource NocturneDangerColor}" />
+
     <!-- Edges and their ports. Active = accent, and it is the ONLY accent line on the
          canvas, which is what makes a live path readable at a glance. -->
     <SolidColorBrush x:Key="NocturneEdgeBrush" Color="#464b61" />
     <SolidColorBrush x:Key="NocturneEdgeActiveBrush" Color="{StaticResource NocturneAccentColor}" />
+
+    <!-- A variable link: writer → reader, dashed, in the variable colour of the mockup's
+         legend. Never accent — it is not control flow and must not read as a branch. -->
+    <SolidColorBrush x:Key="NocturneVariableBrush" Color="{StaticResource NocturneWarningColor}" />
+    <SolidColorBrush x:Key="NocturneVariableSurfaceBrush" Color="#12dbb277" />
+    <SolidColorBrush x:Key="NocturneVariableBorderBrush" Color="#5c4f33" />
 
     <!-- A key label rendered as a keycap: flat top, thicker bottom edge. -->
     <SolidColorBrush x:Key="NocturneKeycapBrush" Color="#2a2e40" />

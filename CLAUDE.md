@@ -18,7 +18,8 @@ The refactoring plan is complete through stage 4. What follows is `docs/design/i
 - **D2 done** — the 1b shell. One window: 30px custom title bar (`ExtendClientAreaToDecorationsHint`, because the OS bar stays light regardless of `RequestedThemeVariant`), 172px mode rail (Окна / Макросы / Прогоны / Шаблоны / Лог) with a tag summary pinned at its foot, 30px run bar always present. `MacrosDialog` is gone — the editor is a mode. `MainWindowViewModel` → `WorkspaceViewModel`; `ShellViewModel` owns modes and derives every counter. Views toggle by `IsVisible` rather than swapping through a `ContentControl`, so a half-typed tag and the editor's dirty state survive a mode round trip. Hotkey suspension is scoped to the «Макросы» mode being selected, and closing the window waits for the resume — **the daemon does not re-register hotkeys when a client drops.**
 - **D3a done** — the canvas editor. `App/ViewModels/Canvas/` + `App/Controls/{EdgeLayer,CanvasBackdrop}.cs`; the rows editor is deleted. Boxes as wrapping rows, edges routed in the gutters, conditional outcomes as labelled rows on the box. An **unwired outcome produces no edge and no phantom terminal node** — ending a branch is a legitimate end of the macro. Single click fills the inspector (1d), double click expands the box in place (1e). Auto-layout DFS from the start node; graphs saved before this wave get positions on load. Library groups by prefix: text before the first `-`, and a prefix shared by **two or more** macros becomes a group (the mockup's «Баг госта · 5» holds both `Баг госта-Лучник` and plain `Баг госта`, so splitting strictly on the dash would break a family).
 - **D3b done** — the run-event channel. See below; it is the foundation D5 and the «Лог» mode both build on.
-- **D4 done** — hotkey capture (1f) + target-filter badge (1g). See below. **D5** the debugger — the only wave left, and the only one that still needs engine work that does not exist (`spec.md` §13).
+- **D4 done** — hotkey capture (1f) + target-filter badge (1g). See below.
+- **D5 done** — the debugger. See below. **The design waves are complete.**
 
 ### The targets badge and the hotkey trap (D4)
 
@@ -44,6 +45,22 @@ Two departures from the mockup, both from looking at it running:
 - **Overflow is counted and reported, never silent.** The queue is bounded and `TryWrite` failures ride out as `RunEventBatch.Dropped` so the panel can say the log has a hole. The engine must never block — a walk runs between two Win32 messages to a live game.
 
 A panel connecting mid-run gets the live walks with `FromStart = false` and says so. There is deliberately no per-run history buffer: between a drop and a reconnect nobody was subscribed, so recording had stopped and a buffer would be stale.
+
+### The debugger (D5)
+
+`Core/Macros/Execution/MacroDebugSession` is the whole engine side: breakpoints, per-walk pause state, and the attach count. It reaches the walker as `MacroRunContext.Debugger` — the control sibling of `Observer`, with the same `IsActive` gate, so an undebugged walk pays one volatile read per node and allocates nothing.
+
+**The gate is between two nodes, and that is the safety argument, not a convenience.** Every `ActivateAsync`/`DeactivateAsync` bracket and every vision tick's wake/re-freeze lives entirely inside `IMacroPrimitives`, so by the time control is back in `MacroExecutor` no game window is left woken. Pausing there cannot strand a frozen client; pausing anywhere deeper could. `ABreakpointParksTheWalkBeforeTheNodeRuns` pins it with a primitive-call count.
+
+**Breakpoints live in the daemon's session, never in the macro file.** The reasoning is written where the storage is (`MacroDebugSession`): a breakpoint is a fact about a debugging session, and persisting one would put it in a diff, ship it with the `pw-*` examples, and make a red dot dirty the editor. The ergonomic half of persistence comes free from the split — the daemon outlives the panel, so a breakpoint survives closing and reopening the UI. It does not survive «Выход» from the tray, which is also when every tag, hotkey and run goes.
+
+**A parked walk must never outlive its audience.** A walk waiting in the gate holds its `MacroRunRegistry` single-flight slot, so that macro's hotkey is dead until it moves — unacceptable in a resident daemon driving a live game. The attach count is therefore the *same edge* as `SubscribeRunEvents` (`IpcServer.ClientConnection.SetRunEventSubscription` drives both), which the server already releases on disconnect. The last debugger leaving **auto-resumes every parked walk** and stops breakpoints biting. Resume rather than abort: the run was started legitimately and abandoning a macro halfway can leave the game worse off. There is deliberately **no inactivity timeout** — the only case left is "the panel is open and the user walked away", where the pause is doing its job.
+
+**Stop is per-RUN; pause and step are per-WALK.** A fan-out is N walks on one cancellation token, and nobody hitting ■ while ten clients are being driven means "stop one of them". The panel is required to label it: the button reads «■ Стоп ×3». Cancellation unparks a gated walk, so ■ (and daemon shutdown) work on a paused one.
+
+Four `RunEventKind` members were added rather than new message types, exactly as D3b laid out: `Paused`, `BreakpointHit`, `Resumed`, `VariableSet`. The first three **bypass the 50 ms coalescing window** — a step that pays a full dwell feels like a stuck button. The bypass is a signal, not a flag: a flag read once at the top of the pump loop never fired, because a breakpoint hit is always preceded by `WalkStarted`/`NodeEntered` in the same millisecond and the dwell had already begun (measured 63 ms; single digits after).
+
+**`MacroVariableAnalysis` (Contracts, next to the validator)** is the static half of the variables panel: who writes each variable, who reads it, and in which slot — including `{var}` interpolated inside strings, using the *same* `MacroVariableNames.Placeholder()` regex the executor substitutes with, because a panel claiming a read the executor never performs is the D4 targets-badge lie again. The live value is a separate concern and arrives as `VariableSet`; parsing it out of a `NodeExited` detail would mean the panel parsing a string whose format is the daemon's, and would still never see `cursor`, which no node writes.
 
 Stage 5 (translating comments to Russian) is deliberately last.
 

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
@@ -29,6 +29,7 @@ public class IpcServerTests
                 Engine.Macros,
                 Engine.Runs,
                 Engine.RunEvents,
+                Engine.Debug,
                 NullLogger<IpcServer>.Instance);
             Server.SubscribeToEngine();
         }

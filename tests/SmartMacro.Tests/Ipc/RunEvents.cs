@@ -28,6 +28,23 @@ internal static class RunEvents
 
     public static RunEventDto Finished(RunWalkDto walk, int elapsedMs, string outcome, string? detail = null) =>
         new(walk.WalkId, RunEventKind.WalkFinished, elapsedMs, Outcome: outcome, Detail: detail);
+
+    // ---- debugger (D5) ----------------------------------------------------------------
+
+    /// <summary>Parked at a breakpoint. <paramref name="reason"/> is the daemon's Russian word.</summary>
+    public static RunEventDto Breakpoint(RunWalkDto walk, int elapsedMs, string nodeId) =>
+        new(walk.WalkId, RunEventKind.BreakpointHit, elapsedMs, nodeId, Detail: "брейкпоинт");
+
+    /// <summary>Parked for any other reason.</summary>
+    public static RunEventDto Paused(RunWalkDto walk, int elapsedMs, string nodeId, string reason = "пауза") =>
+        new(walk.WalkId, RunEventKind.Paused, elapsedMs, nodeId, Detail: reason);
+
+    public static RunEventDto Resumed(RunWalkDto walk, int elapsedMs, string nodeId) =>
+        new(walk.WalkId, RunEventKind.Resumed, elapsedMs, nodeId);
+
+    /// <summary>A variable assignment. <paramref name="nodeId"/> is <c>null</c> for the trigger seed.</summary>
+    public static RunEventDto Variable(RunWalkDto walk, int elapsedMs, string name, string value, string? nodeId = null) =>
+        new(walk.WalkId, RunEventKind.VariableSet, elapsedMs, nodeId, Detail: value, Variable: name);
 }
 
 /// <summary>Pushing run events at a view-model the way the daemon's pump does — in batches.</summary>

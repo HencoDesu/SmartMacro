@@ -33,8 +33,15 @@ public sealed class EdgeLayer : Control
     /// <summary>How much of the horizontal gap a direct hop's bezier handles take up.</summary>
     private const double DirectCurveTension = 0.45;
 
+    /// <summary>Dash pattern of a variable link, in stroke widths.</summary>
+    private static readonly DashStyle VariableDash = new([4, 4], 0);
+
     public static readonly StyledProperty<IEnumerable?> EdgesProperty =
         AvaloniaProperty.Register<EdgeLayer, IEnumerable?>(nameof(Edges));
+
+    /// <summary>Dashed writer → reader hints (D5), drawn while a variable card is hovered.</summary>
+    public static readonly StyledProperty<IEnumerable?> LinksProperty =
+        AvaloniaProperty.Register<EdgeLayer, IEnumerable?>(nameof(Links));
 
     /// <summary>Start of the link being dragged out of a port, in canvas space.</summary>
     public static readonly StyledProperty<Point?> PendingStartProperty =
@@ -45,6 +52,7 @@ public sealed class EdgeLayer : Control
         AvaloniaProperty.Register<EdgeLayer, Point?>(nameof(PendingEnd));
 
     private INotifyCollectionChanged? _observed;
+    private INotifyCollectionChanged? _observedLinks;
 
     public EdgeLayer()
     {
@@ -57,6 +65,13 @@ public sealed class EdgeLayer : Control
     {
         get => GetValue(EdgesProperty);
         set => SetValue(EdgesProperty, value);
+    }
+
+    /// <summary><see cref="CanvasLinkViewModel"/>s — dashed, straight, no arrow.</summary>
+    public IEnumerable? Links
+    {
+        get => GetValue(LinksProperty);
+        set => SetValue(LinksProperty, value);
     }
 
     public Point? PendingStart
@@ -76,7 +91,12 @@ public sealed class EdgeLayer : Control
         base.OnPropertyChanged(change);
         if (change.Property == EdgesProperty)
         {
-            Rebind(change.NewValue as IEnumerable);
+            _observed = Rebind(_observed, change.NewValue as IEnumerable);
+            InvalidateVisual();
+        }
+        else if (change.Property == LinksProperty)
+        {
+            _observedLinks = Rebind(_observedLinks, change.NewValue as IEnumerable);
             InvalidateVisual();
         }
         else if (change.Property == PendingStartProperty || change.Property == PendingEndProperty)
@@ -99,6 +119,21 @@ public sealed class EdgeLayer : Control
                 if (item is CanvasEdgeViewModel edge)
                 {
                     DrawEdge(context, edge, edge.IsActive ? active : idle, edge.IsActive ? 1.6 : 1.4);
+                }
+            }
+        }
+
+        // Variable links last, so a dashed hint sits ON TOP of the control flow it annotates
+        // rather than being hidden under it. Straight and arrow-less on purpose — see
+        // CanvasLinkViewModel for why it must not look like an edge.
+        if (Links is { } links)
+        {
+            var pen = new Pen(Brush("NocturneVariableBrush", 0xFFDBB277), 1.2, VariableDash);
+            foreach (var item in links)
+            {
+                if (item is CanvasLinkViewModel link)
+                {
+                    context.DrawLine(pen, ToPoint(link.From), ToPoint(link.To));
                 }
             }
         }
@@ -202,18 +237,18 @@ public sealed class EdgeLayer : Control
         context.DrawGeometry(brush, null, geometry);
     }
 
-    private void Rebind(IEnumerable? source)
+    private INotifyCollectionChanged? Rebind(INotifyCollectionChanged? current, IEnumerable? source)
     {
-        if (_observed is not null)
+        if (current is not null)
         {
-            _observed.CollectionChanged -= OnCollectionChanged;
-            _observed = null;
+            current.CollectionChanged -= OnCollectionChanged;
         }
-        if (source is INotifyCollectionChanged notifier)
+        if (source is not INotifyCollectionChanged notifier)
         {
-            _observed = notifier;
-            _observed.CollectionChanged += OnCollectionChanged;
+            return null;
         }
+        notifier.CollectionChanged += OnCollectionChanged;
+        return notifier;
     }
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => InvalidateVisual();

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 using SmartMacro.App.ViewModels;
 using SmartMacro.App.ViewModels.Canvas;
 using SmartMacro.App.ViewModels.Nodes;
@@ -51,6 +52,19 @@ public partial class MacrosView : UserControl
     private MacroEditorViewModel? _watched;
 
     /// <summary>
+    /// Drives the debugger's «0:12.4».
+    ///
+    /// The clock lives HERE rather than in the view-model because a <c>DispatcherTimer</c> is
+    /// an Avalonia type and every view-model in this assembly is exercised headlessly. The
+    /// view-model exposes <c>TickElapsed()</c>, which a test can call directly; the tick rate
+    /// is a rendering decision and belongs on this side of the line.
+    ///
+    /// 100 ms because the display has one decimal of a second. It raises nothing at all
+    /// unless a live walk is selected, so an idle panel costs one no-op call per tick.
+    /// </summary>
+    private readonly DispatcherTimer _elapsedTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
+
+    /// <summary>
     /// <b>InitializeComponent, NOT AvaloniaXamlLoader.Load.</b> The two look equivalent and
     /// are not: Avalonia's name generator puts the <c>x:Name</c> field assignments INSIDE the
     /// generated <c>InitializeComponent</c>, so calling the loader on its own loads the XAML
@@ -62,7 +76,11 @@ public partial class MacrosView : UserControl
     /// have no named controls today, so the bare loader worked, but it was a trap armed for
     /// whoever added the first <c>x:Name</c>.
     /// </summary>
-    public MacrosView() => InitializeComponent();
+    public MacrosView()
+    {
+        InitializeComponent();
+        _elapsedTimer.Tick += (_, _) => Vm?.TickElapsed();
+    }
 
     private MacroEditorViewModel? Vm => DataContext as MacroEditorViewModel;
 
@@ -224,6 +242,60 @@ public partial class MacrosView : UserControl
     private void OnNextRunClicked(object? sender, RoutedEventArgs e) => Vm?.SelectNextRun();
 
     private void OnClearRunLogClicked(object? sender, RoutedEventArgs e) => Vm?.ClearRunLog();
+
+    // ---- debugger (D5) -------------------------------------------------------------------
+
+    private async void OnDebugPauseClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+        {
+            await vm.PauseAsync();
+        }
+    }
+
+    private async void OnDebugResumeClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+        {
+            await vm.ResumeAsync();
+        }
+    }
+
+    private async void OnDebugStepClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+        {
+            await vm.StepAsync();
+        }
+    }
+
+    private async void OnDebugRunToCursorClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+        {
+            await vm.RunToCursorAsync();
+        }
+    }
+
+    private async void OnDebugStopClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+        {
+            await vm.StopSelectedRunAsync();
+        }
+    }
+
+    // ---- variables panel -----------------------------------------------------------------
+
+    private void OnVariableHovered(object? sender, PointerEventArgs e)
+    {
+        if (Vm is { } vm && sender is Control { DataContext: MacroVariableRowViewModel row })
+        {
+            vm.HighlightVariable(row);
+        }
+    }
+
+    private void OnVariableUnhovered(object? sender, PointerEventArgs e) => Vm?.HighlightVariable(null);
 
     private void OnOpenFolderClicked(object? sender, RoutedEventArgs e)
     {
@@ -557,6 +629,13 @@ public partial class MacrosView : UserControl
     {
         base.OnAttachedToVisualTree(e);
         ApplyTransform();
+        _elapsedTimer.Start();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        _elapsedTimer.Stop();
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

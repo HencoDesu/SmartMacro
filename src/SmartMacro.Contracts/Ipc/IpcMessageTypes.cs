@@ -33,7 +33,16 @@ public static class IpcMessageTypes
     /// </summary>
     public const string RunMacro = "RunMacro";
 
-    /// <summary>Request: <see cref="StopMacroRequest"/> → Response: —. Cancels one tracked run.</summary>
+    /// <summary>
+    /// Request: <see cref="StopMacroRequest"/> → Response: —. Cancels one tracked RUN — which
+    /// means every walk in it, including the nine siblings of a ten-window fan-out.
+    ///
+    /// <b>This is also the debugger's ■ Стоп</b>, and it is the one debugger control that is
+    /// not per-walk. The asymmetry is deliberate: pause and step exist to look at ONE walk,
+    /// but nobody pressing stop while ten clients are being driven means "stop one of them".
+    /// The panel is required to LABEL it — the button says «■ Стоп ×3» when the selected
+    /// walk's run has three of them.
+    /// </summary>
     public const string StopMacro = "StopMacro";
 
     /// <summary>Request: — → Response: <c>RunningMacroDto[]</c>. Snapshot of the run registry.</summary>
@@ -70,6 +79,43 @@ public static class IpcMessageTypes
     /// this on every <c>Connected</c>.
     /// </summary>
     public const string SubscribeRunEvents = "SubscribeRunEvents";
+
+    // -------------------------------------------------------------- requests: debugger
+
+    /// <summary>
+    /// Request: <see cref="SetBreakpointsRequest"/> → Response: —. Replaces the breakpoint
+    /// set of ONE macro.
+    ///
+    /// <b>Breakpoints live in the daemon's session, not in the macro file.</b> See
+    /// <c>MacroDebugSession</c> for the reasoning; the protocol consequences are that they
+    /// survive a panel restart (the daemon is resident), that they are lost when the daemon
+    /// exits, and that they never appear in a <c>SaveMacro</c> payload or in a git diff.
+    ///
+    /// Settable while nothing is running — arming a breakpoint before pressing Run is the
+    /// normal way to use one.
+    /// </summary>
+    public const string SetBreakpoints = "SetBreakpoints";
+
+    /// <summary>
+    /// Request: — → Response: <c>BreakpointSetDto[]</c>. Every macro that has breakpoints.
+    ///
+    /// A pull, like <see cref="GetHotkeyFailures"/> and for the same reason: the set only
+    /// changes when a panel changes it. Re-read on every <c>Connected</c>, which is what makes
+    /// a breakpoint survive the panel being closed and reopened.
+    /// </summary>
+    public const string GetBreakpoints = "GetBreakpoints";
+
+    /// <summary>
+    /// Request: <see cref="DebugCommandRequest"/> → Response: <c>DebugAckDto</c>.
+    /// Pause / resume / step / run-to-node, addressed to ONE WALK.
+    ///
+    /// <b>Requires the caller to be subscribed to <see cref="SubscribeRunEvents"/></b>, which
+    /// is also what keeps a paused walk from outliving its audience: the daemon counts run
+    /// event subscribers as attached debuggers, and the last one leaving releases every
+    /// parked walk. A walk parked with nobody watching would hold its macro's single-flight
+    /// slot — and therefore kill that macro's hotkey — until the daemon restarted.
+    /// </summary>
+    public const string DebugCommand = "DebugCommand";
 
     // --------------------------------------------------------------- requests: hotkeys
 
@@ -146,6 +192,11 @@ public static class IpcMessageTypes
     /// natural rate (hundreds per second during a fan-out) exceeds what a per-connection
     /// queue of 256 can absorb, and a dropped panel mid-run is precisely the failure the
     /// user would be watching.
+    ///
+    /// Also carries the debugger's <c>Paused</c> / <c>BreakpointHit</c> / <c>Resumed</c> and
+    /// the variables panel's <c>VariableSet</c>. The first three BYPASS the coalescing
+    /// window: a step that takes 50 ms longer than it had to feels like a stuck button, and
+    /// they are three events, not three hundred.
     /// </summary>
     public const string RunEvents = "RunEvents";
 

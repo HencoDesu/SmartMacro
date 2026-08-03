@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels.Canvas;
@@ -223,6 +223,12 @@ public abstract class NodeRowViewModel : ObservableObject
     private bool _hasPosition;
     private bool _isExpanded;
     private bool _isExecuting;
+    private bool _hasBreakpoint;
+    private bool _isPaused;
+    private string? _passedTime;
+    private string? _passedOutcome;
+    private bool _isVariableSource;
+    private bool _isVariableConsumer;
 
     protected NodeRowViewModel(string nodeId, TargetSelectorViewModel? target, params NodeEdgeViewModel[] edges)
     {
@@ -361,13 +367,108 @@ public abstract class NodeRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The executor is standing on this node. Wave D3b sets it from the run-event stream;
-    /// nothing sets it today, so every box renders in its idle state.
+    /// The executor is standing on this node. Set from the run-event stream (D3b) for the
+    /// SELECTED walk only — a ten-window fan-out must light one box, not ten.
     /// </summary>
     public bool IsExecuting
     {
         get => _isExecuting;
-        set => SetField(ref _isExecuting, value);
+        set
+        {
+            if (SetField(ref _isExecuting, value))
+            {
+                OnPropertyChanged(nameof(IsRunningLive));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The walk is standing here AND is not parked — the only state that pulses.
+    ///
+    /// A parked node is also "current" (the walker entered it before the gate), so binding
+    /// the pulse to <see cref="IsExecuting"/> alone would animate a walk that is stopped.
+    /// Those two states are one keypress apart in consequence and must not share a look.
+    /// </summary>
+    public bool IsRunningLive => _isExecuting && !_isPaused;
+
+    // ---- debugger (D5) ---------------------------------------------------------------
+
+    /// <summary>
+    /// A red dot on the box's corner and a ticked checkbox in the inspector: the walker stops
+    /// BEFORE this node.
+    ///
+    /// Kept on the row, so the daemon's set is re-derived from the rows on every change and a
+    /// node rename carries its breakpoint automatically. It is NOT part of
+    /// <see cref="ToNode"/> — a breakpoint is a debugging session, not something that belongs
+    /// in the macro file or in a diff.
+    /// </summary>
+    public bool HasBreakpoint
+    {
+        get => _hasBreakpoint;
+        set => SetField(ref _hasBreakpoint, value);
+    }
+
+    /// <summary>The selected walk is parked here right now. Distinct from <see cref="IsExecuting"/>: the node has NOT started.</summary>
+    public bool IsPaused
+    {
+        get => _isPaused;
+        set
+        {
+            if (SetField(ref _isPaused, value))
+            {
+                RaiseRunStamp();
+                OnPropertyChanged(nameof(IsRunningLive));
+            }
+        }
+    }
+
+    /// <summary>
+    /// How long this node took on the selected walk, formatted («1.2 с»), or <c>null</c> if it
+    /// has not run. Drives the ✓ and the dimming the mockup uses for "already passed".
+    /// </summary>
+    public string? PassedTime
+    {
+        get => _passedTime;
+        set
+        {
+            if (SetField(ref _passedTime, value))
+            {
+                OnPropertyChanged(nameof(IsPassed));
+                RaiseRunStamp();
+            }
+        }
+    }
+
+    // The header's right-hand slot is shared, so whichever of the two changes has to tell
+    // the other one to get out of the way.
+    private void RaiseRunStamp()
+    {
+        OnPropertyChanged(nameof(ShowsRunStamp));
+        OnPropertyChanged(nameof(ShowsTargetChip));
+    }
+
+    /// <summary>Which way it went, in Russian — the tooltip on a passed box.</summary>
+    public string? PassedOutcome
+    {
+        get => _passedOutcome;
+        set => SetField(ref _passedOutcome, value);
+    }
+
+    /// <summary><c>true</c> once the selected walk has been through this node.</summary>
+    public bool IsPassed => _passedTime is not null;
+
+    /// <summary>The hovered variable is WRITTEN here. Lights the box and one end of the dashed link.</summary>
+    public bool IsVariableSource
+    {
+        get => _isVariableSource;
+        set => SetField(ref _isVariableSource, value);
+    }
+
+    /// <summary>The hovered variable is READ here.</summary>
+    public bool IsVariableConsumer
+    {
+        get => _isVariableConsumer;
+        set => SetField(ref _isVariableConsumer, value);
     }
 
     /// <summary>
@@ -402,8 +503,18 @@ public abstract class NodeRowViewModel : ObservableObject
     /// a 210px header cannot carry both a type label and a chip, and "acts on the context
     /// window" is the default every second node has — it is the departure from it that is
     /// worth a word.
+    ///
+    /// Suppressed while a run stamp is showing. The two share the header's one right-hand
+    /// slot, and without this they OVERPRINT each other — «✓ 2 мс» over «нет окон» was
+    /// legible as neither.
     /// </summary>
-    public bool ShowsTargetChip => Target?.UseSelector == true;
+    public bool ShowsTargetChip => Target?.UseSelector == true && !ShowsRunStamp;
+
+    /// <summary>
+    /// The header's right slot is showing run state (a ✓ with a time, or the parked marker)
+    /// rather than the targets chip.
+    /// </summary>
+    public bool ShowsRunStamp => _passedTime is not null || _isPaused;
 
     /// <summary>
     /// Non-null only for <see cref="KeyPressNodeRowViewModel"/>: the box draws a keycap
@@ -457,8 +568,19 @@ public abstract class NodeRowViewModel : ObservableObject
             case nameof(IsSelected):
             case nameof(IsExpanded):
             case nameof(IsExecuting):
+            case nameof(IsRunningLive):
             case nameof(BoxWidth):
             case nameof(BoxHeight):
+            // Run and debugger state, all of it presentation: a breakpoint or a passed-time
+            // stamp must not make the box re-render its parameter summary.
+            case nameof(HasBreakpoint):
+            case nameof(IsPaused):
+            case nameof(IsPassed):
+            case nameof(PassedTime):
+            case nameof(PassedOutcome):
+            case nameof(ShowsRunStamp):
+            case nameof(IsVariableSource):
+            case nameof(IsVariableConsumer):
                 return;
             default:
                 base.OnPropertyChanged(nameof(Summary));

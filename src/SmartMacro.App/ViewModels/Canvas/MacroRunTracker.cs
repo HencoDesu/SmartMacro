@@ -18,6 +18,11 @@ public sealed class MacroRunViewModel : ObservableObject
 {
     private bool _isFinished;
     private string? _finalOutcome;
+    private bool _isPaused;
+    private bool _pauseRequested;
+    private bool _pausedAtBreakpoint;
+    private string? _pauseReason;
+    private int _elapsedMs;
 
     internal MacroRunViewModel(RunWalkDto walk)
     {
@@ -72,6 +77,95 @@ public sealed class MacroRunViewModel : ObservableObject
     /// <summary>Rows kept per walk. A stuck loop must not grow the panel without bound.</summary>
     public const int MaxRows = 500;
 
+    // ---- debugger state (D5) --------------------------------------------------------
+
+    /// <summary>
+    /// Nodes this walk has finished, with how long each took and which way it went. Drives
+    /// the mockup's dimmed-with-a-tick boxes.
+    ///
+    /// A dictionary rather than a scan of <see cref="Log"/>, because the log is trimmed at
+    /// <see cref="MaxRows"/> and a long walk would start un-ticking its own earliest boxes.
+    /// A cycle re-records the node, so the stamp is always the LATEST pass — which is what
+    /// someone watching a loop wants to read.
+    /// </summary>
+    public Dictionary<string, (string Time, string Outcome)> Passed { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Live value of each run variable, by name — the right-hand column of the variables
+    /// panel. Per walk, because a fan-out gives every window its own <c>{tag}</c>.
+    /// </summary>
+    public Dictionary<string, string> Variables { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>How many nodes this walk has ENTERED — the left half of the mockup's «3 / 11».</summary>
+    public int NodesEntered { get; private set; }
+
+    /// <summary>Parked right now, waiting for a debugger command.</summary>
+    public bool IsPaused
+    {
+        get => _isPaused;
+        private set => SetField(ref _isPaused, value);
+    }
+
+    /// <summary>
+    /// ⏸ was pressed but the walk is still inside a node. The honest in-between state: a
+    /// pause is a REQUEST, and a <c>WaitForElement</c> can hold it off for a minute.
+    /// </summary>
+    public bool PauseRequested
+    {
+        get => _pauseRequested;
+        internal set => SetField(ref _pauseRequested, value);
+    }
+
+    /// <summary>Parked by a breakpoint rather than by a step or a button — the mockup's red pill.</summary>
+    public bool PausedAtBreakpoint
+    {
+        get => _pausedAtBreakpoint;
+        private set => SetField(ref _pausedAtBreakpoint, value);
+    }
+
+    /// <summary>Why it is parked, in the daemon's Russian: «брейкпоинт», «шаг», «до курсора», «пауза».</summary>
+    public string? PauseReason
+    {
+        get => _pauseReason;
+        private set => SetField(ref _pauseReason, value);
+    }
+
+    /// <summary>
+    /// Milliseconds since the walk began, as of the last event. The toolbar's «0:12.4»
+    /// extrapolates from this while the walk is live — see <c>MacroEditorViewModel.TickElapsed</c>.
+    /// </summary>
+    public int ElapsedMs => _elapsedMs;
+
+    /// <summary>When the last event arrived, so a live clock can add the time since.</summary>
+    public DateTimeOffset ElapsedAtUtc { get; private set; } = DateTimeOffset.UtcNow;
+
+    internal void Paused(RunEventDto evt)
+    {
+        CurrentNodeId = evt.NodeId;
+        IsPaused = true;
+        PauseRequested = false;
+        PausedAtBreakpoint = evt.Kind == RunEventKind.BreakpointHit;
+        PauseReason = evt.Detail;
+        Touch(evt);
+    }
+
+    internal void Resumed(RunEventDto evt)
+    {
+        IsPaused = false;
+        PausedAtBreakpoint = false;
+        PauseReason = null;
+        Touch(evt);
+    }
+
+    internal void VariableSet(RunEventDto evt)
+    {
+        if (evt.Variable is { Length: > 0 } name)
+        {
+            Variables[name] = evt.Detail ?? string.Empty;
+        }
+        Touch(evt);
+    }
+
     internal void NodeEntered(RunEventDto evt)
     {
         // A row for a node that never reported its exit (the walk was cancelled inside it)
@@ -79,11 +173,20 @@ public sealed class MacroRunViewModel : ObservableObject
         CurrentRow()?.Settle();
         Log.Add(new RunLogRowViewModel(evt.ElapsedMs, evt.NodeId ?? string.Empty));
         CurrentNodeId = evt.NodeId;
+        NodesEntered++;
+        Touch(evt);
         Trim();
     }
 
     internal void NodeExited(RunEventDto evt)
     {
+        if (evt.NodeId is { Length: > 0 } nodeId)
+        {
+            Passed[nodeId] = (
+                RunLogRowViewModel.FormatDuration(evt.DurationMs),
+                RunLogRowViewModel.DescribeOutcome(evt.Outcome));
+        }
+        Touch(evt);
         // Matched by node id from the tail: the walk is sequential, so the open row for this
         // node is the last one — unless the pair was split by a dropped batch, in which case
         // there is nothing to complete and the entered-row simply stays pending.
@@ -104,7 +207,20 @@ public sealed class MacroRunViewModel : ObservableObject
         CurrentNodeId = null;
         IsFinished = true;
         FinalOutcome = RunLogRowViewModel.DescribeOutcome(evt.Outcome);
+        // A finished walk cannot be paused, and leaving the flag set would light a Resume
+        // button for something that has already ended.
+        IsPaused = false;
+        PauseRequested = false;
+        PausedAtBreakpoint = false;
+        PauseReason = null;
+        Touch(evt);
         OnPropertyChanged(nameof(IsLive));
+    }
+
+    private void Touch(RunEventDto evt)
+    {
+        _elapsedMs = Math.Max(_elapsedMs, evt.ElapsedMs);
+        ElapsedAtUtc = DateTimeOffset.UtcNow;
     }
 
     private RunLogRowViewModel? CurrentRow() =>
@@ -211,9 +327,19 @@ public sealed class MacroRunTracker
             case RunEventKind.WalkFinished:
                 run.Finished(evt);
                 break;
+            case RunEventKind.Paused:
+            case RunEventKind.BreakpointHit:
+                run.Paused(evt);
+                break;
+            case RunEventKind.Resumed:
+                run.Resumed(evt);
+                break;
+            case RunEventKind.VariableSet:
+                run.VariableSet(evt);
+                break;
             default:
-                // A kind this panel predates (D5's pause/step). Ignoring it keeps the log
-                // honest rather than mislabelling it.
+                // A kind this panel predates. Ignoring it keeps the log honest rather than
+                // mislabelling it — the property D5 inherited and has to keep.
                 break;
         }
         return run;

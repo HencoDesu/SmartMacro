@@ -69,6 +69,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     private readonly MacroGraphStore _macros;
     private readonly MacroRunRegistry _runs;
     private readonly RunEventPublisher _runEvents;
+    private readonly MacroDebugSession _debug;
     private readonly ILogger<IpcServer> _logger;
 
     private readonly ConcurrentDictionary<ClientConnection, byte> _clients = new();
@@ -85,6 +86,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         MacroGraphStore macros,
         MacroRunRegistry runs,
         RunEventPublisher runEvents,
+        MacroDebugSession debug,
         ILogger<IpcServer> logger)
     {
         _dispatcher = dispatcher;
@@ -92,6 +94,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         _macros = macros;
         _runs = runs;
         _runEvents = runEvents;
+        _debug = debug;
         _logger = logger;
 
         // Hand ourselves to the dispatcher so RequestActivate has something to broadcast
@@ -306,7 +309,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(output);
 
-        var client = new ClientConnection(new IpcConnection(input, output, leaveOpen: true), _runEvents);
+        var client = new ClientConnection(new IpcConnection(input, output, leaveOpen: true), _runEvents, _debug);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             _stopping.Token,
@@ -565,13 +568,15 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             });
 
         private readonly RunEventPublisher _runEvents;
+        private readonly MacroDebugSession _debug;
         private readonly Lock _subscriptionLock = new();
         private bool _wantsRunEvents;
 
-        public ClientConnection(IpcConnection connection, RunEventPublisher runEvents)
+        public ClientConnection(IpcConnection connection, RunEventPublisher runEvents, MacroDebugSession debug)
         {
             Connection = connection;
             _runEvents = runEvents;
+            _debug = debug;
         }
 
         public IpcConnection Connection { get; }
@@ -608,13 +613,20 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
                 _wantsRunEvents = enabled;
             }
 
+            // The DEBUGGER attach count rides on this same edge, deliberately. A connection
+            // watching run events is exactly a connection that can see a paused walk and
+            // press resume, so the two lifetimes are the same lifetime — and tying them
+            // together is what makes "the last panel went away" release every parked walk,
+            // through the disconnect path below that already calls this with false.
             if (enabled)
             {
                 _runEvents.Acquire();
+                _debug.Acquire();
             }
             else
             {
                 _runEvents.Release();
+                _debug.Release();
             }
         }
 

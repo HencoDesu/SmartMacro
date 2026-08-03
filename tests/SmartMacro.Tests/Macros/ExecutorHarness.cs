@@ -116,7 +116,8 @@ internal sealed class ExecutorHarness
         MacroVariables? variables = null,
         Action<string>? onNodeEntered = null,
         IMacroRunObserver? observer = null,
-        Guid runId = default)
+        Guid runId = default,
+        IMacroDebugger? debugger = null)
     {
         return new MacroRunContext
         {
@@ -125,6 +126,7 @@ internal sealed class ExecutorHarness
             OnNodeEntered = onNodeEntered,
             Observer = observer,
             RunId = runId,
+            Debugger = debugger,
         };
     }
 
@@ -198,6 +200,29 @@ internal sealed class RecordingObserver : IMacroRunObserver
 
     public void WalkFinished(Guid walkId, int elapsedMs, string outcome, string? detail) =>
         Add(new Entry("end", walkId, null, outcome, detail));
+
+    // ---- D5 -----------------------------------------------------------------------------
+    // Flattened into the same Entry stream so the ORDER of a pause relative to its node's
+    // enter/exit is assertable — which is the whole safety property (park between nodes,
+    // never inside one).
+
+    /// <summary>Kind string of a <c>VariableSet</c>; <c>NodeId</c> is the writer, <c>Outcome</c> the variable name, <c>Detail</c> the value.</summary>
+    public const string VariableKind = "var";
+
+    /// <summary>Kind string of a pause; <c>Outcome</c> carries the <see cref="DebugPauseReason"/>.</summary>
+    public const string PausedKind = "paused";
+
+    /// <summary>Kind string of a resume.</summary>
+    public const string ResumedKind = "resumed";
+
+    public void VariableSet(Guid walkId, int elapsedMs, string name, string value, string? nodeId) =>
+        Add(new Entry(VariableKind, walkId, nodeId, name, value));
+
+    public void WalkPaused(Guid walkId, int elapsedMs, string nodeId, DebugPauseReason reason) =>
+        Add(new Entry(PausedKind, walkId, nodeId, reason.ToString(), null));
+
+    public void WalkResumed(Guid walkId, int elapsedMs, string nodeId) =>
+        Add(new Entry(ResumedKind, walkId, nodeId, null, null));
 
     private void Add(Entry entry)
     {

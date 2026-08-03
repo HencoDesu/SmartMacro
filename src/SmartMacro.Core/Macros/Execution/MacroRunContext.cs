@@ -46,4 +46,15 @@ public sealed record MacroRunContext
     /// every sub-walk. This one is per WALK and is what the canvas follows.
     /// </summary>
     public IMacroRunObserver? Observer { get; init; }
+
+    /// <summary>
+    /// The debugger's control channel (wave D5): pause, step, run-to-node, breakpoints.
+    /// <c>null</c> means "not debuggable", which is what every test that predates D5 has and
+    /// what a host without a panel effectively is.
+    ///
+    /// The counterpart of <see cref="Observer"/> — that one reports, this one decides whether
+    /// the walk may proceed — and inherited by sub-walks the same way, so a
+    /// <see cref="Model.RunMacroNode"/> fork is debuggable per walk.
+    /// </summary>
+    public IMacroDebugger? Debugger { get; init; }
 }

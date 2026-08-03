@@ -10,6 +10,7 @@ using SmartMacro.App.ViewModels.Canvas;
 using SmartMacro.App.ViewModels.Nodes;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Macros.Analysis;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
 using SmartMacro.Native;
@@ -420,6 +421,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             }
             OnPropertyChanged(nameof(HasSelectedNode));
             OnPropertyChanged(nameof(InspectorTitle));
+            // ▷| До курсора aims at whatever is selected, so it goes live and dead with it.
+            OnPropertyChanged(nameof(CanRunToCursor));
         }
     }
 
@@ -572,6 +575,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>The walk the debugger toolbar acts on. Same one the canvas follows, by construction.</summary>
+    public MacroRunViewModel? DebugTarget => _selectedRun;
+
     /// <summary>Chip label: the context window as <c>0x140804</c>, or the macro name when there is none.</summary>
     public string RunChipText => _selectedRun?.Label ?? string.Empty;
 
@@ -618,6 +624,233 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     /// <summary><c>true</c> when <see cref="RunLogNotice"/> has something to say.</summary>
     public bool HasRunLogNotice => RunLogNotice is not null;
+
+    // ---- debugger (D5) --------------------------------------------------------------
+
+    /// <summary>
+    /// The debugger toolbar exists at all. Only once a walk of this graph is on record —
+    /// there is nothing to pause otherwise, and four permanently dead buttons is how a
+    /// toolbar stops being read.
+    /// </summary>
+    public bool HasDebugTarget => _selectedRun is not null;
+
+    /// <summary>⏸ is available: the walk is running and not already parked.</summary>
+    public bool CanPause => _selectedRun is { IsLive: true, IsPaused: false, PauseRequested: false };
+
+    /// <summary>▶ / ⤼ / ▷| are available: the walk is parked and can be released.</summary>
+    public bool CanResume => _selectedRun is { IsLive: true, IsPaused: true };
+
+    /// <summary>▷| additionally needs a node to aim at — the one selected on the canvas.</summary>
+    public bool CanRunToCursor => CanResume && _selectedNode is not null;
+
+    /// <summary>■ is available whenever anything of this walk's run is still going.</summary>
+    public bool CanStop => _selectedRun is { IsLive: true };
+
+    /// <summary>The selected walk is parked right now.</summary>
+    public bool SelectedRunIsPaused => _selectedRun?.IsPaused == true;
+
+    /// <summary>Parked by a breakpoint — the red tint of the log strip's pill.</summary>
+    public bool SelectedRunAtBreakpoint => _selectedRun?.PausedAtBreakpoint == true;
+
+    /// <summary>
+    /// The pill in the log strip has something to say: the walk is parked, OR a pause has
+    /// been asked for and has not landed yet.
+    ///
+    /// The second half is not cosmetic. ⏸ is honoured at the next node boundary, so pressing
+    /// it during a 60-second <c>WaitForElement</c> greys the button out and then apparently
+    /// nothing happens — which is indistinguishable from a broken button. Looking at it is
+    /// how that was found.
+    /// </summary>
+    public bool SelectedRunPauseVisible => _selectedRun is { IsPaused: true } or { PauseRequested: true };
+
+    /// <summary>
+    /// «брейкпоинт: recognize-class» for the log strip's pill — «шаг: step-4» and
+    /// «пауза: step-4» for the other reasons, and «пауза запрошена — ждём конца ноды» while
+    /// the request is still in flight.
+    ///
+    /// The one place that names BOTH the state and the node it is parked at. The toolbar
+    /// deliberately does not repeat it: two copies cost 260px of a 1520px bar and pushed
+    /// «Сохранить» off the right edge.
+    /// </summary>
+    public string PauseNotice => _selectedRun switch
+    {
+        { IsPaused: true, CurrentNodeId: { } node } run => $"{run.PauseReason}: {node}",
+        { PauseRequested: true } => "пауза запрошена — ждём конца ноды",
+        _ => string.Empty,
+    };
+
+    /// <summary>
+    /// What the walk is doing, in one word for the toolbar.
+    ///
+    /// «пауза…» is the state that has to exist: ⏸ is a request honoured at the next node
+    /// boundary, and a <c>WaitForElement</c> can hold it off for a minute. A button that went
+    /// straight from «выполняется» to «на паузе» would be lying for that minute.
+    /// </summary>
+    public string DebugStateText => _selectedRun switch
+    {
+        null => string.Empty,
+        { IsFinished: true } run => run.FinalOutcome ?? "завершён",
+        { IsPaused: true } run => $"на паузе · {run.PauseReason}",
+        { PauseRequested: true } => "пауза…",
+        _ => "выполняется",
+    };
+
+    /// <summary>«3 / 11» — nodes this walk has entered, over the size of the graph.</summary>
+    public string RunProgressText => _selectedRun is { } run && Nodes.Count > 0
+        ? string.Create(CultureInfo.InvariantCulture, $"{run.NodesEntered} / {Nodes.Count}")
+        : string.Empty;
+
+    /// <summary>
+    /// «0:12.4» — wall time since the walk began. Extrapolated from the last event while the
+    /// walk is live, so it keeps ticking through a 60-second wait; frozen once it ends.
+    /// </summary>
+    public string RunElapsedText
+    {
+        get
+        {
+            if (_selectedRun is not { } run)
+            {
+                return string.Empty;
+            }
+            var extra = run.IsLive ? (int)(DateTimeOffset.UtcNow - run.ElapsedAtUtc).TotalMilliseconds : 0;
+            return RunLogRowViewModel.FormatElapsed(run.ElapsedMs + Math.Max(extra, 0));
+        }
+    }
+
+    /// <summary>
+    /// «■ Стоп» or «■ Стоп ×3».
+    ///
+    /// <b>Stop stops the RUN, not the walk</b>, and the count is how the button admits it. A
+    /// fan-out is N walks sharing one run id and one cancellation token; nobody hitting stop
+    /// while ten clients are being driven means "stop one of them", and there is no per-walk
+    /// cancellation to offer them even if they did. Pause and step stay per-walk — that is
+    /// what the walk picker is for — so the asymmetry is real and has to be visible.
+    /// </summary>
+    public string StopLabel => LiveSiblingCount() is > 1 and var n
+        ? string.Create(CultureInfo.InvariantCulture, $"■ Стоп ×{n}")
+        : "■ Стоп";
+
+    /// <summary>Spells out what ■ will actually cancel.</summary>
+    public string StopTooltip => LiveSiblingCount() is > 1 and var n
+        ? string.Create(CultureInfo.InvariantCulture, $"Остановить весь прогон целиком — все {n} обхода")
+        : "Остановить прогон";
+
+    /// <summary>Asks the daemon to park the selected walk at its next node.</summary>
+    public Task PauseAsync() => DebugAsync(DebugCommand.Pause);
+
+    /// <summary>Releases the selected walk.</summary>
+    public Task ResumeAsync() => DebugAsync(DebugCommand.Resume);
+
+    /// <summary>Releases the selected walk and parks it again at the very next node.</summary>
+    public Task StepAsync() => DebugAsync(DebugCommand.Step);
+
+    /// <summary>Runs the selected walk to the node selected on the canvas.</summary>
+    public Task RunToCursorAsync() => _selectedNode is { } node
+        ? DebugAsync(DebugCommand.RunToNode, node.NodeId)
+        : Task.CompletedTask;
+
+    /// <summary>
+    /// Cancels the whole run the selected walk belongs to — see <see cref="StopLabel"/>.
+    /// </summary>
+    public async Task StopSelectedRunAsync()
+    {
+        if (_selectedRun is not { } run)
+        {
+            return;
+        }
+        try
+        {
+            await _client
+                .RequestAsync(IpcMessageTypes.StopMacro, new StopMacroRequest(run.Walk.RunId))
+                .ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        {
+            Log.Warning(ex, "Не удалось остановить прогон {RunId}", run.Walk.RunId);
+        }
+    }
+
+    /// <summary>
+    /// Re-reads the elapsed clock. Called on a timer by the view — the view-model owns no
+    /// dispatcher timer of its own so it stays exercisable headlessly.
+    /// </summary>
+    public void TickElapsed()
+    {
+        if (_selectedRun is { IsLive: true })
+        {
+            OnPropertyChanged(nameof(RunElapsedText));
+        }
+    }
+
+    private async Task DebugAsync(DebugCommand command, string? nodeId = null)
+    {
+        if (_selectedRun is not { } run)
+        {
+            return;
+        }
+
+        DebugAckDto? ack;
+        try
+        {
+            ack = await _client
+                .RequestAsync<DebugAckDto>(
+                    IpcMessageTypes.DebugCommand,
+                    new DebugCommandRequest(run.WalkId, command, nodeId))
+                .ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        {
+            ErrorMessage = $"Отладчик: команда не прошла ({ex.Message}).";
+            return;
+        }
+
+        if (ack is null)
+        {
+            return;
+        }
+        if (!ack.Accepted)
+        {
+            // The walk ended between the button press and the request. Say so rather than
+            // leaving a dead Pause lit — the WalkFinished event settles the rest.
+            StatusMessage = "Обход уже завершился.";
+            RefreshDebugState();
+            return;
+        }
+        // The optimistic half: a pause that has not landed yet is «пауза…» on the toolbar
+        // until the daemon's Paused event confirms it.
+        run.PauseRequested = ack is { Paused: false, PauseRequested: true };
+        RefreshDebugState();
+    }
+
+    // Every derived toolbar property in one place: there are eight of them and they all
+    // change together, so raising them individually at each call site is how one gets missed.
+    private void RefreshDebugState()
+    {
+        OnPropertyChanged(nameof(HasDebugTarget));
+        OnPropertyChanged(nameof(CanPause));
+        OnPropertyChanged(nameof(CanResume));
+        OnPropertyChanged(nameof(CanRunToCursor));
+        OnPropertyChanged(nameof(CanStop));
+        OnPropertyChanged(nameof(SelectedRunIsPaused));
+        OnPropertyChanged(nameof(SelectedRunAtBreakpoint));
+        OnPropertyChanged(nameof(SelectedRunPauseVisible));
+        OnPropertyChanged(nameof(PauseNotice));
+        OnPropertyChanged(nameof(DebugStateText));
+        OnPropertyChanged(nameof(RunProgressText));
+        OnPropertyChanged(nameof(RunElapsedText));
+        OnPropertyChanged(nameof(StopLabel));
+        OnPropertyChanged(nameof(StopTooltip));
+    }
+
+    // Walks of the same RUN that are still going — what ■ Стоп is about to cancel.
+    private int LiveSiblingCount()
+    {
+        if (_selectedRun is not { } run)
+        {
+            return 0;
+        }
+        return _runs.All.Count(other => other.Walk.RunId == run.Walk.RunId && other.IsLive);
+    }
 
     /// <summary>Selects the previous walk of this macro (the chip's ◂).</summary>
     public void SelectPreviousRun() => StepRun(-1);
@@ -694,6 +927,103 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// <summary>Collapses whatever box is expanded (Esc).</summary>
     public void CollapseNodes() => ExpandNode(null);
 
+    // ---- breakpoints ----------------------------------------------------------------
+
+    /// <summary>
+    /// Flips the red dot on a node and tells the daemon.
+    ///
+    /// The set is re-derived from the ROWS on every change and sent whole, so a node rename
+    /// carries its breakpoint for free and there is no add/remove ordering to get wrong.
+    /// </summary>
+    public void ToggleBreakpoint(NodeRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        row.HasBreakpoint = !row.HasBreakpoint;
+    }
+
+    /// <summary>Node ids of the open graph that currently carry a breakpoint, in row order.</summary>
+    public IReadOnlyList<string> BreakpointNodeIds =>
+        [.. Nodes.Where(node => node.HasBreakpoint).Select(node => node.NodeId)];
+
+    /// <summary><c>true</c> when the open graph has at least one — drives the «снять все» affordance.</summary>
+    public bool HasBreakpoints => Nodes.Any(node => node.HasBreakpoint);
+
+    /// <summary>Clears every breakpoint of the open graph.</summary>
+    public void ClearBreakpoints()
+    {
+        foreach (var node in Nodes)
+        {
+            node.HasBreakpoint = false;
+        }
+    }
+
+    // ---- variables panel --------------------------------------------------------------
+
+    /// <summary>
+    /// The inspector's «переменные макроса» cards: static structure from the graph, live
+    /// values from the selected walk.
+    /// </summary>
+    public ObservableCollection<MacroVariableRowViewModel> Variables { get; } = [];
+
+    /// <summary><c>true</c> when there is anything to list (there always is — <c>cursor</c>).</summary>
+    public bool HasVariables => Variables.Count > 0;
+
+    /// <summary>Count badge beside the section heading.</summary>
+    public string VariableCountText => Variables.Count.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Dashed writer → reader links drawn on the canvas while a variable card is hovered.
+    /// Empty the rest of the time: they are a hover affordance, not part of the graph, and
+    /// leaving them on would compete with the real edges for the reader's attention.
+    /// </summary>
+    public ObservableCollection<CanvasLinkViewModel> VariableLinks { get; } = [];
+
+    /// <summary>
+    /// Lights the writer and the readers of one variable on the canvas, or clears the
+    /// highlight when <paramref name="row"/> is <c>null</c>.
+    /// </summary>
+    public void HighlightVariable(MacroVariableRowViewModel? row)
+    {
+        foreach (var card in Variables)
+        {
+            card.IsHighlighted = ReferenceEquals(card, row);
+        }
+
+        var writers = row is null
+            ? []
+            : row.Info.Writes.Select(w => w.NodeId).ToHashSet(StringComparer.Ordinal);
+        var readers = row is null
+            ? []
+            : row.Info.Reads.Select(r => r.NodeId).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var node in Nodes)
+        {
+            node.IsVariableSource = writers.Contains(node.NodeId);
+            node.IsVariableConsumer = readers.Contains(node.NodeId);
+        }
+
+        VariableLinks.Clear();
+        if (row is null)
+        {
+            return;
+        }
+        var byId = Nodes.ToDictionary(node => node.NodeId, StringComparer.Ordinal);
+        foreach (var write in row.Info.Writes)
+        {
+            if (!byId.TryGetValue(write.NodeId, out var from))
+            {
+                continue;
+            }
+            foreach (var read in row.Info.Reads)
+            {
+                if (byId.TryGetValue(read.NodeId, out var to) && !ReferenceEquals(from, to))
+                {
+                    VariableLinks.Add(CanvasLinkViewModel.Between(from, to));
+                }
+            }
+        }
+    }
+
     /// <summary>Findings of the last save attempt (errors and warnings).</summary>
     public ObservableCollection<ValidationIssueViewModel> Issues { get; } = [];
 
@@ -738,12 +1068,21 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             // reaching into «Окна» — see WindowCatalog.
             var windows = await _client.RequestAsync<WindowDto[]>(IpcMessageTypes.GetWindows).ConfigureAwait(false);
             var failures = await _client.RequestAsync<HotkeyFailureDto[]>(IpcMessageTypes.GetHotkeyFailures).ConfigureAwait(false);
+            // The daemon outlives the panel, so this is how a breakpoint set before the panel
+            // was closed comes back — the whole ergonomic case for session-scoped storage.
+            var breakpoints = await _client.RequestAsync<BreakpointSetDto[]>(IpcMessageTypes.GetBreakpoints).ConfigureAwait(false);
             _dispatcher.Post(() =>
             {
                 _runningMacros = runs ?? [];
                 _hotkeyFailures = failures ?? [];
                 Windows.Reset(windows ?? []);
+                _breakpoints.Clear();
+                foreach (var set in breakpoints ?? [])
+                {
+                    _breakpoints[set.MacroName] = set.NodeIds;
+                }
                 ApplyLibrary(macros ?? []);
+                ApplyBreakpointsToRows();
             });
         }
         catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
@@ -880,6 +1219,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         RebuildChoices();
         RebuildEdges();
+        RebuildVariables();
         SelectedNode = row;
         return row;
     }
@@ -920,6 +1260,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             RebuildChoices();
         }
         OnPropertyChanged(nameof(StartNodeId));
+        // The deleted node may have carried a breakpoint or been a variable's only writer.
+        PushBreakpoints();
+        RebuildVariables();
     }
 
     /// <summary>Highlights the node an issue refers to.</summary>
@@ -1126,6 +1469,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         ErrorMessage = null;
         StatusMessage = null;
         SyncCurrentFlags();
+
+        // Dots first, so the boxes are already marked when the picker below lights one.
+        ApplyBreakpointsToRows();
+        RebuildVariables();
 
         // Last, because it can light a box: the picker is re-derived for THIS graph, and if
         // it is being walked right now the canvas picks the run up mid-flight.
@@ -1456,12 +1803,22 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 SyncExecutingNode();
                 break;
             case RunEventKind.NodeExited:
-                // The row object is mutated in place, so the strip already shows it; only
-                // the current-node highlight can be affected, and only by the walk ending.
+                // The row object is mutated in place, so the strip already shows it — but the
+                // BOX now has a tick and a time, which lives on the node row.
+                SyncNodeRunState();
+                RefreshDebugState();
                 break;
             case RunEventKind.WalkFinished:
                 SyncExecutingNode();
                 OnPropertyChanged(nameof(SelectedRunIsLive));
+                break;
+            case RunEventKind.Paused:
+            case RunEventKind.BreakpointHit:
+            case RunEventKind.Resumed:
+                SyncExecutingNode();
+                break;
+            case RunEventKind.VariableSet:
+                SyncVariableValues();
                 break;
             default:
                 break;
@@ -1506,6 +1863,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         if (_selectedRun is not null && Runs.Contains(_selectedRun) && _selectedRun.IsLive)
         {
             OnPropertyChanged(nameof(RunPositionText));
+            // A sibling of the same run may have started or ended, and ■ Стоп ×N counts them.
+            RefreshDebugState();
             return;
         }
 
@@ -1516,6 +1875,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             return;
         }
         OnPropertyChanged(nameof(RunPositionText));
+        RefreshDebugState();
     }
 
     private void RebuildRunLog()
@@ -1533,7 +1893,166 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasRunLogNotice));
     }
 
-    private void SyncExecutingNode() => ExecutingNodeId = _selectedRun?.CurrentNodeId;
+    private void SyncExecutingNode()
+    {
+        ExecutingNodeId = _selectedRun?.CurrentNodeId;
+        SyncNodeRunState();
+        RefreshDebugState();
+    }
+
+    /// <summary>
+    /// Mirrors the selected walk onto the boxes: dimmed-with-a-tick for what it has been
+    /// through, "parked" for where it is standing.
+    ///
+    /// Wholesale rather than incrementally, because the source of truth is one walk and the
+    /// selection can change under it — an incremental update would leave the previous walk's
+    /// ticks on the graph when the picker moves.
+    /// </summary>
+    private void SyncNodeRunState()
+    {
+        var run = _selectedRun;
+        var paused = run?.IsPaused == true;
+        foreach (var node in Nodes)
+        {
+            node.IsPaused = paused && node.IsExecuting;
+            if (run is not null && run.Passed.TryGetValue(node.NodeId, out var passed))
+            {
+                node.PassedTime = passed.Time;
+                node.PassedOutcome = passed.Outcome;
+            }
+            else
+            {
+                node.PassedTime = null;
+                node.PassedOutcome = null;
+            }
+        }
+        SyncVariableValues();
+    }
+
+    // ---- variables ------------------------------------------------------------------
+
+    /// <summary>
+    /// Re-runs the static analysis over the open graph and re-attaches whatever live values
+    /// the selected walk has reported.
+    ///
+    /// Called whenever the graph's SHAPE or a node's parameters change — typing <c>{tag}</c>
+    /// into an icon path adds a reader, and the panel has to show it before the macro has
+    /// ever been run. Cheap: a macro is tens of nodes.
+    /// </summary>
+    private void RebuildVariables()
+    {
+        var hovered = Variables.FirstOrDefault(row => row.IsHighlighted)?.RawName;
+
+        Variables.Clear();
+        if (HasOpenMacro)
+        {
+            foreach (var info in MacroVariableAnalysis.Analyze(BuildGraph()))
+            {
+                Variables.Add(new MacroVariableRowViewModel(info));
+            }
+        }
+        OnPropertyChanged(nameof(HasVariables));
+        OnPropertyChanged(nameof(VariableCountText));
+        SyncVariableValues();
+
+        // A rebuild triggered by a keystroke must not drop a highlight the pointer is still
+        // sitting on; re-derive it against the new cards instead.
+        HighlightVariable(hovered is null
+            ? null
+            : Variables.FirstOrDefault(row => string.Equals(row.RawName, hovered, StringComparison.Ordinal)));
+    }
+
+    private void SyncVariableValues()
+    {
+        foreach (var row in Variables)
+        {
+            row.Value = _selectedRun is { } run && run.Variables.TryGetValue(row.RawName, out var value)
+                ? value
+                : null;
+        }
+    }
+
+    // ---- breakpoints ----------------------------------------------------------------
+
+    // What the daemon holds, by macro. Kept so opening a graph can restore its dots without
+    // a round trip, and so a rename does not lose the other macros' sets.
+    private readonly Dictionary<string, IReadOnlyList<string>> _breakpoints = new(StringComparer.Ordinal);
+
+    // Set while the daemon's answer is being written onto the rows, so applying it does not
+    // bounce straight back out as a SetBreakpoints.
+    private bool _applyingBreakpoints;
+
+    private async Task RefreshBreakpointsAsync()
+    {
+        try
+        {
+            var sets = await _client
+                .RequestAsync<BreakpointSetDto[]>(IpcMessageTypes.GetBreakpoints)
+                .ConfigureAwait(false);
+            _dispatcher.Post(() =>
+            {
+                _breakpoints.Clear();
+                foreach (var set in sets ?? [])
+                {
+                    _breakpoints[set.MacroName] = set.NodeIds;
+                }
+                ApplyBreakpointsToRows();
+            });
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        {
+            Log.Warning(ex, "Не удалось получить брейкпоинты");
+        }
+    }
+
+    private void ApplyBreakpointsToRows()
+    {
+        var wanted = _loadedName is not null && _breakpoints.TryGetValue(_loadedName, out var ids)
+            ? ids.ToHashSet(StringComparer.Ordinal)
+            : [];
+
+        _applyingBreakpoints = true;
+        try
+        {
+            foreach (var node in Nodes)
+            {
+                node.HasBreakpoint = wanted.Contains(node.NodeId);
+            }
+        }
+        finally
+        {
+            _applyingBreakpoints = false;
+        }
+        OnPropertyChanged(nameof(HasBreakpoints));
+    }
+
+    private void PushBreakpoints()
+    {
+        if (_applyingBreakpoints || _loadedName is null)
+        {
+            // A draft has no name to key on yet. Its dots stay local until it is saved, at
+            // which point LoadGraph's push sends them.
+            return;
+        }
+        var ids = BreakpointNodeIds;
+        _breakpoints[_loadedName] = ids;
+        OnPropertyChanged(nameof(HasBreakpoints));
+        _ = SendBreakpointsAsync(_loadedName, ids);
+    }
+
+    private async Task SendBreakpointsAsync(string macroName, IReadOnlyList<string> nodeIds)
+    {
+        try
+        {
+            await _client
+                .RequestAsync(IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest(macroName, nodeIds))
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        {
+            Log.Warning(ex, "Не удалось передать брейкпоинты макроса '{Macro}'", macroName);
+        }
+    }
 
     private void StepRun(int delta)
     {
@@ -1742,6 +2261,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         SelectedNode = null;
         RebuildChoices();
         SyncCurrentFlags();
+        RebuildVariables();
         // No graph open ⇒ no walk to follow. The walks themselves stay tracked, so
         // re-opening the macro brings its log back.
         RebuildRuns();
@@ -1750,6 +2270,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private void AttachNode(NodeRowViewModel row)
     {
         row.IdChanged += OnNodeIdChanged;
+        row.PropertyChanged += OnNodeRowChanged;
         foreach (var edge in row.Edges)
         {
             edge.Choices = NodeIdChoices;
@@ -1772,6 +2293,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private void DetachNode(NodeRowViewModel row)
     {
         row.IdChanged -= OnNodeIdChanged;
+        row.PropertyChanged -= OnNodeRowChanged;
         foreach (var edge in row.Edges)
         {
             edge.PropertyChanged -= OnEdgeChanged;
@@ -1789,6 +2311,32 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         if (e.PropertyName is nameof(NodeEdgeViewModel.TargetId))
         {
             RebuildEdges();
+        }
+    }
+
+    /// <summary>
+    /// A node's own state changed. Two things follow from it, and both are cheap enough to do
+    /// on every keystroke over a graph of tens of nodes.
+    ///
+    /// <c>Summary</c> is used as the "a parameter changed" signal rather than listening for
+    /// each of the ~25 parameter properties by name: the base class already re-raises it for
+    /// exactly that set and excludes the presentation-only ones, so this cannot drift as node
+    /// types are added.
+    /// </summary>
+    private void OnNodeRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(NodeRowViewModel.HasBreakpoint):
+                PushBreakpoints();
+                break;
+            case nameof(NodeRowViewModel.Summary):
+                // Typing {tag} into an icon path adds a reader — the panel must show it
+                // before the macro has ever been run.
+                RebuildVariables();
+                break;
+            default:
+                break;
         }
     }
 
@@ -1876,6 +2424,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         RebuildChoices();
         RebuildEdges();
         OnPropertyChanged(nameof(StartNodeId));
+        // The breakpoint set is keyed by node id, so a rename has to be re-sent — the dot
+        // stays on the row, which is exactly why the set is derived from rows rather than
+        // tracked separately.
+        PushBreakpoints();
+        RebuildVariables();
     }
 
     private IEnumerable<NodeEdgeViewModel> AllEdges() => Nodes.SelectMany(node => node.Edges);

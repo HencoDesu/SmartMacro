@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
@@ -31,6 +31,7 @@ public class RunEventStreamTests
                 Engine.Macros,
                 Engine.Runs,
                 Engine.RunEvents,
+                Engine.Debug,
                 NullLogger<IpcServer>.Instance);
             Server.SubscribeToEngine();
             Engine.RunEvents.StartAsync(CancellationToken.None).GetAwaiter().GetResult();

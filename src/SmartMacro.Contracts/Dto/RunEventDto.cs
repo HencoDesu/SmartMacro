@@ -1,10 +1,15 @@
 namespace SmartMacro.Contracts.Dto;
 
 /// <summary>
-/// What a <see cref="RunEventDto"/> reports. The set is deliberately open-ended: the
-/// debugger of wave D5 (pause / step / run-to-node / breakpoints) adds members here rather
-/// than new message types, so the subscription, the batching and the client's demultiplexer
-/// all stay exactly as they are.
+/// What a <see cref="RunEventDto"/> reports. The set is deliberately open-ended: wave D5's
+/// debugger (pause / step / run-to-node / breakpoints) added members here rather than new
+/// message types, so the subscription, the batching and the client's demultiplexer all stayed
+/// exactly as they were.
+///
+/// <b>An unknown kind must degrade, never break.</b> The panel's tracker ignores kinds it
+/// does not recognise and its outcome renderer falls through to the raw symbol, so a panel
+/// older than its daemon loses a feature instead of the log. Anything added here has to keep
+/// that property.
 /// </summary>
 public enum RunEventKind
 {
@@ -19,6 +24,48 @@ public enum RunEventKind
 
     /// <summary>The walk ended. <see cref="RunEventDto.Outcome"/> says how; <see cref="RunEventDto.Detail"/> carries the error, if any.</summary>
     WalkFinished,
+
+    // ------------------------------------------------------------------- debugger (D5)
+
+    /// <summary>
+    /// The walk parked BEFORE <see cref="RunEventDto.NodeId"/> and is waiting to be released.
+    /// <see cref="RunEventDto.Detail"/> says why in Russian («пауза», «шаг», «до курсора»).
+    ///
+    /// Parked between two nodes, never inside one: every game window an input or vision node
+    /// wakes is re-frozen before that node returns, so a pause here cannot strand a woken
+    /// client. See <c>MacroExecutor</c>'s gate.
+    /// </summary>
+    Paused,
+
+    /// <summary>
+    /// The same thing as <see cref="Paused"/>, but the reason was a breakpoint on
+    /// <see cref="RunEventDto.NodeId"/>. A separate kind rather than a reason code because
+    /// this is the one pause the panel renders differently — the red pill of mockup 1d.
+    /// </summary>
+    BreakpointHit,
+
+    /// <summary>
+    /// The walk was released and is about to run <see cref="RunEventDto.NodeId"/>.
+    ///
+    /// Not redundant with the next <see cref="NodeExited"/>: a released walk can sit inside a
+    /// 60-second <c>WaitForElement</c>, and without this the toolbar would keep saying
+    /// «на паузе» for a minute after the user pressed resume.
+    /// </summary>
+    Resumed,
+
+    /// <summary>
+    /// A run variable got a value. <see cref="RunEventDto.Variable"/> is its name and
+    /// <see cref="RunEventDto.Detail"/> its display string; <see cref="RunEventDto.NodeId"/>
+    /// is the node that wrote it, or <c>null</c> for the trigger's <c>cursor</c> seed, which
+    /// is reported once at the head of every walk.
+    ///
+    /// <b>Why not read the value out of a <see cref="NodeExited"/> detail.</b> The detail of a
+    /// <c>RecognizeTag</c> reads <c>"classes → Жрец"</c>: extracting the value would mean the
+    /// panel parsing a free-form string whose shape is the daemon's business, and it would
+    /// still never see <c>cursor</c>, which no node ever reports. The rate is not a concern —
+    /// this is a handful of events per walk, not two per node.
+    /// </summary>
+    VariableSet,
 }
 
 /// <summary>
@@ -113,6 +160,11 @@ public sealed record RunWalkDto(
 /// <param name="Detail">Human-readable specifics, or <c>null</c>.</param>
 /// <param name="DurationMs">How long the node took. <c>0</c> for anything but <see cref="RunEventKind.NodeExited"/>.</param>
 /// <param name="Walk">Set on <see cref="RunEventKind.WalkStarted"/> and nowhere else.</param>
+/// <param name="Variable">
+/// Set on <see cref="RunEventKind.VariableSet"/> and nowhere else: the variable's name, with
+/// its value in <see cref="Detail"/>. Appended AFTER <paramref name="Walk"/> so every
+/// positional construction that predates D5 still compiles and still means what it did.
+/// </param>
 public sealed record RunEventDto(
     Guid WalkId,
     RunEventKind Kind,
@@ -121,7 +173,8 @@ public sealed record RunEventDto(
     string? Outcome = null,
     string? Detail = null,
     int DurationMs = 0,
-    RunWalkDto? Walk = null);
+    RunWalkDto? Walk = null,
+    string? Variable = null);
 
 /// <summary>
 /// Payload of the <c>RunEvents</c> push: everything that happened since the last flush.
