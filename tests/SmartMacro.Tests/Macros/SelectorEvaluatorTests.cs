@@ -82,4 +82,33 @@ public class SelectorEvaluatorTests
 
         await Assert.That(matched).Count().IsEqualTo(0);
     }
+
+    // D4 moved the RULE to TargetSelector.Matches in Contracts and left this class as the
+    // typed wrapper the executor calls, so the panel can evaluate the same selectors against
+    // its own WindowDto snapshot without a second implementation. This pins the two together:
+    // if anyone reintroduces the loops here, a divergence shows up as a failure rather than
+    // as a badge that quietly lies about what a run will hit.
+    [Test]
+    public async Task Evaluator_DelegatesToTheSelectorsOwnRule()
+    {
+        var snapshot = BuildRegistry().Snapshot();
+        TargetSelector[] cases =
+        [
+            new(),
+            new() { RequireTags = ["перс"] },
+            new() { RequireTags = ["перс", "лучник"] },
+            new() { ExcludeTags = ["МАСТЕР"] },
+            new() { RequireTags = ["перс"], ExcludeTags = ["МАСТЕР"] },
+            new() { RequireTags = ["ПЕРС"] },
+        ];
+
+        foreach (var selector in cases)
+        {
+            foreach (var window in snapshot)
+            {
+                await Assert.That(SelectorEvaluator.Matches(window, selector))
+                    .IsEqualTo(selector.Matches(window.Tags));
+            }
+        }
+    }
 }

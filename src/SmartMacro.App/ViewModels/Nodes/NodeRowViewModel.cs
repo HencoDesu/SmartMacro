@@ -98,107 +98,6 @@ public sealed class NodeEdgeViewModel : ObservableObject
 }
 
 /// <summary>
-/// Editor for a node's <see cref="TargetSelector"/>: two comma-separated tag lists.
-///
-/// <see cref="UseSelector"/> is what distinguishes the two things a null-vs-empty selector
-/// means in the model, which the tag boxes alone cannot express:
-///   * off — <c>Target = null</c>: act on the run's CONTEXT window;
-///   * on with both boxes empty — <c>Target = new TargetSelector()</c>: fan out to EVERY
-///     registered window.
-/// Without the flag those two collapse into each other and a graph would not survive a
-/// load/save round-trip.
-/// </summary>
-public sealed class TargetSelectorViewModel : ObservableObject
-{
-    private bool _useSelector;
-    private string _requireText = string.Empty;
-    private string _excludeText = string.Empty;
-
-    /// <summary><c>false</c> = act on the context window (<c>Target = null</c>).</summary>
-    public bool UseSelector
-    {
-        get => _useSelector;
-        set => SetField(ref _useSelector, value);
-    }
-
-    /// <summary>Comma-separated tags a window must all carry.</summary>
-    public string RequireText
-    {
-        get => _requireText;
-        set => SetField(ref _requireText, value);
-    }
-
-    /// <summary>Comma-separated tags that disqualify a window.</summary>
-    public string ExcludeText
-    {
-        get => _excludeText;
-        set => SetField(ref _excludeText, value);
-    }
-
-    /// <summary>
-    /// The canvas's targets chip. It says what the SELECTOR is, never how many windows it
-    /// currently matches — the panel has no way to ask (the mockup's «8 окон · кроме Склад»
-    /// badge needs an IPC request that does not exist, plan §D4), and an invented number
-    /// beside a real one is worse than no number.
-    /// </summary>
-    public string Summary
-    {
-        get
-        {
-            if (!_useSelector)
-            {
-                return "контекст-окно";
-            }
-            var require = _requireText.Trim();
-            var exclude = _excludeText.Trim();
-            return (require.Length, exclude.Length) switch
-            {
-                (0, 0) => "все окна",
-                (_, 0) => require,
-                (0, _) => $"кроме {exclude}",
-                _ => $"{require} · кроме {exclude}",
-            };
-        }
-    }
-
-    protected override void OnPropertyChanged(string? propertyName = null)
-    {
-        base.OnPropertyChanged(propertyName);
-        if (propertyName is not (null or nameof(Summary)))
-        {
-            base.OnPropertyChanged(nameof(Summary));
-        }
-    }
-
-    /// <summary>Builds the model selector, or <c>null</c> when targeting the context window.</summary>
-    public TargetSelector? ToSelector() => _useSelector
-        ? new TargetSelector
-        {
-            RequireTags = SplitTags(_requireText),
-            ExcludeTags = SplitTags(_excludeText),
-        }
-        : null;
-
-    /// <summary>Loads a model selector (<c>null</c> = context window).</summary>
-    public static TargetSelectorViewModel FromSelector(TargetSelector? selector) => new()
-    {
-        UseSelector = selector is not null,
-        RequireText = JoinTags(selector?.RequireTags),
-        ExcludeText = JoinTags(selector?.ExcludeTags),
-    };
-
-    // Tags containing a comma cannot be expressed here. They are class names and other
-    // short labels in practice, so the trade-off buys a one-line editor for the common case.
-    private static List<string> SplitTags(string text) =>
-    [
-        .. text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-    ];
-
-    private static string JoinTags(IReadOnlyList<string>? tags) =>
-        tags is null || tags.Count == 0 ? string.Empty : string.Join(", ", tags);
-}
-
-/// <summary>
 /// Editor for a client-space rectangle (X / Y / W / H as free text).
 ///
 /// For the optional regions of Find/Wait nodes, a zero (or negative) width or height maps
@@ -332,13 +231,11 @@ public abstract class NodeRowViewModel : ObservableObject
         Edges = edges;
         if (target is not null)
         {
-            // The box's targets chip mirrors the selector, which is edited through its own
-            // view-model — so its changes have to be forwarded or the chip goes stale.
-            target.PropertyChanged += (_, _) =>
-            {
-                OnPropertyChanged(nameof(TargetSummary));
-                OnPropertyChanged(nameof(ShowsTargetChip));
-            };
+            // Whether the box shows a targets chip at all follows the selector's own mode,
+            // which is edited through its own view-model — so the change has to be
+            // forwarded, or turning "цели по тегам" on leaves the box looking unchanged.
+            // The chip's CONTENT needs no forwarding: it binds straight to the selector.
+            target.PropertyChanged += (_, _) => OnPropertyChanged(nameof(ShowsTargetChip));
         }
     }
 
@@ -500,9 +397,6 @@ public abstract class NodeRowViewModel : ObservableObject
     /// </summary>
     public bool HasSummary => Summary.Length > 0 && Keycap is null;
 
-    /// <summary>The targets chip, or <c>null</c> for the node types that have no selector.</summary>
-    public string? TargetSummary => Target?.Summary;
-
     /// <summary>
     /// Whether the box prints the targets chip at all. Only when the node routes by TAGS:
     /// a 210px header cannot carry both a type label and a chip, and "acts on the context
@@ -556,7 +450,6 @@ public abstract class NodeRowViewModel : ObservableObject
             case null:
             case nameof(Summary):
             case nameof(HasSummary):
-            case nameof(TargetSummary):
             case nameof(ShowsTargetChip):
             case nameof(X):
             case nameof(Y):

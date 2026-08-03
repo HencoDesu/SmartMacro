@@ -25,7 +25,9 @@
                                      from NocturneSpace*.
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="using:SmartMacro.App.Controls"
+                    xmlns:conv="using:SmartMacro.App.Converters">
 
     <!-- ================================================================
          FOCUS
@@ -697,6 +699,202 @@
                 </Border>
             </ControlTemplate>
         </Setter>
+    </ControlTheme>
+
+    <!-- ================================================================
+         KEYBINDINGPICKER — the hotkey trap (wave D4, mockup 1f)
+
+         Four states in one control, and each is a different border recipe over the same
+         28px row:
+
+           unbound    dashed neutral outline + the ⌨ prompt
+           capturing  accent outline over the 12% wash, a pulsing dot, «Нажмите сочетание…»
+           bound      neutral outline + the chord as physical keycaps
+           conflict   danger outline over the danger wash + the reason, right-aligned
+
+         The caps are the point of the widget: modifiers as separate keys rather than the
+         string "Ctrl+Shift+F1", so what was captured is legible and a clash with an
+         existing binding is easy to spot. Border bottom-width 2 is what makes a flat
+         rectangle read as a physical key.
+         ================================================================ -->
+
+    <ControlTheme x:Key="{x:Type controls:KeyBindingPicker}" TargetType="controls:KeyBindingPicker">
+        <Setter Property="Background" Value="{DynamicResource NocturneFieldBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral800Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="Padding" Value="8,0" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeSmall}" />
+        <Setter Property="Foreground" Value="{DynamicResource NocturneTextMutedBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Panel>
+                <!-- Border has no dash array in Avalonia; the empty state's dashed outline is
+                     a Rectangle laid over the (then borderless) root. -->
+                <Rectangle x:Name="PART_Dash"
+                           IsVisible="False"
+                           RadiusX="5" RadiusY="5"
+                           StrokeThickness="1"
+                           StrokeDashArray="3,2"
+                           IsHitTestVisible="False"
+                           Stroke="{DynamicResource NocturneNeutral800Brush}" />
+                <Border x:Name="PART_Root"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Padding="{TemplateBinding Padding}">
+                    <!-- The keycaps are Auto and the trailing note is the star column, not
+                         the other way round: an Auto column is measured first and takes what
+                         it asks for, so a hint sitting in one starves the caps and the chord
+                         renders as a sliver. The note is the part that may be trimmed. -->
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,*" VerticalAlignment="Center">
+
+                        <!-- armed dot -->
+                        <Ellipse x:Name="PART_Dot"
+                                 Grid.Column="0"
+                                 Width="6" Height="6"
+                                 Margin="0,0,8,0"
+                                 VerticalAlignment="Center"
+                                 IsVisible="{TemplateBinding IsCapturing}"
+                                 Fill="{DynamicResource NocturneAccent300Brush}" />
+
+                        <!-- prompt: empty state or armed state -->
+                        <TextBlock x:Name="PART_Prompt"
+                                   Grid.Column="1"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   IsVisible="{TemplateBinding ShowsPrompt}"
+                                   Foreground="{TemplateBinding Foreground}"
+                                   Text="{TemplateBinding PromptText}" />
+
+                        <!-- the chord, as physical keys -->
+                        <ItemsControl x:Name="PART_Keycaps"
+                                      Grid.Column="2"
+                                      VerticalAlignment="Center"
+                                      IsVisible="{TemplateBinding ShowsPrompt, Converter={x:Static BoolConverters.Not}}"
+                                      ItemsSource="{TemplateBinding Keycaps}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="5" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="controls:KeycapItem">
+                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                        <TextBlock Text="+"
+                                                   FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                                   IsVisible="{Binding ShowsPlus}" />
+                                        <Border Height="19"
+                                                Padding="7,0"
+                                                CornerRadius="3"
+                                                BorderThickness="1,1,1,2"
+                                                Background="{Binding IsPrimary, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneAccentTint18Brush|NocturneKeycapBrush}"
+                                                BorderBrush="{Binding IsPrimary, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneAccent700Brush|NocturneEdgeBrush}">
+                                            <TextBlock VerticalAlignment="Center"
+                                                       FontSize="10.5"
+                                                       FontWeight="Medium"
+                                                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                       Foreground="{Binding IsPrimary, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneAccent300Brush|NocturneTextBrush}"
+                                                       Text="{Binding Text}" />
+                                        </Border>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- «клик — перезадать», or the conflict reason. Tooltipped because
+                             a long chord trims it, and a trimmed conflict must still be
+                             readable. -->
+                        <TextBlock x:Name="PART_Trailing"
+                                   Grid.Column="3"
+                                   Margin="8,0,0,0"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"
+                                   FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                   Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="{TemplateBinding TrailingText}"
+                                   Text="{TemplateBinding TrailingText}" />
+                    </Grid>
+                </Border>
+                </Panel>
+            </ControlTemplate>
+        </Setter>
+
+        <!-- пусто: a dashed outline says "there is nothing here yet" without a word. -->
+        <Style Selector="^:unbound">
+            <Style Selector="^ /template/ Rectangle#PART_Dash">
+                <Setter Property="IsVisible" Value="True" />
+            </Style>
+            <Style Selector="^ /template/ Border#PART_Root">
+                <Setter Property="BorderBrush" Value="Transparent" />
+            </Style>
+        </Style>
+        <Style Selector="^:unbound:pointerover /template/ Rectangle#PART_Dash">
+            <Setter Property="Stroke" Value="{DynamicResource NocturneAccent700Brush}" />
+        </Style>
+
+        <Style Selector="^:pointerover /template/ Border#PART_Root">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccent700Brush}" />
+        </Style>
+        <Style Selector="^:pointerover /template/ TextBlock#PART_Prompt">
+            <Setter Property="Foreground" Value="{DynamicResource NocturneAccent400Brush}" />
+        </Style>
+
+        <!-- ловит -->
+        <Style Selector="^:capturing">
+            <Style Selector="^ /template/ Rectangle#PART_Dash">
+                <Setter Property="IsVisible" Value="False" />
+            </Style>
+            <Style Selector="^ /template/ Border#PART_Root">
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
+                <Setter Property="Background" Value="{DynamicResource NocturneAccentTint12Brush}" />
+                <!-- The mockup's smPulse. On an outlined control the honest equivalent of a
+                     CSS opacity keyframe is the whole row breathing: animating the border
+                     brush would need two brush resources and still not read as motion. -->
+                <Style.Animations>
+                    <Animation Duration="0:0:1.4" IterationCount="INFINITE" Easing="SineEaseInOut">
+                        <KeyFrame Cue="0%">
+                            <Setter Property="Opacity" Value="1" />
+                        </KeyFrame>
+                        <KeyFrame Cue="50%">
+                            <Setter Property="Opacity" Value="0.55" />
+                        </KeyFrame>
+                        <KeyFrame Cue="100%">
+                            <Setter Property="Opacity" Value="1" />
+                        </KeyFrame>
+                    </Animation>
+                </Style.Animations>
+            </Style>
+            <Style Selector="^ /template/ TextBlock#PART_Prompt">
+                <Setter Property="Foreground" Value="{DynamicResource NocturneAccent300Brush}" />
+                <Setter Property="FontWeight" Value="Medium" />
+            </Style>
+        </Style>
+
+        <!-- конфликт -->
+        <Style Selector="^:conflict">
+            <Style Selector="^ /template/ Border#PART_Root">
+                <Setter Property="BorderBrush" Value="{DynamicResource NocturneDangerBorderHoverBrush}" />
+                <Setter Property="Background" Value="{DynamicResource NocturneDangerSurfaceBrush}" />
+            </Style>
+            <Style Selector="^ /template/ TextBlock#PART_Trailing">
+                <Setter Property="Foreground" Value="{DynamicResource NocturneDangerBrush}" />
+            </Style>
+        </Style>
+
+        <Style Selector="^:disabled /template/ Border#PART_Root">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneNeutral900Brush}" />
+            <Setter Property="Background" Value="{DynamicResource NocturneSurfaceSunkenBrush}" />
+        </Style>
     </ControlTheme>
 
     <!-- ================================================================

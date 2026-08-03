@@ -301,6 +301,40 @@ public class IpcRequestDispatcherTests
         A.CallTo(() => harness.Hotkeys.ResumeAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
     }
 
+    // D4: chords the daemon has bound but Windows would not give it. Without this the
+    // failure is a line in a log file the pipe never carries, and the user sees a hotkey
+    // that looks bound and does nothing.
+    [Test]
+    public async Task GetHotkeyFailures_ReportsWhatRegisterHotKeyRefused()
+    {
+        using var harness = new IpcDispatcherHarness();
+        A.CallTo(() => harness.Hotkeys.Failures).Returns(
+            [new HotkeyFailureDto("баг-госта", HotkeyModifiers.Win, VirtualKey.L)]);
+
+        var response = await harness.DispatchAsync(IpcMessageTypes.GetHotkeyFailures);
+        var failures = IpcJson.Read<HotkeyFailureDto[]>(response.Payload);
+
+        await Assert.That(response.Ok).IsTrue();
+        await Assert.That(failures).IsNotNull();
+        await Assert.That(failures!).Count().IsEqualTo(1);
+        await Assert.That(failures[0].MacroName).IsEqualTo("баг-госта");
+        await Assert.That(failures[0].Modifiers).IsEqualTo(HotkeyModifiers.Win);
+        await Assert.That(failures[0].Key).IsEqualTo(VirtualKey.L);
+    }
+
+    [Test]
+    public async Task GetHotkeyFailures_WithNothingWrong_IsAnEmptyArray()
+    {
+        using var harness = new IpcDispatcherHarness();
+        A.CallTo(() => harness.Hotkeys.Failures).Returns([]);
+
+        var response = await harness.DispatchAsync(IpcMessageTypes.GetHotkeyFailures);
+
+        await Assert.That(response.Ok).IsTrue();
+        await Assert.That(IpcJson.Read<HotkeyFailureDto[]>(response.Payload)).IsNotNull();
+        await Assert.That(IpcJson.Read<HotkeyFailureDto[]>(response.Payload)!).IsEmpty();
+    }
+
     // -------------------------------------------------------------------- diagnostics
 
     [Test]

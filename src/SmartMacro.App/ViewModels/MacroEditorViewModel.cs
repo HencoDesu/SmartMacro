@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using Serilog;
@@ -11,6 +12,7 @@ using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
+using SmartMacro.Native;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -19,6 +21,7 @@ public sealed class MacroListItemViewModel : ObservableObject
 {
     private bool _isRunning;
     private bool _isCurrent;
+    private string? _hotkeyProblem;
 
     public MacroListItemViewModel(MacroGraph macro)
     {
@@ -70,6 +73,28 @@ public sealed class MacroListItemViewModel : ObservableObject
         get => _isCurrent;
         internal set => SetField(ref _isCurrent, value);
     }
+
+    /// <summary>
+    /// «Ctrl+F1 не зарегистрирован — занят другим приложением», or <c>null</c>.
+    ///
+    /// The library row is the only place a silently dead hotkey can be noticed WITHOUT
+    /// opening the macro, which matters because the usual way this happens is at daemon
+    /// startup, to a macro nobody is editing.
+    /// </summary>
+    public string? HotkeyProblem
+    {
+        get => _hotkeyProblem;
+        internal set
+        {
+            if (SetField(ref _hotkeyProblem, value))
+            {
+                OnPropertyChanged(nameof(HasHotkeyProblem));
+            }
+        }
+    }
+
+    /// <summary><c>true</c> when the row should carry its warning marker.</summary>
+    public bool HasHotkeyProblem => _hotkeyProblem is not null;
 
     private static string Describe(MacroGraph macro)
     {
@@ -177,6 +202,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     private IReadOnlyList<MacroGraph> _library = [];
     private IReadOnlyList<RunningMacroDto> _runningMacros = [];
+    private IReadOnlyList<HotkeyFailureDto> _hotkeyFailures = [];
 
     private MacroListItemViewModel? _selectedMacro;
     private NodeRowViewModel? _selectedNode;
@@ -237,6 +263,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         _client.Connected += OnConnected;
         _client.EventReceived += OnEventReceived;
+        // One subscription for the whole trigger list rather than a hook in each of
+        // AddTrigger / RemoveTrigger / LoadGraph / CloseEditor: those are four places that
+        // would all have to remember, and forgetting one leaves a picker whose conflict
+        // state never updates.
+        Triggers.CollectionChanged += OnTriggersCollectionChanged;
 
         if (_client.IsConnected)
         {
@@ -300,6 +331,16 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     /// <summary>Absolute path of the daemon's macro folder — the "open folder" affordance.</summary>
     public string FolderPath { get; }
+
+    /// <summary>
+    /// The editor's live window snapshot, behind every node's targets badge (D4). Seeded by
+    /// <see cref="RefreshAsync"/> and kept current by the daemon's window pushes, exactly
+    /// like the library is kept current by <c>MacrosChanged</c>.
+    ///
+    /// Public because the tests drive it and because the inspector's badge reads its count;
+    /// nothing outside this class mutates it.
+    /// </summary>
+    public WindowCatalog Windows { get; } = new();
 
     // ---- open graph (right pane) ----------------------------------------------------
 
@@ -693,9 +734,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             var macros = await _client.RequestAsync<MacroGraph[]>(IpcMessageTypes.GetMacros).ConfigureAwait(false);
             var runs = await _client.RequestAsync<RunningMacroDto[]>(IpcMessageTypes.GetRunningMacros).ConfigureAwait(false);
+            // The targets badge needs the window list, and this VM keeps its own rather than
+            // reaching into «Окна» — see WindowCatalog.
+            var windows = await _client.RequestAsync<WindowDto[]>(IpcMessageTypes.GetWindows).ConfigureAwait(false);
+            var failures = await _client.RequestAsync<HotkeyFailureDto[]>(IpcMessageTypes.GetHotkeyFailures).ConfigureAwait(false);
             _dispatcher.Post(() =>
             {
                 _runningMacros = runs ?? [];
+                _hotkeyFailures = failures ?? [];
+                Windows.Reset(windows ?? []);
                 ApplyLibrary(macros ?? []);
             });
         }
@@ -1094,8 +1141,20 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// </summary>
     public Task SuspendHotkeysAsync() => _hotkeys?.SuspendAsync() ?? Task.CompletedTask;
 
-    /// <summary>Restores global hotkeys from the (possibly just-edited) library.</summary>
-    public Task ResumeHotkeysAsync() => _hotkeys?.ResumeAsync() ?? Task.CompletedTask;
+    /// <summary>
+    /// Restores global hotkeys from the (possibly just-edited) library, then asks which of
+    /// them Windows refused. The order matters: <c>ResumeHotkeys</c> only answers once every
+    /// <c>RegisterHotKey</c> has been attempted, so the failure list is settled by then.
+    /// </summary>
+    public async Task ResumeHotkeysAsync()
+    {
+        if (_hotkeys is null)
+        {
+            return;
+        }
+        await _hotkeys.ResumeAsync().ConfigureAwait(false);
+        await RefreshHotkeyFailuresAsync().ConfigureAwait(false);
+    }
 
     // ---- run-event subscription -----------------------------------------------------
 
@@ -1141,9 +1200,136 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     {
         _client.Connected -= OnConnected;
         _client.EventReceived -= OnEventReceived;
+        Triggers.CollectionChanged -= OnTriggersCollectionChanged;
+        foreach (var row in _watchedTriggers)
+        {
+            row.PropertyChanged -= OnTriggerRowChanged;
+        }
+        _watchedTriggers.Clear();
         foreach (var row in Nodes)
         {
             DetachNode(row);
+        }
+    }
+
+    // ---- hotkey conflicts (mockup 1f, fourth state) -----------------------------------
+
+    private readonly HashSet<HotkeyTriggerRowViewModel> _watchedTriggers = [];
+
+    // Reconciled rather than driven off the event's Old/NewItems: Clear() raises a Reset
+    // with neither, and LoadGraph clears before it refills.
+    private void OnTriggersCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        var current = Triggers.OfType<HotkeyTriggerRowViewModel>().ToHashSet();
+        foreach (var row in _watchedTriggers.Except(current).ToList())
+        {
+            row.PropertyChanged -= OnTriggerRowChanged;
+            _watchedTriggers.Remove(row);
+        }
+        foreach (var row in current.Except(_watchedTriggers).ToList())
+        {
+            row.PropertyChanged += OnTriggerRowChanged;
+            _watchedTriggers.Add(row);
+        }
+        RefreshHotkeyConflicts();
+    }
+
+    private void OnTriggerRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Conflict/HasConflict are what this method WRITES; reacting to them would be a
+        // (terminating, but pointless) loop through the whole library on every assignment.
+        if (e.PropertyName is nameof(HotkeyTriggerRowViewModel.Conflict)
+            or nameof(HotkeyTriggerRowViewModel.HasConflict))
+        {
+            return;
+        }
+        RefreshHotkeyConflicts();
+    }
+
+    /// <summary>
+    /// Recomputes both halves of "this hotkey will not work": the library clash the panel
+    /// can see on its own, and the registration Windows refused.
+    ///
+    /// Order is deliberate. A chord claimed by another macro is reported as that, even when
+    /// the daemon ALSO failed to register it — the two are the same event (the daemon
+    /// registers the first claimant and Windows rejects the second), and «уже занят
+    /// pw-immunity» names the thing the user can actually fix.
+    /// </summary>
+    private void RefreshHotkeyConflicts()
+    {
+        // Who else in the library owns a chord. The open macro is skipped: its triggers are
+        // the ROWS, which may already differ from what is on disk.
+        var owners = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var macro in _library)
+        {
+            if (_loadedName is not null && string.Equals(macro.Name, _loadedName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            foreach (var trigger in macro.Triggers.OfType<HotkeyTrigger>())
+            {
+                if (HotkeyTriggerRowViewModel.ChordKey(trigger) is { } key)
+                {
+                    owners.TryAdd(key, macro.Name);
+                }
+            }
+        }
+
+        // Registration failures that belong to the macro being edited. Matching on the macro
+        // NAME as well as the chord matters: when two macros share a chord the daemon
+        // registers one and rejects the other, and the winner must not be told its own key
+        // is taken.
+        var refusedHere = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var failure in _hotkeyFailures)
+        {
+            if (_loadedName is not null && string.Equals(failure.MacroName, _loadedName, StringComparison.Ordinal))
+            {
+                refusedHere.Add($"K:{(int)failure.Modifiers}:{(int)failure.Key}");
+            }
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in Triggers.OfType<HotkeyTriggerRowViewModel>())
+        {
+            var key = row.ChordKey();
+            if (key is null)
+            {
+                // Nothing bound yet — an empty picker clashes with nothing.
+                row.Conflict = null;
+            }
+            else if (owners.TryGetValue(key, out var other))
+            {
+                row.Conflict = $"уже занят {other}";
+            }
+            else if (!seen.Add(key))
+            {
+                row.Conflict = "уже задан в этом макросе";
+            }
+            else
+            {
+                row.Conflict = refusedHere.Contains(key) ? "занят другим приложением" : null;
+            }
+        }
+
+        RefreshLibraryHotkeyProblems();
+    }
+
+    // The library rows carry the same news for macros nobody has opened — the case where a
+    // hotkey died at daemon startup and there is otherwise nothing on screen to say so.
+    private void RefreshLibraryHotkeyProblems()
+    {
+        var byMacro = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var failure in _hotkeyFailures)
+        {
+            var chord = failure.Modifiers == HotkeyModifiers.None
+                ? failure.Key.ToString()
+                : $"{failure.Modifiers}+{failure.Key}";
+            byMacro[failure.MacroName] = $"{chord} не зарегистрирован — сочетание занято другим приложением";
+        }
+
+        foreach (var item in Macros)
+        {
+            item.HotkeyProblem = byMacro.TryGetValue(item.Name, out var text) ? text : null;
         }
     }
 
@@ -1196,6 +1382,22 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                     _runningMacros = runs;
                     RefreshRunState();
                 });
+                break;
+
+            // Both carry the window's FULL new state, so one upsert serves both.
+            case IpcMessageTypes.WindowAppeared:
+            case IpcMessageTypes.WindowTagsChanged:
+                if (IpcJson.Read<WindowDto>(evt.Payload) is { } window)
+                {
+                    _dispatcher.Post(() => Windows.Upsert(window));
+                }
+                break;
+
+            case IpcMessageTypes.WindowClosed:
+                if (IpcJson.Read<WindowClosedEvent>(evt.Payload) is { } closed)
+                {
+                    _dispatcher.Post(() => Windows.Remove(closed.Hwnd));
+                }
                 break;
 
             default:
@@ -1363,6 +1565,35 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             Log.Warning(ex, "Не удалось перечитать библиотеку макросов");
         }
+        await RefreshHotkeyFailuresAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Re-reads which chords the daemon failed to register.
+    ///
+    /// A pull, and these are its three moments: a reconnect, a library change, and the
+    /// return of <see cref="ResumeHotkeysAsync"/>. The last one is the load-bearing one —
+    /// while the «Макросы» mode is open the daemon holds every chord unregistered, so a
+    /// hotkey bound in the editor is only ever tried when the user leaves the mode, and the
+    /// verdict lands the moment <c>ResumeHotkeys</c> answers.
+    /// </summary>
+    private async Task RefreshHotkeyFailuresAsync()
+    {
+        try
+        {
+            var failures = await _client
+                .RequestAsync<HotkeyFailureDto[]>(IpcMessageTypes.GetHotkeyFailures)
+                .ConfigureAwait(false);
+            _dispatcher.Post(() =>
+            {
+                _hotkeyFailures = failures ?? [];
+                RefreshHotkeyConflicts();
+            });
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        {
+            Log.Warning(ex, "Не удалось получить список незарегистрированных хоткеев");
+        }
     }
 
     private void ApplyLibrary(IReadOnlyList<MacroGraph> macros)
@@ -1405,6 +1636,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _library = macros;
         RebuildLibrary(macros);
         RefreshRunState();
+        // A macro that just took (or gave up) a chord changes what every open picker is
+        // clashing with, and RebuildLibrary made new row objects that need their markers.
+        RefreshHotkeyConflicts();
     }
 
     // The written graph replaces (or joins) the snapshot immediately, and a rename drops the
@@ -1527,6 +1761,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             runMacro.MacroChoices = MacroChoices;
         }
+        // Same shared-instance pattern as the choice lists: one catalogue, every badge on
+        // the canvas recomputes when a window appears or is tagged.
+        if (row.Target is { } target)
+        {
+            target.Windows = Windows;
+        }
     }
 
     private void DetachNode(NodeRowViewModel row)
@@ -1535,6 +1775,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         foreach (var edge in row.Edges)
         {
             edge.PropertyChanged -= OnEdgeChanged;
+        }
+        if (row.Target is { } target)
+        {
+            // Drops the selector's subscription to the catalogue — a closed graph's rows
+            // must not keep recomputing badges nobody is looking at.
+            target.Windows = null;
         }
     }
 

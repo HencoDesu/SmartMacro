@@ -82,6 +82,22 @@ public static class IpcMessageTypes
     /// <summary>Request: — → Response: —. Re-registers the hotkeys suspended by <see cref="SuspendHotkeys"/>.</summary>
     public const string ResumeHotkeys = "ResumeHotkeys";
 
+    /// <summary>
+    /// Request: — → Response: <c>HotkeyFailureDto[]</c>. Chords the daemon has bound to a
+    /// macro but could not register with Win32, because something outside this application
+    /// owns them.
+    ///
+    /// A pull rather than a push, deliberately: the list only ever changes when the daemon
+    /// (re-)registers, and the panel is the thing that causes that — it re-fetches after
+    /// <see cref="ResumeHotkeys"/> completes, on <see cref="MacrosChanged"/>, and on every
+    /// reconnect. Adding an event type for a value nobody can change behind the panel's back
+    /// would be protocol for its own sake.
+    ///
+    /// While the panel holds hotkeys suspended the answer describes the LAST real
+    /// registration, which is the useful answer — see <c>IHotkeyRegistration.Failures</c>.
+    /// </summary>
+    public const string GetHotkeyFailures = "GetHotkeyFailures";
+
     // ------------------------------------------------------------- requests: diagnostics
 
     /// <summary>Request: — → Response: JSON string, the directory the captures were written to. Vision debugging.</summary>

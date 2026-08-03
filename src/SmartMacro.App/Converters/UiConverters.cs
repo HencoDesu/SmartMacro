@@ -118,6 +118,26 @@ public sealed class TokenBrushConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+/// <summary>
+/// Strikethrough when true, nothing when false. Used by the targets badge (D4) for the
+/// windows a selector deliberately excludes — they are struck out rather than omitted,
+/// because "who fell out and why" is half of what the expansion is for.
+///
+/// A converter rather than a style class because <c>TextDecorations</c> is a collection
+/// property with no boolean form, and Avalonia's own <c>TextDecorations.Strikethrough</c>
+/// static is the value to hand back.
+/// </summary>
+public sealed class StrikethroughConverter : IValueConverter
+{
+    public static readonly StrikethroughConverter Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is true ? TextDecorations.Strikethrough : null;
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 /// <summary>Danger for validation errors (which block the save), warning amber for the rest.</summary>
 public sealed class IssueSeverityToBrushConverter : IValueConverter
 {

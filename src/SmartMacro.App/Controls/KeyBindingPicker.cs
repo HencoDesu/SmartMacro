@@ -12,29 +12,51 @@ using MouseButton = SmartMacro.Native.MouseButton;
 
 namespace SmartMacro.App.Controls;
 
-// Game-style key-binding picker. Click the control → it enters "capture" mode showing
-// "Press a key..."; the next KeyDown / mouse-button press becomes the bound input.
-// Escape cancels, Delete / Backspace clears.
-//
-// Live since W0.3: Views/MacrosView.axaml binds it twice — once for a KeyPressNode's key,
-// once for a HotkeyTrigger's chord (CaptureModifiers mode). It briefly had no consumer between
-// W0.2b (which deleted the settings hotkey editor and the legacy per-action macro editor)
-// and W0.3, and was kept rather than deleted-and-rewritten because the capture semantics
-// below are fiddly and tested by hand against real input.
-//
-// The bound value (Key property) is a string matching VirtualKey enum names ("F1", "A",
-// "D5", ...), which is what the node model round-trips through JSON — callers parse with
-// Enum.TryParse.
-//
-// Keys not present in VirtualKey are ignored (Tab, Caps, modifiers used alone, etc.) —
-// the picker stays in capture mode so the user can try another key.
-//
-// CaptureModifiers mode (for binding a global hotkey chord): when set, the picker ALSO tracks
-// Ctrl/Shift/Alt/Win state and ALSO accepts mouse XButton1/2 (the "back"/"forward" thumb
-// buttons). Mouse capture is local-only — the cursor must be over the picker at the moment
-// the button is pressed, since we listen via PointerPressed and not a global hook.
-// CaptureModifiers stays opt-in because Character key bindings would never want a mouse
-// button bound as an in-game action key.
+/// <summary>
+/// One keycap of a captured chord: <c>Ctrl</c>, <c>Shift</c>, <c>F1</c>.
+/// </summary>
+/// <param name="Text">What the cap reads.</param>
+/// <param name="IsPrimary">
+/// The main key rather than a modifier — drawn in the accent, so a chord's payload is
+/// distinguishable from its prefix at a glance.
+/// </param>
+/// <param name="ShowsPlus">A "+" is drawn before this cap (everything but the first).</param>
+public sealed record KeycapItem(string Text, bool IsPrimary, bool ShowsPlus);
+
+/// <summary>
+/// Game-style key-binding picker. Click the control → it enters "capture" mode; the next
+/// KeyDown / mouse-button press becomes the bound input. Escape cancels, Delete / Backspace
+/// clears.
+///
+/// <b>Wave D4 rebuilt the rendering, not the capture.</b> The capture semantics below are
+/// fiddly and were tested by hand against real input, so they are untouched; what changed is
+/// that the control used to be a <c>Button</c> whose <c>Content</c> was the string
+/// "Ctrl+Shift+F1", and mockup 1f wants the four states of a real widget:
+///
+///   * <b>пусто</b> — dashed outline, «⌨ нажмите, чтобы задать»;
+///   * <b>ловит</b> — pulsing accent outline with a dot, «Нажмите сочетание…»;
+///   * <b>захвачено</b> — the chord as separate physical <see cref="KeycapItem"/> caps, not
+///     as a string. The mockup is explicit about why: separate caps show WHAT was captured
+///     and make a clash with an existing binding easier to spot;
+///   * <b>конфликт</b> — the same caps over a danger outline, with <see cref="Conflict"/>
+///     naming the owner («уже занят pw-immunity»).
+///
+/// It stays one class rather than splitting into "key picker" and "chord picker": both
+/// consumers (a <c>KeyPressNode</c>'s key, a <c>HotkeyTrigger</c>'s chord) want all four
+/// states, and the only difference between them is <see cref="CaptureModifiers"/> — which
+/// already existed.
+///
+/// The bound value (<see cref="Key"/>) is a string matching <see cref="VirtualKey"/> member
+/// names ("F1", "A", "D5", …), which is what the node model round-trips through JSON.
+/// Keys not present in <see cref="VirtualKey"/> are ignored (Tab, Caps, modifiers used
+/// alone, …) — the picker stays in capture mode so the user can try another key.
+///
+/// <see cref="CaptureModifiers"/> mode (for binding a global hotkey chord): the picker ALSO
+/// tracks Ctrl/Shift/Alt/Win and ALSO accepts the mouse thumb/middle buttons. Mouse capture
+/// is local-only — the cursor must be over the picker when the button goes down, since this
+/// listens through PointerPressed and not a global hook. It stays opt-in because a
+/// <c>KeyPressNode</c> would never want a mouse button bound as an in-game action key.
+/// </summary>
 public sealed class KeyBindingPicker : Button
 {
     public static readonly StyledProperty<string> KeyProperty =
@@ -60,11 +82,53 @@ public sealed class KeyBindingPicker : Button
             nameof(CaptureModifiers),
             defaultValue: false);
 
-    private const string CapturePromptPlain = "Press a key...";
-    private const string CapturePromptCombo = "Press a key or mouse button...";
-    private const string EmptyPrompt = "click to set";
+    /// <summary>
+    /// The chord is unusable and this says why («уже занят pw-immunity»). Supplied from
+    /// outside: the control knows what was pressed, not what else is bound.
+    /// </summary>
+    public static readonly StyledProperty<string?> ConflictProperty =
+        AvaloniaProperty.Register<KeyBindingPicker, string?>(nameof(Conflict));
+
+    public static readonly DirectProperty<KeyBindingPicker, bool> IsCapturingProperty =
+        AvaloniaProperty.RegisterDirect<KeyBindingPicker, bool>(
+            nameof(IsCapturing),
+            picker => picker._capturing);
+
+    public static readonly DirectProperty<KeyBindingPicker, IReadOnlyList<KeycapItem>> KeycapsProperty =
+        AvaloniaProperty.RegisterDirect<KeyBindingPicker, IReadOnlyList<KeycapItem>>(
+            nameof(Keycaps),
+            picker => picker.Keycaps);
+
+    public static readonly DirectProperty<KeyBindingPicker, string> PromptTextProperty =
+        AvaloniaProperty.RegisterDirect<KeyBindingPicker, string>(
+            nameof(PromptText),
+            picker => picker.PromptText);
+
+    public static readonly DirectProperty<KeyBindingPicker, string> TrailingTextProperty =
+        AvaloniaProperty.RegisterDirect<KeyBindingPicker, string>(
+            nameof(TrailingText),
+            picker => picker.TrailingText);
+
+    public static readonly DirectProperty<KeyBindingPicker, bool> ShowsPromptProperty =
+        AvaloniaProperty.RegisterDirect<KeyBindingPicker, bool>(
+            nameof(ShowsPrompt),
+            picker => picker.ShowsPrompt);
+
+    private const string CapturePrompt = "Нажмите сочетание…";
+
+    // The mockup prefixes this with ⌨ (U+2328). It cannot be used: that codepoint has an
+    // emoji presentation, so Windows serves it from Segoe UI Emoji as a grey pictogram that
+    // ignores Foreground — the trap Tokens.axaml documents for U+25B6. Nothing in the
+    // non-emoji ranges reads as "keyboard", and the dashed outline already says "empty", so
+    // the prompt is plain text.
+    private const string EmptyPrompt = "нажмите, чтобы задать";
+    private const string RebindHint = "клик — перезадать";
 
     private bool _capturing;
+    private IReadOnlyList<KeycapItem> _keycaps = [];
+    private string _promptText = EmptyPrompt;
+    private string _trailingText = string.Empty;
+    private bool _showsPrompt = true;
 
     public string Key
     {
@@ -90,14 +154,38 @@ public sealed class KeyBindingPicker : Button
         set => SetValue(CaptureModifiersProperty, value);
     }
 
-    // FluentTheme styles target `Button` by exact type; without redirecting the style
-    // key, our subclass renders as bare unstyled text on the window background. This
-    // makes us pick up the normal Button chrome (border, hover, pressed states).
-    protected override Type StyleKeyOverride => typeof(Button);
+    /// <inheritdoc cref="ConflictProperty" />
+    public string? Conflict
+    {
+        get => GetValue(ConflictProperty);
+        set => SetValue(ConflictProperty, value);
+    }
+
+    /// <summary>
+    /// The picker is armed and waiting for a key. Read-only; the view binds the amber
+    /// "hotkeys are suspended" notice to it.
+    /// </summary>
+    public bool IsCapturing => _capturing;
+
+    /// <summary>The captured chord as physical caps, left to right. Empty when nothing is bound.</summary>
+    public IReadOnlyList<KeycapItem> Keycaps => _keycaps;
+
+    /// <summary>Text shown INSTEAD of the caps: the empty prompt, or the armed prompt.</summary>
+    public string PromptText => _promptText;
+
+    /// <summary>Right-aligned note: the conflict message, or «клик — перезадать».</summary>
+    public string TrailingText => _trailingText;
+
+    /// <summary><c>true</c> when the prompt is showing rather than the caps.</summary>
+    public bool ShowsPrompt => _showsPrompt;
+
+    // Its own theme rather than Button's: the template is a keycap strip, not a
+    // ContentPresenter. See Themes/Controls.axaml.
+    protected override Type StyleKeyOverride => typeof(KeyBindingPicker);
 
     public KeyBindingPicker()
     {
-        UpdateContent();
+        UpdateVisualState();
         Click += OnClick;
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -107,22 +195,20 @@ public sealed class KeyBindingPicker : Button
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (_capturing)
-        {
-            return;
-        }
         if (change.Property == KeyProperty
             || change.Property == ModifiersProperty
-            || change.Property == MouseButtonProperty)
+            || change.Property == MouseButtonProperty
+            || change.Property == CaptureModifiersProperty
+            || change.Property == ConflictProperty)
         {
-            UpdateContent();
+            UpdateVisualState();
         }
     }
 
     private void OnClick(object? sender, RoutedEventArgs e)
     {
-        _capturing = true;
-        Content = CaptureModifiers ? CapturePromptCombo : CapturePromptPlain;
+        SetAndRaise(IsCapturingProperty, ref _capturing, true);
+        UpdateVisualState();
         Focus();
     }
 
@@ -172,7 +258,7 @@ public sealed class KeyBindingPicker : Button
         CancelCapture();
     }
 
-    // Captures mouse XButton1/2 presses while in capture mode. We ignore Left/Right/Middle
+    // Captures mouse XButton1/2 presses while in capture mode. We ignore Left/Right
     // (the normal click that triggered capture comes through here too — wrapped in the
     // Avalonia Button click handling that fires OnClick separately, but we also need to
     // not accidentally bind it as a hotkey).
@@ -227,33 +313,55 @@ public sealed class KeyBindingPicker : Button
         {
             return;
         }
-        _capturing = false;
-        UpdateContent();
+        SetAndRaise(IsCapturingProperty, ref _capturing, false);
+        UpdateVisualState();
     }
 
-    private void UpdateContent()
+    /// <summary>
+    /// Recomputes everything the template renders, plus the pseudoclasses the theme styles
+    /// react to. One method rather than a derived property per state so the four visual
+    /// states can never be half-applied.
+    /// </summary>
+    private void UpdateVisualState()
     {
-        // Mouse binding wins if set. Order matters because Key is empty when MouseButton
-        // is bound, but the EmptyPrompt check on Key alone would still show "click to set".
-        if (CaptureModifiers && MouseButton != MouseButton.None)
+        var hasBinding = (CaptureModifiers && MouseButton != MouseButton.None)
+                         || !string.IsNullOrEmpty(Key);
+
+        SetAndRaise(KeycapsProperty, ref _keycaps, hasBinding ? BuildKeycaps() : []);
+        SetAndRaise(PromptTextProperty, ref _promptText, _capturing ? CapturePrompt : EmptyPrompt);
+        SetAndRaise(ShowsPromptProperty, ref _showsPrompt, _capturing || !hasBinding);
+
+        var trailing = Conflict is { Length: > 0 } conflict
+            ? conflict
+            : hasBinding && !_capturing ? RebindHint : string.Empty;
+        SetAndRaise(TrailingTextProperty, ref _trailingText, trailing);
+
+        PseudoClasses.Set(":capturing", _capturing);
+        PseudoClasses.Set(":unbound", !hasBinding);
+        // A conflict is only worth shouting about once there IS a chord to complain about,
+        // and never while the user is in the middle of replacing it.
+        PseudoClasses.Set(":conflict", hasBinding && !_capturing && Conflict is { Length: > 0 });
+    }
+
+    // Win32 RegisterHotKey order is Ctrl+Shift+Alt+Win+Key by convention; we match it
+    // for consistency with how users see hotkeys elsewhere in Windows.
+    private IReadOnlyList<KeycapItem> BuildKeycaps()
+    {
+        var caps = new List<KeycapItem>(5);
+        if (CaptureModifiers)
         {
-            Content = FormatCombo(Modifiers, MouseButtonLabel(MouseButton));
-            return;
+            var mods = Modifiers;
+            if (mods.HasFlag(HotkeyModifiers.Control)) caps.Add(new KeycapItem("Ctrl", false, caps.Count > 0));
+            if (mods.HasFlag(HotkeyModifiers.Shift)) caps.Add(new KeycapItem("Shift", false, caps.Count > 0));
+            if (mods.HasFlag(HotkeyModifiers.Alt)) caps.Add(new KeycapItem("Alt", false, caps.Count > 0));
+            if (mods.HasFlag(HotkeyModifiers.Win)) caps.Add(new KeycapItem("Win", false, caps.Count > 0));
         }
 
-        if (string.IsNullOrEmpty(Key))
-        {
-            Content = EmptyPrompt;
-            return;
-        }
-
-        if (CaptureModifiers && Modifiers != HotkeyModifiers.None)
-        {
-            Content = FormatCombo(Modifiers, Key);
-            return;
-        }
-
-        Content = Key;
+        var main = CaptureModifiers && MouseButton != MouseButton.None
+            ? MouseButtonLabel(MouseButton)
+            : Key;
+        caps.Add(new KeycapItem(main, true, caps.Count > 0));
+        return caps;
     }
 
     private static string MouseButtonLabel(MouseButton button) => button switch
@@ -263,19 +371,6 @@ public sealed class KeyBindingPicker : Button
         MouseButton.Middle => "MouseMiddle",
         _ => button.ToString(),
     };
-
-    // Win32 RegisterHotKey order is Ctrl+Shift+Alt+Win+Key by convention; we match it
-    // for consistency with how users see hotkeys elsewhere in Windows.
-    private static string FormatCombo(HotkeyModifiers mods, string mainPart)
-    {
-        var parts = new List<string>(5);
-        if (mods.HasFlag(HotkeyModifiers.Control)) parts.Add("Ctrl");
-        if (mods.HasFlag(HotkeyModifiers.Shift)) parts.Add("Shift");
-        if (mods.HasFlag(HotkeyModifiers.Alt)) parts.Add("Alt");
-        if (mods.HasFlag(HotkeyModifiers.Win)) parts.Add("Win");
-        parts.Add(mainPart);
-        return string.Join("+", parts);
-    }
 
     private static HotkeyModifiers ToHotkeyModifiers(KeyModifiers km)
     {

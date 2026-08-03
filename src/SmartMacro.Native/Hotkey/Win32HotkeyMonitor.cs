@@ -24,6 +24,7 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
     private uint _messageLoopThreadId;
     private TaskCompletionSource? _ready;
     private IReadOnlyList<HotkeyDescriptor>? _pendingBindings;
+    private volatile IReadOnlyList<HotkeyDescriptor> _rejected = [];
 
     /// <summary>
     /// Raised on the message-loop thread when any registered hotkey fires. Subscribers
@@ -36,6 +37,19 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
     {
         _logger = logger;
     }
+
+    /// <summary>
+    /// Bindings the last <see cref="StartAsync"/> could NOT register, because Windows
+    /// already had that chord — another application, another window of ours, or a
+    /// combination the shell reserves (Win+L and friends).
+    ///
+    /// Exposed because a failure here is otherwise perfectly silent from the user's side:
+    /// the UI shows a bound hotkey and the key simply never does anything. Written on the
+    /// message-loop thread before the ready signal, so it is final by the time
+    /// <see cref="StartAsync"/>'s task completes; NOT cleared by <see cref="StopAsync"/>,
+    /// so a suspended listener can still report what was wrong when it last ran.
+    /// </summary>
+    public IReadOnlyList<HotkeyDescriptor> RejectedBindings => _rejected;
 
     /// <summary>
     /// Spawns a dedicated message-loop thread, registers each binding with
@@ -112,6 +126,7 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
         _messageLoopThreadId = Kernel32Native.GetCurrentThreadId();
 
         var registeredIds = new List<int>();
+        var rejected = new List<HotkeyDescriptor>();
         try
         {
             if (_pendingBindings is not null)
@@ -126,11 +141,15 @@ public sealed partial class Win32HotkeyMonitor : IDisposable
                     }
                     else
                     {
+                        rejected.Add(binding);
                         LogHotkeyRegistrationFailed(binding.Modifiers, binding.Key, Marshal.GetLastWin32Error());
                     }
                 }
             }
 
+            // Published before the ready signal so StartAsync's caller can read a settled
+            // list the instant its task completes.
+            _rejected = rejected;
             LogStarted(registeredIds.Count);
             _ready?.TrySetResult();
 

@@ -221,6 +221,11 @@ public sealed partial class IpcRequestDispatcher
                 await _hotkeys.ResumeAsync(cancellationToken).ConfigureAwait(false);
                 return Ok(request);
 
+            case IpcMessageTypes.GetHotkeyFailures:
+                // Materialised to an array so the response is a JSON array even when the
+                // implementation hands back an empty read-only list.
+                return Ok(request, IpcJson.Write<HotkeyFailureDto[]>([.. _hotkeys.Failures ?? []]));
+
             // -------------------------------------------------------------- diagnostics
 
             case IpcMessageTypes.DumpCaptures:

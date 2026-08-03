@@ -123,6 +123,59 @@ public partial class MacrosView : UserControl
         }
     }
 
+    // ---- targets badge (1g) ------------------------------------------------------------
+
+    /// <summary>
+    /// «контекст-окно» in the badge popup. Turning the selector OFF is not the same as
+    /// clearing the tag boxes — see <see cref="TargetSelectorViewModel.UseSelector"/> — so
+    /// the tags are left alone and come back if the user flips it again.
+    /// </summary>
+    private void OnTargetContextClicked(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: TargetSelectorViewModel target })
+        {
+            target.UseSelector = false;
+        }
+    }
+
+    private void OnTargetTagsClicked(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: TargetSelectorViewModel target })
+        {
+            target.UseSelector = true;
+        }
+    }
+
+    private void OnRemoveSelectorTagClicked(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: SelectorTagChipViewModel chip })
+        {
+            chip.Remove();
+        }
+    }
+
+    /// <summary>
+    /// Enter commits the "+ тег" box. The comma-separated text underneath stays the model,
+    /// so a tag added here is indistinguishable from one typed into the inspector's box.
+    /// </summary>
+    private void OnRequireTagKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && sender is Control { DataContext: TargetSelectorViewModel target })
+        {
+            target.CommitRequireTag();
+            e.Handled = true;
+        }
+    }
+
+    private void OnExcludeTagKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && sender is Control { DataContext: TargetSelectorViewModel target })
+        {
+            target.CommitExcludeTag();
+            e.Handled = true;
+        }
+    }
+
     // ---- nodes -----------------------------------------------------------------------
 
     private void OnAddNodeClicked(object? sender, RoutedEventArgs e)

@@ -1,3 +1,5 @@
+using SmartMacro.Contracts.Dto;
+
 namespace SmartMacro.Hotkeys;
 
 /// <summary>
@@ -20,4 +22,14 @@ public interface IHotkeyRegistration
 
     /// <summary>Re-registers from the current macro library. Idempotent.</summary>
     Task ResumeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Chords that were bound to a macro but rejected by <c>RegisterHotKey</c> at the last
+    /// registration attempt — see <see cref="HotkeyFailureDto"/> for why anyone cares.
+    ///
+    /// Deliberately NOT cleared while suspended: the panel suspends for the whole time the
+    /// «Макросы» mode is on screen, which is exactly when it wants to draw this, and "we
+    /// unregistered everything a moment ago" is not an answer to "is this chord free".
+    /// </summary>
+    IReadOnlyList<HotkeyFailureDto> Failures { get; }
 }

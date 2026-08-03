@@ -842,17 +842,37 @@ public class MacroCanvasTests
         await Assert.That(row.Summary).IsEqualTo("набор classes · 320×35");
     }
 
+    // D4 replaced the box's plain text chip with the live badge; Summary is now only the
+    // SELECTOR half of it (the badge puts the window count in front — see TargetBadgeTests).
     [Test]
-    public async Task TargetChip_SaysWhatTheSelectorIs_NeverHowManyWindowsMatch()
+    public async Task TargetSummary_DescribesTheSelectorInWords()
     {
         var row = NodeRowViewModel.FromNode(new KeyPressNode { Id = "k", Key = VirtualKey.A });
-        await Assert.That(row.TargetSummary).IsEqualTo("контекст-окно");
+        await Assert.That(row.Target!.Summary).IsEqualTo("контекст-окно");
 
-        row.Target!.UseSelector = true;
-        await Assert.That(row.TargetSummary).IsEqualTo("все окна");
+        row.Target.UseSelector = true;
+        await Assert.That(row.Target.Summary).IsEqualTo("все окна");
 
         row.Target.ExcludeText = "Склад";
-        await Assert.That(row.TargetSummary).IsEqualTo("кроме Склад");
+        await Assert.That(row.Target.Summary).IsEqualTo("кроме Склад");
+    }
+
+    // The chip is on the box only when the node departs from the default. Wave D4 kept that
+    // rule (a 210px header has no room for both a type label and a badge), so it stays
+    // pinned.
+    [Test]
+    public async Task TargetChip_IsOnlyDrawnWhenTheNodeRoutesByTags()
+    {
+        var row = NodeRowViewModel.FromNode(new KeyPressNode { Id = "k", Key = VirtualKey.A });
+        await Assert.That(row.ShowsTargetChip).IsFalse();
+
+        var seen = false;
+        row.PropertyChanged += (_, e) => seen |= e.PropertyName == nameof(NodeRowViewModel.ShowsTargetChip);
+
+        row.Target!.UseSelector = true;
+
+        await Assert.That(row.ShowsTargetChip).IsTrue();
+        await Assert.That(seen).IsTrue();
     }
 
     private static List<MacroListItemViewModel> Items(params string[] names) =>

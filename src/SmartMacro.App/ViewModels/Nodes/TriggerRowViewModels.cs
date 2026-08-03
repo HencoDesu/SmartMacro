@@ -60,6 +60,7 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
     private HotkeyModifiers _modifiers;
     private string _keyName;
     private MouseButton _mouseButton;
+    private string? _conflict;
 
     public HotkeyTriggerRowViewModel(HotkeyTrigger trigger)
     {
@@ -70,6 +71,32 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
     }
 
     public override string TypeLabel => "Хоткей";
+
+    /// <summary>
+    /// Why this chord will not do what it looks like it does, or <c>null</c> when it is
+    /// free. The picker's fourth state (mockup 1f).
+    ///
+    /// Two different failures land in the same slot, because they are the same failure from
+    /// the user's chair — "you pressed it and nothing happened":
+    ///   * «уже занят pw-immunity» — another macro in the library claims the chord. The
+    ///     panel knows this on its own; <c>MacroEditorViewModel</c> computes it.
+    ///   * «занят другим приложением» — Win32 <c>RegisterHotKey</c> refused it. Only the
+    ///     daemon can see that, and it reports it through <c>GetHotkeyFailures</c>.
+    /// </summary>
+    public string? Conflict
+    {
+        get => _conflict;
+        internal set
+        {
+            if (SetField(ref _conflict, value))
+            {
+                OnPropertyChanged(nameof(HasConflict));
+            }
+        }
+    }
+
+    /// <summary><c>true</c> when there is a conflict to render.</summary>
+    public bool HasConflict => _conflict is not null;
 
     public HotkeyModifiers Modifiers
     {
@@ -103,6 +130,29 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
             yield return "Хоткей: сочетание не назначено.";
         }
     }
+
+    /// <summary>
+    /// Canonical identity of a chord, for comparing this row against the rest of the
+    /// library. <c>null</c> for a trigger with nothing bound — an unbound chord conflicts
+    /// with nothing, and reporting one unbound picker as clashing with another would be
+    /// noise on a macro that simply has not been finished yet.
+    ///
+    /// A string rather than a tuple so it can key a dictionary of library chords without a
+    /// custom comparer, and so a keyboard chord can never be equal to a mouse chord that
+    /// happens to share the modifier flags.
+    /// </summary>
+    internal static string? ChordKey(HotkeyTrigger trigger)
+    {
+        ArgumentNullException.ThrowIfNull(trigger);
+        if (trigger.IsMouse)
+        {
+            return $"M:{(int)trigger.Modifiers}:{(int)trigger.MouseButton}";
+        }
+        return trigger.IsKeyboard ? $"K:{(int)trigger.Modifiers}:{(int)trigger.Key}" : null;
+    }
+
+    /// <summary>Identity of the chord this row currently holds.</summary>
+    internal string? ChordKey() => ChordKey((HotkeyTrigger)ToTrigger());
 }
 
 /// <summary>Editor for <see cref="ProcessAppearedTrigger"/>: just the process name to watch.</summary>

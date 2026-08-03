@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using SmartMacro.Contracts.Dto;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Native.Hotkey;
@@ -30,6 +31,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
     private IReadOnlyList<HotkeyDescriptor> _keyboardDescriptors = [];
     private IReadOnlyList<MouseHookBinding> _mouseDescriptors = [];
     private Dictionary<int, string> _idToMacro = [];
+    private volatile IReadOnlyList<HotkeyFailureDto> _failures = [];
     private bool _started;
     private bool _suspended;
 
@@ -58,6 +60,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
         await _keyboardMonitor.StartAsync(_keyboardDescriptors, cancellationToken).ConfigureAwait(false);
         await _mouseMonitor.StartAsync(_mouseDescriptors, cancellationToken).ConfigureAwait(false);
         _started = true;
+        CollectFailures();
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
@@ -111,6 +114,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
                 BuildDescriptors(_macros.All);
                 await _keyboardMonitor.StartAsync(_keyboardDescriptors, cancellationToken).ConfigureAwait(false);
                 await _mouseMonitor.StartAsync(_mouseDescriptors, cancellationToken).ConfigureAwait(false);
+                CollectFailures();
                 LogResumed(_keyboardDescriptors.Count, _mouseDescriptors.Count);
             }
         }
@@ -132,6 +136,9 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
 
     /// <summary>Mouse chords currently registered (or about to be, if not started yet).</summary>
     public IReadOnlyList<MouseHookBinding> MouseBindings => _mouseDescriptors;
+
+    /// <inheritdoc />
+    public IReadOnlyList<HotkeyFailureDto> Failures => _failures;
 
     public void Dispose()
     {
@@ -184,6 +191,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
             BuildDescriptors(macros);
             await _keyboardMonitor.StartAsync(_keyboardDescriptors, cancellationToken).ConfigureAwait(false);
             await _mouseMonitor.StartAsync(_mouseDescriptors, cancellationToken).ConfigureAwait(false);
+            CollectFailures();
             LogReregisterDone(_keyboardDescriptors.Count, _mouseDescriptors.Count);
         }
         catch (Exception ex)
@@ -234,6 +242,41 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
         _idToMacro = map;
     }
 
+    /// <summary>
+    /// Turns the keyboard monitor's rejected descriptors back into "macro X's chord never
+    /// took". Called after every registration attempt, and only then — the list must survive
+    /// a suspend, because the panel reads it precisely while the editor (and therefore the
+    /// suspension) is on screen.
+    ///
+    /// The ids are the ones <see cref="BuildDescriptors"/> just handed out, so the lookup
+    /// cannot go stale: both sides are regenerated together. A chord whose id somehow has no
+    /// macro is dropped rather than reported against an empty name.
+    /// </summary>
+    private void CollectFailures()
+    {
+        var rejected = _keyboardMonitor.RejectedBindings;
+        if (rejected.Count == 0)
+        {
+            _failures = [];
+            return;
+        }
+
+        var map = _idToMacro;
+        var failures = new List<HotkeyFailureDto>(rejected.Count);
+        foreach (var descriptor in rejected)
+        {
+            if (map.TryGetValue(descriptor.Id, out var macro))
+            {
+                failures.Add(new HotkeyFailureDto(macro, descriptor.Modifiers, descriptor.Key));
+            }
+        }
+        _failures = failures;
+        if (failures.Count > 0)
+        {
+            LogRegistrationFailures(failures.Count);
+        }
+    }
+
     [LoggerMessage(LogLevel.Debug, "Macro hotkey fired: '{Macro}'")]
     partial void LogMacroHotkey(string macro);
 
@@ -257,4 +300,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
 
     [LoggerMessage(LogLevel.Warning, "Macro '{Macro}' has a hotkey trigger with neither Key nor MouseButton set — skipping it")]
     partial void LogMalformedTrigger(string macro);
+
+    [LoggerMessage(LogLevel.Warning, "{Count} macro hotkey(s) could not be registered — another application owns the chord; the panel reports them via GetHotkeyFailures")]
+    partial void LogRegistrationFailures(int count);
 }

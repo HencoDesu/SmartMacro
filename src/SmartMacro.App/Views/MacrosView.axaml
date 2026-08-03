@@ -143,9 +143,355 @@
             <Setter Property="BorderThickness" Value="1,1,1,2" />
             <Setter Property="HorizontalAlignment" Value="Left" />
         </Style>
+
+        <!-- ============================ targets badge (1g) ============================
+             Three tones, and the difference between them is the whole widget: neutral for
+             "the context window", accent for "it hits something", danger for "it hits
+             nothing". «0 окон» must never look like an ordinary number — but see
+             TargetSelectorViewModel.BadgeIsDanger for why "the daemon has no windows at
+             all" is deliberately NOT the danger case. -->
+        <!-- No fixed height: the same pill has to sit inside a 19px node header and in the
+             inspector, and a hard 22px (the mockup's standalone card) would burst the
+             header. Padding gives it ~18px, which reads the same in both places. -->
+        <Style Selector="Border.targetBadge">
+            <Setter Property="MinHeight" Value="18" />
+            <Setter Property="Padding" Value="8,1" />
+            <Setter Property="CornerRadius" Value="{DynamicResource NocturneRadiusPill}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneDividerStrongBrush}" />
+            <Setter Property="Background" Value="{DynamicResource NocturneFieldBackgroundBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.targetBadge TextBlock.badgeText">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextMutedBrush}" />
+        </Style>
+        <Style Selector="Border.targetBadge.accent">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneChipInputBorderBrush}" />
+            <Setter Property="Background" Value="{DynamicResource NocturneAccentTint15Brush}" />
+        </Style>
+        <Style Selector="Border.targetBadge.accent TextBlock.badgeText">
+            <Setter Property="Foreground" Value="{DynamicResource NocturneChipTextSoftBrush}" />
+        </Style>
+        <Style Selector="Border.targetBadge.danger">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneDangerBorderHoverBrush}" />
+            <Setter Property="Background" Value="{DynamicResource NocturneDangerSurfaceBrush}" />
+        </Style>
+        <Style Selector="Border.targetBadge.danger TextBlock.badgeText">
+            <Setter Property="Foreground" Value="{DynamicResource NocturneDangerBrush}" />
+        </Style>
+
+        <!-- One window named in the expanded badge. `.missed` is a window the selector
+             deliberately skips — struck through rather than hidden, because "who fell out"
+             is half of what the expansion is for. -->
+        <Style Selector="Border.windowChip">
+            <Setter Property="Height" Value="19" />
+            <Setter Property="Padding" Value="7,0" />
+            <Setter Property="CornerRadius" Value="{DynamicResource NocturneRadiusSm}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneChipBorderSoftBrush}" />
+            <Setter Property="Background" Value="{DynamicResource NocturneChipFillSoftBrush}" />
+        </Style>
+        <Style Selector="Border.windowChip.missed">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneDividerStrongBrush}" />
+            <Setter Property="Background" Value="{DynamicResource NocturneFieldBackgroundBrush}" />
+        </Style>
     </UserControl.Styles>
 
     <UserControl.Resources>
+
+        <!-- ==== targets badge, collapsed (mockup 1g) ====
+             «8 окон · кроме Склад». The number leads: what the tags are is already in the
+             inspector, what this answers is how many windows the action will reach. The
+             four bars are the share at a glance; a non-zero share always fills at least
+             one, so "1 из 11" never renders as an empty strip. -->
+        <DataTemplate x:Key="TargetBadgeTemplate" x:DataType="nodes:TargetSelectorViewModel">
+            <Border Classes="targetBadge"
+                    Classes.accent="{Binding BadgeIsAccent}"
+                    Classes.danger="{Binding BadgeIsDanger}">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Ellipse Width="5" Height="5"
+                             VerticalAlignment="Center"
+                             IsVisible="{Binding ShowsHollowDot}"
+                             Stroke="{DynamicResource NocturneNeutral600Brush}"
+                             StrokeThickness="1" />
+                    <Ellipse Width="5" Height="5"
+                             VerticalAlignment="Center"
+                             IsVisible="{Binding ShowsDangerDot}"
+                             Fill="{DynamicResource NocturneDangerBrush}" />
+                    <ItemsControl VerticalAlignment="Center"
+                                  IsVisible="{Binding ShowsBars}"
+                                  ItemsSource="{Binding Bars}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="1.5" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="sys:Boolean">
+                                <Border Width="3" Height="9" CornerRadius="1"
+                                        Background="{Binding ., Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneAccentBrush|NocturneChipInputBorderBrush}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="badgeText" Text="{Binding BadgeText}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- ==== targets badge, compact ====
+             The canvas variant. Same pill, same tones, count only: a 210px box already
+             carries a family glyph and a type label, and the full «7 окон · кроме Лучник,
+             Шаман» pushes the label out of the header entirely — which costs more than it
+             buys, since the label is what says what the node DOES. The tags are in the
+             tooltip, and in the inspector's badge one click away. -->
+        <DataTemplate x:Key="TargetBadgeCompactTemplate" x:DataType="nodes:TargetSelectorViewModel">
+            <Border Classes="targetBadge"
+                    Classes.accent="{Binding BadgeIsAccent}"
+                    Classes.danger="{Binding BadgeIsDanger}"
+                    Padding="6,1"
+                    ToolTip.Tip="{Binding BadgeText}">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                    <Ellipse Width="5" Height="5"
+                             VerticalAlignment="Center"
+                             IsVisible="{Binding ShowsHollowDot}"
+                             Stroke="{DynamicResource NocturneNeutral600Brush}"
+                             StrokeThickness="1" />
+                    <Ellipse Width="5" Height="5"
+                             VerticalAlignment="Center"
+                             IsVisible="{Binding ShowsDangerDot}"
+                             Fill="{DynamicResource NocturneDangerBrush}" />
+                    <ItemsControl VerticalAlignment="Center"
+                                  IsVisible="{Binding ShowsBars}"
+                                  ItemsSource="{Binding Bars}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="1.5" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="sys:Boolean">
+                                <Border Width="3" Height="9" CornerRadius="1"
+                                        Background="{Binding ., Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneAccentBrush|NocturneChipInputBorderBrush}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="badgeText" FontSize="9.5" Text="{Binding BadgeCountText}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- one require/exclude tag, removable. Declared BEFORE the popup that uses it:
+             StaticResource inside a ResourceDictionary resolves against what is already
+             above it. -->
+        <DataTemplate x:Key="SelectorTagChipTemplate" x:DataType="nodes:SelectorTagChipViewModel">
+            <Border Height="18"
+                    Margin="0,0,4,2"
+                    Padding="7,0,4,0"
+                    CornerRadius="9"
+                    BorderThickness="1"
+                    BorderBrush="{DynamicResource NocturneWarningBorderBrush}"
+                    Background="{DynamicResource NocturneWarningSurfaceBrush}">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                    <TextBlock VerticalAlignment="Center"
+                               FontSize="{DynamicResource NocturneFontSizeMicro}"
+                               Foreground="{DynamicResource NocturneWarningBrush}"
+                               Text="{Binding Text}" />
+                    <Button Classes="ghost"
+                            Content="✕"
+                            FontSize="8"
+                            Padding="2,0"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="Убрать тег"
+                            Click="OnRemoveSelectorTagClicked" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- one window in the expanded badge -->
+        <DataTemplate x:Key="TargetWindowChipTemplate" x:DataType="nodes:TargetWindowChip">
+            <Border Classes="windowChip"
+                    Classes.missed="{Binding IsExcluded}"
+                    Margin="0,0,4,4">
+                <TextBlock VerticalAlignment="Center"
+                           FontSize="9.5"
+                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                           TextDecorations="{Binding IsExcluded, Converter={x:Static conv:StrikethroughConverter.Instance}}"
+                           Foreground="{Binding IsExcluded, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneTextFaintBrush|NocturneChipTextSoftBrush}"
+                           Text="{Binding Label}" />
+            </Border>
+        </DataTemplate>
+
+        <!-- ==== targets badge, expanded ====
+             A click opens the popup: the same selector as an editor of tag CHIPS (the
+             comma-separated boxes are still the model, this is a friendlier face on them),
+             and under it the live roster — who is hit, who is struck out, how many windows
+             have no tags at all to route by. -->
+        <DataTemplate x:Key="TargetBadgeButtonTemplate" x:DataType="nodes:TargetSelectorViewModel">
+            <Button Classes="ghost"
+                    Padding="0"
+                    HorizontalAlignment="Left"
+                    ToolTip.Tip="Кто попадёт под этот селектор прямо сейчас">
+                <Button.Flyout>
+                    <!-- Right-aligned, not centred: the badge sits at the right edge of a
+                         308px inspector, and a Bottom-placed 322px popup is simply cut off
+                         there — Avalonia hosts this one as an in-window overlay, so it does
+                         not spill onto the desktop the way a platform popup would. -->
+                    <Flyout Placement="BottomEdgeAlignedRight">
+                        <StackPanel Width="322">
+
+                            <!-- context vs tags: the two things a null-vs-empty selector
+                                 means, which no pair of tag boxes can express. -->
+                            <StackPanel Margin="10,8" Spacing="7">
+                                <Grid ColumnDefinitions="*,*">
+                                    <!-- Padding, not a fixed Height: the Button theme's
+                                         11.2px vertical inset plus a 24px box leaves less
+                                         room than an 11px line needs, and the descenders
+                                         get shaved off. -->
+                                    <Button Grid.Column="0"
+                                            Content="контекст-окно"
+                                            Padding="8,3"
+                                            Margin="0,0,3,0"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Center"
+                                            Classes.accent="{Binding !UseSelector}"
+                                            Click="OnTargetContextClicked" />
+                                    <Button Grid.Column="1"
+                                            Content="по тегам"
+                                            Padding="8,3"
+                                            Margin="3,0,0,0"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Center"
+                                            Classes.accent="{Binding UseSelector}"
+                                            Click="OnTargetTagsClicked" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="60,*" IsVisible="{Binding UseSelector}">
+                                    <TextBlock Grid.Column="0" Classes="label" VerticalAlignment="Top" Margin="0,5,0,0" Text="нужны" />
+                                    <Border Grid.Column="1"
+                                            MinHeight="26"
+                                            Padding="6,3"
+                                            CornerRadius="{DynamicResource NocturneRadiusSm}"
+                                            BorderThickness="1"
+                                            BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                                            Background="{DynamicResource NocturneFieldBackgroundBrush}">
+                                        <StackPanel>
+                                            <ItemsControl ItemsSource="{Binding RequireChips}"
+                                                          ItemTemplate="{StaticResource SelectorTagChipTemplate}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                            </ItemsControl>
+                                            <TextBox BorderThickness="0"
+                                                     Background="Transparent"
+                                                     Padding="0"
+                                                     MinHeight="18"
+                                                     FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                     Watermark="+ тег"
+                                                     Text="{Binding NewRequireTag, Mode=TwoWay}"
+                                                     KeyDown="OnRequireTagKeyDown" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <Grid ColumnDefinitions="60,*" IsVisible="{Binding UseSelector}">
+                                    <TextBlock Grid.Column="0" Classes="label" VerticalAlignment="Top" Margin="0,5,0,0" Text="исключить" />
+                                    <Border Grid.Column="1"
+                                            MinHeight="26"
+                                            Padding="6,3"
+                                            CornerRadius="{DynamicResource NocturneRadiusSm}"
+                                            BorderThickness="1"
+                                            BorderBrush="{DynamicResource NocturneChipInputBorderBrush}"
+                                            Background="{DynamicResource NocturneFieldBackgroundBrush}">
+                                        <StackPanel>
+                                            <ItemsControl ItemsSource="{Binding ExcludeChips}"
+                                                          ItemTemplate="{StaticResource SelectorTagChipTemplate}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                            </ItemsControl>
+                                            <TextBox BorderThickness="0"
+                                                     Background="Transparent"
+                                                     Padding="0"
+                                                     MinHeight="18"
+                                                     FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                     Watermark="+ тег"
+                                                     Text="{Binding NewExcludeTag, Mode=TwoWay}"
+                                                     KeyDown="OnExcludeTagKeyDown" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <TextBlock Classes="hint"
+                                           TextWrapping="Wrap"
+                                           IsVisible="{Binding !UseSelector}"
+                                           Text="Селектор пуст — действие уйдёт в окно, из которого запущен макрос." />
+                            </StackPanel>
+
+                            <!-- The roster. Tag-routing only: in context mode the selector
+                                 targets exactly one window — whichever the run came from —
+                                 and a list of eight struck-out names under «0 из 8» would
+                                 say the opposite of what actually happens. -->
+                            <Border BorderThickness="0,1,0,0"
+                                    BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                                    Background="{DynamicResource NocturneBgBrush}"
+                                    IsVisible="{Binding UseSelector}"
+                                    Padding="10,7">
+                                <StackPanel Spacing="5">
+                                    <StackPanel Orientation="Horizontal" Spacing="7">
+                                        <TextBlock Classes="eyebrow" Text="СЕЙЧАС ПОПАДАЕТ" />
+                                        <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                                   VerticalAlignment="Center"
+                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                   Foreground="{DynamicResource NocturneAccent400Brush}"
+                                                   Text="{Binding HitText}" />
+                                    </StackPanel>
+                                    <ItemsControl ItemsSource="{Binding HitWindows}"
+                                                  ItemTemplate="{StaticResource TargetWindowChipTemplate}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <Border Classes="windowChip" IsVisible="{Binding HasMore}">
+                                            <TextBlock VerticalAlignment="Center"
+                                                       FontSize="9.5"
+                                                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                       Foreground="{DynamicResource NocturneChipTextSoftBrush}"
+                                                       Text="{Binding MoreText}" />
+                                        </Border>
+                                        <Border Classes="windowChip missed" IsVisible="{Binding HasUntagged}">
+                                            <TextBlock VerticalAlignment="Center"
+                                                       FontSize="9.5"
+                                                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                       Foreground="{DynamicResource NocturneTextFaintBrush}"
+                                                       Text="{Binding UntaggedText}" />
+                                        </Border>
+                                    </StackPanel>
+                                    <ItemsControl ItemsSource="{Binding MissedWindows}"
+                                                  ItemTemplate="{StaticResource TargetWindowChipTemplate}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource TargetBadgeTemplate}" />
+            </Button>
+        </DataTemplate>
 
         <!-- ==== one outcome row on a COLLAPSED box: caption + port dot ==== -->
         <DataTemplate x:Key="OutcomePortTemplate" x:DataType="nodes:NodeEdgeViewModel">
@@ -223,15 +569,18 @@
                                        TextTrimming="CharacterEllipsis"
                                        Foreground="{Binding IsConditional, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneChipTextSoftBrush|NocturneNeutral300Brush}"
                                        Text="{Binding TypeLabel}" />
-                            <TextBlock Grid.Column="2"
-                                       Margin="6,0,0,0"
-                                       FontSize="9"
-                                       VerticalAlignment="Center"
-                                       Foreground="{DynamicResource NocturneWarningBrush}"
-                                       TextTrimming="CharacterEllipsis"
-                                       IsVisible="{Binding ShowsTargetChip}"
-                                       ToolTip.Tip="Цели ноды"
-                                       Text="{Binding TargetSummary}" />
+                            <!-- The live targets badge (1g), compact. Only for nodes that
+                                 route by TAGS: "acts on the context window" is the default
+                                 every second node has — the departure from it is what earns
+                                 a word. Display-only here; the clickable, expanding copy is
+                                 in the inspector, which is not inside the canvas's
+                                 scale+translate transform (a Popup over one lands where the
+                                 transform is not). -->
+                            <ContentControl Grid.Column="2"
+                                            Margin="6,0,0,0"
+                                            IsVisible="{Binding ShowsTargetChip}"
+                                            Content="{Binding Target}"
+                                            ContentTemplate="{StaticResource TargetBadgeCompactTemplate}" />
                         </Grid>
                     </Border>
 
@@ -461,21 +810,60 @@
 
         <!-- ==== trigger rows ==== -->
 
+        <!-- The hotkey trap, mockup 1f. The picker itself carries the four states; what
+             belongs OUTSIDE it is the two lines of guidance under the armed state — how to
+             get out of capture, and the fact that the daemon's global hotkeys are down
+             while this mode is open. Both are bound to the picker's own IsCapturing, so
+             they appear exactly while they are true. -->
         <DataTemplate DataType="{x:Type nodes:HotkeyTriggerRowViewModel}" x:DataType="nodes:HotkeyTriggerRowViewModel">
-            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,2.8">
-                <controls:KeyBindingPicker Grid.Column="0"
-                                           HorizontalAlignment="Stretch"
-                                           CaptureModifiers="True"
-                                           Key="{Binding KeyName, Mode=TwoWay}"
-                                           Modifiers="{Binding Modifiers, Mode=TwoWay}"
-                                           MouseButton="{Binding MouseButton, Mode=TwoWay}" />
-                <Button Grid.Column="1"
-                        Content="×"
-                        Classes="ghost"
-                        Margin="5.6,0,0,0"
-                        ToolTip.Tip="Убрать триггер"
-                        Click="OnRemoveTriggerClicked" />
-            </Grid>
+            <StackPanel Margin="0,0,0,5.6">
+                <Grid ColumnDefinitions="*,Auto">
+                    <controls:KeyBindingPicker Grid.Column="0"
+                                               x:Name="Picker"
+                                               HorizontalAlignment="Stretch"
+                                               CaptureModifiers="True"
+                                               Conflict="{Binding Conflict}"
+                                               Key="{Binding KeyName, Mode=TwoWay}"
+                                               Modifiers="{Binding Modifiers, Mode=TwoWay}"
+                                               MouseButton="{Binding MouseButton, Mode=TwoWay}" />
+                    <Button Grid.Column="1"
+                            Content="✕"
+                            Classes="ghost"
+                            FontSize="10"
+                            Width="24"
+                            Height="24"
+                            Margin="5.6,0,0,0"
+                            HorizontalContentAlignment="Center"
+                            ToolTip.Tip="Убрать триггер (Del в ловушке — очистить сочетание)"
+                            Click="OnRemoveTriggerClicked" />
+                </Grid>
+                <StackPanel Margin="0,4,0,0" Spacing="2" IsVisible="{Binding #Picker.IsCapturing}">
+                    <TextBlock Classes="hint"
+                               TextWrapping="Wrap"
+                               Text="Esc — отмена · Del — очистить · ловятся и боковые кнопки мыши" />
+                    <!-- A Grid, not a horizontal StackPanel: a StackPanel measures its
+                         children with infinite width, so TextWrapping never fires and the
+                         line is simply cut off at the panel edge. -->
+                    <Grid ColumnDefinitions="Auto,*">
+                        <!-- U+25B2, NOT U+26A0 ⚠: the warning sign has an emoji
+                             presentation, so Windows serves it from Segoe UI Emoji as a
+                             full-colour pictogram that ignores Foreground entirely — the
+                             same trap D1 hit with U+25B6. -->
+                        <TextBlock Grid.Column="0"
+                                   FontSize="9"
+                                   Margin="0,0,6,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource NocturneWarningBrush}"
+                                   Text="&#x25B2;" />
+                        <TextBlock Grid.Column="1"
+                                   FontSize="{DynamicResource NocturneFontSizeMicro}"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource NocturneWarningBrush}"
+                                   Text="глобальные хоткеи приостановлены, пока открыт редактор" />
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:ProcessTriggerRowViewModel}" x:DataType="nodes:ProcessTriggerRowViewModel">
@@ -662,6 +1050,17 @@
                                                                                Foreground="{DynamicResource NocturneTextMutedBrush}"
                                                                                Text="{Binding TriggerBadge}" />
                                                                 </Border>
+                                                                <!-- The chord is bound but Windows would not give it to
+                                                                     us. Shown on the ROW because that is the only place
+                                                                     it can be noticed without opening the macro — and
+                                                                     the usual way this happens is at daemon startup,
+                                                                     to a macro nobody is editing. -->
+                                                                <TextBlock FontSize="9"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{DynamicResource NocturneDangerBrush}"
+                                                                           IsVisible="{Binding HasHotkeyProblem}"
+                                                                           ToolTip.Tip="{Binding HotkeyProblem}"
+                                                                           Text="&#x25B2;" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="1"
                                                                         Orientation="Horizontal"
@@ -1015,7 +1414,17 @@
                                         Padding="12,9"
                                         IsVisible="{Binding SelectedNode.HasTarget}">
                                     <StackPanel Spacing="5.6">
-                                        <TextBlock Classes="eyebrow" Text="ЦЕЛИ" />
+                                        <Grid ColumnDefinitions="Auto,*">
+                                            <TextBlock Grid.Column="0" Classes="eyebrow" Text="ЦЕЛИ" />
+                                            <!-- The badge with its expansion (1g). Here rather
+                                                 than on the canvas box because a Popup over a
+                                                 scaled+translated surface lands where the
+                                                 transform is not. -->
+                                            <ContentControl Grid.Column="1"
+                                                            HorizontalAlignment="Right"
+                                                            Content="{Binding SelectedNode.Target}"
+                                                            ContentTemplate="{StaticResource TargetBadgeButtonTemplate}" />
+                                        </Grid>
                                         <ContentControl Content="{Binding SelectedNode.Target}" />
                                     </StackPanel>
                                 </Border>
@@ -1075,9 +1484,11 @@
                                                 Click="OnAddProcessTriggerClicked" />
                                     </Grid>
                                     <ItemsControl ItemsSource="{Binding Triggers}" />
-                                    <TextBlock Classes="hint"
-                                               TextWrapping="Wrap"
-                                               Text="Глобальные хоткеи выключены, пока открыт редактор." />
+                                    <!-- The standing "hotkeys are off in this mode" line
+                                         used to live here. D4 moved it into the picker's
+                                         armed state (1f), which is the moment it is
+                                         actionable; two copies of the same sentence, one of
+                                         them permanent, is how a warning stops being read. -->
                                 </StackPanel>
                             </Border>
                         </StackPanel>
