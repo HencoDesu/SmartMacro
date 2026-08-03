@@ -5,50 +5,50 @@ using SmartMacro.Windows;
 namespace SmartMacro.Ipc;
 
 /// <summary>
-/// Projects Core's live domain objects onto the Contracts wire DTOs.
+/// Проецирует живые доменные объекты Core на проводные DTO из Contracts.
 ///
-/// These live in Core rather than next to the DTOs because the dependency only runs one
-/// way: Contracts cannot see <see cref="ManagedWindowInfo"/> or
-/// <see cref="MacroRunSnapshot"/>. (The <c>ValidationIssue</c> mapper is the exception —
-/// both of its ends are Contracts types, so it lives there.)
+/// Живут в Core, а не рядом с самими DTO, потому что зависимость идёт только в одну сторону:
+/// Contracts не видит ни <see cref="ManagedWindowInfo"/>, ни <see cref="MacroRunSnapshot"/>.
+/// (Исключение — маппер <c>ValidationIssue</c>: у него оба конца суть типы Contracts, поэтому
+/// он лежит там.)
 ///
-/// Every window/run payload the daemon puts on the wire — <c>GetWindows</c>,
-/// <c>GetRunningMacros</c>, and the <c>Window*</c> / <c>RunningMacrosChanged</c> pushes —
-/// goes through here.
+/// Через это место проходит каждая нагрузка про окна и прогоны, которую демон выкладывает в
+/// провод: <c>GetWindows</c>, <c>GetRunningMacros</c> и пуши <c>Window*</c> /
+/// <c>RunningMacrosChanged</c>.
 /// </summary>
 public static class DtoMappers
 {
-    /// <summary>Projects a window snapshot onto its wire form.</summary>
+    /// <summary>Проецирует снимок окна на его проводную форму.</summary>
     public static WindowDto ToDto(this ManagedWindowInfo window)
     {
         ArgumentNullException.ThrowIfNull(window);
         return new WindowDto(window.Hwnd.ToInt64(), window.ProcessName, [.. window.Tags]);
     }
 
-    /// <summary>Projects a sequence of window snapshots onto their wire form.</summary>
+    /// <summary>Проецирует последовательность снимков окон на их проводную форму.</summary>
     public static IReadOnlyList<WindowDto> ToDto(this IEnumerable<ManagedWindowInfo> windows)
     {
         ArgumentNullException.ThrowIfNull(windows);
         return [.. windows.Select(window => window.ToDto())];
     }
 
-    /// <summary>Projects a run snapshot onto its wire form.</summary>
+    /// <summary>Проецирует снимок прогона на его проводную форму.</summary>
     public static RunningMacroDto ToDto(this MacroRunSnapshot run)
     {
         ArgumentNullException.ThrowIfNull(run);
         return new RunningMacroDto(run.RunId, run.MacroName, ToUtcOffset(run.StartedUtc), run.CurrentNodeId);
     }
 
-    /// <summary>Projects a sequence of run snapshots onto their wire form.</summary>
+    /// <summary>Проецирует последовательность снимков прогонов на их проводную форму.</summary>
     public static IReadOnlyList<RunningMacroDto> ToDto(this IEnumerable<MacroRunSnapshot> runs)
     {
         ArgumentNullException.ThrowIfNull(runs);
         return [.. runs.Select(run => run.ToDto())];
     }
 
-    // The registry stamps DateTime.UtcNow, so the value IS UTC — but a DateTime that got
-    // there through a round-trip can carry Kind.Unspecified, and DateTimeOffset would then
-    // apply the LOCAL offset and silently shift the timestamp. Pin the kind first.
+    // Реестр штампует DateTime.UtcNow, так что значение и ЕСТЬ UTC, — но DateTime, попавший
+    // туда через round trip, может нести Kind.Unspecified, и тогда DateTimeOffset применил бы
+    // МЕСТНОЕ смещение и молча сдвинул отметку времени. Сначала прибиваем вид гвоздями.
     private static DateTimeOffset ToUtcOffset(DateTime startedUtc) =>
         new(DateTime.SpecifyKind(startedUtc, DateTimeKind.Utc));
 }

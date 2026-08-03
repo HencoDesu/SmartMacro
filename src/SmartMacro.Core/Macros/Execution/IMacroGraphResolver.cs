@@ -3,12 +3,12 @@ using SmartMacro.Macros.Model;
 namespace SmartMacro.Macros.Execution;
 
 /// <summary>
-/// Resolves a macro name to its graph at execution time (<see cref="RunMacroNode"/> looks
-/// macros up lazily so libraries can change between runs). W0.2b implements this over the
-/// macro store; tests use a dictionary.
+/// Разрешает имя макроса в его граф во время исполнения (<see cref="RunMacroNode"/> ищет
+/// макросы лениво, чтобы библиотека могла меняться между прогонами). В W0.2b это реализовано
+/// поверх хранилища макросов; тесты обходятся словарём.
 /// </summary>
 public interface IMacroGraphResolver
 {
-    /// <summary>The graph registered under <paramref name="name"/>, or <c>null</c> when unknown.</summary>
+    /// <summary>Граф, зарегистрированный под именем <paramref name="name"/>, или <c>null</c>, если такого нет.</summary>
     MacroGraph? TryGet(string name);
 }

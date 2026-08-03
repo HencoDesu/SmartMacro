@@ -2,9 +2,9 @@ using Microsoft.Extensions.Logging;
 
 namespace SmartMacro.Orchestration;
 
-// Source-generated LoggerMessage declarations for Orchestrator. Split into its own
-// partial-class file so the main Orchestrator.cs reads as trigger→run logic, not logger
-// boilerplate. No behavior change.
+// Кодогенерируемые объявления LoggerMessage для Orchestrator. Вынесены в отдельный файл
+// частичного класса, чтобы основной Orchestrator.cs читался как логика «триггер → прогон», а не
+// как заготовки логгера. На поведение не влияет.
 public sealed partial class Orchestrator
 {
     [LoggerMessage(LogLevel.Information, "Orchestrator dispatch loop started")]
@@ -16,7 +16,8 @@ public sealed partial class Orchestrator
     [LoggerMessage(LogLevel.Debug, "Unhandled upstream message {Type}")]
     partial void LogUnhandledUpstreamMessageType(string type);
 
-    [LoggerMessage(LogLevel.Information, "Process appeared (from monitor): pid={Pid} name='{ProcessName}' hwnd=0x{Hwnd:X}")]
+    [LoggerMessage(LogLevel.Information,
+        "Process appeared (from monitor): pid={Pid} name='{ProcessName}' hwnd=0x{Hwnd:X}")]
     partial void LogProcessAppearedNotification(int pid, string processName, long hwnd);
 
     [LoggerMessage(LogLevel.Error, "Failed to create agent for pid={Pid}")]
@@ -25,7 +26,8 @@ public sealed partial class Orchestrator
     [LoggerMessage(LogLevel.Information, "Hotkey trigger → macro '{MacroName}'")]
     partial void LogHotkeyTriggered(string macroName);
 
-    [LoggerMessage(LogLevel.Information, "Process '{ProcessName}' appeared → starting macro '{MacroName}' on hwnd=0x{Hwnd:X}")]
+    [LoggerMessage(LogLevel.Information,
+        "Process '{ProcessName}' appeared → starting macro '{MacroName}' on hwnd=0x{Hwnd:X}")]
     partial void LogProcessMacroStarting(string macroName, string processName, long hwnd);
 
     [LoggerMessage(LogLevel.Warning, "Macro '{MacroName}' is not in the library — trigger dropped")]

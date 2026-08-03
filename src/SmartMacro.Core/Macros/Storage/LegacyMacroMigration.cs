@@ -6,36 +6,36 @@ using SmartMacro.Native;
 namespace SmartMacro.Macros.Storage;
 
 /// <summary>
-/// One-time conversion of the pre-W0.2 <c>macros.json</c> (a single file holding named
-/// macros, each a per-tag dictionary of flat action lists) into node graphs.
+/// Одноразовое преобразование <c>macros.json</c> времён до W0.2 (единый файл с именованными
+/// макросами, каждый из которых — словарь «тег → плоский список действий») в графы нод.
 ///
-/// Shape mapping:
-///   * ONE tag block → a single chain graph named after the macro. Every action node
-///     carries <c>Target = RequireTags:[tag]</c>, which reproduces the legacy broadcast
-///     semantics ("every window carrying this tag runs these actions") and keeps the
-///     graph runnable from a hotkey or the UI, neither of which supplies a context window.
-///   * MANY tag blocks → a dispatcher graph named after the macro: a chain of
-///     <c>RunMacroNode</c>s, one per tag, each selecting <c>RequireTags:[tag]</c> and
-///     pointing at a generated <c>{macro}-{tag}</c> graph. The per-tag graphs hold the
-///     original chain with TARGETLESS nodes, because the dispatcher's selector fan-out
-///     hands each sub-run its own context window.
+/// Как ложатся формы:
+///   * ОДИН теговый блок → один цепочный граф с именем макроса. Каждая нода действия несёт
+///     <c>Target = RequireTags:[tag]</c>, а это воспроизводит прежнюю семантику рассылки
+///     («эти действия выполняет каждое окно с этим тегом») и сохраняет граф запускаемым и с
+///     хоткея, и из UI, — а ни тот ни другой контекст-окна не дают.
+///   * МНОГО теговых блоков → граф-диспетчер с именем макроса: цепочка <c>RunMacroNode</c>, по
+///     одной на тег, каждая с селектором <c>RequireTags:[tag]</c>, указывающая на порождённый
+///     граф <c>{макрос}-{тег}</c>. В потеговых графах лежит исходная цепочка с нодами БЕЗ ЦЕЛИ,
+///     потому что разветвление по селектору у диспетчера выдаёт каждому под-прогону собственное
+///     контекст-окно.
 ///
-/// Hotkeys used to live in a separate <c>hotkeys.json</c>. Its <c>MacroBindings</c>
-/// (macro name → chord) become <see cref="HotkeyTrigger"/>s on the matching migrated
-/// graph, which is exactly the consolidation this wave is about: the binding now lives in
-/// the macro it starts. Its <c>Bindings</c> (chords for the hard-coded broadcast actions)
-/// have no destination — those behaviors are the <c>pw-*</c> example macros now — so they
-/// are counted and reported rather than silently dropped.
+/// Хоткеи раньше жили в отдельном <c>hotkeys.json</c>. Его <c>MacroBindings</c> («имя макроса →
+/// аккорд») становятся <see cref="HotkeyTrigger"/> у соответствующего мигрированного графа, и
+/// это ровно то объединение, ради которого волна и затевалась: привязка теперь живёт в том
+/// макросе, который она запускает. А его <c>Bindings</c> (аккорды для зашитых в код рассылок)
+/// приткнуть некуда — эти поведения теперь суть примеры <c>pw-*</c>, — поэтому их считают и о
+/// них докладывают, а не выбрасывают молча.
 /// </summary>
 public static class LegacyMacroMigration
 {
-    /// <summary>File name of the legacy library, relative to the app directory.</summary>
+    /// <summary>Имя файла унаследованной библиотеки относительно каталога приложения.</summary>
     public const string LegacyFileName = "macros.json";
 
-    /// <summary>File name of the legacy hotkey config, relative to the app directory.</summary>
+    /// <summary>Имя файла унаследованных настроек хоткеев относительно каталога приложения.</summary>
     public const string LegacyHotkeysFileName = "hotkeys.json";
 
-    /// <summary>Suffix appended to a legacy file once it has been migrated.</summary>
+    /// <summary>Суффикс, который дописывают к унаследованному файлу после миграции.</summary>
     public const string MigratedSuffix = ".migrated";
 
     private static readonly JsonSerializerOptions LegacyOptions = new()
@@ -46,11 +46,11 @@ public static class LegacyMacroMigration
         Converters = { new JsonStringEnumConverter() },
     };
 
-    /// <summary>Outcome of one migration pass.</summary>
-    /// <param name="Graphs">Graphs to write: each dispatcher followed by its per-tag children.</param>
-    /// <param name="SkippedMacros">Legacy macros dropped because they had no runnable actions.</param>
-    /// <param name="AttachedHotkeys">Legacy macro hotkeys turned into triggers on a graph.</param>
-    /// <param name="OrphanedHotkeys">Legacy hotkeys with nowhere to go (broadcast-action chords, or names with no matching macro).</param>
+    /// <summary>Итог одного прохода миграции.</summary>
+    /// <param name="Graphs">Графы к записи: каждый диспетчер, а следом его потеговые дети.</param>
+    /// <param name="SkippedMacros">Унаследованные макросы, выброшенные за отсутствием исполнимых действий.</param>
+    /// <param name="AttachedHotkeys">Унаследованные хоткеи макросов, превращённые в триггеры графа.</param>
+    /// <param name="OrphanedHotkeys">Унаследованные хоткеи, которым некуда деться (аккорды рассылочных действий либо имена без подходящего макроса).</param>
     public sealed record Result(
         List<MacroGraph> Graphs,
         int SkippedMacros,
@@ -58,12 +58,12 @@ public static class LegacyMacroMigration
         int OrphanedHotkeys);
 
     /// <summary>
-    /// Converts the contents of a legacy <c>macros.json</c> — and, when supplied, the
-    /// macro bindings of a legacy <c>hotkeys.json</c> — into graphs.
+    /// Преобразует содержимое унаследованного <c>macros.json</c> — и, если его передали,
+    /// макросные привязки унаследованного <c>hotkeys.json</c> — в графы.
     /// </summary>
-    /// <param name="json">Raw legacy <c>macros.json</c> contents.</param>
-    /// <param name="hotkeysJson">Raw legacy <c>hotkeys.json</c> contents, or <c>null</c> when absent/unreadable.</param>
-    /// <exception cref="JsonException">The macro document isn't a legacy macro file.</exception>
+    /// <param name="json">Сырое содержимое унаследованного <c>macros.json</c>.</param>
+    /// <param name="hotkeysJson">Сырое содержимое унаследованного <c>hotkeys.json</c> либо <c>null</c>, если файла нет или он нечитаем.</param>
+    /// <exception cref="JsonException">Документ с макросами не является унаследованным файлом макросов.</exception>
     public static Result Convert(string json, string? hotkeysJson = null)
     {
         ArgumentNullException.ThrowIfNull(json);
@@ -84,8 +84,8 @@ public static class LegacyMacroMigration
                 continue;
             }
 
-            // Only tag blocks that actually do something survive — an empty list would
-            // produce a graph with no start node.
+            // Выживают только те теговые блоки, которые действительно что-то делают: из
+            // пустого списка вышел бы граф без начальной ноды.
             var blocks = macro.ActionsByTag
                 .Where(pair => pair.Value is { Count: > 0 })
                 .ToList();
@@ -134,10 +134,10 @@ public static class LegacyMacroMigration
         return new Result(result, skippedMacros, attached, orphaned);
     }
 
-    // hotkeys.json → triggers. Only MacroBindings have a destination: they name a macro,
-    // and that macro is now the thing that owns its chord. The other list bound the
-    // hard-coded broadcast actions, which are example macros now — nothing to attach them
-    // to, so they're counted for the caller to report.
+    // hotkeys.json → триггеры. Пункт назначения есть только у MacroBindings: они называют
+    // макрос, а макрос теперь и есть владелец своего аккорда. Второй список привязывал зашитые
+    // в код рассылочные действия, а они теперь примеры-макросы — цеплять их не к чему, поэтому
+    // их считают, чтобы вызывающий об этом доложил.
     private static (int Attached, int Orphaned) AttachLegacyHotkeys(List<MacroGraph> graphs, string? hotkeysJson)
     {
         if (string.IsNullOrWhiteSpace(hotkeysJson))
@@ -152,9 +152,10 @@ public static class LegacyMacroMigration
         }
         catch (JsonException)
         {
-            // A broken hotkey file must not sink the macro migration.
+            // Сломанный файл хоткеев не имеет права утопить миграцию макросов.
             return (0, 0);
         }
+
         if (file is null)
         {
             return (0, 0);
@@ -172,6 +173,7 @@ public static class LegacyMacroMigration
                 orphaned++;
                 continue;
             }
+
             graph.Triggers.Add(new HotkeyTrigger(binding.Modifiers, binding.Key, binding.MouseButton));
             attached++;
         }
@@ -179,8 +181,8 @@ public static class LegacyMacroMigration
         return (attached, orphaned);
     }
 
-    // Flat action list → linear node chain. `target` is stamped on every action node that
-    // supports one; DelayNode has no target (the pause is global to the run).
+    // Плоский список действий → линейная цепочка нод. `target` проштамповывается на каждую ноду
+    // действия, которая его поддерживает; у DelayNode цели нет (пауза общая на весь прогон).
     private static MacroGraph BuildChain(string name, List<LegacyAction> actions, TargetSelector? target)
     {
         var nodes = new List<MacroNode>(actions.Count);
@@ -209,13 +211,14 @@ public static class LegacyMacroMigration
 
     private static string NodeId(int index) => $"n{index}";
 
-    // Macro names become file names; legacy names were free-form.
+    // Имена макросов становятся именами файлов; унаследованные имена были свободной формы.
     private static string Sanitize(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
             return string.Empty;
         }
+
         var chars = name.Trim().ToCharArray();
         var invalid = Path.GetInvalidFileNameChars();
         for (var i = 0; i < chars.Length; i++)
@@ -225,6 +228,7 @@ public static class LegacyMacroMigration
                 chars[i] = '_';
             }
         }
+
         return new string(chars).TrimEnd('.', ' ');
     }
 
@@ -234,7 +238,8 @@ public static class LegacyMacroMigration
         {
             return name;
         }
-        for (var suffix = 2; ; suffix++)
+
+        for (var suffix = 2;; suffix++)
         {
             var candidate = $"{name}-{suffix}";
             if (used.Add(candidate))
@@ -244,10 +249,13 @@ public static class LegacyMacroMigration
         }
     }
 
-    // ---- legacy DTOs ---------------------------------------------------------------
-    // Read-only mirrors of the deleted SmartMacro.Macro model. They live here (rather
-    // than being kept alive in the domain) so the legacy shape survives exactly as long
-    // as the migration needs it.
+    // ---- унаследованные DTO --------------------------------------------------------
+    // Зеркала удалённой модели SmartMacro.Macro, только на чтение. Живут здесь (а не остаются
+    // жить в домене), чтобы прежняя форма продержалась ровно столько, сколько нужно миграции.
+    //
+    // Их сеттеры init выглядят неиспользуемыми, и анализатор так и говорит. Это неправда: их
+    // заполняет System.Text.Json через отражение, и «прибраться» здесь — значит бесшумно
+    // сломать миграцию, которую увидит только тот, кто переезжает со старой версии.
 
     private sealed class LegacyFile
     {
@@ -258,7 +266,7 @@ public static class LegacyMacroMigration
     {
         public string? Name { get; init; }
 
-        /// <summary>Tag → actions. The property name predates tags (keys were class-enum names).</summary>
+        /// <summary>Тег → действия. Имя свойства старше тегов (ключами были имена элементов перечисления классов).</summary>
         [JsonPropertyName("ActionsByClass")]
         public Dictionary<string, List<LegacyAction>> ActionsByTag { get; init; } = [];
     }
@@ -277,10 +285,10 @@ public static class LegacyMacroMigration
 
     private sealed class LegacyHotkeyFile
     {
-        /// <summary>Chords for the hard-coded broadcast actions. No migration destination.</summary>
+        /// <summary>Аккорды для зашитых в код рассылочных действий. Пункта назначения при миграции у них нет.</summary>
         public List<LegacyBinding> Bindings { get; init; } = [];
 
-        /// <summary>Chords bound to a macro by name — these become the macro's triggers.</summary>
+        /// <summary>Аккорды, привязанные к макросу по имени, — они становятся триггерами этого макроса.</summary>
         public List<LegacyMacroBinding> MacroBindings { get; init; } = [];
     }
 

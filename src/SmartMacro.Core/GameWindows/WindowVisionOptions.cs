@@ -1,19 +1,23 @@
 namespace SmartMacro.GameWindows;
 
-// Tuning for IGameWindow.FindElementAsync/WaitForElementAsync. Bound from "Vision:Window" in
-// appsettings.json. Pipeline: grayscale → MatchTemplate CCoeffNormed → cmp to MatchThreshold.
+// Настройки для IGameWindow.FindElementAsync/WaitForElementAsync. Привязываются к
+// "Vision:Window" в appsettings.json. Конвейер: полутона → MatchTemplate CCoeffNormed →
+// сравнение с MatchThreshold.
 //
-// There is no LuminanceThreshold here (stage 4B removed the unread property): this path
-// deliberately does NOT binarise. Game-UI elements sit on semi-transparent backgrounds where
-// bleed-through from the world below makes a fixed luminance cut unstable. ClassMatcher is
-// the exception that still binarises — solid text on a solid stats panel.
+// Никакого LuminanceThreshold здесь нет (стадия 4B удалила свойство, которое никто не читал):
+// этот путь намеренно НЕ бинаризует. Элементы игрового интерфейса лежат на полупрозрачных
+// подложках, где просвечивающий снизу мир делает фиксированный порог яркости нестабильным.
+// ClassMatcher — исключение, которое бинаризует до сих пор: там сплошной текст на сплошной
+// панели характеристик.
 public sealed class WindowVisionOptions
 {
-    // Cv2.MatchTemplate CCoeffNormed score cutoff. Above this = element present. Boot
-    // templates are usually crisp UI buttons / HUD elements so 0.7 is a safe default.
+    // Отсечка по оценке Cv2.MatchTemplate CCoeffNormed. Выше неё = элемент на месте. Шаблоны
+    // загрузочного сценария — обычно чёткие кнопки интерфейса и элементы HUD, так что 0.7 —
+    // безопасное значение по умолчанию.
     public double MatchThreshold { get; init; } = 0.7;
 
-    // How often WaitForElementAsync re-captures + re-matches. 500ms is the sweet spot:
-    // enough headroom for PrintWindow + OpenCV (~50ms total) without wasting CPU.
+    // Как часто WaitForElementAsync заново захватывает кадр и заново сопоставляет. 500 мс —
+    // золотая середина: запаса хватает на PrintWindow + OpenCV (~50 мс на всё) и при этом
+    // процессор не жжётся впустую.
     public int PollIntervalMs { get; init; } = 500;
 }

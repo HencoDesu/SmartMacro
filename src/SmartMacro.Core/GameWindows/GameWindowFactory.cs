@@ -8,24 +8,25 @@ using SmartMacro.ProcessMonitoring;
 
 namespace SmartMacro.GameWindows;
 
-// Default factory — wires input strategies into GameWindow and resolves the process's
-// activation profile. Activation (WM_ACTIVATEAPP wake-up of frozen background PW clients)
-// is the caller's responsibility via IGameWindow.ActivateAsync/DeactivateAsync; the
-// parameters for it come from the ProcessProfile matching the window's process name
-// (falling back to inert defaults — plain input, no wake-up dance — when no profile
-// is configured).
+// Фабрика по умолчанию — вставляет стратегии ввода в GameWindow и подбирает процессу профиль
+// активации. За саму активацию (побудка через WM_ACTIVATEAPP замороженных фоновых клиентов PW)
+// отвечает вызывающий, через IGameWindow.ActivateAsync/DeactivateAsync; параметры для неё
+// берутся из ProcessProfile, подходящего по имени процесса окна (а если профиль не настроен —
+// из инертных значений по умолчанию: простой ввод, без пляски с побудкой).
 //
-// Current input mix (targeted experiment):
-//   * Keyboard → SendMessage. PW's WndProc appears to gate keyboard input on internal
-//     "active" state; synchronous delivery guarantees PW has finished processing the
-//     keypress before we move on. Observed problem with PostMessage variant: 1-2 of 11
-//     agents intermittently missed immunity broadcasts even with 30-50ms settle delay.
-//   * Mouse → PostMessage. Clicks reach PW reliably regardless (likely no focus check
-//     in PW's mouse handler), so the blocking overhead of SendMessage isn't warranted.
+// Текущая смесь способов ввода (это направленный эксперимент):
+//   * Клавиатура → SendMessage. Похоже, WndProc у PW пропускает ввод с клавиатуры только при
+//     определённом внутреннем состоянии «активен»; синхронная доставка гарантирует, что PW
+//     дообработал нажатие до того, как мы пойдём дальше. Что наблюдалось с вариантом на
+//     PostMessage: 1–2 агента из 11 время от времени пропускали широковещательный имун даже с
+//     паузой на устаканивание в 30–50 мс.
+//   * Мышь → PostMessage. Клики доходят до PW надёжно в любом случае (видимо, в обработчике
+//     мыши у PW проверки фокуса нет), так что блокирующие накладные расходы SendMessage тут
+//     ничем не оправданы.
 //
-// If this proves stable, we can collapse to all-Send for consistency. If keyboard
-// reliability is still an issue, the problem is inside PW (state check we can't
-// influence from outside) and the next step is icon-click broadcasts instead of keys.
+// Если это окажется стабильным, ради единообразия можно схлопнуть всё в Send. Если надёжность
+// клавиатуры так и останется проблемой — значит, дело внутри PW (проверка состояния, на которую
+// снаружи не повлиять), и следующий шаг — рассылка кликами по иконкам вместо клавиш.
 [SupportedOSPlatform("windows")]
 public sealed class GameWindowFactory : IGameWindowFactory
 {

@@ -1,30 +1,36 @@
 namespace SmartMacro.Ipc;
 
 /// <summary>
-/// The bit of protocol state that belongs to ONE connection rather than to the engine.
+/// Тот кусочек состояния протокола, который принадлежит ОДНОМУ соединению, а не движку.
 ///
-/// Everything else in the catalogue is stateless per client: a request names what it wants
-/// and the answer is the same whoever asked. Subscriptions are not — "send me run events"
-/// is a fact about a particular pipe, and the whole point of making it opt-in is that a
-/// second client which never asked keeps getting nothing. The dispatcher is handed one of
-/// these alongside the request so that <c>SubscribeRunEvents</c> can be answered without
-/// <see cref="IpcRequestDispatcher"/> learning what a connection is.
+/// Всё остальное в каталоге для клиента бессостоятельно: запрос называет, чего он хочет, и
+/// ответ один и тот же, кто бы ни спросил. С подписками не так — «шлите мне события прогона»
+/// есть факт о конкретной трубе, и весь смысл того, что подписка добровольная, в том, что
+/// второй клиент, который ни о чём не просил, так ничего и не получает. Сессию вручают
+/// диспетчеру рядом с запросом, чтобы на <c>SubscribeRunEvents</c> можно было ответить, не
+/// заставляя <see cref="IpcRequestDispatcher"/> узнавать, что такое соединение.
 ///
-/// <c>null</c> in the dispatcher tests, which drive the catalogue with no server underneath;
-/// the one handler that needs a session rejects politely when there isn't one.
+/// <c>null</c> в тестах диспетчера, которые гоняют каталог без сервера под ним; оба
+/// нуждающихся в сессии обработчика при её отсутствии вежливо отказывают.
 ///
-/// Wave D5's debugger commands (pause / step / run-to-node) attach to a walk, not to a
-/// connection, so they will NOT need to grow this interface — but a per-client "follow only
-/// this walk" filter would live here if the volume ever justified one.
+/// Команды отладчика волны D5 (пауза / шаг / до ноды) адресуют обход, а не соединение, и сам
+/// интерфейс от них действительно не вырос. Но читателей у него стало два:
+/// <c>DebugCommand</c> отклоняет команду от клиента, не подписанного на события прогона
+/// (<see cref="WantsRunEvents"/>), потому что счёт подключённых отладчиков — это и есть
+/// гарантия того, что припаркованный обход есть кому распустить. Команда от соединения вне
+/// этого счёта могла бы поставить обход на паузу, с которой его никто уже не снимет. Фильтр
+/// «следить только за этим обходом» на клиента жил бы здесь же, если бы объёмы такое когда-
+/// нибудь оправдали.
 /// </summary>
 public interface IIpcSession
 {
-    /// <summary>Whether this connection is receiving the <c>RunEvents</c> stream.</summary>
+    /// <summary>Получает ли это соединение поток <c>RunEvents</c>.</summary>
     bool WantsRunEvents { get; }
 
     /// <summary>
-    /// Starts or stops the stream for this connection. Idempotent — the subscriber count
-    /// the engine gates on must not drift when a client asks twice.
+    /// Включает или выключает поток для этого соединения. Идемпотентно — счётчик подписчиков,
+    /// по которому движок решает, работать ли ему вообще, не имеет права поехать оттого, что
+    /// клиент попросил дважды.
     /// </summary>
     void SetRunEventSubscription(bool enabled);
 }

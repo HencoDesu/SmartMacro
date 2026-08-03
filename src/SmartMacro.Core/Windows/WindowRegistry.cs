@@ -3,30 +3,31 @@ using SmartMacro.GameWindows;
 
 namespace SmartMacro.Windows;
 
-// The SOLE owner of window tags AND the lookup table hwnd → IGameWindow. Everything that
-// wants to know "which windows exist, what are they tagged with, and how do I drive one"
-// — agents, the macro primitives layer, UI — asks the registry; nothing else holds tag
-// state. Tags are runtime-only (hwnds are ephemeral), case-sensitive, free-form strings,
-// applied by macro nodes or manually from the UI.
+// ЕДИНСТВЕННЫЙ владелец тегов окон И таблицы соответствия «hwnd → IGameWindow». Все, кому нужно
+// знать, «какие окна есть, какими тегами они помечены и как одним из них управлять» — агенты,
+// слой примитивов макроса, UI, — спрашивают реестр; больше состояние тегов не держит никто. Теги
+// живут только во время работы (hwnd эфемерны), это свободные строки с учётом регистра, которые
+// проставляют ноды макроса или руками из UI.
 //
-// The IGameWindow handle is registered alongside the tags (W0.2b) because the macro
-// primitives layer only ever sees an hwnd — the graph model addresses windows by handle,
-// so the registry is the natural place to resolve one back into a drivable window.
+// Дескриптор IGameWindow регистрируется рядом с тегами (W0.2b), потому что слой примитивов
+// макроса видит один только hwnd — модель графа адресует окна дескрипторами, — и реестр есть
+// естественное место, где дескриптор превращается обратно в управляемое окно.
 //
-// All mutations are atomic under one lock; events are raised OUTSIDE the lock (with a
-// snapshot computed inside) so subscribers can call back into the registry without
-// deadlocking. Singleton in DI.
+// Все изменения атомарны под одной блокировкой; события поднимаются СНАРУЖИ блокировки (снимок
+// при этом считается внутри), чтобы подписчики могли вызывать реестр обратно без взаимной
+// блокировки. Синглтон в DI.
 public sealed partial class WindowRegistry
 {
     private sealed class Entry
     {
         public required string ProcessName { get; init; }
 
-        /// <summary>Drivable window facade; <c>null</c> for entries registered without one (tests, UI-only rows).</summary>
+        /// <summary>Фасад для управления окном; <c>null</c> у записей, зарегистрированных без него (тесты, строки только для UI).</summary>
         public IGameWindow? Window { get; init; }
 
-        // Insertion-ordered so "first tag" (used as an agent's display name) is stable.
-        // Tag counts per window are tiny, so List.Contains beats set overhead anyway.
+        // Порядок вставки сохраняется, чтобы «первый тег» (он идёт агенту как отображаемое имя)
+        // был стабилен. Тегов на окно всё равно единицы, так что List.Contains выигрывает у
+        // накладных расходов множества.
         public List<string> Tags { get; } = [];
     }
 
@@ -41,26 +42,27 @@ public sealed partial class WindowRegistry
         _logger = logger;
     }
 
-    /// <summary>Raised after a window is registered. Payload is the fresh (tagless) snapshot.</summary>
+    /// <summary>Поднимается после регистрации окна. Нагрузка — свежий снимок (пока без тегов).</summary>
     public event Action<ManagedWindowInfo>? WindowAppeared;
 
-    /// <summary>Raised after a tag is added to or removed from a window. Payload reflects the post-change tag set.</summary>
+    /// <summary>Поднимается после добавления или снятия тега у окна. Нагрузка отражает набор тегов уже после изменения.</summary>
     public event Action<ManagedWindowInfo>? WindowTagsChanged;
 
-    /// <summary>Raised after a window is unregistered. Payload carries the final tag set the window had.</summary>
+    /// <summary>Поднимается после снятия окна с регистрации. Нагрузка несёт тот набор тегов, с которым окно ушло.</summary>
     public event Action<ManagedWindowInfo>? WindowClosed;
 
     /// <summary>
-    /// Adds a window to the registry with an empty tag set and raises <see cref="WindowAppeared"/>.
+    /// Добавляет окно в реестр с пустым набором тегов и поднимает <see cref="WindowAppeared"/>.
     /// </summary>
-    /// <param name="hwnd">Native handle; identity key of the entry.</param>
-    /// <param name="processName">Owning process name, as reported by ProcessMonitor.</param>
+    /// <param name="hwnd">Нативный дескриптор; ключ идентичности записи.</param>
+    /// <param name="processName">Имя владеющего процесса, как его сообщил ProcessMonitor.</param>
     /// <param name="window">
-    /// Drivable facade for the window, resolvable later via <see cref="TryGetWindow"/>.
-    /// Optional so tag-only tests and future UI-side registrations don't need one; macro
-    /// nodes targeting a window registered without a facade fail at execution time.
+    /// Фасад для управления окном, который потом достаётся через <see cref="TryGetWindow"/>.
+    /// Необязателен, чтобы тестам про одни только теги и будущим регистрациям со стороны UI он
+    /// был не нужен; ноды макроса, нацеленные на окно, зарегистрированное без фасада, падают
+    /// во время исполнения.
     /// </param>
-    /// <returns><c>true</c> when the window was added; <c>false</c> when the hwnd is already registered (no event).</returns>
+    /// <returns><c>true</c>, если окно добавлено; <c>false</c>, если hwnd уже зарегистрирован (события не будет).</returns>
     public bool Register(IntPtr hwnd, string processName, IGameWindow? window = null)
     {
         ArgumentNullException.ThrowIfNull(processName);
@@ -85,10 +87,10 @@ public sealed partial class WindowRegistry
     }
 
     /// <summary>
-    /// Removes a window (and its tags) from the registry and raises <see cref="WindowClosed"/>
-    /// with the final tag set.
+    /// Убирает окно (и его теги) из реестра и поднимает <see cref="WindowClosed"/> с финальным
+    /// набором тегов.
     /// </summary>
-    /// <returns><c>true</c> when the window was removed; <c>false</c> when the hwnd was not registered (no event).</returns>
+    /// <returns><c>true</c>, если окно убрано; <c>false</c>, если такой hwnd зарегистрирован не был (события не будет).</returns>
     public bool Unregister(IntPtr hwnd)
     {
         ManagedWindowInfo snapshot;
@@ -98,6 +100,7 @@ public sealed partial class WindowRegistry
             {
                 return false;
             }
+
             snapshot = ToSnapshot(hwnd, entry);
         }
 
@@ -107,10 +110,10 @@ public sealed partial class WindowRegistry
     }
 
     /// <summary>
-    /// Adds a tag to a registered window and raises <see cref="WindowTagsChanged"/>.
-    /// Tags are case-sensitive; adding an already-present tag is a no-op.
+    /// Добавляет тег зарегистрированному окну и поднимает <see cref="WindowTagsChanged"/>.
+    /// Регистр в тегах важен; добавление уже имеющегося тега ничего не делает.
     /// </summary>
-    /// <returns><c>true</c> when the tag set changed; <c>false</c> for an unknown hwnd or a duplicate tag (no event).</returns>
+    /// <returns><c>true</c>, если набор тегов изменился; <c>false</c> при неизвестном hwnd или повторном теге (события не будет).</returns>
     public bool AddTag(IntPtr hwnd, string tag)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);
@@ -123,6 +126,7 @@ public sealed partial class WindowRegistry
                 LogTagForUnknownWindow(tag, hwnd.ToInt64());
                 return false;
             }
+
             if (entry.Tags.Contains(tag, StringComparer.Ordinal))
             {
                 return false;
@@ -138,9 +142,9 @@ public sealed partial class WindowRegistry
     }
 
     /// <summary>
-    /// Removes a tag from a registered window and raises <see cref="WindowTagsChanged"/>.
+    /// Снимает тег с зарегистрированного окна и поднимает <see cref="WindowTagsChanged"/>.
     /// </summary>
-    /// <returns><c>true</c> when the tag set changed; <c>false</c> for an unknown hwnd or an absent tag (no event).</returns>
+    /// <returns><c>true</c>, если набор тегов изменился; <c>false</c> при неизвестном hwnd или отсутствующем теге (события не будет).</returns>
     public bool RemoveTag(IntPtr hwnd, string tag)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);
@@ -152,10 +156,12 @@ public sealed partial class WindowRegistry
             {
                 return false;
             }
+
             if (!entry.Tags.Remove(tag))
             {
                 return false;
             }
+
             snapshot = ToSnapshot(hwnd, entry);
         }
 
@@ -165,8 +171,8 @@ public sealed partial class WindowRegistry
     }
 
     /// <summary>
-    /// Snapshot of the window's current tags. Isolated — the returned set never mutates,
-    /// even if tags change afterwards. Unknown hwnd yields an empty set.
+    /// Снимок текущих тегов окна. Изолирован — возвращённое множество не меняется, даже если
+    /// теги потом изменятся. Неизвестный hwnd даёт пустое множество.
     /// </summary>
     public IReadOnlySet<string> GetTags(IntPtr hwnd)
     {
@@ -179,10 +185,10 @@ public sealed partial class WindowRegistry
     }
 
     /// <summary>
-    /// Resolves a handle back into the drivable window facade registered with it. The
-    /// macro primitives layer's only way from an hwnd to real input/vision.
+    /// Превращает дескриптор обратно в зарегистрированный вместе с ним фасад управления окном.
+    /// Единственная для слоя примитивов макроса дорога от hwnd к настоящему вводу и зрению.
     /// </summary>
-    /// <returns>The facade, or <c>null</c> for an unknown hwnd or an entry registered without one.</returns>
+    /// <returns>Фасад или <c>null</c> при неизвестном hwnd либо у записи, зарегистрированной без фасада.</returns>
     public IGameWindow? TryGetWindow(IntPtr hwnd)
     {
         lock (_lock)
@@ -191,7 +197,7 @@ public sealed partial class WindowRegistry
         }
     }
 
-    /// <summary>Case-sensitive tag membership check. <c>false</c> for unknown hwnds.</summary>
+    /// <summary>Проверка наличия тега с учётом регистра. Для неизвестных hwnd — <c>false</c>.</summary>
     public bool HasTag(IntPtr hwnd, string tag)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tag);
@@ -204,8 +210,8 @@ public sealed partial class WindowRegistry
     }
 
     /// <summary>
-    /// Atomic snapshot of every registered window with its tags. Isolated from later
-    /// mutations — safe to iterate without holding any lock.
+    /// Атомарный снимок всех зарегистрированных окон с их тегами. Изолирован от последующих
+    /// изменений — по нему можно спокойно ходить, не держа никакой блокировки.
     /// </summary>
     public IReadOnlyList<ManagedWindowInfo> Snapshot()
     {
@@ -216,11 +222,12 @@ public sealed partial class WindowRegistry
             {
                 result.Add(ToSnapshot(hwnd, entry));
             }
+
             return result;
         }
     }
 
-    // Caller must hold _lock.
+    // Вызывающий обязан держать _lock.
     private static ManagedWindowInfo ToSnapshot(IntPtr hwnd, Entry entry) =>
         new(hwnd, entry.ProcessName, new HashSet<string>(entry.Tags, StringComparer.Ordinal));
 

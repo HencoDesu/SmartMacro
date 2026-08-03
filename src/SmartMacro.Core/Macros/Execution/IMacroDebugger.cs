@@ -1,29 +1,38 @@
 namespace SmartMacro.Macros.Execution;
 
-/// <summary>Why a walk is parked. Drives which event the panel gets and how it renders it.</summary>
+/// <summary>
+/// Почему обход припаркован. Определяет, какое событие получит панель и как она его нарисует.
+///
+/// Кнопки названы так, как они подписаны в интерфейсе, и без глифов. Волна D5 от глифов
+/// макета (⏸ / ⤼ / ▷|) сознательно отказалась: у U+23F8 выставлено свойство
+/// <c>Emoji_Presentation</c>, и он приезжает цветной картинкой мимо <c>Foreground</c> — та же
+/// ловушка, в которую D1 попала на U+25B6, а D4 на U+26A0. Ссылаться на них здесь значило бы
+/// отправить читателя искать в интерфейсе кнопки, которых там нет.
+/// </summary>
 public enum DebugPauseReason
 {
-    /// <summary>The user pressed ⏸ while the walk was inside a node.</summary>
+    /// <summary>Пользователь нажал «Пауза», пока обход был внутри ноды.</summary>
     Requested,
 
-    /// <summary>One ⤼ Шаг worth of progress has been made.</summary>
+    /// <summary>Отработал ровно один «Шаг».</summary>
     Step,
 
-    /// <summary>▷| До курсора reached the node it was aimed at.</summary>
+    /// <summary>«До курсора» дошло до той ноды, в которую целилось.</summary>
     Cursor,
 
-    /// <summary>The node carries a breakpoint.</summary>
+    /// <summary>На ноде стоит точка останова.</summary>
     Breakpoint,
 }
 
 /// <summary>
-/// A walk parked at a node, handed back by <see cref="IMacroDebugger.Arm"/>.
+/// Обход, припаркованный у ноды; выдаётся из <see cref="IMacroDebugger.Arm"/>.
 ///
-/// Two calls rather than one <c>PauseIfNeededAsync</c> because the walker has to ANNOUNCE the
-/// pause between deciding on it and waiting for it — otherwise the panel learns a walk is
-/// parked only from the absence of further events, which is indistinguishable from a slow
-/// node. Arming and waiting are still atomic with respect to a racing Resume: the gate exists
-/// (and can therefore be released) from the moment <see cref="IMacroDebugger.Arm"/> returns.
+/// Два вызова, а не один <c>PauseIfNeededAsync</c>, потому что между решением встать на паузу и
+/// ожиданием walker обязан ОБЪЯВИТЬ об этой паузе — иначе панель узнаёт о припаркованном обходе
+/// только по отсутствию дальнейших событий, а это неотличимо от медленной ноды. Взведение и
+/// ожидание при этом остаются атомарными относительно гонки с Resume: затвор существует (и,
+/// значит, его можно отпустить) с той секунды, как <see cref="IMacroDebugger.Arm"/> вернул
+/// управление.
 /// </summary>
 public sealed class MacroDebugGate
 {
@@ -36,20 +45,21 @@ public sealed class MacroDebugGate
         Reason = reason;
     }
 
-    /// <summary>Walk being held.</summary>
+    /// <summary>Удерживаемый обход.</summary>
     public Guid WalkId { get; }
 
-    /// <summary>Node the walk is parked BEFORE. It has not run yet.</summary>
+    /// <summary>Нода, ПЕРЕД которой обход припаркован. Она ещё не выполнялась.</summary>
     public string NodeId { get; }
 
-    /// <summary>Why.</summary>
+    /// <summary>Почему.</summary>
     public DebugPauseReason Reason { get; }
 
     /// <summary>
-    /// Completes when the walk is released. Honours <paramref name="cancellationToken"/>, so
-    /// ■ Стоп (and daemon shutdown, which cancels every run) unparks a paused walk instead of
-    /// leaving it wedged — the resulting <see cref="OperationCanceledException"/> is the
-    /// normal cancellation path and ends the walk as <c>Cancelled</c>.
+    /// Завершается, когда обход отпускают. Уважает <paramref name="cancellationToken"/>, так что
+    /// «■ Стоп» (и выключение демона, которое отменяет каждый прогон) распускает обход, стоящий
+    /// на паузе, а не оставляет его заклиненным: возникающее
+    /// <see cref="OperationCanceledException"/> — это обычный путь отмены, и обход заканчивается
+    /// как <c>Cancelled</c>.
     /// </summary>
     public Task WaitAsync(CancellationToken cancellationToken) => _released.Task.WaitAsync(cancellationToken);
 
@@ -57,41 +67,44 @@ public sealed class MacroDebugGate
 }
 
 /// <summary>
-/// The walker's control channel, the sibling of <see cref="IMacroRunObserver"/>'s reporting
-/// channel: that one says what happened, this one decides whether the walk may continue.
+/// Канал управления для walker'а, близнец докладного канала
+/// <see cref="IMacroRunObserver"/>: тот говорит, что произошло, этот решает, можно ли обходу
+/// идти дальше.
 ///
-/// <b><see cref="IsActive"/> follows the same discipline as <c>IsEnabled</c>.</b> The walker
-/// reads it once per node before touching anything else, and a daemon with no panel attached
-/// therefore pays one volatile read. It must be honest: a constant <c>true</c> would put a
-/// dictionary lookup and a lock on the path of something driving a live game.
+/// <b><see cref="IsActive"/> живёт по той же дисциплине, что и <c>IsEnabled</c>.</b> Walker
+/// читает его один раз на ноду, прежде чем тронуть что бы то ни было ещё, и демон без
+/// подключённой панели платит за это одним volatile-чтением. Свойство обязано быть честным:
+/// константный <c>true</c> поставил бы поиск по словарю и блокировку на путь того, что
+/// управляет живой игрой.
 ///
-/// <b>Called from engine threads, several at once</b> — a fan-out walks N graphs in parallel
-/// and each has its own gate. Implementations must be thread-safe.
+/// <b>Вызывается с потоков движка, сразу с нескольких</b> — разветвление обходит N графов
+/// параллельно, и у каждого свой затвор. Реализации обязаны быть потокобезопасными.
 /// </summary>
 public interface IMacroDebugger
 {
-    /// <summary>Whether any debugger is attached. Checked per node; must be cheap.</summary>
+    /// <summary>Подключён ли вообще хоть один отладчик. Проверяется на каждой ноде, а значит, обязано быть дёшево.</summary>
     bool IsActive { get; }
 
     /// <summary>
-    /// Decides whether the walk stops before <paramref name="nodeId"/>, and if so, arms the
-    /// gate it must wait on. <c>null</c> = carry on.
+    /// Решает, встанет ли обход перед <paramref name="nodeId"/>, и, если да, взводит затвор, на
+    /// котором ему предстоит ждать. <c>null</c> = идти дальше.
     /// </summary>
-    /// <param name="walkId">The walk, as reported to <see cref="IMacroRunObserver.WalkStarted"/>.</param>
-    /// <param name="macroName">Graph being walked — breakpoints are keyed by (macro, node).</param>
-    /// <param name="nodeId">Node about to run.</param>
+    /// <param name="walkId">Обход в том виде, в каком о нём доложили в <see cref="IMacroRunObserver.WalkStarted"/>.</param>
+    /// <param name="macroName">Обходимый граф — точки останова ключуются парой (макрос, нода).</param>
+    /// <param name="nodeId">Нода, которая вот-вот выполнится.</param>
     MacroDebugGate? Arm(Guid walkId, string macroName, string nodeId);
 
     /// <summary>
-    /// Forgets a gate, whether it was released normally or abandoned by cancellation. The
-    /// walker calls this in a <c>finally</c>; without it a cancelled walk would leave the
-    /// session believing it is still parked.
+    /// Забывает затвор — и когда его отпустили штатно, и когда его бросили из-за отмены. Walker
+    /// вызывает это в <c>finally</c>; без этого отменённый обход оставил бы сессию в убеждении,
+    /// что он всё ещё припаркован.
     /// </summary>
     void Disarm(MacroDebugGate gate);
 
     /// <summary>
-    /// Drops every trace of a finished walk. Called once per walk from the executor's exit
-    /// path, so a session that has seen ten thousand walks holds state for none of them.
+    /// Стирает всякий след завершившегося обхода. Вызывается по разу на обход с пути выхода из
+    /// исполнителя, так что сессия, повидавшая десять тысяч обходов, не держит состояния ни по
+    /// одному из них.
     /// </summary>
     void WalkFinished(Guid walkId);
 }

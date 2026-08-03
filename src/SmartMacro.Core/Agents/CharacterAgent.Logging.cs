@@ -2,9 +2,9 @@ using Microsoft.Extensions.Logging;
 
 namespace SmartMacro.Agents;
 
-// Source-generated LoggerMessage declarations for CharacterAgent. Kept in its own
-// partial-class file for symmetry with the rest of the codebase, even though the agent
-// shrank to a window-lifetime shell in W0.2b.
+// Кодогенерируемые объявления LoggerMessage для CharacterAgent. Вынесены в отдельный файл
+// частичного класса ради единообразия с остальной кодовой базой — даже несмотря на то, что в
+// W0.2b агент усох до оболочки над временем жизни окна.
 public sealed partial class CharacterAgent
 {
     [LoggerMessage(LogLevel.Information, "Agent hwnd=0x{Hwnd:X} watching its window (poll={Poll})")]

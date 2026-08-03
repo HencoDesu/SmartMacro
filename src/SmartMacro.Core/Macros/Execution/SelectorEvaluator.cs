@@ -4,21 +4,20 @@ using SmartMacro.Windows;
 namespace SmartMacro.Macros.Execution;
 
 /// <summary>
-/// Evaluates a <see cref="TargetSelector"/> against window snapshots: AND semantics —
-/// every RequireTag present, no ExcludeTag present. Pure functions; the executor feeds
-/// it a fresh <c>WindowRegistry.Snapshot()</c> at the moment a node executes, so a
-/// selector always sees the current tag state.
+/// Вычисляет <see cref="TargetSelector"/> по снимкам окон: семантика И — все RequireTag на
+/// месте, ни одного ExcludeTag. Функции чистые; исполнитель подаёт сюда свежий
+/// <c>WindowRegistry.Snapshot()</c> в момент выполнения ноды, так что селектор всегда видит
+/// текущее состояние тегов.
 ///
-/// <b>The rule itself lives in Contracts</b> (<see cref="TargetSelector.Matches"/>) since
-/// wave D4: the panel evaluates the same selectors against its own window snapshot to draw
-/// the targets badge, and two implementations of "which windows does this hit" would be one
-/// implementation too many. What is left here is the typed wrapper the executor calls —
-/// this class is where <see cref="ManagedWindowInfo"/> is known, and Contracts must not
-/// know it.
+/// <b>Само правило живёт в Contracts</b> (<see cref="TargetSelector.Matches"/>) с волны D4:
+/// панель вычисляет те же селекторы по своему снимку окон, чтобы нарисовать бейдж целей, а две
+/// реализации ответа на вопрос «по каким окнам это попадёт» — это на одну реализацию больше,
+/// чем нужно. Здесь остаётся типизированная обёртка, которую зовёт исполнитель: этот класс —
+/// то место, где известен <see cref="ManagedWindowInfo"/>, а Contracts знать о нём не должен.
 /// </summary>
 public static class SelectorEvaluator
 {
-    /// <summary>Whether one window matches the selector.</summary>
+    /// <summary>Подходит ли одно окно под селектор.</summary>
     public static bool Matches(ManagedWindowInfo window, TargetSelector selector)
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -26,8 +25,9 @@ public static class SelectorEvaluator
         return selector.Matches(window.Tags);
     }
 
-    /// <summary>All windows of <paramref name="windows"/> matching the selector, in input order.</summary>
-    public static IReadOnlyList<ManagedWindowInfo> Select(IEnumerable<ManagedWindowInfo> windows, TargetSelector selector)
+    /// <summary>Все окна из <paramref name="windows"/>, подходящие под селектор, в порядке поступления.</summary>
+    public static IReadOnlyList<ManagedWindowInfo> Select(IEnumerable<ManagedWindowInfo> windows,
+        TargetSelector selector)
     {
         ArgumentNullException.ThrowIfNull(windows);
         ArgumentNullException.ThrowIfNull(selector);

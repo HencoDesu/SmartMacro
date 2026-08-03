@@ -8,17 +8,17 @@ using SmartMacro.Native.Hotkey;
 namespace SmartMacro.Hotkeys;
 
 /// <summary>
-/// Turns global keyboard/mouse chords into macro names.
+/// Превращает глобальные аккорды клавиатуры и мыши в имена макросов.
 ///
-/// The binding set is derived entirely from the macro library: every
-/// <see cref="HotkeyTrigger"/> of every graph becomes one registration whose payload is
-/// that graph's NAME. There is no separate hotkey config file any more — a macro's
-/// hotkey lives in the macro, so binding and behavior can never drift apart, and the
-/// listener simply re-registers whenever the library changes.
+/// Набор привязок целиком выводится из библиотеки макросов: каждый
+/// <see cref="HotkeyTrigger"/> каждого графа становится одной регистрацией, нагрузка которой —
+/// ИМЯ этого графа. Отдельного файла с настройками хоткеев больше нет: хоткей макроса живёт в
+/// самом макросе, так что привязка и поведение не могут разъехаться, а слушателю остаётся
+/// просто перерегистрироваться всякий раз, когда библиотека меняется.
 ///
-/// Registration itself is delegated to the two Win32 monitors (RegisterHotKey for
-/// keyboard chords, WH_MOUSE_LL for mouse chords); this class only owns the id → macro
-/// mapping and the start/stop/suspend lifecycle.
+/// Сама регистрация делегирована двум Win32-мониторам (RegisterHotKey для аккордов клавиатуры,
+/// WH_MOUSE_LL для аккордов мыши); этот класс владеет только отображением «id → макрос» и
+/// жизненным циклом «старт / стоп / приостановка».
 /// </summary>
 public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration, IDisposable
 {
@@ -35,7 +35,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
     private bool _started;
     private bool _suspended;
 
-    /// <summary>Raised with the macro NAME whose hotkey trigger just fired.</summary>
+    /// <summary>Поднимается с ИМЕНЕМ макроса, чей хоткей-триггер только что сработал.</summary>
     public event Action<string>? MacroTriggered;
 
     public HotkeyListener(
@@ -71,9 +71,10 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
     }
 
     /// <summary>
-    /// Unregisters every chord. A hotkey-picker UI needs this: Win32 RegisterHotKey
-    /// swallows presses of already-bound combos, so a bound key would otherwise be
-    /// impossible to re-bind. Reached from the UI process over IPC (<c>SuspendHotkeys</c>).
+    /// Снимает регистрацию со всех аккордов. Интерфейсу выбора хоткея без этого не обойтись:
+    /// Win32 RegisterHotKey проглатывает нажатия уже привязанных сочетаний, так что привязанную
+    /// клавишу иначе было бы невозможно переназначить. Вызывается из процесса UI по IPC
+    /// (<c>SuspendHotkeys</c>).
     /// </summary>
     public async Task SuspendAsync(CancellationToken cancellationToken = default)
     {
@@ -84,6 +85,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
             {
                 return;
             }
+
             _suspended = true;
             if (_started)
             {
@@ -98,7 +100,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
         }
     }
 
-    /// <summary>Re-registers from the CURRENT library state (which may have changed while suspended).</summary>
+    /// <summary>Регистрирует заново по ТЕКУЩЕМУ состоянию библиотеки (пока висела приостановка, оно могло измениться).</summary>
     public async Task ResumeAsync(CancellationToken cancellationToken = default)
     {
         await _restartLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -108,6 +110,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
             {
                 return;
             }
+
             _suspended = false;
             if (_started)
             {
@@ -125,16 +128,16 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
     }
 
     /// <summary>
-    /// Current id → macro-name map. Together with <see cref="KeyboardBindings"/> /
-    /// <see cref="MouseBindings"/> this is the full picture of what is registered right
-    /// now. Exposed for diagnostics and tests.
+    /// Текущее отображение «id → имя макроса». Вместе с <see cref="KeyboardBindings"/> и
+    /// <see cref="MouseBindings"/> это полная картина того, что зарегистрировано прямо сейчас.
+    /// Открыто наружу ради диагностики и тестов.
     /// </summary>
     public IReadOnlyDictionary<int, string> Bindings => _idToMacro;
 
-    /// <summary>Keyboard chords currently registered (or about to be, if not started yet).</summary>
+    /// <summary>Аккорды клавиатуры, зарегистрированные сейчас (или вот-вот, если старта ещё не было).</summary>
     public IReadOnlyList<HotkeyDescriptor> KeyboardBindings => _keyboardDescriptors;
 
-    /// <summary>Mouse chords currently registered (or about to be, if not started yet).</summary>
+    /// <summary>Аккорды мыши, зарегистрированные сейчас (или вот-вот, если старта ещё не было).</summary>
     public IReadOnlyList<MouseHookBinding> MouseBindings => _mouseDescriptors;
 
     /// <inheritdoc />
@@ -150,7 +153,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
 
     private void OnMonitorHotkeyPressed(int id)
     {
-        // Snapshot the dictionary reference — re-registration swaps it out atomically.
+        // Снимаем ссылку на словарь — перерегистрация подменяет его целиком и атомарно.
         var map = _idToMacro;
         if (map.TryGetValue(id, out var macroName))
         {
@@ -175,7 +178,8 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
         {
             if (_suspended)
             {
-                // ResumeAsync rebuilds from the live library, so we'd only do the work twice.
+                // ResumeAsync всё равно пересоберёт всё по живой библиотеке — так что сейчас мы
+                // сделали бы ту же работу дважды.
                 return;
             }
 
@@ -204,9 +208,9 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
         }
     }
 
-    // One registration per HotkeyTrigger across the whole library. Ids are positional and
-    // regenerated on every rebuild — they're only ever meaningful between one
-    // BuildDescriptors call and the next.
+    // По одной регистрации на каждый HotkeyTrigger во всей библиотеке. Идентификаторы
+    // позиционные и генерируются заново при каждой пересборке — они осмысленны только в
+    // промежутке между одним вызовом BuildDescriptors и следующим.
     private void BuildDescriptors(IReadOnlyList<MacroGraph> macros)
     {
         var keyboard = new List<HotkeyDescriptor>();
@@ -243,14 +247,15 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
     }
 
     /// <summary>
-    /// Turns the keyboard monitor's rejected descriptors back into "macro X's chord never
-    /// took". Called after every registration attempt, and only then — the list must survive
-    /// a suspend, because the panel reads it precisely while the editor (and therefore the
-    /// suspension) is on screen.
+    /// Превращает отвергнутые дескрипторы клавиатурного монитора обратно в «аккорд макроса X
+    /// так и не взлетел». Вызывается после каждой попытки регистрации — и только тогда. Список
+    /// обязан пережить приостановку: панель читает его ровно в то время, когда редактор (а
+    /// значит, и приостановка) на экране.
     ///
-    /// The ids are the ones <see cref="BuildDescriptors"/> just handed out, so the lookup
-    /// cannot go stale: both sides are regenerated together. A chord whose id somehow has no
-    /// macro is dropped rather than reported against an empty name.
+    /// Идентификаторы здесь — те самые, что только что раздал <see cref="BuildDescriptors"/>,
+    /// так что поиск не может устареть: обе стороны генерируются заново вместе. Аккорд, за
+    /// id которого почему-то не нашлось макроса, выбрасывается, а не докладывается с пустым
+    /// именем.
     /// </summary>
     private void CollectFailures()
     {
@@ -270,6 +275,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
                 failures.Add(new HotkeyFailureDto(macro, descriptor.Modifiers, descriptor.Key));
             }
         }
+
         _failures = failures;
         if (failures.Count > 0)
         {
@@ -286,21 +292,26 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
     [LoggerMessage(LogLevel.Information, "Re-registering hotkeys for {MacroCount} macro(s) after a library change")]
     partial void LogReregisterStart(int macroCount);
 
-    [LoggerMessage(LogLevel.Information, "Re-registration done — {KeyboardCount} keyboard + {MouseCount} mouse binding(s) now active")]
+    [LoggerMessage(LogLevel.Information,
+        "Re-registration done — {KeyboardCount} keyboard + {MouseCount} mouse binding(s) now active")]
     partial void LogReregisterDone(int keyboardCount, int mouseCount);
 
     [LoggerMessage(LogLevel.Error, "Failed to re-register hotkeys after a library change")]
     partial void LogReregisterFailed(Exception ex);
 
-    [LoggerMessage(LogLevel.Information, "Hotkey listener suspended — all global hotkeys unregistered (rebinding UI open)")]
+    [LoggerMessage(LogLevel.Information,
+        "Hotkey listener suspended — all global hotkeys unregistered (rebinding UI open)")]
     partial void LogSuspended();
 
-    [LoggerMessage(LogLevel.Information, "Hotkey listener resumed — {KeyboardCount} keyboard + {MouseCount} mouse binding(s) re-registered")]
+    [LoggerMessage(LogLevel.Information,
+        "Hotkey listener resumed — {KeyboardCount} keyboard + {MouseCount} mouse binding(s) re-registered")]
     partial void LogResumed(int keyboardCount, int mouseCount);
 
-    [LoggerMessage(LogLevel.Warning, "Macro '{Macro}' has a hotkey trigger with neither Key nor MouseButton set — skipping it")]
+    [LoggerMessage(LogLevel.Warning,
+        "Macro '{Macro}' has a hotkey trigger with neither Key nor MouseButton set — skipping it")]
     partial void LogMalformedTrigger(string macro);
 
-    [LoggerMessage(LogLevel.Warning, "{Count} macro hotkey(s) could not be registered — another application owns the chord; the panel reports them via GetHotkeyFailures")]
+    [LoggerMessage(LogLevel.Warning,
+        "{Count} macro hotkey(s) could not be registered — another application owns the chord; the panel reports them via GetHotkeyFailures")]
     partial void LogRegistrationFailures(int count);
 }

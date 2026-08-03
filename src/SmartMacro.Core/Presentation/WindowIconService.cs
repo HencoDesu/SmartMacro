@@ -4,28 +4,28 @@ using SmartMacro.GameWindows;
 namespace SmartMacro.Presentation;
 
 /// <summary>
-/// Applies an icon file to a game window's title-bar / taskbar slot. Backs
-/// <c>SetIconNode</c>, whose <c>IconPath</c> the executor has already interpolated
-/// (e.g. <c>"Assets/ClassIcons/{tag}.png"</c> → <c>"Assets/ClassIcons/Лучник.png"</c>).
+/// Ставит файл иконки в заголовок игрового окна и в его слот на панели задач. За ним стоит
+/// <c>SetIconNode</c>, чей <c>IconPath</c> исполнитель уже подставил
+/// (например, <c>"Assets/ClassIcons/{tag}.png"</c> → <c>"Assets/ClassIcons/Лучник.png"</c>).
 ///
-/// Two things it owns beyond the raw <see cref="IGameWindow.SetIconFromFile"/> call:
-///   * path resolution — relative paths resolve against the app directory, so macro
-///     files stay portable;
-///   * the post-apply retry pair — PW's own post-load init occasionally resets our
-///     WM_SETICON, so the icon is re-sent at +2s and +5s. Cheap and idempotent (the
-///     HICON is cached in Native.WindowIconCache).
+/// Сверх голого вызова <see cref="IGameWindow.SetIconFromFile"/> он владеет двумя вещами:
+///   * разрешением пути — относительные пути считаются от каталога приложения, чтобы файлы
+///     макросов оставались переносимыми;
+///   * парой повторов после применения — собственная инициализация PW после загрузки временами
+///     сбрасывает наш WM_SETICON, поэтому иконка отправляется ещё раз на +2 с и +5 с. Дёшево и
+///     идемпотентно (HICON закэширован в Native.WindowIconCache).
 ///
-/// Singleton in DI; no state beyond the legacy alias table.
+/// Синглтон в DI; состояния, кроме таблицы унаследованных псевдонимов, нет.
 /// </summary>
 public sealed partial class WindowIconService
 {
     /// <summary>
-    /// Fallback for PW's shipped icon set: identification tags are Russian class names
-    /// while <c>Assets/ClassIcons</c> ships English file stems. When the interpolated path
-    /// doesn't exist we retry once through this table so the <c>pw-boot</c> /
-    /// <c>pw-identify</c> examples work against the assets already in the repo.
-    /// TODO(W0.4): delete along with renaming the icon files to their tag names — the
-    /// engine itself has no business knowing PW class vocabulary.
+    /// Запасной путь для поставляемого набора иконок PW: теги опознания — это русские имена
+    /// классов, а в <c>Assets/ClassIcons</c> файлы названы по-английски. Когда подставленного
+    /// пути не существует, мы пробуем ещё раз через эту таблицу, чтобы примеры <c>pw-boot</c> и
+    /// <c>pw-identify</c> работали с теми ассетами, что уже лежат в репозитории.
+    /// TODO(W0.4): удалить вместе с переименованием файлов иконок в имена тегов — самому движку
+    /// незачем знать словарь классов PW.
     /// </summary>
     private static readonly IReadOnlyDictionary<string, string> LegacyTagIconStems =
         new Dictionary<string, string>(StringComparer.Ordinal)
@@ -34,7 +34,7 @@ public sealed partial class WindowIconService
             ["Воин"] = "warrior",
             ["Стрелок"] = "gunner",
             ["Друид"] = "druid",
-            ["Оборотень"] = "tank",       // Barbarian / shape-shifter
+            ["Оборотень"] = "tank", // Варвар / перевёртыш
             ["Странник"] = "rover",
             ["Жрец"] = "priest",
             ["Лучник"] = "archer",
@@ -47,10 +47,10 @@ public sealed partial class WindowIconService
             ["ДухКрови"] = "bloodspirit",
             ["Жнец"] = "reaper",
             ["Призрак"] = "ghost",
-            // Канлонг — no icon in the user's current set; will silently skip.
+            // Канлонг — в текущем наборе пользователя иконки нет; молча пропустится.
         };
 
-    // Retry cadence for post-apply re-application, racing PW's post-load init.
+    // Расписание повторов после применения — гонка с инициализацией PW сразу после загрузки.
     private static readonly TimeSpan[] RetryDelays = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5)];
 
     private readonly ILogger<WindowIconService> _logger;
@@ -61,11 +61,11 @@ public sealed partial class WindowIconService
     }
 
     /// <summary>
-    /// Best-effort apply of <paramref name="iconPath"/> to <paramref name="window"/>, plus
-    /// two background retries. Every failure is logged and reported, never thrown — a
-    /// cosmetic icon must not abort a macro run.
+    /// По возможности применяет <paramref name="iconPath"/> к <paramref name="window"/> плюс два
+    /// фоновых повтора. Любой сбой пишется в лог и докладывается, но никогда не бросается —
+    /// косметическая иконка не имеет права обрывать прогон макроса.
     /// </summary>
-    /// <returns><c>true</c> when the initial apply succeeded.</returns>
+    /// <returns><c>true</c>, если первое применение удалось.</returns>
     public bool TryApply(IGameWindow window, string iconPath)
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -83,8 +83,9 @@ public sealed partial class WindowIconService
 
         var applied = ApplyOnce(window, resolved);
 
-        // Fire-and-forget retries. Even if the initial apply failed, retry — PW might
-        // have been mid-init and dropped the SendMessage; a later re-send could stick.
+        // Повторы «отправил и забыл». Повторяем, даже если первое применение не удалось: PW мог
+        // быть в разгаре инициализации и потерять SendMessage, а более поздняя отправка вполне
+        // может прижиться.
         _ = Task.Run(async () =>
         {
             foreach (var delay in RetryDelays)
@@ -96,6 +97,7 @@ public sealed partial class WindowIconService
                     {
                         return;
                     }
+
                     ApplyOnce(window, resolved);
                 }
                 catch (Exception ex)
@@ -109,8 +111,8 @@ public sealed partial class WindowIconService
         return applied;
     }
 
-    // Relative → app directory. On a miss, try the legacy Russian-tag → English-stem
-    // alias in the same folder before giving up.
+    // Относительный путь → каталог приложения. Если не попали, прежде чем сдаться, пробуем в той
+    // же папке унаследованный псевдоним «русский тег → английская основа имени».
     private static string? ResolvePath(string iconPath)
     {
         var absolute = Path.IsPathRooted(iconPath)
@@ -142,6 +144,7 @@ public sealed partial class WindowIconService
                 LogIconApplied(path);
                 return true;
             }
+
             LogIconLoadFailed(path);
             return false;
         }
@@ -152,7 +155,8 @@ public sealed partial class WindowIconService
         }
     }
 
-    [LoggerMessage(LogLevel.Debug, "Icon file not found for '{IconPath}' (nor under its legacy alias); window icon stays default")]
+    [LoggerMessage(LogLevel.Debug,
+        "Icon file not found for '{IconPath}' (nor under its legacy alias); window icon stays default")]
     partial void LogIconMissing(string iconPath);
 
     [LoggerMessage(LogLevel.Information, "Window icon applied from {Path}")]

@@ -1,12 +1,12 @@
 namespace SmartMacro.Windows;
 
 /// <summary>
-/// Immutable snapshot of one window tracked by <see cref="WindowRegistry"/>: the native
-/// handle, the owning process name, and the tag set at the moment the snapshot was taken.
-/// Tags are case-sensitive free-form strings and live only for the lifetime of the window
-/// (hwnds are ephemeral, so nothing here is persisted).
+/// Неизменяемый снимок одного окна, за которым следит <see cref="WindowRegistry"/>: нативный
+/// дескриптор, имя владеющего процесса и набор тегов на момент снятия снимка. Теги — свободные
+/// строки с учётом регистра, живут ровно столько, сколько живёт окно (hwnd эфемерны, так что
+/// ничего отсюда не сохраняется на диск).
 /// </summary>
-/// <param name="Hwnd">Native window handle. Identity key inside the registry.</param>
-/// <param name="ProcessName">OS process name the window belongs to (as reported by ProcessMonitor).</param>
-/// <param name="Tags">Snapshot of the window's tags. Never mutates — later registry changes produce new snapshots.</param>
+/// <param name="Hwnd">Нативный дескриптор окна. Ключ идентичности внутри реестра.</param>
+/// <param name="ProcessName">Имя процесса ОС, которому принадлежит окно (как его сообщил ProcessMonitor).</param>
+/// <param name="Tags">Снимок тегов окна. Не меняется — последующие правки в реестре порождают новые снимки.</param>
 public sealed record ManagedWindowInfo(IntPtr Hwnd, string ProcessName, IReadOnlySet<string> Tags);

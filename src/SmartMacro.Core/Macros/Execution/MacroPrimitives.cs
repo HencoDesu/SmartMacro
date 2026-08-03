@@ -9,20 +9,22 @@ using SmartMacro.Windows;
 namespace SmartMacro.Macros.Execution;
 
 /// <summary>
-/// The real implementation of <see cref="IMacroPrimitives"/>: turns the walker's
-/// hwnd-addressed operations into input, vision, and window cosmetics.
+/// Настоящая реализация <see cref="IMacroPrimitives"/>: превращает адресованные по hwnd
+/// операции walker'а во ввод, зрение и косметику окна.
 ///
-/// Every operation starts by resolving the hwnd through <see cref="WindowRegistry"/> —
-/// the registry owns both the tag state selectors match against and the
-/// <see cref="IGameWindow"/> facade that can actually drive the window. An hwnd with no
-/// registered facade (window died mid-run, or was registered tag-only) is a logged no-op
-/// rather than an exception: fan-outs routinely race window teardown and one dead window
-/// must not abort a run that legitimately targeted eight others.
+/// Любая операция начинается с разрешения hwnd через <see cref="WindowRegistry"/> — реестр
+/// владеет и состоянием тегов, по которому сверяются селекторы, и фасадом
+/// <see cref="IGameWindow"/>, которым окном действительно можно управлять. Hwnd без
+/// зарегистрированного фасада (окно умерло посреди прогона либо было зарегистрировано только
+/// ради тегов) даёт запись в лог и ничегонеделание, а не исключение: разветвления сплошь и
+/// рядом бегут наперегонки со сносом окон, и одно мёртвое окно не должно обрывать прогон,
+/// который законно нацелился ещё на восемь.
 ///
-/// Activation lifecycle lives in <see cref="AgentInputDispatcher"/>, so each key/click is
-/// its own wake → send → drain → sleep cycle. Node-level granularity means a Delay node
-/// between two key nodes really does let the window go back to sleep in between; that
-/// matches how the graph reads and is what the legacy per-message path did too.
+/// Жизненный цикл активации живёт в <see cref="AgentInputDispatcher"/>, так что каждая клавиша
+/// и каждый клик — это собственный цикл «разбудить → отправить → дать слиться → усыпить».
+/// Понодовая зернистость означает, что нода паузы между двумя нодами клавиш действительно даёт
+/// окну на это время уснуть обратно; это совпадает с тем, как граф читается, и с тем, что делал
+/// прежний путь «на сообщение».
 /// </summary>
 public sealed partial class MacroPrimitives : IMacroPrimitives
 {
@@ -56,6 +58,7 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
         {
             return Task.CompletedTask;
         }
+
         return _input.FireKeyAsync(window, key, $"Key({key})", Describe(hwnd));
     }
 
@@ -66,36 +69,43 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
         {
             return Task.CompletedTask;
         }
+
         return _input.FireClickAsync(window, point, doubleClick, Describe(hwnd));
     }
 
     /// <inheritdoc />
-    public async Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, string template, ScreenRect? region, CancellationToken ct)
+    public async Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, string template, ScreenRect? region,
+        CancellationToken ct)
     {
         if (Resolve(hwnd, nameof(FindElementAsync)) is not { } window)
         {
             return null;
         }
+
         if (_templates.TryGetTemplate(template) is not { } bytes)
         {
             LogTemplateUnavailable(template);
             return null;
         }
+
         return await window.FindElementAsync(bytes, region ?? default, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public async Task<ScreenPoint?> WaitForElementAsync(IntPtr hwnd, string template, ScreenRect? region, int timeoutMs, CancellationToken ct)
+    public async Task<ScreenPoint?> WaitForElementAsync(IntPtr hwnd, string template, ScreenRect? region, int timeoutMs,
+        CancellationToken ct)
     {
         if (Resolve(hwnd, nameof(WaitForElementAsync)) is not { } window)
         {
             return null;
         }
+
         if (_templates.TryGetTemplate(template) is not { } bytes)
         {
             LogTemplateUnavailable(template);
             return null;
         }
+
         var budget = TimeSpan.FromMilliseconds(Math.Max(0, timeoutMs));
         return await window.WaitForElementAsync(bytes, region ?? default, budget, ct).ConfigureAwait(false);
     }
@@ -117,9 +127,9 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
 
         ct.ThrowIfCancellationRequested();
 
-        // ACTIVE capture. By the time this node runs, the key press that opened the
-        // in-game panel has already completed its own activate/deactivate cycle, so a
-        // passive PrintWindow would likely return the frozen pre-panel frame.
+        // АКТИВНЫЙ захват. К моменту выполнения этой ноды нажатие клавиши, открывшее игровую
+        // панель, уже завершило собственный цикл активации и деактивации, так что пассивный
+        // PrintWindow, скорее всего, вернул бы замороженный кадр, снятый ещё до панели.
         byte[] screenshot;
         try
         {
@@ -139,6 +149,7 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
                 LogRecognizeNoMatch(templateSet, hwnd.ToInt64());
                 return Task.FromResult<string?>(null);
             }
+
             LogRecognized(match.Tag, match.Score, templateSet);
             return Task.FromResult<string?>(match.Tag);
         }
@@ -156,6 +167,7 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
         {
             _icons.TryApply(window, iconPath);
         }
+
         return Task.CompletedTask;
     }
 
@@ -166,11 +178,12 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
         {
             LogUnknownWindow(operation, hwnd.ToInt64());
         }
+
         return window;
     }
 
-    // Log label for input operations: the window's tags read far better in a log than a
-    // bare handle when nine clients are running.
+    // Метка для лога у операций ввода: когда работают девять клиентов, теги окна читаются в
+    // логе куда лучше голого дескриптора.
     private string Describe(IntPtr hwnd)
     {
         var tags = _windows.GetTags(hwnd);

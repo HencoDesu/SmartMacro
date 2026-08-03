@@ -2,18 +2,19 @@ using Microsoft.Extensions.Logging;
 
 namespace SmartMacro.Macros.Execution;
 
-/// <summary>Immutable view of one tracked run, as returned by <see cref="MacroRunRegistry.Snapshot"/>.</summary>
-/// <param name="RunId">Unique id of this run.</param>
-/// <param name="MacroName">Name of the macro being run.</param>
-/// <param name="StartedUtc">When the run began.</param>
-/// <param name="CurrentNodeId">Id of the node the walker last entered; <c>null</c> before the first node.</param>
+/// <summary>Неизменяемый вид одного отслеживаемого прогона в том виде, в каком его отдаёт <see cref="MacroRunRegistry.Snapshot"/>.</summary>
+/// <param name="RunId">Уникальный id прогона.</param>
+/// <param name="MacroName">Имя прогоняемого макроса.</param>
+/// <param name="StartedUtc">Когда прогон начался.</param>
+/// <param name="CurrentNodeId">Id ноды, в которую walker вошёл последней; <c>null</c> до первой ноды.</param>
 public sealed record MacroRunSnapshot(Guid RunId, string MacroName, DateTime StartedUtc, string? CurrentNodeId);
 
 /// <summary>
-/// Live handle for one run, returned by <see cref="MacroRunRegistry.TryBegin"/>. The
-/// runner executes with <see cref="Token"/> and reports progress through
-/// <see cref="CurrentNodeId"/> (wire it to <see cref="MacroRunContext.OnNodeEntered"/>);
-/// when the run ends — however it ends — call <see cref="MacroRunRegistry.Complete"/>.
+/// Живой дескриптор одного прогона, который возвращает <see cref="MacroRunRegistry.TryBegin"/>.
+/// Бегун исполняет прогон с <see cref="Token"/> и докладывает о прогрессе через
+/// <see cref="CurrentNodeId"/> (подведите его к <see cref="MacroRunContext.OnNodeEntered"/>); а
+/// когда прогон заканчивается — чем бы он ни закончился — вызовите
+/// <see cref="MacroRunRegistry.Complete"/>.
 /// </summary>
 public sealed class MacroRunHandle
 {
@@ -27,21 +28,21 @@ public sealed class MacroRunHandle
         Token = token;
     }
 
-    /// <summary>Unique id of this run.</summary>
+    /// <summary>Уникальный id прогона.</summary>
     public Guid RunId { get; }
 
-    /// <summary>Name of the macro being run.</summary>
+    /// <summary>Имя прогоняемого макроса.</summary>
     public string MacroName { get; }
 
-    /// <summary>When the run began.</summary>
+    /// <summary>Когда прогон начался.</summary>
     public DateTime StartedUtc { get; }
 
-    /// <summary>Cancelled by <see cref="MacroRunRegistry.StopAsync"/> / <see cref="MacroRunRegistry.StopAllAsync"/>.</summary>
+    /// <summary>Отменяется через <see cref="MacroRunRegistry.StopAsync"/> / <see cref="MacroRunRegistry.StopAllAsync"/>.</summary>
     public CancellationToken Token { get; }
 
     /// <summary>
-    /// Id of the node the walker last entered. Volatile — updated live by the runner,
-    /// read by UI snapshots (future visual debugging).
+    /// Id ноды, в которую walker вошёл последней. Volatile — бегун обновляет его на ходу, а
+    /// читают его снимки для UI (в будущем — визуальная отладка).
     /// </summary>
     public string? CurrentNodeId
     {
@@ -51,10 +52,11 @@ public sealed class MacroRunHandle
 }
 
 /// <summary>
-/// Tracks running macros: single-flight per macro name (re-triggering a running macro is
-/// a logged no-op), Stop from the UI, cancel-all on shutdown, and a snapshot for display.
-/// The executor knows nothing about this class — callers bracket
-/// <see cref="MacroExecutor.RunAsync"/> with <see cref="TryBegin"/> / <see cref="Complete"/>.
+/// Ведёт учёт выполняющихся макросов: single-flight по имени макроса (повторный запуск уже
+/// идущего макроса ничего не делает, только пишет в лог), «Стоп» из UI, отмена всего при
+/// выключении и снимок для показа. Исполнитель об этом классе ничего не знает — вызывающие сами
+/// обрамляют <see cref="MacroExecutor.RunAsync"/> парой <see cref="TryBegin"/> /
+/// <see cref="Complete"/>.
 /// </summary>
 public sealed partial class MacroRunRegistry : IDisposable
 {
@@ -62,7 +64,7 @@ public sealed partial class MacroRunRegistry : IDisposable
     {
         public required MacroRunHandle Handle { get; init; }
 
-        /// <summary>Value <see cref="TryBegin"/> dedupes on; defaults to the macro name.</summary>
+        /// <summary>Значение, по которому <see cref="TryBegin"/> схлопывает повторы; по умолчанию — имя макроса.</summary>
         public required string SingleFlightKey { get; init; }
 
         public required CancellationTokenSource Cts { get; init; }
@@ -79,19 +81,19 @@ public sealed partial class MacroRunRegistry : IDisposable
         _logger = logger;
     }
 
-    /// <summary>Raised (outside the lock) after a run is added or removed.</summary>
+    /// <summary>Поднимается (снаружи блокировки) после добавления или удаления прогона.</summary>
     public event Action? RunsChanged;
 
     /// <summary>
-    /// Registers a new run of <paramref name="macroName"/>. Single-flight: returns
-    /// <c>null</c> (with a log entry) when a run with the same key is already tracked.
+    /// Регистрирует новый прогон макроса <paramref name="macroName"/>. Single-flight:
+    /// возвращает <c>null</c> (с записью в лог), если прогон с таким же ключом уже отслеживается.
     /// </summary>
-    /// <param name="macroName">Macro being run. Used for display and as the default single-flight key.</param>
+    /// <param name="macroName">Прогоняемый макрос. Идёт на показ и служит ключом single-flight по умолчанию.</param>
     /// <param name="singleFlightKey">
-    /// Overrides what concurrent runs are deduped on. The default (the macro name) is
-    /// right for hotkeys — hammering one is a no-op. Per-window runs (a boot macro fired
-    /// by process-appeared) pass a key that includes the window, so nine clients
-    /// launching at once each get their own run instead of eight being refused.
+    /// Переопределяет то, по чему схлопываются одновременные прогоны. Значение по умолчанию
+    /// (имя макроса) правильно для хоткеев — долбить по одному бесполезно. Прогоны на окно
+    /// (загрузочный макрос от появления процесса) передают ключ, включающий окно, чтобы девять
+    /// одновременно запущенных клиентов получили каждый свой прогон, а не восемь отказов.
     /// </param>
     public MacroRunHandle? TryBegin(string macroName, string? singleFlightKey = null)
     {
@@ -119,9 +121,10 @@ public sealed partial class MacroRunRegistry : IDisposable
     }
 
     /// <summary>
-    /// Removes a finished run and unblocks anyone awaiting <see cref="StopAsync"/> on it.
-    /// The runner must call this exactly once per <see cref="TryBegin"/>, in a
-    /// <c>finally</c>. Unknown ids return <c>false</c> (no event).
+    /// Убирает завершившийся прогон и разблокирует всех, кто ждёт по нему
+    /// <see cref="StopAsync"/>. Бегун обязан вызвать это ровно один раз на каждый
+    /// <see cref="TryBegin"/>, в <c>finally</c>. На неизвестный id возвращает <c>false</c>
+    /// (события не будет).
     /// </summary>
     public bool Complete(Guid runId)
     {
@@ -142,8 +145,8 @@ public sealed partial class MacroRunRegistry : IDisposable
     }
 
     /// <summary>
-    /// Cancels the run and returns a task that completes when the runner acknowledges via
-    /// <see cref="Complete"/>. Unknown (already finished) ids complete immediately.
+    /// Отменяет прогон и возвращает задачу, которая завершится, когда бегун подтвердит это
+    /// вызовом <see cref="Complete"/>. Неизвестные (уже завершившиеся) id завершаются мгновенно.
     /// </summary>
     public Task StopAsync(Guid runId)
     {
@@ -161,7 +164,7 @@ public sealed partial class MacroRunRegistry : IDisposable
         return run.Completed.Task;
     }
 
-    /// <summary>Cancels every tracked run and waits for all of them to <see cref="Complete"/> (shutdown path).</summary>
+    /// <summary>Отменяет все отслеживаемые прогоны и ждёт, пока каждый из них дойдёт до <see cref="Complete"/> (путь выключения).</summary>
     public Task StopAllAsync()
     {
         List<ActiveRun> runs;
@@ -174,10 +177,11 @@ public sealed partial class MacroRunRegistry : IDisposable
         {
             Cancel(run);
         }
+
         return Task.WhenAll(runs.Select(run => run.Completed.Task));
     }
 
-    /// <summary>Atomic snapshot of all tracked runs, isolated from later changes.</summary>
+    /// <summary>Атомарный снимок всех отслеживаемых прогонов, изолированный от последующих изменений.</summary>
     public IReadOnlyList<MacroRunSnapshot> Snapshot()
     {
         lock (_lock)
@@ -191,11 +195,12 @@ public sealed partial class MacroRunRegistry : IDisposable
                     run.Handle.StartedUtc,
                     run.Handle.CurrentNodeId));
             }
+
             return result;
         }
     }
 
-    /// <summary>Cancels every tracked run without waiting. Prefer <see cref="StopAllAsync"/> on orderly shutdown.</summary>
+    /// <summary>Отменяет все отслеживаемые прогоны, не дожидаясь их. При штатном выключении лучше <see cref="StopAllAsync"/>.</summary>
     public void Dispose()
     {
         List<ActiveRun> runs;
@@ -205,6 +210,7 @@ public sealed partial class MacroRunRegistry : IDisposable
             {
                 return;
             }
+
             _disposed = true;
             runs = [.. _runs.Values];
         }
@@ -223,7 +229,7 @@ public sealed partial class MacroRunRegistry : IDisposable
         }
         catch (ObjectDisposedException)
         {
-            // Complete() raced us and already disposed the CTS — the run is finished, done.
+            // Complete() обогнал нас и уже освободил CTS — прогон закончился, вопрос закрыт.
         }
     }
 

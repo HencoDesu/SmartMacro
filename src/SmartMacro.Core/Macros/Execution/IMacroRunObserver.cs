@@ -3,12 +3,12 @@ using SmartMacro.Contracts.Dto;
 
 namespace SmartMacro.Macros.Execution;
 
-/// <summary>Identity of a walk, handed to <see cref="IMacroRunObserver.WalkStarted"/>.</summary>
-/// <param name="WalkId">Fresh per <see cref="MacroExecutor.RunAsync"/> call — including every sub-macro fork.</param>
-/// <param name="RunId">The tracked run this walk belongs to; <see cref="Guid.Empty"/> when the caller runs outside the registry (tests).</param>
-/// <param name="MacroName">Graph being walked.</param>
-/// <param name="ContextWindow">Window targetless nodes act on, or <c>null</c>.</param>
-/// <param name="Depth">Sub-macro nesting level of this walk.</param>
+/// <summary>Идентичность обхода, передаваемая в <see cref="IMacroRunObserver.WalkStarted"/>.</summary>
+/// <param name="WalkId">Свой на каждый вызов <see cref="MacroExecutor.RunAsync"/> — включая каждую ветку разветвления под-макроса.</param>
+/// <param name="RunId">Отслеживаемый прогон, которому принадлежит обход; <see cref="Guid.Empty"/>, когда вызывающий работает мимо реестра (тесты).</param>
+/// <param name="MacroName">Обходимый граф.</param>
+/// <param name="ContextWindow">Окно, по которому работают ноды без цели, либо <c>null</c>.</param>
+/// <param name="Depth">Уровень вложенности под-макросов у этого обхода.</param>
 public readonly record struct MacroWalkStart(
     Guid WalkId,
     Guid RunId,
@@ -17,79 +17,95 @@ public readonly record struct MacroWalkStart(
     int Depth);
 
 /// <summary>
-/// The executor's progress channel — the seam wave D3b hung the panel's live canvas off.
+/// Канал прогресса исполнителя — тот шов, на который волна D3b повесила живую канву панели.
 ///
-/// <b><see cref="IsEnabled"/> is not a nicety, it is the flooding fix.</b> The daemon is
-/// resident and the panel is on-demand, so the overwhelming majority of runs happen with
-/// nobody watching. The walker checks this flag before it times a node, formats a detail
-/// string or allocates anything at all; when it is <c>false</c> the entire instrumentation
-/// costs one volatile read per node. An implementation MUST make it cheap and MUST make it
-/// honest — returning a constant <c>true</c> would put string formatting on the hot path of
-/// something driving a live game.
+/// <b><see cref="IsEnabled"/> — это не любезность, это и есть средство от затопления.</b> Демон
+/// резидентен, а панель поднимается по требованию, так что подавляющее большинство прогонов
+/// происходит, когда никто не смотрит. Walker проверяет этот флаг раньше, чем засечёт время
+/// ноды, соберёт строку подробностей или вообще что-нибудь выделит в памяти; когда там
+/// <c>false</c>, весь съём показаний стоит одно volatile-чтение на ноду. Реализация ОБЯЗАНА
+/// сделать это дёшево и ОБЯЗАНА сделать это честно: константный <c>true</c> вынес бы
+/// форматирование строк на горячий путь того, что управляет живой игрой.
 ///
-/// <see cref="WalkStarted"/> and <see cref="WalkFinished"/> are the exception: they fire
-/// regardless of <see cref="IsEnabled"/>, because the publisher's roster of live walks is
-/// what lets a panel connecting mid-run learn that a run is in flight at all. They are two
-/// calls per macro run, not two per node.
+/// <see cref="WalkStarted"/> и <see cref="WalkFinished"/> — исключение: они стреляют независимо
+/// от <see cref="IsEnabled"/>, потому что список живых обходов у публикатора — это то, из чего
+/// панель, подключившаяся посреди прогона, вообще узнаёт, что прогон идёт. Это два вызова на
+/// прогон макроса, а не два на ноду.
 ///
-/// <b>Called from engine threads, possibly many at once</b> (a <c>RunMacroNode</c> fan-out
-/// walks N graphs in parallel). Implementations must be thread-safe and must never block:
-/// the caller is between two game inputs.
+/// <b>Вызывается с потоков движка, возможно, сразу со многих</b> (разветвление
+/// <c>RunMacroNode</c> обходит N графов параллельно). Реализации обязаны быть
+/// потокобезопасными и не имеют права блокировать: вызывающий находится между двумя вводами в
+/// игру.
 /// </summary>
 public interface IMacroRunObserver
 {
-    /// <summary>Whether anything is listening. Checked per node; must be cheap.</summary>
+    /// <summary>Слушает ли вообще кто-нибудь. Проверяется на каждой ноде, а значит, обязано быть дёшево.</summary>
     bool IsEnabled { get; }
 
-    /// <summary>A walk began. Always called, even when <see cref="IsEnabled"/> is <c>false</c>.</summary>
+    /// <summary>Обход начался. Вызывается всегда, даже когда <see cref="IsEnabled"/> равно <c>false</c>.</summary>
     void WalkStarted(MacroWalkStart walk);
 
-    /// <summary>The walker entered a node. Only called while <see cref="IsEnabled"/>.</summary>
+    /// <summary>Walker вошёл в ноду. Вызывается только при <see cref="IsEnabled"/>.</summary>
     void NodeEntered(Guid walkId, int elapsedMs, string nodeId);
 
-    /// <summary>The node finished. Only called while <see cref="IsEnabled"/>.</summary>
-    /// <param name="outcome">One of <see cref="RunOutcomes"/>.</param>
-    /// <param name="detail">Free-form specifics for the log strip, or <c>null</c>.</param>
-    /// <param name="durationMs">Wall time inside the node, including awaited sub-macros.</param>
+    /// <summary>Нода отработала. Вызывается только при <see cref="IsEnabled"/>.</summary>
+    /// <param name="walkId">Обход, к которому относится событие.</param>
+    /// <param name="elapsedMs">Миллисекунд с начала обхода.</param>
+    /// <param name="nodeId">Отработавшая нода.</param>
+    /// <param name="outcome">Одно из <see cref="RunOutcomes"/>.</param>
+    /// <param name="detail">Свободные подробности для полосы лога либо <c>null</c>.</param>
+    /// <param name="durationMs">Реальное время внутри ноды, включая ожидание под-макросов.</param>
     void NodeExited(Guid walkId, int elapsedMs, string nodeId, string outcome, string? detail, int durationMs);
 
-    /// <summary>The walk ended. Always called, even when <see cref="IsEnabled"/> is <c>false</c>.</summary>
-    /// <param name="outcome"><see cref="RunOutcomes.Completed"/>, <see cref="RunOutcomes.Aborted"/> or <see cref="RunOutcomes.Cancelled"/>.</param>
-    /// <param name="detail">Abort reason, or <c>null</c>.</param>
+    /// <summary>Обход закончился. Вызывается всегда, даже когда <see cref="IsEnabled"/> равно <c>false</c>.</summary>
+    /// <param name="walkId">Закончившийся обход.</param>
+    /// <param name="elapsedMs">Сколько миллисекунд он шёл.</param>
+    /// <param name="outcome"><see cref="RunOutcomes.Completed"/>, <see cref="RunOutcomes.Aborted"/> или <see cref="RunOutcomes.Cancelled"/>.</param>
+    /// <param name="detail">Причина обрыва либо <c>null</c>.</param>
     void WalkFinished(Guid walkId, int elapsedMs, string outcome, string? detail);
 
-    // -------------------------------------------------------------------- debugger (D5)
+    // ---------------------------------------------------------------------- отладчик (D5)
 
     /// <summary>
-    /// A run variable was assigned. Only called while <see cref="IsEnabled"/>.
+    /// Переменной прогона присвоили значение. Вызывается только при <see cref="IsEnabled"/>.
     ///
-    /// A handful per walk, not two per node: the writers are the trigger's <c>cursor</c> seed
-    /// (reported once at the head of the walk, with <paramref name="nodeId"/> <c>null</c>) and
-    /// the conditional nodes' <c>FoundPointVar</c>/<c>ResultVar</c>.
+    /// Таких событий на обход единицы, а не два на ноду: пишут переменные сид <c>cursor</c> от
+    /// триггера (докладывается один раз в начале обхода, с <paramref name="nodeId"/> равным
+    /// <c>null</c>) и <c>FoundPointVar</c>/<c>ResultVar</c> условных нод.
     /// </summary>
-    /// <param name="name">Variable name.</param>
-    /// <param name="value">Its display string — what <c>{name}</c> would interpolate to.</param>
-    /// <param name="nodeId">Node that wrote it, or <c>null</c> for the trigger seed.</param>
+    /// <param name="walkId">Обход, в котором произошла запись.</param>
+    /// <param name="elapsedMs">Миллисекунд с начала обхода.</param>
+    /// <param name="name">Имя переменной.</param>
+    /// <param name="value">Её строка для показа — то, во что развернулось бы <c>{name}</c>.</param>
+    /// <param name="nodeId">Нода, которая записала значение, либо <c>null</c> для сида от триггера.</param>
     void VariableSet(Guid walkId, int elapsedMs, string name, string value, string? nodeId);
 
     /// <summary>
-    /// The walk parked before <paramref name="nodeId"/> and is waiting to be released. Only
-    /// called while <see cref="IsEnabled"/> — with nobody attached nothing can pause anyway.
+    /// Обход припарковался перед <paramref name="nodeId"/> и ждёт, когда его отпустят.
+    /// Вызывается только при <see cref="IsEnabled"/> — когда никто не подключён, поставить на
+    /// паузу всё равно некому.
     /// </summary>
-    /// <param name="reason">Drives which event kind the panel gets and how it is worded.</param>
+    /// <param name="walkId">Припаркованный обход.</param>
+    /// <param name="elapsedMs">Миллисекунд с начала обхода.</param>
+    /// <param name="nodeId">Нода, перед которой встали.</param>
+    /// <param name="reason">Определяет, какой вид события получит панель и как это будет сформулировано.</param>
     void WalkPaused(Guid walkId, int elapsedMs, string nodeId, DebugPauseReason reason);
 
-    /// <summary>The walk was released and is about to run <paramref name="nodeId"/>. Only called while <see cref="IsEnabled"/>.</summary>
+    /// <summary>Обход отпустили, и он вот-вот выполнит <paramref name="nodeId"/>. Вызывается только при <see cref="IsEnabled"/>.</summary>
+    /// <param name="walkId">Отпущенный обход.</param>
+    /// <param name="elapsedMs">Миллисекунд с начала обхода.</param>
+    /// <param name="nodeId">Нода, которая сейчас выполнится.</param>
     void WalkResumed(Guid walkId, int elapsedMs, string nodeId);
 }
 
 /// <summary>
-/// One walk's tracing state: its id, its start timestamp and the observer to report to.
+/// Состояние съёма показаний одного обхода: его id, отметка времени старта и наблюдатель,
+/// которому докладывать.
 ///
-/// A struct passed down the walker rather than fields on <see cref="MacroExecutor"/> —
-/// the executor is a singleton walking many graphs at once, so per-walk state cannot live
-/// on it. Every method is a no-op when there is no observer, which is what keeps the call
-/// sites in the walker free of null checks.
+/// Структура, спускаемая вниз по walker'у, а не поля на <see cref="MacroExecutor"/>:
+/// исполнитель — синглтон, обходящий множество графов одновременно, так что пообходному
+/// состоянию на нём не место. Любой метод ничего не делает, когда наблюдателя нет, — и именно
+/// это избавляет места вызова в walker'е от проверок на null.
 /// </summary>
 internal readonly struct MacroWalkTrace
 {
@@ -103,27 +119,28 @@ internal readonly struct MacroWalkTrace
         _startTimestamp = startTimestamp;
     }
 
-    /// <summary>Identity of this walk.</summary>
+    /// <summary>Идентичность этого обхода.</summary>
     public Guid WalkId { get; }
 
     /// <summary>
-    /// Whether per-NODE events are wanted. False both when there is no observer and when
-    /// nobody is subscribed — the walker branches on this before formatting anything.
+    /// Нужны ли ПОНОДОВЫЕ события. False и когда наблюдателя нет, и когда никто не подписан, —
+    /// walker ветвится по этому свойству прежде, чем что-либо форматировать.
     /// </summary>
     public bool IsTracing => _observer is { IsEnabled: true };
 
-    /// <summary>Raw timestamp for measuring one node; feed it back to <see cref="NodeExited"/>.</summary>
+    /// <summary>Сырая отметка времени для замера одной ноды; её же и скармливают обратно в <see cref="NodeExited"/>.</summary>
     public static long Now => Stopwatch.GetTimestamp();
 
-    /// <summary>Opens a walk and announces it. Always allocates an id — the roster needs one even untraced.</summary>
-    public static MacroWalkTrace Begin(IMacroRunObserver? observer, Guid runId, string macroName, IntPtr? contextWindow, int depth)
+    /// <summary>Открывает обход и объявляет о нём. Id выделяется всегда — списку живых обходов он нужен и без съёма показаний.</summary>
+    public static MacroWalkTrace Begin(IMacroRunObserver? observer, Guid runId, string macroName, IntPtr? contextWindow,
+        int depth)
     {
         var trace = new MacroWalkTrace(observer, Guid.NewGuid(), Stopwatch.GetTimestamp());
         observer?.WalkStarted(new MacroWalkStart(trace.WalkId, runId, macroName, contextWindow, depth));
         return trace;
     }
 
-    /// <summary>Milliseconds since the walk began.</summary>
+    /// <summary>Миллисекунд с начала обхода.</summary>
     public int ElapsedMs => ToMs(Stopwatch.GetTimestamp() - _startTimestamp);
 
     public void NodeEntered(string nodeId)
@@ -138,7 +155,8 @@ internal readonly struct MacroWalkTrace
     {
         if (_observer is { IsEnabled: true } observer)
         {
-            observer.NodeExited(WalkId, ElapsedMs, nodeId, outcome, detail, ToMs(Stopwatch.GetTimestamp() - nodeStartTimestamp));
+            observer.NodeExited(WalkId, ElapsedMs, nodeId, outcome, detail,
+                ToMs(Stopwatch.GetTimestamp() - nodeStartTimestamp));
         }
     }
 

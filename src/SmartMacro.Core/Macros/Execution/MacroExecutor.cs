@@ -8,43 +8,49 @@ using SmartMacro.Windows;
 namespace SmartMacro.Macros.Execution;
 
 /// <summary>
-/// Walks a <see cref="MacroGraph"/>: execute the current node, follow its edge (per
-/// outcome for conditionals), stop cleanly on a <c>null</c> edge. Side effects go through
-/// <see cref="IMacroPrimitives"/> (input/vision/icon) and <see cref="WindowRegistry"/>
-/// (tags); sub-macros resolve via <see cref="IMacroGraphResolver"/>.
+/// Обходит <see cref="MacroGraph"/>: выполнить текущую ноду, пойти по её ребру (у условных —
+/// по ребру нужного исхода), чисто остановиться на ребре со значением <c>null</c>. Побочные
+/// эффекты идут через <see cref="IMacroPrimitives"/> (ввод/зрение/иконка) и
+/// <see cref="WindowRegistry"/> (теги); под-макросы разрешаются через
+/// <see cref="IMacroGraphResolver"/>.
 ///
-/// Semantics:
-///   * Action node with a Target selector — the registry snapshot is taken at that moment
-///     and the SAME action fans out to every matching window in parallel. Zero matches is
-///     a legal no-op. Without Target the action hits the context window; no context = abort.
-///   * Conditional nodes require the context window; outcomes pick the edge and write
-///     <c>FoundPointVar</c>/<c>ResultVar</c> before the edge is taken.
-///   * <see cref="RunMacroNode"/> — sub-runs with copied variables, depth ≤ <see cref="MaxDepth"/>,
-///     name cycles abort. <c>Await=false</c> is fire-and-forget (failures only logged).
-///   * Cancellation is honored between nodes and inside primitives; a cancelled run ends
-///     silently with <see cref="MacroRunStatus.Cancelled"/>.
+/// Семантика:
+///   * Нода действия с селектором Target — снимок реестра снимается в этот самый момент, и ТО
+///     ЖЕ действие веером уходит параллельно на каждое подходящее окно. Ноль совпадений —
+///     законное ничегонеделание. Без Target действие бьёт по контекст-окну; нет контекста —
+///     обрыв.
+///   * Условным нодам контекст-окно обязательно; исход выбирает ребро и записывает
+///     <c>FoundPointVar</c>/<c>ResultVar</c> до того, как по ребру пойдут.
+///   * <see cref="RunMacroNode"/> — под-прогоны с копией переменных, глубина ≤
+///     <see cref="MaxDepth"/>, цикл по именам обрывает прогон. <c>Await=false</c> — «отправил и
+///     забыл» (сбои только пишутся в лог).
+///   * Отмена уважается между нодами и внутри примитивов; отменённый прогон молча заканчивается
+///     со статусом <see cref="MacroRunStatus.Cancelled"/>.
 ///
-/// Stateless and registry-agnostic — safe as a singleton; run bookkeeping lives in
-/// <see cref="MacroRunRegistry"/>, wired up by the caller via <see cref="MacroRunContext.OnNodeEntered"/>.
+/// Без состояния и без знания о реестре — синглтоном безопасен; учёт прогонов живёт в
+/// <see cref="MacroRunRegistry"/>, и подводит его вызывающий через
+/// <see cref="MacroRunContext.OnNodeEntered"/>.
 ///
-/// <b>Tracing (wave D3b).</b> Every call to <see cref="RunAsync"/> is one WALK with its own
-/// id and its own clock, reported to <see cref="MacroRunContext.Observer"/>. The walk, not
-/// the run, is the unit: a <see cref="RunMacroNode"/> fan-out forks one walk per window, and
-/// they are only distinguishable downstream because each got its own id here. Node-level
-/// events — and the detail strings that go with them — are produced ONLY while the observer
-/// says someone is listening, so an unwatched daemon pays one flag read per node.
+/// <b>Съём показаний (волна D3b).</b> Каждый вызов <see cref="RunAsync"/> — это один ОБХОД со
+/// своим id и своими часами, о котором докладывают в <see cref="MacroRunContext.Observer"/>.
+/// Единица здесь обход, а не прогон: разветвление <see cref="RunMacroNode"/> порождает по
+/// обходу на окно, и различить их дальше по течению можно только потому, что каждый получил
+/// собственный id вот здесь. Понодовые события — и строки подробностей вместе с ними —
+/// производятся ТОЛЬКО пока наблюдатель говорит, что кто-то слушает, так что демон, за которым
+/// не смотрят, платит одно чтение флага на ноду.
 ///
-/// <b>Debugging (wave D5).</b> <see cref="MacroRunContext.Debugger"/> can park the walk
-/// BETWEEN two nodes — never inside one. That boundary is the whole safety argument: every
-/// input node's <c>ActivateAsync</c>/<c>DeactivateAsync</c> bracket and every vision tick's
-/// wake/re-freeze live entirely inside <see cref="IMacroPrimitives"/>, so by the time control
-/// is back here no game window is left woken. Pausing here cannot strand a frozen client;
-/// pausing anywhere deeper could. Same <c>IsActive</c> gate discipline as the observer — an
-/// undebugged walk pays one volatile read per node and allocates nothing.
+/// <b>Отладка (волна D5).</b> <see cref="MacroRunContext.Debugger"/> может припарковать обход
+/// МЕЖДУ двумя нодами — и никогда внутри ноды. Эта граница и есть весь довод в пользу
+/// безопасности: и обрамление <c>ActivateAsync</c>/<c>DeactivateAsync</c> у любой ноды ввода, и
+/// побудка с обратной заморозкой на каждом тике зрения целиком живут внутри
+/// <see cref="IMacroPrimitives"/>, так что к моменту возврата управления сюда ни одно игровое
+/// окно не остаётся разбуженным. Пауза здесь не может бросить клиент замороженным; пауза
+/// где-нибудь глубже — может. Дисциплина затвора по <c>IsActive</c> та же, что у наблюдателя:
+/// обход, который никто не отлаживает, платит одно volatile-чтение на ноду и ничего не выделяет.
 /// </summary>
 public sealed partial class MacroExecutor
 {
-    /// <summary>Maximum <see cref="RunMacroNode"/> nesting depth (root run = 0).</summary>
+    /// <summary>Предельная глубина вложенности <see cref="RunMacroNode"/> (корневой прогон = 0).</summary>
     public const int MaxDepth = 4;
 
     private readonly IMacroPrimitives _primitives;
@@ -65,17 +71,20 @@ public sealed partial class MacroExecutor
     }
 
     /// <summary>
-    /// Runs the graph to completion. Never throws for run-level failures — the outcome
-    /// (completed / aborted with reason / cancelled) is the returned result.
+    /// Прогоняет граф до конца. На сбоях уровня прогона не бросает никогда — исход (завершён /
+    /// оборван с причиной / отменён) и есть возвращаемый результат.
     /// </summary>
+    /// <param name="macro">Обходимый граф.</param>
+    /// <param name="context">Состояние прогона: контекст-окно, переменные, наблюдатель, отладчик.</param>
+    /// <param name="ct">Отмена; уважается между нодами и внутри примитивов.</param>
     public async Task<MacroRunResult> RunAsync(MacroGraph macro, MacroRunContext context, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(macro);
         ArgumentNullException.ThrowIfNull(context);
 
-        // Opened before the first node and closed in every exit path below, so the observer's
-        // roster of live walks can never leak an entry — that roster is what a panel
-        // connecting mid-run is shown.
+        // Открывается до первой ноды и закрывается на каждом пути выхода ниже, чтобы список
+        // живых обходов у наблюдателя не мог протечь ни одной записью, — именно этот список
+        // показывают панели, подключившейся посреди прогона.
         var trace = MacroWalkTrace.Begin(
             context.Observer,
             context.RunId,
@@ -104,8 +113,8 @@ public sealed partial class MacroExecutor
             result = MacroRunResult.Aborted(ex.Message);
         }
 
-        // Before the finish event, so a panel that reacts to WalkFinished by re-reading the
-        // debugger cannot see a walk that is both over and still registered.
+        // До события о завершении, чтобы панель, которая на WalkFinished перечитывает отладчик,
+        // не могла увидеть обход, который одновременно и закончился, и всё ещё зарегистрирован.
         context.Debugger?.WalkFinished(trace.WalkId);
         trace.Finished(WalkOutcome(result.Status), result.Error);
         return result;
@@ -118,7 +127,8 @@ public sealed partial class MacroExecutor
         _ => RunOutcomes.Aborted,
     };
 
-    private async Task<MacroRunResult> RunCoreAsync(MacroGraph macro, MacroRunContext context, MacroWalkTrace trace, CancellationToken ct)
+    private async Task<MacroRunResult> RunCoreAsync(MacroGraph macro, MacroRunContext context, MacroWalkTrace trace,
+        CancellationToken ct)
     {
         var nodesById = new Dictionary<string, MacroNode>(StringComparer.Ordinal);
         foreach (var node in macro.Nodes)
@@ -129,14 +139,16 @@ public sealed partial class MacroExecutor
             }
         }
 
-        // The chain including THIS macro — cycle checks and child contexts build on it.
+        // Цепочка, включающая ЭТОТ макрос, — на ней строятся и проверка на циклы, и дочерние
+        // контексты.
         var callChain = new List<string>(context.CallChain.Count + 1);
         callChain.AddRange(context.CallChain);
         callChain.Add(macro.Name);
 
-        // The variables a walk starts with — in practice the trigger's `cursor` seed, plus
-        // whatever a parent walk passed down. Reported once, so the panel's variables panel
-        // has a live value for the one variable no node ever writes.
+        // Переменные, с которыми обход стартует, — на практике сид `cursor` от триггера плюс
+        // всё, что спустил родительский обход. Докладываются один раз, чтобы у панели
+        // переменных было живое значение той единственной переменной, которую не пишет ни одна
+        // нода.
         if (trace.IsTracing)
         {
             foreach (var (name, value) in context.Variables.Entries)
@@ -157,9 +169,10 @@ public sealed partial class MacroExecutor
             context.OnNodeEntered?.Invoke(node.Id);
             trace.NodeEntered(node.Id);
 
-            // THE DEBUGGER GATE. Between two nodes and before the node's clock starts, so a
-            // pause costs the paused node no measured time and — see the class comment — no
-            // game window is sitting woken while we wait.
+            // ЗАТВОР ОТЛАДЧИКА. Между двумя нодами и до того, как пойдут часы ноды, — чтобы
+            // пауза не стоила припаркованной ноде ни миллисекунды замеренного времени и чтобы,
+            // как сказано в комментарии к классу, пока мы ждём, ни одно игровое окно не сидело
+            // разбуженным.
             await GateAsync(context, trace, macro.Name, node.Id, ct).ConfigureAwait(false);
 
             var nodeStart = MacroWalkTrace.Now;
@@ -171,9 +184,9 @@ public sealed partial class MacroExecutor
             }
             catch (Exception ex) when (trace.IsTracing)
             {
-                // The walk is over either way — this only makes the log say WHICH node ended
-                // it, which is the first thing anyone reading the strip wants to know. The
-                // filter keeps the whole branch off the path when nobody is watching.
+                // Обход в любом случае окончен — это лишь заставляет лог сказать, КАКАЯ нода его
+                // прикончила, а это первое, что хочет знать всякий, кто читает полосу. Фильтр
+                // держит всю ветку в стороне от пути, когда никто не смотрит.
                 trace.NodeExited(
                     node.Id,
                     ex is OperationCanceledException ? RunOutcomes.Cancelled : RunOutcomes.Error,
@@ -191,11 +204,11 @@ public sealed partial class MacroExecutor
     }
 
     /// <summary>
-    /// Holds the walk before <paramref name="nodeId"/> if the debugger says so.
+    /// Придерживает обход перед <paramref name="nodeId"/>, если так велел отладчик.
     ///
-    /// Structured as one non-async fast path plus an async slow path so that the ordinary
-    /// case — no debugger, or nothing armed — is a volatile read and a returned
-    /// <see cref="Task.CompletedTask"/>, with no state machine allocated per node.
+    /// Устроено как несинхронный быстрый путь плюс асинхронный медленный, чтобы обычный случай
+    /// — отладчика нет либо ничего не взведено — сводился к одному volatile-чтению и возврату
+    /// <see cref="Task.CompletedTask"/>, без выделения конечного автомата на каждую ноду.
     /// </summary>
     private static Task GateAsync(
         MacroRunContext context,
@@ -208,37 +221,44 @@ public sealed partial class MacroExecutor
         {
             return Task.CompletedTask;
         }
-        // Breakpoints are keyed by (macro, node) — the same pair the editor sets them with.
+
+        // Точки останова ключуются парой (макрос, нода) — той же самой, которой их ставит
+        // редактор.
         if (debugger.Arm(trace.WalkId, macroName, nodeId) is not { } gate)
         {
             return Task.CompletedTask;
         }
+
         return WaitAsync(debugger, gate, trace, ct);
 
-        static async Task WaitAsync(IMacroDebugger debugger, MacroDebugGate gate, MacroWalkTrace trace, CancellationToken ct)
+        static async Task WaitAsync(IMacroDebugger debugger, MacroDebugGate gate, MacroWalkTrace trace,
+            CancellationToken ct)
         {
             trace.Paused(gate.NodeId, gate.Reason);
             try
             {
-                // Cancellation (■ Стоп, daemon shutdown) unparks: the OCE propagates and the
-                // walk ends Cancelled, rather than sitting here holding its single-flight slot.
+                // Отмена («■ Стоп», выключение демона) распускает парковку: OCE
+                // распространяется, и обход заканчивается как Cancelled, а не сидит здесь,
+                // удерживая свой слот single-flight.
                 await gate.WaitAsync(ct).ConfigureAwait(false);
             }
             finally
             {
                 debugger.Disarm(gate);
             }
+
             trace.Resumed(gate.NodeId);
         }
     }
 
     /// <summary>
-    /// What one node did: where to go next, which way it went, and (only when traced) a
-    /// line describing it. A readonly struct so an untraced walk allocates nothing per node.
+    /// Что сделала одна нода: куда идти дальше, каким путём она пошла и (только когда идёт
+    /// съём показаний) строка с описанием. Readonly-структура, чтобы обход без съёма показаний
+    /// ничего не выделял на ноду.
     /// </summary>
     private readonly record struct NodeStep(string? Next, string Outcome, string? Detail = null)
     {
-        /// <summary>An action node: exactly one way out.</summary>
+        /// <summary>Нода действия: выход ровно один.</summary>
         public static NodeStep Done(string? next, string? detail) => new(next, RunOutcomes.Ok, detail);
     }
 
@@ -255,14 +275,16 @@ public sealed partial class MacroExecutor
             case KeyPressNode n:
             {
                 var targets = ResolveTargets(n.Id, n.Target, context);
-                await Task.WhenAll(targets.Select(hwnd => _primitives.PressKeyAsync(hwnd, n.Key, ct))).ConfigureAwait(false);
+                await Task.WhenAll(targets.Select(hwnd => _primitives.PressKeyAsync(hwnd, n.Key, ct)))
+                    .ConfigureAwait(false);
                 return NodeStep.Done(n.Next, Detail(trace, () => Fanout(n.Key.ToString(), targets.Count)));
             }
             case ClickNode n:
             {
                 var point = ResolveClickPoint(n, context.Variables);
                 var targets = ResolveTargets(n.Id, n.Target, context);
-                await Task.WhenAll(targets.Select(hwnd => _primitives.ClickAsync(hwnd, point, n.DoubleClick, ct))).ConfigureAwait(false);
+                await Task.WhenAll(targets.Select(hwnd => _primitives.ClickAsync(hwnd, point, n.DoubleClick, ct)))
+                    .ConfigureAwait(false);
                 return NodeStep.Done(n.Next, Detail(trace, () => Fanout(
                     n.DoubleClick ? $"{point.X},{point.Y} dbl" : $"{point.X},{point.Y}",
                     targets.Count)));
@@ -273,6 +295,7 @@ public sealed partial class MacroExecutor
                 {
                     await Task.Delay(n.Ms, ct).ConfigureAwait(false);
                 }
+
                 return NodeStep.Done(n.Next, Detail(trace, () => $"{n.Ms} мс"));
             }
             case AddTagNode n:
@@ -283,6 +306,7 @@ public sealed partial class MacroExecutor
                 {
                     _windows.AddTag(hwnd, tag);
                 }
+
                 return NodeStep.Done(n.Next, Detail(trace, () => Fanout($"+{tag}", targets.Count)));
             }
             case RemoveTagNode n:
@@ -293,13 +317,15 @@ public sealed partial class MacroExecutor
                 {
                     _windows.RemoveTag(hwnd, tag);
                 }
+
                 return NodeStep.Done(n.Next, Detail(trace, () => Fanout($"−{tag}", targets.Count)));
             }
             case SetIconNode n:
             {
                 var iconPath = context.Variables.Interpolate(n.IconPath);
                 var targets = ResolveTargets(n.Id, n.Target, context);
-                await Task.WhenAll(targets.Select(hwnd => _primitives.SetIconAsync(hwnd, iconPath, ct))).ConfigureAwait(false);
+                await Task.WhenAll(targets.Select(hwnd => _primitives.SetIconAsync(hwnd, iconPath, ct)))
+                    .ConfigureAwait(false);
                 return NodeStep.Done(n.Next, Detail(trace, () => Fanout(FileNameOf(iconPath), targets.Count)));
             }
             case RunMacroNode n:
@@ -314,23 +340,31 @@ public sealed partial class MacroExecutor
                     {
                         SetVariable(trace, context, n.Id, n.FoundPointVar, point);
                     }
-                    return new NodeStep(n.Found, RunOutcomes.Found, Detail(trace, () => $"{n.Template} @ {point.X},{point.Y}"));
+
+                    return new NodeStep(n.Found, RunOutcomes.Found,
+                        Detail(trace, () => $"{n.Template} @ {point.X},{point.Y}"));
                 }
+
                 return new NodeStep(n.NotFound, RunOutcomes.NotFound, Detail(trace, () => n.Template));
             }
             case WaitForElementNode n:
             {
                 var hwnd = RequireContext(n.Id, context);
-                var found = await _primitives.WaitForElementAsync(hwnd, n.Template, n.Region, n.TimeoutMs, ct).ConfigureAwait(false);
+                var found = await _primitives.WaitForElementAsync(hwnd, n.Template, n.Region, n.TimeoutMs, ct)
+                    .ConfigureAwait(false);
                 if (found is { } point)
                 {
                     if (n.FoundPointVar is not null)
                     {
                         SetVariable(trace, context, n.Id, n.FoundPointVar, point);
                     }
-                    return new NodeStep(n.Found, RunOutcomes.Found, Detail(trace, () => $"{n.Template} @ {point.X},{point.Y}"));
+
+                    return new NodeStep(n.Found, RunOutcomes.Found,
+                        Detail(trace, () => $"{n.Template} @ {point.X},{point.Y}"));
                 }
-                return new NodeStep(n.Timeout, RunOutcomes.Timeout, Detail(trace, () => $"{n.Template} · лимит {n.TimeoutMs} мс"));
+
+                return new NodeStep(n.Timeout, RunOutcomes.Timeout,
+                    Detail(trace, () => $"{n.Template} · лимит {n.TimeoutMs} мс"));
             }
             case RecognizeTagNode n:
             {
@@ -343,33 +377,39 @@ public sealed partial class MacroExecutor
                     {
                         _windows.AddTag(hwnd, tag);
                     }
-                    return new NodeStep(n.Matched, RunOutcomes.Matched, Detail(trace, () => $"{n.TemplateSet} → {tag}"));
+
+                    return new NodeStep(n.Matched, RunOutcomes.Matched,
+                        Detail(trace, () => $"{n.TemplateSet} → {tag}"));
                 }
+
                 return new NodeStep(n.NotMatched, RunOutcomes.NotMatched, Detail(trace, () => n.TemplateSet));
             }
             default:
-                throw new MacroRunAbortException($"Macro '{macro.Name}': node '{node.Id}' has unsupported type {node.GetType().Name}.");
+                throw new MacroRunAbortException(
+                    $"Macro '{macro.Name}': node '{node.Id}' has unsupported type {node.GetType().Name}.");
         }
     }
 
-    // The only three places a node writes a variable (spec §5.3). Routed through one helper
-    // so the report cannot be forgotten at one of them — the variables panel showing a stale
-    // value for {tag} would be indistinguishable from the recognition having failed.
-    private static void SetVariable(MacroWalkTrace trace, MacroRunContext context, string nodeId, string name, VariableValue value)
+    // Всего три места, где нода пишет переменную (§5.3 спеки). Проведены через одного
+    // помощника, чтобы в каком-нибудь из них нельзя было забыть доложить наружу: панель
+    // переменных, показывающая устаревшее значение {tag}, была бы неотличима от несработавшего
+    // распознавания.
+    private static void SetVariable(MacroWalkTrace trace, MacroRunContext context, string nodeId, string name,
+        VariableValue value)
     {
         context.Variables.Set(name, value);
         trace.VariableSet(name, value.DisplayString, nodeId);
     }
 
-    // Detail strings exist only for the log strip, so they are built only when something is
-    // reading it. Everything above passes a lambda rather than a string for that reason —
-    // the interpolations are the one genuinely per-node allocation this class would
-    // otherwise make on every run of every macro, watched or not.
+    // Строки подробностей существуют только ради полосы лога, поэтому и строятся они, только
+    // когда её кто-то читает. Именно поэтому всё выше передаёт лямбду, а не строку:
+    // интерполяции — то единственное по-настоящему понодовое выделение памяти, которое этот
+    // класс иначе делал бы на каждом прогоне каждого макроса, смотрят на него или нет.
     private static string? Detail(MacroWalkTrace trace, Func<string> build) => trace.IsTracing ? build() : null;
 
-    // "C" for the ordinary one-window case, "C ×7" for a selector fan-out, "C ×0" for a
-    // selector that matched nothing — which is a legal no-op and exactly the thing someone
-    // reading the log is trying to find out.
+    // «C» для обычного случая с одним окном, «C ×7» для веера по селектору, «C ×0» для
+    // селектора, который не совпал ни с чем, — а это законное ничегонеделание и ровно то, что
+    // читающий лог и пытается выяснить.
     private static string Fanout(string what, int targets) =>
         targets == 1 ? what : string.Create(CultureInfo.InvariantCulture, $"{what} ×{targets}");
 
@@ -381,8 +421,8 @@ public sealed partial class MacroExecutor
         }
         catch (ArgumentException)
         {
-            // An interpolated variable can put anything in here, including invalid path
-            // characters. The raw string is a perfectly good log line.
+            // Подставленная переменная способна засунуть сюда что угодно, включая недопустимые
+            // в пути символы. Сырая строка — вполне годная строка лога.
             return path;
         }
     }
@@ -402,6 +442,7 @@ public sealed partial class MacroExecutor
             throw new MacroRunAbortException(
                 $"Macro '{macro.Name}': running '{name}' would exceed the sub-macro depth limit ({MaxDepth}).");
         }
+
         if (callChain.Contains(name, StringComparer.Ordinal))
         {
             throw new MacroRunAbortException(
@@ -409,7 +450,8 @@ public sealed partial class MacroExecutor
         }
 
         var subMacro = _resolver.TryGet(name)
-                       ?? throw new MacroRunAbortException($"Macro '{macro.Name}': node '{node.Id}' references unknown macro '{name}'.");
+                       ?? throw new MacroRunAbortException(
+                           $"Macro '{macro.Name}': node '{node.Id}' references unknown macro '{name}'.");
 
         List<MacroRunContext> childContexts = [];
         if (node.Target is { } selector)
@@ -418,6 +460,7 @@ public sealed partial class MacroExecutor
             {
                 childContexts.Add(BuildChildContext(context, callChain, window.Hwnd));
             }
+
             if (childContexts.Count == 0)
             {
                 LogNoTargets(macro.Name, node.Id);
@@ -439,9 +482,11 @@ public sealed partial class MacroExecutor
                 {
                     throw new OperationCanceledException(ct);
                 }
+
                 if (result.Status == MacroRunStatus.Aborted)
                 {
-                    throw new MacroRunAbortException($"Macro '{macro.Name}': sub-macro '{name}' aborted: {result.Error}");
+                    throw new MacroRunAbortException(
+                        $"Macro '{macro.Name}': sub-macro '{name}' aborted: {result.Error}");
                 }
             }
         }
@@ -455,7 +500,8 @@ public sealed partial class MacroExecutor
             childContexts.Count)));
     }
 
-    private static MacroRunContext BuildChildContext(MacroRunContext parent, IReadOnlyList<string> callChain, IntPtr contextWindow)
+    private static MacroRunContext BuildChildContext(MacroRunContext parent, IReadOnlyList<string> callChain,
+        IntPtr contextWindow)
     {
         return new MacroRunContext
         {
@@ -465,21 +511,21 @@ public sealed partial class MacroExecutor
             CallChain = callChain,
             RunId = parent.RunId,
             OnNodeEntered = parent.OnNodeEntered,
-            // Inherited, not per-child: the observer is a singleton and the CHILD WALK's own
-            // identity comes from MacroWalkTrace.Begin inside the child's RunAsync. That is
-            // what makes a ten-window fan-out ten separately followable walks that still
-            // report one RunId.
+            // Наследуется, а не заводится на каждого ребёнка: наблюдатель — синглтон, а
+            // собственная идентичность ДОЧЕРНЕГО ОБХОДА рождается в MacroWalkTrace.Begin внутри
+            // его же RunAsync. Именно это и делает веер на десять окон десятью обходами, за
+            // которыми можно следить по отдельности, хотя докладывают они один RunId.
             Observer = parent.Observer,
-            // Same reasoning: the session is a singleton, the per-walk pause state is keyed
-            // by the CHILD's own walk id, so each fork of a fan-out is paused and stepped
-            // independently.
+            // Соображение то же: сессия — синглтон, а состояние паузы по обходу ключуется
+            // СОБСТВЕННЫМ id дочернего обхода, поэтому каждая ветка веера ставится на паузу и
+            // шагает независимо.
             Debugger = parent.Debugger,
         };
     }
 
     /// <summary>
-    /// Fire-and-forget sub-runs still get their failures observed and logged — they just
-    /// don't block the parent walk.
+    /// У под-прогонов «отправил и забыл» сбои всё равно наблюдаются и попадают в лог — просто
+    /// они не задерживают родительский обход.
     /// </summary>
     private async Task ObserveDetachedSubRunsAsync(string name, IReadOnlyList<Task<MacroRunResult>> subRuns)
     {
@@ -508,6 +554,7 @@ public sealed partial class MacroExecutor
             {
                 return [hwnd];
             }
+
             throw new MacroRunAbortException(
                 $"Node '{nodeId}' has no Target selector and this run has no context window (hotkey-triggered runs have none).");
         }
@@ -553,8 +600,8 @@ public sealed partial class MacroExecutor
 }
 
 /// <summary>
-/// Internal control-flow exception: a node hit a run-level error. Converted by
-/// <see cref="MacroExecutor.RunAsync"/> into <see cref="MacroRunStatus.Aborted"/> —
-/// it never escapes the executor.
+/// Внутреннее исключение потока управления: нода напоролась на ошибку уровня прогона.
+/// <see cref="MacroExecutor.RunAsync"/> превращает его в <see cref="MacroRunStatus.Aborted"/> —
+/// за пределы исполнителя оно не выходит никогда.
 /// </summary>
 internal sealed class MacroRunAbortException(string message) : Exception(message);

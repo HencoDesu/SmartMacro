@@ -1,15 +1,17 @@
 namespace SmartMacro.Macros.Execution;
 
 /// <summary>
-/// Base for run-variable read failures. The executor catches this family and turns it
-/// into a run abort with a log entry — an explicit failure beats a silent miss.
+/// Основание для сбоев чтения переменных прогона. Исполнитель ловит всё это семейство и
+/// превращает в обрыв прогона с записью в лог: явный сбой лучше молчаливого промаха.
 /// </summary>
 public abstract class MacroVariableException : Exception
 {
-    private protected MacroVariableException(string message) : base(message) { }
+    private protected MacroVariableException(string message) : base(message)
+    {
+    }
 }
 
-/// <summary>Thrown when a node reads a variable that was never written in this run.</summary>
+/// <summary>Бросается, когда нода читает переменную, которую в этом прогоне никто не записывал.</summary>
 public sealed class MacroVariableNotFoundException : MacroVariableException
 {
     public MacroVariableNotFoundException(string name)
@@ -18,11 +20,11 @@ public sealed class MacroVariableNotFoundException : MacroVariableException
         Name = name;
     }
 
-    /// <summary>The variable name that was requested.</summary>
+    /// <summary>Имя запрошенной переменной.</summary>
     public string Name { get; }
 }
 
-/// <summary>Thrown when a variable exists but holds the wrong kind of value (e.g. PointVar names a string).</summary>
+/// <summary>Бросается, когда переменная есть, но держит значение не того рода (например, PointVar называет строку).</summary>
 public sealed class MacroVariableTypeMismatchException : MacroVariableException
 {
     public MacroVariableTypeMismatchException(string name, string expected, VariableValue actual)
@@ -31,6 +33,6 @@ public sealed class MacroVariableTypeMismatchException : MacroVariableException
         Name = name;
     }
 
-    /// <summary>The variable name that was requested.</summary>
+    /// <summary>Имя запрошенной переменной.</summary>
     public string Name { get; }
 }

@@ -1,20 +1,21 @@
 namespace SmartMacro.Orchestration;
 
 /// <summary>
-/// "Start this macro by name, no context window" — the manual equivalent of pressing its
-/// hotkey. Implemented by <see cref="Orchestrator"/>.
+/// «Запусти этот макрос по имени, контекст-окна нет» — ручной эквивалент нажатия его хоткея.
+/// Реализуется <see cref="Orchestrator"/>.
 ///
-/// It exists as an interface purely as a test seam for the IPC layer: the dispatcher's
-/// <c>RunMacro</c> handler needs exactly this one call, while a real
-/// <see cref="Orchestrator"/> drags in the process monitor, the agent factory, the
-/// executor and a live cursor provider. FakeItEasy can only fake interfaces and virtuals,
-/// so the seam has to be declared here rather than mocked away.
+/// Существует интерфейсом исключительно как шов для тестов слоя IPC: обработчику
+/// <c>RunMacro</c> в диспетчере нужен ровно этот один вызов, тогда как настоящий
+/// <see cref="Orchestrator"/> тянет за собой монитор процессов, фабрику агентов, исполнителя и
+/// живого поставщика позиции курсора. FakeItEasy умеет подделывать только интерфейсы и
+/// виртуальные члены, поэтому шов приходится объявлять здесь, а не создавать заглушку на месте.
 /// </summary>
 public interface IMacroRunner
 {
     /// <summary>
-    /// Fire-and-forget start of <paramref name="macroName"/>. Returns as soon as the run is
-    /// scheduled; failures (unknown macro, already running) are logged, never thrown.
+    /// Запуск <paramref name="macroName"/> по принципу «отправил и забыл». Возвращает управление,
+    /// как только прогон поставлен в очередь; сбои (неизвестный макрос, уже выполняется) уходят
+    /// в лог и никогда не бросаются.
     /// </summary>
     void RunMacro(string macroName);
 }

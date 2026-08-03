@@ -1,23 +1,23 @@
 namespace SmartMacro.Config;
 
 /// <summary>
-/// Options wrapper around the "ProcessProfiles" appsettings array. The section is a raw
-/// JSON array, so the composition root binds it via
+/// Обёртка-опции вокруг массива "ProcessProfiles" из appsettings. Секция там — голый
+/// JSON-массив, поэтому корень композиции привязывает её через
 /// <c>configuration.GetSection(ProcessProfileOptions.SectionName).Bind(options.Profiles)</c>.
 /// </summary>
 public sealed class ProcessProfileOptions
 {
-    /// <summary>Configuration section name holding the profile array.</summary>
+    /// <summary>Имя секции конфигурации, в которой лежит массив профилей.</summary>
     public const string SectionName = "ProcessProfiles";
 
-    /// <summary>All configured process profiles. Empty = no processes are watched.</summary>
+    /// <summary>Все настроенные профили процессов. Пусто = ни за одним процессом не следим.</summary>
     public List<ProcessProfile> Profiles { get; init; } = [];
 
     /// <summary>
-    /// Finds the profile for a process name (case-insensitive — Windows process names
-    /// are not case-sensitive). First match wins when duplicates are configured.
+    /// Находит профиль по имени процесса (без учёта регистра — в Windows имена процессов
+    /// регистронезависимы). Если настроены дубли, выигрывает первое совпадение.
     /// </summary>
-    /// <returns>The matching profile, or <c>null</c> when the process has no configured entry.</returns>
+    /// <returns>Подходящий профиль или <c>null</c>, если такого процесса в конфиге нет.</returns>
     public ProcessProfile? FindByProcessName(string processName)
     {
         if (string.IsNullOrWhiteSpace(processName))
@@ -32,12 +32,13 @@ public sealed class ProcessProfileOptions
                 return profile;
             }
         }
+
         return null;
     }
 
     /// <summary>
-    /// The union of process names ProcessMonitor should poll: distinct (case-insensitive),
-    /// blank entries skipped, original order preserved.
+    /// Объединение имён процессов, которые ProcessMonitor должен опрашивать: без повторов (без
+    /// учёта регистра), пустые записи пропущены, исходный порядок сохранён.
     /// </summary>
     public IReadOnlyList<string> GetWatchedProcessNames()
     {
@@ -49,11 +50,13 @@ public sealed class ProcessProfileOptions
             {
                 continue;
             }
+
             if (seen.Add(profile.ProcessName))
             {
                 names.Add(profile.ProcessName);
             }
         }
+
         return names;
     }
 }

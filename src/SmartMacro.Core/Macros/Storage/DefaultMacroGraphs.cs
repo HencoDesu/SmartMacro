@@ -6,44 +6,45 @@ using SmartMacro.Vision;
 namespace SmartMacro.Macros.Storage;
 
 /// <summary>
-/// The example macro set written into an empty <c>macros/</c> folder on first run.
+/// Набор макросов-примеров, который при первом запуске записывается в пустую папку
+/// <c>macros/</c>.
 ///
-/// These are NOT built-in behavior — they are ordinary, fully editable macro files that
-/// happen to reproduce what SmartMacro hard-coded before the node graph existed (Perfect
-/// World boot-to-in-world, party immunity, assist, cursor broadcast, identification).
-/// Every coordinate, region, key and tag below is the value that used to be hard-coded in
-/// config, so a PW user gets the old behavior out of the box — and can now tune it in the
-/// macro instead of in <c>appsettings.json</c>, which is the whole point of the move.
+/// Это НЕ встроенное поведение — это обычные, полностью редактируемые файлы макросов, которые
+/// просто воспроизводят то, что SmartMacro держал зашитым в коде до появления графа нод (вход в
+/// мир Perfect World, имун на пати, помощь, рассылка клика по курсору, опознание). Каждая
+/// координата, область, клавиша и тег ниже — это то самое значение, которое раньше было зашито
+/// в конфиг, так что игрок PW получает прежнее поведение из коробки и теперь может подкрутить
+/// его в макросе, а не в <c>appsettings.json</c>, — ради этого переезд и затевался.
 ///
-/// Anyone not playing PW just deletes the files.
+/// Кто в PW не играет, просто удаляет эти файлы.
 /// </summary>
 public static class DefaultMacroGraphs
 {
-    /// <summary>Process the boot example waits for. Matches the shipped ProcessProfiles entry.</summary>
+    /// <summary>Процесс, которого ждёт пример загрузки. Совпадает с поставляемой записью в ProcessProfiles.</summary>
     private const string GameProcessName = "elementclient_64";
 
-    /// <summary>Tag of the character everyone else assists — they don't assist themselves.</summary>
+    /// <summary>Тег того персонажа, которому помогают все остальные, — сам себе он не помогает.</summary>
     private const string MasterTag = "Лучник";
 
-    /// <summary>Utility character (warehouse mule): in-world, but sits out party-wide commands.</summary>
+    /// <summary>Вспомогательный персонаж (мул под склад): в мире он есть, но общепатийные команды его не касаются.</summary>
     private const string IgnoredTag = "Шаман";
 
-    /// <summary>Crop of the stats panel holding the "Класс: &lt;name&gt;" value text.</summary>
+    /// <summary>Обрезка панели характеристик, в которой лежит текст значения «Класс: &lt;имя&gt;».</summary>
     private static readonly ScreenRect ClassNameRegion = new(3200, 1060, 160, 35);
 
-    /// <summary>Chat-panel icons: their presence is how we know the client reached the world.</summary>
+    /// <summary>Иконки панели чата: по их наличию мы и понимаем, что клиент добрался до мира.</summary>
     private static readonly ScreenRect ChatPanelRegion = new(0, 2100, 160, 60);
 
-    /// <summary>Generous per-phase budget — PW's post-launcher loading can take ~30s.</summary>
+    /// <summary>Щедрый бюджет на фазу — загрузка PW после лаунчера занимает секунд тридцать.</summary>
     private const int PhaseTimeoutMs = 60_000;
 
-    /// <summary>In-game hotkey toggling the stats panel.</summary>
+    /// <summary>Игровая клавиша, переключающая панель характеристик.</summary>
     private const VirtualKey StatsHotkey = VirtualKey.C;
 
-    /// <summary>Wall-clock wait for PW to actually render the stats panel before capturing.</summary>
+    /// <summary>Пауза по реальному времени, чтобы PW действительно отрисовал панель характеристик до захвата кадра.</summary>
     private const int StatsOpenDelayMs = 500;
 
-    /// <summary>All example graphs, in no particular order.</summary>
+    /// <summary>Все графы-примеры, порядок значения не имеет.</summary>
     public static IReadOnlyList<MacroGraph> Build() =>
     [
         Boot(),
@@ -55,10 +56,10 @@ public static class DefaultMacroGraphs
     ];
 
     /// <summary>
-    /// Drives a freshly launched client from server-select to in-world, then identifies
-    /// the character. The showcase graph: process trigger, branch-per-outcome, a variable
-    /// written by a conditional node and read back through <c>{tag}</c> interpolation.
-    /// Every timeout branch simply ends the run — the operator re-triggers by hand.
+    /// Проводит только что запущенный клиент от выбора сервера до входа в мир, а потом опознаёт
+    /// персонажа. Витринный граф: триггер по процессу, ветка на каждый исход, переменная,
+    /// которую пишет условная нода и читает обратно интерполяция <c>{tag}</c>. Любая ветка по
+    /// таймауту просто заканчивает прогон — оператор перезапускает вручную.
     /// </summary>
     private static MacroGraph Boot() => new()
     {
@@ -67,8 +68,9 @@ public static class DefaultMacroGraphs
         StartNodeId = "wait-server-select",
         Nodes =
         [
-            // Region left empty = search the whole client area: the button's position
-            // shifts with resolution, so a full-frame search is the portable default.
+            // Область оставлена пустой = искать по всей клиентской области: положение кнопки
+            // едет вместе с разрешением, так что поиск по всему кадру — переносимое значение
+            // по умолчанию.
             new WaitForElementNode
             {
                 Id = "wait-server-select",
@@ -77,7 +79,8 @@ public static class DefaultMacroGraphs
                 Found = "click-server-select",
                 Timeout = null,
             },
-            new ClickNode { Id = "click-server-select", Point = new ScreenPoint(1192, 1805), Next = "wait-character-select" },
+            new ClickNode
+                { Id = "click-server-select", Point = new ScreenPoint(1192, 1805), Next = "wait-character-select" },
             new WaitForElementNode
             {
                 Id = "wait-character-select",
@@ -86,7 +89,8 @@ public static class DefaultMacroGraphs
                 Found = "click-character-select",
                 Timeout = null,
             },
-            new ClickNode { Id = "click-character-select", Point = new ScreenPoint(1958, 2053), Next = "wait-in-world" },
+            new ClickNode
+                { Id = "click-character-select", Point = new ScreenPoint(1958, 2053), Next = "wait-in-world" },
             new WaitForElementNode
             {
                 Id = "wait-in-world",
@@ -96,8 +100,8 @@ public static class DefaultMacroGraphs
                 Found = "open-stats",
                 Timeout = null,
             },
-            // Identification tail, spelled out rather than delegated to pw-identify-one so
-            // this file stays readable and self-contained as an example.
+            // Хвост с опознанием выписан целиком, а не делегирован в pw-identify-one, чтобы
+            // этот файл оставался читаемым и самодостаточным как пример.
             new KeyPressNode { Id = "open-stats", Key = StatsHotkey, Next = "await-stats" },
             new DelayNode { Id = "await-stats", Ms = StatsOpenDelayMs, Next = "recognize-class" },
             new RecognizeTagNode
@@ -108,7 +112,8 @@ public static class DefaultMacroGraphs
                 ApplyTag = true,
                 ResultVar = "tag",
                 Matched = "set-icon",
-                // No match still closes the panel — leaving it open would break later macros.
+                // Даже когда не совпало, панель всё равно закрываем: оставить её открытой —
+                // сломать последующие макросы.
                 NotMatched = "close-stats",
             },
             new SetIconNode { Id = "set-icon", IconPath = "Assets/ClassIcons/{tag}.png", Next = "close-stats" },
@@ -116,7 +121,7 @@ public static class DefaultMacroGraphs
         ],
     };
 
-    /// <summary>Panic button: fire the shared damage-immunity key on the whole party at once.</summary>
+    /// <summary>Кнопка паники: разом жмёт общую клавишу имуна к урону на всю пати.</summary>
     private static MacroGraph Immunity() => new()
     {
         Name = "pw-immunity",
@@ -134,9 +139,9 @@ public static class DefaultMacroGraphs
     };
 
     /// <summary>
-    /// Every follower selects the master's party portrait, then fires its in-game
-    /// <c>/assist</c> macro — the whole party ends up on the master's target. The master
-    /// is excluded (nobody assists themselves) along with the utility character.
+    /// Каждый ведомый выбирает портрет ведущего в пати, а потом жмёт свой игровой макрос
+    /// <c>/assist</c> — и вся пати оказывается на цели ведущего. Сам ведущий из выборки
+    /// исключён (себе никто не помогает) вместе со вспомогательным персонажем.
     /// </summary>
     private static MacroGraph Assist()
     {
@@ -148,9 +153,10 @@ public static class DefaultMacroGraphs
             StartNodeId = "select-master",
             Nodes =
             [
-                new ClickNode { Id = "select-master", Point = new ScreenPoint(285, 456), Target = followers, Next = "settle" },
-                // PW needs wall-clock time to apply the selection before /assist runs,
-                // otherwise the macro assists the previous target.
+                new ClickNode
+                    { Id = "select-master", Point = new ScreenPoint(285, 456), Target = followers, Next = "settle" },
+                // PW нужно реальное время, чтобы применить выбор до того, как отработает
+                // /assist, иначе макрос поможет по предыдущей цели.
                 new DelayNode { Id = "settle", Ms = 200, Next = "assist-key" },
                 new KeyPressNode { Id = "assist-key", Key = VirtualKey.F2, Target = followers },
             ],
@@ -158,8 +164,8 @@ public static class DefaultMacroGraphs
     }
 
     /// <summary>
-    /// Replays the cursor position as a click on every client at once. Reads the
-    /// <c>cursor</c> variable the trigger layer seeds on every run.
+    /// Повторяет позицию курсора кликом сразу во всех клиентах. Читает переменную
+    /// <c>cursor</c>, которую слой триггеров засевает в каждый прогон.
     /// </summary>
     private static MacroGraph CursorClick() => new()
     {
@@ -178,9 +184,9 @@ public static class DefaultMacroGraphs
     };
 
     /// <summary>
-    /// Fan-out identification: one sub-run of <c>pw-identify-one</c> per window, each with
-    /// that window as its context. This is how a hotkey (which has no context window of
-    /// its own) reaches conditional nodes at all.
+    /// Опознание веером: по одному под-прогону <c>pw-identify-one</c> на окно, и у каждого
+    /// контекстом служит его окно. Именно так хоткей (у которого собственного контекст-окна
+    /// нет) вообще добирается до условных нод.
     /// </summary>
     private static MacroGraph Identify() => new()
     {
@@ -200,9 +206,10 @@ public static class DefaultMacroGraphs
     };
 
     /// <summary>
-    /// Identifies the character in ONE window: open stats, recognise the class name, tag
-    /// the window, apply the taskbar icon, close stats. Trigger-less on purpose — it's a
-    /// library routine called by <c>pw-identify</c> (or from the UI against a window).
+    /// Опознаёт персонажа в ОДНОМ окне: открыть характеристики, распознать имя класса,
+    /// поставить окну тег, применить иконку на панели задач, закрыть характеристики. Без
+    /// триггера намеренно — это библиотечная подпрограмма, которую зовёт <c>pw-identify</c>
+    /// (или UI по конкретному окну).
     /// </summary>
     private static MacroGraph IdentifyOne() => new()
     {

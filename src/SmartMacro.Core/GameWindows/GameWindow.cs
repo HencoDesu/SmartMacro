@@ -15,9 +15,11 @@ public sealed partial class GameWindow : IGameWindow
 {
     private readonly IKeyboardInput _keyboard;
     private readonly IMouseInput _mouse;
+
     private readonly INativeWindow _nativeWindow;
-    // Null = plain-input process (no profile / no ActivationLParam configured): the
-    // whole WM_ACTIVATEAPP wake-up/deactivate dance is skipped.
+
+    // Null = процесс с простым вводом (профиля нет либо ActivationLParam не настроен): вся
+    // пляска «побудка через WM_ACTIVATEAPP — деактивация» пропускается.
     private readonly uint? _activationLParam;
     private readonly int _settleDelayMs;
     private readonly int _deactivationDelayMs;
@@ -57,46 +59,55 @@ public sealed partial class GameWindow : IGameWindow
     {
         get
         {
-            try { return _nativeWindow.GetClientSize(); }
-            catch { return (0, 0); }
+            try
+            {
+                return _nativeWindow.GetClientSize();
+            }
+            catch
+            {
+                return (0, 0);
+            }
         }
     }
 
-    // PW freezes inactive clients (input + rendering pause). Activate sends the wake-up
-    // WM_ACTIVATEAPP signal so subsequent input is processed; settle delay lets the
-    // engine actually come back online before we start posting input. Plain-input
-    // processes (no ActivationLParam in their profile) skip the signal entirely.
+    // PW замораживает неактивные клиенты (встают и ввод, и отрисовка). Activate отправляет
+    // будящий сигнал WM_ACTIVATEAPP, чтобы последующий ввод был обработан; пауза на
+    // устаканивание даёт движку действительно вернуться в строй до того, как мы начнём слать
+    // ввод. Процессы с простым вводом (без ActivationLParam в профиле) сигнал не шлют вовсе.
     public async Task ActivateAsync(CancellationToken cancellationToken = default)
     {
         if (_activationLParam is { } lParam)
         {
             _nativeWindow.SendActivationSignal(lParam);
         }
+
         if (_settleDelayMs > 0)
         {
             await Task.Delay(_settleDelayMs, cancellationToken).ConfigureAwait(false);
         }
     }
 
-    // Deactivation drain: PostMessage-based input lands in the target's queue but isn't
-    // yet processed when we return from PressKeyAsync. If we deactivate immediately, PW
-    // processes the deactivation first and (observed) discards pending posted input on
-    // going inactive. The drain delay gives the message pump time to dequeue and process
-    // pending input. After draining, we send WM_ACTIVATEAPP(FALSE) — unless this is the
-    // window the user is currently interacting with (foreground), in which case we leave
-    // it active so we don't yank focus away from them.
+    // Слив перед деактивацией: ввод через PostMessage попадает в очередь цели, но к моменту
+    // возврата из PressKeyAsync ещё не обработан. Если деактивировать сразу, PW сначала
+    // обработает деактивацию и (наблюдалось) выбросит накопленный отправленный ввод при уходе в
+    // неактивное состояние. Пауза на слив даёт насосу сообщений время разобрать очередь и
+    // обработать этот ввод. После слива шлём WM_ACTIVATEAPP(FALSE) — если только это не то
+    // окно, с которым пользователь сейчас работает (передний план); тогда оставляем его
+    // активным, чтобы не вырывать у него фокус.
     public async Task DeactivateAsync(CancellationToken cancellationToken = default)
     {
         if (_activationLParam is null)
         {
-            // Plain-input window — we never activated it, so there's nothing to drain
-            // or put back to sleep.
+            // Окно с простым вводом — мы его и не активировали, так что нечего ни сливать, ни
+            // укладывать обратно спать.
             return;
         }
+
         if (_deactivationDelayMs > 0)
         {
             await Task.Delay(_deactivationDelayMs, cancellationToken).ConfigureAwait(false);
         }
+
         if (Win32NativeWindowSystem.GetForeground().Handle != Handle)
         {
             _nativeWindow.SendDeactivationSignal();
@@ -112,11 +123,11 @@ public sealed partial class GameWindow : IGameWindow
     public Task DoubleClickAsync(ScreenPoint point, CancellationToken cancellationToken = default) =>
         _mouse.DoubleClickAsync(Handle, point.X, point.Y, cancellationToken);
 
-    // Self-contained — manages its own activation/deactivation because it's a sync API
-    // called from one-shot UI paths (Label dialog, Dump captures) that don't need to
-    // coordinate with a broader input session. Thread.Sleep instead of Task.Delay keeps
-    // the API sync; settle is short enough (20 ms default) that the brief block on the
-    // calling thread is imperceptible.
+    // Самодостаточен — распоряжается активацией и деактивацией сам, потому что это синхронный
+    // API, который дёргают одноразовые пути UI (диалог метки, «Дамп захватов»), и им незачем
+    // согласовываться с более широкой сессией ввода. Thread.Sleep вместо Task.Delay сохраняет
+    // API синхронным; пауза на устаканивание достаточно короткая (по умолчанию 20 мс), чтобы
+    // краткая блокировка вызывающего потока была незаметной.
     public byte[] CaptureScreenshot()
     {
         if (_activationLParam is { } lParam)
@@ -124,20 +135,23 @@ public sealed partial class GameWindow : IGameWindow
             _nativeWindow.SendActivationSignal(lParam);
             Thread.Sleep(_settleDelayMs);
         }
+
         var png = _nativeWindow.CapturePng();
         if (_activationLParam is not null && Win32NativeWindowSystem.GetForeground().Handle != Handle)
         {
             _nativeWindow.SendDeactivationSignal();
         }
+
         return png;
     }
 
     public bool SetIconFromFile(string imagePath) => _nativeWindow.SetIconFromFile(imagePath);
 
-    // One-shot sibling of WaitForElementAsync: a single fresh capture and a single match
-    // pass, no polling. FindElementNode branches on the outcome immediately, so a poll
-    // budget here would just be a hidden wait the graph author didn't ask for.
-    public async Task<ScreenPoint?> FindElementAsync(byte[] elementTemplate, ScreenRect position, CancellationToken cancellationToken = default)
+    // Одноразовый близнец WaitForElementAsync: один свежий захват и один проход сопоставления,
+    // без опроса. FindElementNode ветвится по исходу немедленно, так что бюджет на опрос здесь
+    // был бы просто скрытым ожиданием, о котором автор графа не просил.
+    public async Task<ScreenPoint?> FindElementAsync(byte[] elementTemplate, ScreenRect position,
+        CancellationToken cancellationToken = default)
     {
         byte[] capture;
         try
@@ -155,15 +169,17 @@ public sealed partial class GameWindow : IGameWindow
             LogMatchHit(position, score, _matchThreshold);
             return center;
         }
+
         LogMatchMiss(position, score, _matchThreshold);
         return null;
     }
 
-    // Poll-based template matcher. Loop captures actively, crops to position (or
-    // fullscreen if position is empty), grayscales both source and template, runs
-    // MatchTemplate (CCoeffNormed), returns the match CENTER on the first tick whose max
-    // score crosses MatchThreshold. Returns null on timeout.
-    public async Task<ScreenPoint?> WaitForElementAsync(byte[] elementTemplate, ScreenRect position, TimeSpan waitDuration, CancellationToken cancellationToken = default)
+    // Сопоставление шаблона опросом. Цикл активно захватывает кадр, обрезает по position (или
+    // берёт весь экран, если position пуст), переводит в полутона и источник, и шаблон,
+    // запускает MatchTemplate (CCoeffNormed) и возвращает ЦЕНТР совпадения на первом же тике,
+    // где максимальная оценка перевалила за MatchThreshold. По таймауту возвращает null.
+    public async Task<ScreenPoint?> WaitForElementAsync(byte[] elementTemplate, ScreenRect position,
+        TimeSpan waitDuration, CancellationToken cancellationToken = default)
     {
         var deadline = Environment.TickCount64 + (long)waitDuration.TotalMilliseconds;
         while (Environment.TickCount64 < deadline)
@@ -173,12 +189,13 @@ public sealed partial class GameWindow : IGameWindow
             byte[] capture;
             try
             {
-                // ACTIVE capture per tick — passive PrintWindow on a frozen background
-                // PW client returns stale / black frames, breaking boot polling when
-                // the user launches multiple clients back-to-back and each one loses
-                // foreground to the next. WM_ACTIVATEAPP unfreezes PW briefly so we
-                // get a fresh frame; we re-freeze afterwards (unless foreground) so
-                // the user's actual focus isn't disturbed. ~25-50ms overhead per tick.
+                // АКТИВНЫЙ захват на каждом тике — пассивный PrintWindow по замороженному
+                // фоновому клиенту PW возвращает устаревшие или чёрные кадры и ломает опрос в
+                // загрузочном сценарии, когда пользователь запускает несколько клиентов подряд
+                // и каждый уступает передний план следующему. WM_ACTIVATEAPP ненадолго
+                // размораживает PW, чтобы кадр был свежим; после этого мы замораживаем обратно
+                // (если окно не на переднем плане), чтобы не трогать реальный фокус
+                // пользователя. Накладные расходы ~25–50 мс на тик.
                 capture = await CaptureFreshAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -193,16 +210,19 @@ public sealed partial class GameWindow : IGameWindow
                 LogMatchHit(position, score, _matchThreshold);
                 return center;
             }
+
             LogMatchMiss(position, score, _matchThreshold);
 
             await Task.Delay(_pollInterval, cancellationToken).ConfigureAwait(false);
         }
+
         return null;
     }
 
-    // Async sibling of CaptureScreenshot — wakes the window via WM_ACTIVATEAPP, waits
-    // the settle delay, captures, then re-freezes (unless this window IS foreground,
-    // in which case it stays active naturally). Used by the one-shot and poll-loop matchers.
+    // Асинхронный близнец CaptureScreenshot — будит окно через WM_ACTIVATEAPP, выжидает паузу
+    // на устаканивание, захватывает кадр и замораживает обратно (если только это окно САМО не
+    // на переднем плане — тогда оно и так остаётся активным). Используется одноразовым
+    // сопоставлением и циклом опроса.
     private async Task<byte[]> CaptureFreshAsync(CancellationToken cancellationToken)
     {
         if (_activationLParam is { } lParam)
@@ -213,25 +233,29 @@ public sealed partial class GameWindow : IGameWindow
                 await Task.Delay(_settleDelayMs, cancellationToken).ConfigureAwait(false);
             }
         }
+
         var png = _nativeWindow.CapturePng();
         if (_activationLParam is not null && Win32NativeWindowSystem.GetForeground().Handle != Handle)
         {
             _nativeWindow.SendDeactivationSignal();
         }
+
         return png;
     }
 
-    // Single match pass. `center` is the CLIENT-space center of the best match — the crop
-    // origin is added back in so callers get a point they can hand straight to ClickAsync,
-    // which is the whole point of FoundPointVar ("find the button anywhere, then click it").
-    private bool TryMatchOnce(byte[] sourcePng, byte[] templatePng, ScreenRect position, out double score, out ScreenPoint center)
+    // Один проход сопоставления. `center` — центр лучшего совпадения в КЛИЕНТСКИХ координатах:
+    // начало области обрезки прибавляется обратно, чтобы вызывающий получил точку, которую можно
+    // сразу отдать в ClickAsync. Ради этого FoundPointVar и существует («найди кнопку где
+    // угодно, а потом кликни по ней»).
+    private bool TryMatchOnce(byte[] sourcePng, byte[] templatePng, ScreenRect position, out double score,
+        out ScreenPoint center)
     {
         score = 0.0;
         center = default;
         using var sourceFull = Cv2.ImDecode(sourcePng, ImreadModes.Color);
         if (sourceFull.Empty()) return false;
 
-        // Empty region = search the full frame.
+        // Пустая область = ищем по всему кадру.
         var rect = position.Width <= 0 || position.Height <= 0
             ? new Rect(0, 0, sourceFull.Width, sourceFull.Height)
             : ClampToImage(new Rect(position.X, position.Y, position.Width, position.Height), sourceFull.Size());
@@ -249,18 +273,20 @@ public sealed partial class GameWindow : IGameWindow
             return false;
         }
 
-        // Grayscale + CCoeffNormed instead of binarize + CCoeffNormed: many game-UI
-        // elements (chat panel icons etc.) sit on semi-transparent darkened backgrounds
-        // where bleed-through from the world below makes binarization unstable. CCoeff
-        // subtracts the mean and normalises by stddev so brightness shifts cancel out.
-        // ClassMatcher is the one place that still binarises, because its subject (class
-        // text on the opaque stats panel) separates cleanly at a fixed luminance cut.
+        // Полутона + CCoeffNormed вместо бинаризации + CCoeffNormed: многие элементы игрового
+        // интерфейса (иконки панели чата и прочее) лежат на полупрозрачных затемнённых
+        // подложках, где просвечивающий снизу мир делает бинаризацию нестабильной. CCoeff
+        // вычитает среднее и нормирует по среднеквадратичному отклонению, так что сдвиги
+        // яркости взаимно гасятся. ClassMatcher — единственное место, которое бинаризует до сих
+        // пор: его предмет (текст класса на непрозрачной панели характеристик) чисто отделяется
+        // по фиксированному порогу яркости.
         using var result = new Mat();
         Cv2.MatchTemplate(sourceGray, templateGray, result, TemplateMatchModes.CCoeffNormed);
         Cv2.MinMaxLoc(result, out _, out var maxVal, out _, out var maxLoc);
         score = maxVal;
-        // maxLoc is the template's top-left inside the CROP; shift by the crop origin to
-        // get client space, then by half the template to land on the center.
+        // maxLoc — это левый верхний угол шаблона внутри ОБРЕЗКИ; сдвигаем на начало обрезки,
+        // чтобы получить клиентские координаты, а потом на половину шаблона, чтобы попасть в
+        // центр.
         center = new ScreenPoint(
             rect.X + maxLoc.X + (templateGray.Width / 2),
             rect.Y + maxLoc.Y + (templateGray.Height / 2));
@@ -283,7 +309,8 @@ public sealed partial class GameWindow : IGameWindow
         return new Rect(x, y, w, h);
     }
 
-    [LoggerMessage(LogLevel.Warning, "Template match: template ({TplW}x{TplH}) is larger than search region ({SrcW}x{SrcH}) — shrink template or grow region")]
+    [LoggerMessage(LogLevel.Warning,
+        "Template match: template ({TplW}x{TplH}) is larger than search region ({SrcW}x{SrcH}) — shrink template or grow region")]
     partial void LogTemplateLargerThanRegion(int tplW, int tplH, int srcW, int srcH);
 
     [LoggerMessage(LogLevel.Debug, "Template match: hit at {Region} score={Score:F3} >= {Threshold:F3}")]

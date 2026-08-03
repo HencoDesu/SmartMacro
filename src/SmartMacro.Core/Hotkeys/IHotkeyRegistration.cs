@@ -3,33 +3,35 @@ using SmartMacro.Contracts.Dto;
 namespace SmartMacro.Hotkeys;
 
 /// <summary>
-/// Switching the daemon's global chords off and back on. Implemented by
+/// Выключение и обратное включение глобальных аккордов демона. Реализуется
 /// <see cref="HotkeyListener"/>.
 ///
-/// The reason this is a protocol-visible operation at all: Win32 <c>RegisterHotKey</c>
-/// swallows presses of an already-registered chord — the owning window gets the WM_HOTKEY
-/// and nobody else sees the key. So while the editor's hotkey picker is on screen in the
-/// UI process, the very combinations the user most likely wants to re-bind would never
-/// reach it. The UI brackets the picker with <c>SuspendHotkeys</c> / <c>ResumeHotkeys</c>.
+/// Почему эта операция вообще видна в протоколе: Win32 <c>RegisterHotKey</c> проглатывает
+/// нажатия уже зарегистрированного аккорда — WM_HOTKEY получает окно-владелец, и клавишу больше
+/// не видит никто. То есть пока в процессе UI на экране висит выбор хоткея, ровно те сочетания,
+/// которые пользователь скорее всего и хочет переназначить, до него бы не доходили. UI
+/// оборачивает выбор в <c>SuspendHotkeys</c> / <c>ResumeHotkeys</c>.
 ///
-/// Declared as an interface for the same test-seam reason as <c>IMacroRunner</c>: a real
-/// <see cref="HotkeyListener"/> owns two Win32 monitors.
+/// Объявлено интерфейсом по той же причине, что и <c>IMacroRunner</c>, — ради шва для тестов:
+/// настоящий <see cref="HotkeyListener"/> владеет двумя Win32-мониторами.
 /// </summary>
 public interface IHotkeyRegistration
 {
-    /// <summary>Unregisters every chord. Idempotent.</summary>
+    /// <summary>Снимает регистрацию со всех аккордов. Идемпотентно.</summary>
     Task SuspendAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Re-registers from the current macro library. Idempotent.</summary>
+    /// <summary>Регистрирует заново по текущей библиотеке макросов. Идемпотентно.</summary>
     Task ResumeAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Chords that were bound to a macro but rejected by <c>RegisterHotKey</c> at the last
-    /// registration attempt — see <see cref="HotkeyFailureDto"/> for why anyone cares.
+    /// Аккорды, которые были привязаны к макросу, но которые <c>RegisterHotKey</c> отверг при
+    /// последней попытке регистрации; зачем это вообще кому-то нужно, см.
+    /// <see cref="HotkeyFailureDto"/>.
     ///
-    /// Deliberately NOT cleared while suspended: the panel suspends for the whole time the
-    /// «Макросы» mode is on screen, which is exactly when it wants to draw this, and "we
-    /// unregistered everything a moment ago" is not an answer to "is this chord free".
+    /// Намеренно НЕ очищается на время приостановки: панель держит приостановку всё то время,
+    /// что на экране режим «Макросы», а это ровно тот момент, когда она хочет это нарисовать, —
+    /// и «мы минуту назад всё разрегистрировали» не есть ответ на вопрос «свободен ли этот
+    /// аккорд».
     /// </summary>
     IReadOnlyList<HotkeyFailureDto> Failures { get; }
 }

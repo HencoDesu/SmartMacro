@@ -14,24 +14,23 @@ using SmartMacro.Windows;
 namespace SmartMacro.Ipc;
 
 /// <summary>
-/// The server half of the protocol: one <see cref="IpcRequest"/> in, one
-/// <see cref="IpcResponse"/> out, every <see cref="IpcMessageTypes"/> request constant
-/// wired to the engine service that already implements it.
+/// Серверная половина протокола: на входе один <see cref="IpcRequest"/>, на выходе один
+/// <see cref="IpcResponse"/>, и каждая константа запроса из <see cref="IpcMessageTypes"/>
+/// подведена к той службе движка, которая её уже реализует.
 ///
-/// Deliberately knows nothing about pipes, connections or framing — it is handed a parsed
-/// envelope and hands back a parsed envelope, which is what makes the whole catalogue
-/// testable as plain method calls. <see cref="IpcServer"/> owns everything else.
+/// Намеренно ничего не знает ни про трубы, ни про соединения, ни про кадрирование — ему дают
+/// разобранный конверт, он отдаёт разобранный конверт, и благодаря этому весь каталог
+/// проверяется обычными вызовами методов. Всем остальным владеет <see cref="IpcServer"/>.
 ///
-/// <b>It never throws across the wire.</b> An unknown <see cref="IpcRequest.Type"/>, a
-/// missing payload, or a handler that blows up all come back as <c>Ok = false</c> with a
-/// human-readable <see cref="IpcResponse.Error"/>; unexpected failures are additionally
-/// logged with their stack. The one exception that IS allowed to propagate is cancellation
-/// of the caller's own token — at that point the connection is going away and there is
-/// nobody left to answer.
+/// <b>Он никогда не бросает через провод.</b> Неизвестный <see cref="IpcRequest.Type"/>,
+/// отсутствующая нагрузка, взорвавшийся обработчик — всё возвращается как <c>Ok = false</c> с
+/// человекочитаемым <see cref="IpcResponse.Error"/>; неожиданные сбои вдобавок пишутся в лог
+/// вместе со стеком. Единственное исключение, которому ПОЗВОЛЕНО распространяться, — отмена по
+/// собственному токену вызывающего: в этот момент соединение уже уходит и отвечать некому.
 /// </summary>
 public sealed partial class IpcRequestDispatcher
 {
-    // Grace period between answering Shutdown and asking the host to stop; see ShutdownAsync.
+    // Отсрочка между ответом на Shutdown и просьбой к хосту остановиться; см. ShutdownAsync.
     private const int ShutdownGraceMs = 250;
 
     private readonly WindowRegistry _windows;
@@ -45,9 +44,9 @@ public sealed partial class IpcRequestDispatcher
     private readonly MacroDebugSession _debug;
     private readonly ILogger<IpcRequestDispatcher> _logger;
 
-    // Set by IpcServer's constructor, not by DI — see AttachBroadcaster. Null in the
-    // dispatcher tests, which drive the catalogue without a server; RequestActivate is the
-    // only handler that needs it and it rejects politely when it is missing.
+    // Проставляется конструктором IpcServer, а не через DI, — см. AttachBroadcaster. Null в
+    // тестах диспетчера, которые гоняют каталог без сервера; RequestActivate — единственный
+    // обработчик, которому вещатель нужен, и при его отсутствии он вежливо отказывает.
     private IIpcBroadcaster? _broadcaster;
 
     public IpcRequestDispatcher(
@@ -75,30 +74,33 @@ public sealed partial class IpcRequestDispatcher
     }
 
     /// <summary>
-    /// Supplies the event fan-out that <c>RequestActivate</c> pushes through. Called once,
-    /// by <see cref="IpcServer"/>'s constructor: the server is built FROM this dispatcher,
-    /// so it cannot also be injected into it.
+    /// Подаёт ту рассылку событий, через которую толкается <c>RequestActivate</c>. Вызывается
+    /// один раз, конструктором <see cref="IpcServer"/>: сервер строится ИЗ этого диспетчера, а
+    /// значит, не может быть заодно и внедрён в него.
     /// </summary>
     public void AttachBroadcaster(IIpcBroadcaster broadcaster) => _broadcaster = broadcaster;
 
     /// <summary>
-    /// Routes one request to its handler and produces the reply, with no connection behind
-    /// it. Everything in the catalogue except <c>SubscribeRunEvents</c> is per-engine rather
-    /// than per-client and works fine this way; that one handler rejects politely.
+    /// Направляет один запрос его обработчику и порождает ответ — без соединения за спиной. Всё
+    /// в каталоге, кроме <c>SubscribeRunEvents</c> и <c>DebugCommand</c>, относится к движку, а
+    /// не к клиенту, и в таком виде работает прекрасно; эти двое вежливо отказывают.
     /// </summary>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> fired; the connection is closing.</exception>
+    /// <param name="request">Разобранный конверт.</param>
+    /// <param name="cancellationToken">Срабатывает, когда соединение закрывается.</param>
+    /// <exception cref="OperationCanceledException">Сработал <paramref name="cancellationToken"/>; соединение закрывается.</exception>
     public Task<IpcResponse> DispatchAsync(IpcRequest request, CancellationToken cancellationToken = default) =>
         DispatchAsync(request, session: null, cancellationToken);
 
-    /// <summary>Routes one request on behalf of a particular connection.</summary>
-    /// <param name="request">The parsed envelope.</param>
+    /// <summary>Направляет один запрос от имени конкретного соединения.</summary>
+    /// <param name="request">Разобранный конверт.</param>
     /// <param name="session">
-    /// Per-connection protocol state, or <c>null</c> when there is no connection (tests).
-    /// See <see cref="IIpcSession"/> for why exactly one handler needs it.
+    /// Состояние протокола, привязанное к соединению, или <c>null</c>, когда соединения нет
+    /// (тесты). Зачем оно понадобилось двум обработчикам, см. <see cref="IIpcSession"/>.
     /// </param>
-    /// <param name="cancellationToken">Fires when the connection is closing.</param>
-    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> fired; the connection is closing.</exception>
-    public async Task<IpcResponse> DispatchAsync(IpcRequest request, IIpcSession? session, CancellationToken cancellationToken = default)
+    /// <param name="cancellationToken">Срабатывает, когда соединение закрывается.</param>
+    /// <exception cref="OperationCanceledException">Сработал <paramref name="cancellationToken"/>; соединение закрывается.</exception>
+    public async Task<IpcResponse> DispatchAsync(IpcRequest request, IIpcSession? session,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -112,24 +114,26 @@ public sealed partial class IpcRequestDispatcher
         }
         catch (IpcRequestRejectedException ex)
         {
-            // Client-side protocol misuse (missing/garbled payload, unknown macro). Expected
-            // enough not to deserve a stack trace, loud enough to deserve a line.
+            // Клиент нарушил протокол (нет нагрузки, нагрузка исковеркана, неизвестный
+            // макрос). Достаточно ожидаемо, чтобы не заслуживать стека, и достаточно громко,
+            // чтобы заслуживать строчки в логе.
             LogRejected(request.Type, request.Id, ex.Message);
             return Fail(request, ex.Message);
         }
         catch (Exception ex)
         {
-            // A handler bug or an engine failure. The client gets a message; we keep the stack.
+            // Баг в обработчике или сбой движка. Клиенту достаётся сообщение, нам — стек.
             LogHandlerFailed(ex, request.Type, request.Id);
             return Fail(request, ex.Message);
         }
     }
 
-    private async Task<IpcResponse> HandleAsync(IpcRequest request, IIpcSession? session, CancellationToken cancellationToken)
+    private async Task<IpcResponse> HandleAsync(IpcRequest request, IIpcSession? session,
+        CancellationToken cancellationToken)
     {
         switch (request.Type)
         {
-            // ------------------------------------------------------------------ windows
+            // -------------------------------------------------------------------- окна
 
             case IpcMessageTypes.GetWindows:
                 return Ok(request, IpcJson.Write(_windows.Snapshot().ToDto()));
@@ -137,9 +141,10 @@ public sealed partial class IpcRequestDispatcher
             case IpcMessageTypes.AddTag:
             {
                 var payload = Require<AddTagRequest>(request);
-                // false = unknown hwnd or duplicate tag. Both are no-ops rather than
-                // errors: the UI works from a snapshot that is always slightly stale, and
-                // "the window you tagged just died" is not a client bug. The registry logs it.
+                // false = неизвестный hwnd либо повторный тег. И то и другое ничего не делает
+                // и ошибкой не считается: UI работает по снимку, который всегда слегка
+                // устарел, а «окно, которому вы поставили тег, только что умерло» — не баг
+                // клиента. Реестр это запишет.
                 _windows.AddTag((IntPtr)payload.Hwnd, payload.Tag);
                 return Ok(request);
             }
@@ -151,19 +156,20 @@ public sealed partial class IpcRequestDispatcher
                 return Ok(request);
             }
 
-            // ------------------------------------------------------------------- macros
+            // ----------------------------------------------------------------- макросы
 
             case IpcMessageTypes.RunMacro:
             {
                 var payload = Require<RunMacroRequest>(request);
-                // Per the catalogue, an unknown name FAILS the request rather than being a
-                // silent no-op: the Run button in the editor must not look like it worked.
-                // Everything after this point is fire-and-forget — a macro can run for
-                // hours, so the reply means "started", not "finished".
+                // По каталогу неизвестное имя ПРОВАЛИВАЕТ запрос, а не превращается в тихое
+                // ничегонеделание: кнопка «Запустить» в редакторе не должна выглядеть
+                // сработавшей. Всё после этой точки — «отправил и забыл»: макрос может идти
+                // часами, поэтому ответ означает «начали», а не «закончили».
                 if (_macros.TryGet(payload.Name) is null)
                 {
                     throw new IpcRequestRejectedException($"Макрос '{payload.Name}' не найден.");
                 }
+
                 _runner.RunMacro(payload.Name);
                 return Ok(request);
             }
@@ -171,9 +177,9 @@ public sealed partial class IpcRequestDispatcher
             case IpcMessageTypes.StopMacro:
             {
                 var payload = Require<StopMacroRequest>(request);
-                // Awaited: the reply means the runner has actually acknowledged the cancel,
-                // which is what lets the UI clear the row without guessing. An unknown
-                // (already finished) run completes immediately — documented as success.
+                // Ждём: ответ означает, что бегун действительно принял отмену, и именно это
+                // позволяет UI убрать строку, ничего не додумывая. Неизвестный (уже
+                // завершившийся) прогон завершается мгновенно — по документации это успех.
                 await _runs.StopAsync(payload.RunId).WaitAsync(cancellationToken).ConfigureAwait(false);
                 return Ok(request);
             }
@@ -182,8 +188,8 @@ public sealed partial class IpcRequestDispatcher
                 return Ok(request, IpcJson.Write(_runs.Snapshot().ToDto()));
 
             case IpcMessageTypes.GetMacros:
-                // Materialised to an array so the polymorphic node converters see
-                // MacroGraph[] rather than an interface-typed sequence.
+                // Материализуем в массив, чтобы полиморфные конвертеры нод видели MacroGraph[],
+                // а не последовательность интерфейсного типа.
                 return Ok(request, IpcJson.Write<MacroGraph[]>([.. _macros.All]));
 
             case IpcMessageTypes.SaveMacro:
@@ -192,7 +198,7 @@ public sealed partial class IpcRequestDispatcher
             case IpcMessageTypes.DeleteMacro:
             {
                 var payload = Require<DeleteMacroRequest>(request);
-                // false = no such file. A no-op by contract, not an error.
+                // false = такого файла нет. По контракту это ничегонеделание, а не ошибка.
                 await _macros.DeleteAsync(payload.Name, cancellationToken).ConfigureAwait(false);
                 return Ok(request);
             }
@@ -201,27 +207,32 @@ public sealed partial class IpcRequestDispatcher
             {
                 var payload = Require<SubscribeRunEventsRequest>(request);
                 var connection = session
-                                 ?? throw new IpcRequestRejectedException("Подписка на события прогона возможна только по соединению.");
+                                 ?? throw new IpcRequestRejectedException(
+                                     "Подписка на события прогона возможна только по соединению.");
                 connection.SetRunEventSubscription(payload.Enabled);
 
-                // The live walks, so a panel that arrived mid-run knows a run exists at all.
-                // Each is flagged FromStart = false: its leading node rows happened before
-                // anyone was recording and cannot be reconstructed, and the panel is
-                // required to say so rather than render the tail as a whole log. Turning the
-                // subscription OFF answers with an empty list — there is nothing to follow.
+                // Живые обходы — чтобы панель, пришедшая посреди прогона, вообще узнала, что
+                // прогон есть. У каждого выставлен FromStart = false: его начальные строки нод
+                // случились, когда никто ещё не записывал, и восстановить их нельзя, а панель
+                // обязана об этом сказать, а не рисовать хвост как целый лог. Выключение
+                // подписки отвечает пустым списком — следить не за чем.
                 return Ok(request, IpcJson.Write(payload.Enabled
                     ? _runEvents.LiveWalks()
                     : Array.Empty<RunWalkDto>()));
             }
 
-            // ----------------------------------------------------------------- debugger
+            // --------------------------------------------------------------- отладчик
 
             case IpcMessageTypes.SetBreakpoints:
             {
                 var payload = Require<SetBreakpointsRequest>(request);
-                // No "does this macro exist" check on purpose: a breakpoint can legitimately
-                // be armed on an unsaved draft, and the set is keyed by name — the moment the
-                // draft is saved under that name it starts biting.
+                // Проверки «а существует ли такой макрос» здесь нет намеренно: точку останова
+                // законно ставят и на несохранённый черновик, а набор ключуется по имени —
+                // и в тот момент, когда черновик сохранят под этим именем, она начнёт кусаться.
+                //
+                // `?? []` не избыточен, что бы ни говорил анализатор: NodeIds размечен как
+                // ненулевой, но приезжает из JSON, и клиент, не положивший это поле, отдаст
+                // сюда null. Аннотация врёт, а нагрузка из провода — нет.
                 _debug.SetBreakpoints(payload.MacroName, payload.NodeIds ?? []);
                 return Ok(request);
             }
@@ -232,18 +243,20 @@ public sealed partial class IpcRequestDispatcher
             case IpcMessageTypes.DebugCommand:
             {
                 var payload = Require<DebugCommandRequest>(request);
-                // Rejecting an unattached caller is not pedantry: the attach count is what
-                // guarantees a paused walk has someone able to release it, and a command from
-                // a connection outside that count could park a walk nobody would ever unpark.
+                // Отказ неподключённому вызывающему — не занудство: счёт подключённых
+                // отладчиков и есть гарантия того, что у обхода на паузе найдётся кому его
+                // отпустить, а команда от соединения вне этого счёта могла бы припарковать
+                // обход, который никто уже не распустит.
                 if (session is not { WantsRunEvents: true })
                 {
                     throw new IpcRequestRejectedException(
                         "Команды отладчика доступны только подписчику событий прогона.");
                 }
+
                 return Ok(request, IpcJson.Write(_debug.Command(payload.WalkId, payload.Command, payload.NodeId)));
             }
 
-            // ------------------------------------------------------------------ hotkeys
+            // --------------------------------------------------------- горячие клавиши
 
             case IpcMessageTypes.SuspendHotkeys:
                 await _hotkeys.SuspendAsync(cancellationToken).ConfigureAwait(false);
@@ -254,11 +267,11 @@ public sealed partial class IpcRequestDispatcher
                 return Ok(request);
 
             case IpcMessageTypes.GetHotkeyFailures:
-                // Materialised to an array so the response is a JSON array even when the
-                // implementation hands back an empty read-only list.
+                // Материализуем в массив, чтобы ответ был JSON-массивом даже тогда, когда
+                // реализация отдаёт пустой список только для чтения.
                 return Ok(request, IpcJson.Write<HotkeyFailureDto[]>([.. _hotkeys.Failures ?? []]));
 
-            // -------------------------------------------------------------- diagnostics
+            // ------------------------------------------------------------ диагностика
 
             case IpcMessageTypes.DumpCaptures:
             {
@@ -269,14 +282,14 @@ public sealed partial class IpcRequestDispatcher
             case IpcMessageTypes.Shutdown:
                 return ShutdownAsync(request);
 
-            // ---------------------------------------------------------------- lifecycle
+            // ------------------------------------------------------- жизненный цикл
 
             case IpcMessageTypes.RequestActivate:
             {
-                // Broadcast, not "reply to the sender": the asker is a second UI launch
-                // that is about to exit, and the panel that must come forward is a
-                // DIFFERENT connection. Sending it to everyone costs nothing (there is
-                // normally exactly one panel) and needs no client bookkeeping here.
+                // Рассылка, а не «ответить отправителю»: спрашивает второй запуск UI, который
+                // вот-вот завершится, а выйти вперёд должна панель на ДРУГОМ соединении.
+                // Отправить всем не стоит ничего (панель обычно ровно одна) и не требует
+                // вести здесь учёт клиентов.
                 var broadcaster = _broadcaster
                                   ?? throw new IpcRequestRejectedException("Событие активации некому разослать.");
                 broadcaster.Broadcast(new IpcEvent(IpcMessageTypes.ActivateWindow));
@@ -290,8 +303,8 @@ public sealed partial class IpcRequestDispatcher
     }
 
     /// <summary>
-    /// Validate → reject-or-write. The response IS the issue list: empty means the graph
-    /// was written, non-empty means it was refused and carries the reasons.
+    /// Проверить → отказать или записать. Ответ И ЕСТЬ список замечаний: пустой означает, что
+    /// граф записан, непустой — что в записи отказано, и он несёт причины.
     /// </summary>
     private async Task<IpcResponse> SaveMacroAsync(IpcRequest request, CancellationToken cancellationToken)
     {
@@ -301,10 +314,10 @@ public sealed partial class IpcRequestDispatcher
 
         var issues = new List<ValidationIssue>(MacroGraphValidator.Validate(graph));
 
-        // The validator checks the GRAPH; the store checks the NAME (it is the file stem)
-        // and throws on a bad one. Surfacing it as a graph-level issue instead lets the
-        // editor render "имя содержит '/'" next to the structural errors rather than as an
-        // opaque failed request.
+        // Валидатор проверяет ГРАФ; хранилище проверяет ИМЯ (оно же основа имени файла) и на
+        // плохом бросает. Если вместо этого поднять его как замечание уровня графа, редактор
+        // нарисует «имя содержит '/'» рядом со структурными ошибками, а не покажет невнятно
+        // провалившийся запрос.
         if (MacroGraphStore.ValidateName(graph.Name) is { } nameError)
         {
             issues.Add(new ValidationIssue(ValidationSeverity.Error, null, nameError));
@@ -312,29 +325,30 @@ public sealed partial class IpcRequestDispatcher
 
         if (issues.Any(issue => issue.Severity == ValidationSeverity.Error))
         {
-            // Warnings ride along with the errors — the editor may as well show everything
-            // it is about to be asked to fix.
+            // Предупреждения едут вместе с ошибками — пусть редактор сразу покажет всё, что
+            // всё равно попросят исправить.
             LogSaveRejected(graph.Name, issues.Count(i => i.Severity == ValidationSeverity.Error));
             return Ok(request, IpcJson.Write(issues.ToDto()));
         }
 
         await _macros.SaveAsync(graph, cancellationToken).ConfigureAwait(false);
-        // Empty list = written. Warnings are deliberately NOT reported on success: the
-        // protocol gives this field one meaning (rejection reasons) and overloading it
-        // would make every warning look like a failed save to the client.
+        // Пустой список = записано. При успехе предупреждения намеренно НЕ возвращаются: у
+        // этого поля в протоколе ровно один смысл (причины отказа), и перегрузка его вторым
+        // смыслом сделала бы так, что каждое предупреждение выглядело бы для клиента как
+        // несостоявшееся сохранение.
         return Ok(request, IpcJson.Write(Array.Empty<ValidationIssueDto>()));
     }
 
     /// <summary>
-    /// Answers first, stops second.
+    /// Сначала отвечаем, потом останавливаемся.
     ///
-    /// <see cref="IpcServer"/> is registered last among the hosted services, so it is the
-    /// FIRST to be torn down when the host stops — which would close this very connection
-    /// out from under the reply if we called <c>StopApplication</c> inline. The stop is
-    /// therefore detached and delayed by <see cref="ShutdownGraceMs"/>: the reply is written
-    /// and flushed microseconds after this method returns, so the margin is enormous, and
-    /// nothing about correctness depends on the exact number — a client that misses the
-    /// reply just sees the pipe close, which is the same signal.
+    /// <see cref="IpcServer"/> зарегистрирован среди размещённых служб последним, а значит,
+    /// сносится при остановке хоста ПЕРВЫМ — и вызови мы <c>StopApplication</c> прямо здесь,
+    /// это самое соединение закрылось бы прямо из-под ответа. Поэтому остановка отцеплена и
+    /// отложена на <see cref="ShutdownGraceMs"/>: ответ пишется и сбрасывается через микросекунды
+    /// после возврата из этого метода, так что запас колоссальный, и от точного числа
+    /// корректность никак не зависит — клиент, не успевший получить ответ, просто увидит, что
+    /// труба закрылась, а это тот же самый сигнал.
     /// </summary>
     private IpcResponse ShutdownAsync(IpcRequest request)
     {
@@ -360,9 +374,9 @@ public sealed partial class IpcRequestDispatcher
 }
 
 /// <summary>
-/// A request the client got wrong (no payload, unknown macro name). Carries a message
-/// meant for a human reading the UI, and is logged without a stack — unlike an unexpected
-/// handler failure, there is no bug here to investigate.
+/// Запрос, который клиент составил неверно (нет нагрузки, неизвестное имя макроса). Несёт
+/// сообщение, рассчитанное на человека, читающего интерфейс, и пишется в лог без стека: в
+/// отличие от неожиданного сбоя обработчика, расследовать здесь нечего.
 /// </summary>
 public sealed class IpcRequestRejectedException : Exception
 {

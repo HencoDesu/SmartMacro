@@ -2,12 +2,12 @@ using System.Globalization;
 
 namespace SmartMacro.Models;
 
-// In-world position as read off the HUD by TesseractCoordinateReader. Parked alongside it:
-// the only live consumer is tools/VisionSampleRunner.
+// Позиция в игровом мире, как её считывает с HUD TesseractCoordinateReader. Заморожено вместе
+// с ним: единственный живой потребитель — tools/VisionSampleRunner.
 //
-// Parse() and HorizontalDistanceTo() were deleted in stage 4B — they served the
-// FOLLOW/HOLD and stuck-detection designs that were dropped long before the node-graph
-// rewrite, and nothing had called them since.
+// Parse() и HorizontalDistanceTo() удалены на стадии 4B — они обслуживали замыслы FOLLOW/HOLD
+// и обнаружения застревания, от которых отказались задолго до переписывания на графы нод, и с
+// тех пор их никто не вызывал.
 public readonly record struct Coordinates(int X, int Z, int Y)
 {
     public override string ToString() =>

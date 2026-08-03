@@ -3,17 +3,17 @@ using SmartMacro.ProcessMonitoring;
 
 namespace SmartMacro.Agents;
 
-// Creates the CharacterAgent that owns a game-client window's lifetime. Agents are born
-// tagless: identification is a macro's job now, so there is no "pending unknown" state to
-// model here — the agent registers its window and the tags (if any) arrive later through
-// WindowRegistry.
+// Создаёт CharacterAgent, который владеет временем жизни окна игрового клиента. Агенты
+// рождаются без тегов: опознание теперь работа макроса, так что моделировать здесь состояние
+// «пока неизвестно» незачем — агент регистрирует своё окно, а теги (если они будут) приезжают
+// позже через WindowRegistry.
 public interface ICharacterAgentFactory
 {
     /// <summary>
-    /// Creates a fresh agent bound to <paramref name="info"/>'s window handle and routes
-    /// its outbox messages to the orchestrator's inbox.
+    /// Создаёт свежего агента, привязанного к дескриптору окна из <paramref name="info"/>, и
+    /// направляет его исходящие сообщения во входящую очередь оркестратора.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown when the process's main window has zero client area (typically a launcher process with no usable game surface).</exception>
+    /// <exception cref="InvalidOperationException">Бросается, когда у главного окна процесса нулевая клиентская область (обычно это процесс лаунчера без пригодной игровой поверхности).</exception>
     Task<CharacterAgent> CreateAsync(
         ProcessInfo info,
         ChannelWriter<AgentMessage> outbox,

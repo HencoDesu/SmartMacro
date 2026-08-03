@@ -4,35 +4,40 @@ using Microsoft.Extensions.Logging;
 namespace SmartMacro.Vision;
 
 /// <summary>
-/// Resolves the template names macro nodes carry into PNG bytes.
+/// Разрешает имена шаблонов, которые несут ноды макроса, в байты PNG.
 ///
-/// Two shapes, matching the two node families:
-///   * SINGLE template by name (<c>FindElementNode</c>/<c>WaitForElementNode</c>) —
+/// Две формы под два семейства нод:
+///   * ОДИН шаблон по имени (<c>FindElementNode</c>/<c>WaitForElementNode</c>) —
 ///     <see cref="TryGetTemplate"/>.
-///   * A SET of templates keyed by tag (<c>RecognizeTagNode</c>) — <see cref="GetSet"/>,
-///     where each key is a file stem and therefore the tag applied on a match.
+///   * НАБОР шаблонов с ключами-тегами (<c>RecognizeTagNode</c>) — <see cref="GetSet"/>, где
+///     каждый ключ есть основа имени файла и, значит, тег, который проставляется при
+///     совпадении.
 ///
-/// Physical layout (W0.2b): the existing asset folders are reused as-is rather than
-/// churning them into the <c>templates/{set}/{tag}.png</c> layout the plan sketches —
-///   * set <c>"classes"</c>          → <c>Assets/GameClassNames/*.png</c>
-///   * any other set <c>"{name}"</c> → <c>Assets/templates/{name}/*.png</c>
-///   * single templates by stem      → <c>Assets/GameUiElements/{stem}.png</c>
-/// TODO(W0.4): collapse GameUiElements/GameClassNames into one <c>templates/</c> tree and
-/// drop the "classes" alias — it only exists so PW's shipped assets keep working untouched.
+/// Физическая раскладка (W0.2b): существующие папки с ассетами переиспользуются как есть, а не
+/// перелопачиваются в раскладку <c>templates/{set}/{tag}.png</c>, набросанную в плане:
+///   * набор <c>"classes"</c>         → <c>Assets/GameClassNames/*.png</c>
+///   * любой другой набор <c>"{name}"</c> → <c>Assets/templates/{name}/*.png</c>
+///   * одиночные шаблоны по основе имени → <c>Assets/GameUiElements/{stem}.png</c>
+/// TODO(W0.4): схлопнуть GameUiElements и GameClassNames в одно дерево <c>templates/</c> и
+/// выбросить псевдоним "classes" — он существует лишь затем, чтобы поставляемые ассеты PW
+/// продолжали работать нетронутыми.
 ///
-/// Everything is read from disk on first use and cached for process lifetime (templates
-/// are small and never change while running); a missing folder or unreadable file is
-/// logged and yields an empty result rather than throwing, so one bad PNG can't take the
-/// whole macro library down.
+/// Всё читается с диска при первом обращении и кэшируется на время жизни процесса (шаблоны
+/// маленькие и во время работы не меняются); отсутствующая папка или нечитаемый файл пишутся в
+/// лог и дают пустой результат, а не исключение, — чтобы один плохой PNG не утащил за собой всю
+/// библиотеку макросов.
 /// </summary>
 public sealed partial class TemplateSetProvider
 {
-    /// <summary>Set name that maps onto the legacy <c>Assets/GameClassNames</c> folder.</summary>
+    /// <summary>Имя набора, которое ложится на унаследованную папку <c>Assets/GameClassNames</c>.</summary>
     public const string ClassesSetName = "classes";
 
     private readonly string _assetsRoot;
     private readonly ILogger<TemplateSetProvider> _logger;
-    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, byte[]>> _sets = new(StringComparer.Ordinal);
+
+    private readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, byte[]>> _sets =
+        new(StringComparer.Ordinal);
+
     private readonly Lazy<IReadOnlyDictionary<string, byte[]>> _singleTemplates;
 
     public TemplateSetProvider(ILogger<TemplateSetProvider> logger)
@@ -40,19 +45,20 @@ public sealed partial class TemplateSetProvider
     {
     }
 
-    /// <param name="assetsRoot">Folder holding <c>GameUiElements</c> / <c>GameClassNames</c> / <c>templates</c>.</param>
-    /// <param name="logger">Diagnostics sink.</param>
+    /// <param name="assetsRoot">Папка, в которой лежат <c>GameUiElements</c> / <c>GameClassNames</c> / <c>templates</c>.</param>
+    /// <param name="logger">Приёмник диагностики.</param>
     public TemplateSetProvider(string assetsRoot, ILogger<TemplateSetProvider> logger)
     {
         _assetsRoot = assetsRoot;
         _logger = logger;
-        _singleTemplates = new Lazy<IReadOnlyDictionary<string, byte[]>>(
-            () => LoadFolder("single templates", Path.Combine(_assetsRoot, "GameUiElements")));
+        _singleTemplates = new Lazy<IReadOnlyDictionary<string, byte[]>>(() =>
+            LoadFolder("single templates", Path.Combine(_assetsRoot, "GameUiElements")));
     }
 
     /// <summary>
-    /// The named template set as tag → PNG bytes. Unknown or empty sets return an empty
-    /// dictionary (logged once) — <c>RecognizeTagNode</c> then simply never matches.
+    /// Именованный набор шаблонов в виде «тег → байты PNG». Неизвестные и пустые наборы дают
+    /// пустой словарь (с одной записью в логе) — тогда <c>RecognizeTagNode</c> просто никогда
+    /// ни с чем не совпадёт.
     /// </summary>
     public IReadOnlyDictionary<string, byte[]> GetSet(string setName)
     {
@@ -61,12 +67,12 @@ public sealed partial class TemplateSetProvider
     }
 
     /// <summary>
-    /// A single template by name. Names are file stems, matched CASE-SENSITIVELY: lookup
-    /// goes through the folder listing rather than <c>File.Exists</c>, so a template
-    /// resolves the same way here as inside a set — Windows' case-insensitive filesystem
-    /// would otherwise make the two disagree.
+    /// Один шаблон по имени. Имена — это основы имён файлов, и сравниваются они С УЧЁТОМ
+    /// РЕГИСТРА: поиск идёт по перечислению папки, а не через <c>File.Exists</c>, чтобы шаблон
+    /// разрешался здесь так же, как внутри набора, — иначе регистронезависимая файловая система
+    /// Windows развела бы эти два пути.
     /// </summary>
-    /// <returns>The PNG bytes, or <c>null</c> when no such template exists.</returns>
+    /// <returns>Байты PNG или <c>null</c>, если такого шаблона нет.</returns>
     public byte[]? TryGetTemplate(string templateName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(templateName);
@@ -74,6 +80,7 @@ public sealed partial class TemplateSetProvider
         {
             return bytes;
         }
+
         LogTemplateMissing(templateName, Path.Combine(_assetsRoot, "GameUiElements"));
         return null;
     }
@@ -86,8 +93,8 @@ public sealed partial class TemplateSetProvider
         return LoadFolder(setName, directory);
     }
 
-    // Every *.png in one folder, keyed by file stem. The stem is the identity: a tag for
-    // a set, a template name for a single lookup.
+    // Все *.png из одной папки, ключ — основа имени файла. Основа и есть идентичность: для
+    // набора это тег, для одиночного поиска — имя шаблона.
     private IReadOnlyDictionary<string, byte[]> LoadFolder(string label, string directory)
     {
         var templates = new Dictionary<string, byte[]>(StringComparer.Ordinal);
@@ -117,10 +124,12 @@ public sealed partial class TemplateSetProvider
     [LoggerMessage(LogLevel.Information, "Template set '{SetName}' loaded: {Count} template(s) from {Path}")]
     partial void LogSetLoaded(string setName, int count, string path);
 
-    [LoggerMessage(LogLevel.Warning, "Template set '{SetName}' has no folder at {Path} — RecognizeTag nodes using it will never match")]
+    [LoggerMessage(LogLevel.Warning,
+        "Template set '{SetName}' has no folder at {Path} — RecognizeTag nodes using it will never match")]
     partial void LogSetDirMissing(string setName, string path);
 
-    [LoggerMessage(LogLevel.Warning, "Template '{TemplateName}' not found in {Path} — Find/Wait nodes using it will never match")]
+    [LoggerMessage(LogLevel.Warning,
+        "Template '{TemplateName}' not found in {Path} — Find/Wait nodes using it will never match")]
     partial void LogTemplateMissing(string templateName, string path);
 
     [LoggerMessage(LogLevel.Error, "Failed to read template '{TemplateName}' from {Path}")]

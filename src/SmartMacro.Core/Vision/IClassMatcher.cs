@@ -2,32 +2,33 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Vision;
 
-// Picks the best-matching template out of a SET, inside a caller-chosen region of a
-// window capture. Backs RecognizeTagNode: the winning template's key becomes the tag.
+// Выбирает лучший по совпадению шаблон из НАБОРА внутри области захвата окна, которую задал
+// вызывающий. За ним стоит RecognizeTagNode: ключ победившего шаблона становится тегом.
 //
-// Templates are keyed by free-form tag strings (filename stems of the set on disk). The
-// canonical PW use is the in-game stats window: open it (default hotkey C), capture, and
-// match the "Класс: <name>" value area against pre-rendered class-name PNGs.
+// Ключи шаблонов — свободные строки тегов (основы имён файлов набора на диске). Канонический
+// сценарий в PW — игровое окно характеристик: открыть его (по умолчанию клавиша C), захватить
+// кадр и сопоставить область значения «Класс: <имя>» с заранее отрисованными PNG имён классов.
 public interface IClassMatcher
 {
     /// <summary>
-    /// Matches <paramref name="region"/> of the screenshot against the given templates.
+    /// Сопоставляет область <paramref name="region"/> скриншота с переданными шаблонами.
     /// </summary>
-    /// <param name="screenshot">Full client capture of the window.</param>
-    /// <param name="templates">Tag → template-PNG-bytes map, e.g. one template set from <c>TemplateSetProvider</c>.</param>
-    /// <param name="region">Client-space crop the set is matched against. Empty (Width or Height ≤ 0) = whole capture.</param>
-    /// <returns>The matched tag above the configured threshold, or <c>null</c> on no match.</returns>
+    /// <param name="screenshot">Полный захват клиентской области окна.</param>
+    /// <param name="templates">Отображение «тег → байты PNG шаблона», например один набор шаблонов из <c>TemplateSetProvider</c>.</param>
+    /// <param name="region">Обрезка в клиентских координатах, по которой сопоставляется набор. Пустая (Width или Height ≤ 0) = весь захват.</param>
+    /// <returns>Подошедший тег с оценкой выше настроенного порога или <c>null</c>, если совпадения нет.</returns>
     TagMatch? Match(byte[] screenshot, IReadOnlyDictionary<string, byte[]> templates, ScreenRect region);
 
     /// <summary>
-    /// Diagnostic — returns the binarised view of the class-value crop region. Used by
-    /// the labeling / debug-dump flow so the user can visually verify that the region is
-    /// correctly tuned in appsettings.json.
+    /// Диагностика — возвращает бинаризованный вид области со значением класса. Используется в
+    /// сценарии проставления меток и дампа отладочных кадров, чтобы пользователь мог глазами
+    /// убедиться, что область в appsettings.json настроена верно.
     /// </summary>
     byte[] DebugBinarizeClassRegion(byte[] screenshot);
 }
 
 /// <summary>
-/// Match result — the winning template's tag plus the score for threshold tuning / diagnostics.
+/// Результат сопоставления — тег победившего шаблона плюс оценка для подгонки порогов и
+/// диагностики.
 /// </summary>
 public sealed record TagMatch(string Tag, double Score);

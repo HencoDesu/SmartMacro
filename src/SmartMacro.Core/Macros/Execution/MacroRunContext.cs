@@ -1,60 +1,63 @@
 namespace SmartMacro.Macros.Execution;
 
 /// <summary>
-/// Per-run state handed to <see cref="MacroExecutor.RunAsync"/>. The trigger layer builds
-/// the root context (hotkey → no window, process-appeared → the new window);
-/// <see cref="Model.RunMacroNode"/> derives child contexts with copied variables,
-/// incremented depth, and the extended call chain.
+/// Состояние прогона, которое передают в <see cref="MacroExecutor.RunAsync"/>. Корневой
+/// контекст строит слой триггеров (хоткей → окна нет, появление процесса → новое окно);
+/// <see cref="Model.RunMacroNode"/> порождает дочерние контексты с копией переменных,
+/// увеличенной глубиной и удлинённой цепочкой вызовов.
 /// </summary>
 public sealed record MacroRunContext
 {
     /// <summary>
-    /// The window targetless actions and conditional nodes operate on. <c>null</c> for
-    /// hotkey-triggered runs — nodes that need a window then abort the run.
+    /// Окно, по которому работают действия без цели и условные ноды. <c>null</c> у прогонов от
+    /// хоткея — ноды, которым окно необходимо, в этом случае обрывают прогон.
     /// </summary>
     public IntPtr? ContextWindow { get; init; }
 
-    /// <summary>Run variables. The trigger layer seeds <c>cursor</c> via <see cref="MacroVariables.ForTrigger"/>.</summary>
+    /// <summary>Переменные прогона. Слой триггеров засевает <c>cursor</c> через <see cref="MacroVariables.ForTrigger"/>.</summary>
     public required MacroVariables Variables { get; init; }
 
     /// <summary>
-    /// The tracked run this context belongs to, from <see cref="MacroRunHandle.RunId"/>.
-    /// Carried purely so run events can be tied back to the row in «Прогоны»; the walker
-    /// itself never reads it. <see cref="Guid.Empty"/> when the caller runs the executor
-    /// outside the registry, which only tests do.
+    /// Отслеживаемый прогон, к которому относится этот контекст, из
+    /// <see cref="MacroRunHandle.RunId"/>. Носится исключительно ради того, чтобы события
+    /// прогона можно было привязать к строке в «Прогонах»; сам walker его никогда не читает.
+    /// <see cref="Guid.Empty"/>, когда вызывающий гоняет исполнителя мимо реестра, — а так
+    /// делают только тесты.
     /// </summary>
     public Guid RunId { get; init; }
 
-    /// <summary>Sub-run nesting depth: 0 for a trigger-initiated run, +1 per <see cref="Model.RunMacroNode"/> level.</summary>
+    /// <summary>Глубина вложенности под-прогонов: 0 у прогона от триггера, +1 на каждый уровень <see cref="Model.RunMacroNode"/>.</summary>
     public int Depth { get; init; }
 
-    /// <summary>Names of ancestor macros (root first), EXCLUDING the macro this context runs. Used for cycle detection.</summary>
+    /// <summary>Имена макросов-предков (корень первым), НЕ ВКЛЮЧАЯ тот макрос, который этот контекст исполняет. Нужны для обнаружения циклов.</summary>
     public IReadOnlyList<string> CallChain { get; init; } = [];
 
     /// <summary>
-    /// Progress hook invoked with the node id as the walker enters each node — the run
-    /// registry uses it to expose the current node without coupling the executor to it.
+    /// Крючок прогресса: вызывается с id ноды, когда walker в неё входит, — реестр прогонов
+    /// через него выставляет наружу текущую ноду, не связывая себя с исполнителем.
     /// </summary>
     public Action<string>? OnNodeEntered { get; init; }
 
     /// <summary>
-    /// Structured progress channel: nodes, outcomes, details, durations. <c>null</c> means
-    /// "not instrumented", which is the shape every test that predates D3b has.
+    /// Структурированный канал прогресса: ноды, исходы, подробности, длительности. <c>null</c>
+    /// означает «без съёма показаний» — именно в таком виде выглядит любой тест, написанный до
+    /// D3b.
     ///
-    /// Separate from <see cref="OnNodeEntered"/> rather than replacing it: that hook feeds
-    /// the run registry, is one line of state, and fires on the same walk-shared handle for
-    /// every sub-walk. This one is per WALK and is what the canvas follows.
+    /// Отдельно от <see cref="OnNodeEntered"/>, а не вместо него: тот крючок кормит реестр
+    /// прогонов, представляет собой одну строку состояния и для каждого под-обхода стреляет по
+    /// одному и тому же общему на весь прогон дескриптору. Этот же канал — ПООБХОДНЫЙ, и именно
+    /// за ним следует канва.
     /// </summary>
     public IMacroRunObserver? Observer { get; init; }
 
     /// <summary>
-    /// The debugger's control channel (wave D5): pause, step, run-to-node, breakpoints.
-    /// <c>null</c> means "not debuggable", which is what every test that predates D5 has and
-    /// what a host without a panel effectively is.
+    /// Канал управления отладчика (волна D5): пауза, шаг, до ноды, точки останова. <c>null</c>
+    /// означает «отлаживать нельзя» — именно так выглядит любой тест, написанный до D5, и по
+    /// сути так же выглядит хост без панели.
     ///
-    /// The counterpart of <see cref="Observer"/> — that one reports, this one decides whether
-    /// the walk may proceed — and inherited by sub-walks the same way, so a
-    /// <see cref="Model.RunMacroNode"/> fork is debuggable per walk.
+    /// Двойник <see cref="Observer"/> — тот докладывает, этот решает, можно ли обходу идти
+    /// дальше, — и наследуется под-обходами так же, поэтому каждая ветка разветвления
+    /// <see cref="Model.RunMacroNode"/> отлаживается по отдельности.
     /// </summary>
     public IMacroDebugger? Debugger { get; init; }
 }

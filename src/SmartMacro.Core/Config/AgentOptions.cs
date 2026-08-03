@@ -1,21 +1,22 @@
 namespace SmartMacro.Config;
 
 /// <summary>
-/// Infra/runtime settings bound from the "Agent" section of appsettings.json.
+/// Инфраструктурные настройки времени выполнения, привязанные к секции "Agent" в
+/// appsettings.json.
 ///
-/// Deliberately tiny: process selection lives in <c>ProcessProfiles</c>, identity in
-/// <c>WindowRegistry</c> tags, and every coordinate, region, template, key binding and
-/// timeout that used to sit here now lives inside macro nodes where the user can edit it
-/// without touching config. All that's left is polling cadence.
+/// Намеренно крошечные: выбор процессов живёт в <c>ProcessProfiles</c>, идентичность — в тегах
+/// <c>WindowRegistry</c>, а каждая координата, область, шаблон, привязка клавиши и таймаут,
+/// которые раньше лежали здесь, теперь живут внутри нод макроса, где пользователь правит их, не
+/// трогая конфиг. Остался только темп опроса.
 /// </summary>
 public sealed class AgentOptions
 {
     /// <summary>
-    /// How often ProcessMonitor polls the OS process list to diff against the previous
-    /// snapshot.
+    /// Как часто ProcessMonitor опрашивает список процессов ОС, чтобы сравнить его с прошлым
+    /// снимком.
     /// </summary>
     public int ProcessPollIntervalSeconds { get; init; } = 1;
 
-    /// <summary>How often each agent checks whether its window is still alive.</summary>
+    /// <summary>Как часто каждый агент проверяет, живо ли ещё его окно.</summary>
     public int AgentPollIntervalSeconds { get; init; } = 2;
 }

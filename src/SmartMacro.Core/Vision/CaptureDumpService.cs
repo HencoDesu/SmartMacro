@@ -5,46 +5,46 @@ using SmartMacro.Windows;
 namespace SmartMacro.Vision;
 
 /// <summary>
-/// The "Dump captures" diagnostic: for every window the registry knows about, write what
-/// the vision pipeline actually sees into <c>debug/</c> next to the executable.
+/// Диагностика «Дамп захватов»: для каждого известного реестру окна записать в <c>debug/</c>
+/// рядом с исполняемым файлом то, что конвейер зрения на самом деле видит.
 ///
-///   <c>{process}-{tags}-full.png</c>      — the raw PrintWindow capture
+///   <c>{process}-{tags}-full.png</c>      — сырой захват PrintWindow
 ///   <c>{process}-{tags}-class-bin.png</c> — <see cref="IClassMatcher.DebugBinarizeClassRegion"/>,
-///                                            i.e. the mask MatchTemplate is handed
+///                                            то есть та маска, которую отдают в MatchTemplate
 ///
-/// Between the two you can tell a mis-placed region apart from an unreadable binarisation
-/// — the two failure modes that look identical from "the macro didn't find the element".
-/// Open the in-game stats window (default <c>C</c>) before dumping, otherwise the class
-/// region is empty by construction.
+/// По двум файлам сразу видно, промахнулась ли область или бинаризация вышла нечитаемой, — а
+/// это два режима отказа, которые со стороны «макрос не нашёл элемент» выглядят одинаково.
+/// Перед дампом откройте игровое окно характеристик (по умолчанию <c>C</c>), иначе область
+/// класса будет пуста по построению.
 ///
-/// Lived in <c>MainWindow.axaml.cs</c> until stage 2B. It moved here because the captures
-/// have to be taken in the process that owns the windows: after the split the UI has no
-/// <see cref="WindowRegistry"/>, no OpenCV, and no <see cref="IGameWindow"/> handles — it
-/// sends <c>DumpCaptures</c>, gets a folder path back, and opens Explorer on it.
+/// До стадии 2B это жило в <c>MainWindow.axaml.cs</c>. Переехало сюда, потому что захваты
+/// обязан делать тот процесс, которому окна и принадлежат: после разделения у UI нет ни
+/// <see cref="WindowRegistry"/>, ни OpenCV, ни дескрипторов <see cref="IGameWindow"/> — он
+/// отправляет <c>DumpCaptures</c>, получает обратно путь к папке и открывает на ней проводник.
 ///
-/// Nothing here throws for a single bad window: a capture that fails writes a sibling
-/// <c>.error.txt</c> and the sweep continues, because the usual reason to dump captures is
-/// that something is already broken.
+/// Ничто здесь не бросает из-за одного плохого окна: неудавшийся захват пишет рядом
+/// <c>.error.txt</c>, и обход продолжается, потому что обычная причина снимать дамп — что-то
+/// уже сломано.
 /// </summary>
 public sealed partial class CaptureDumpService
 {
-    /// <summary>Name of the dump folder, relative to the app directory.</summary>
+    /// <summary>Имя папки дампа относительно каталога приложения.</summary>
     public const string FolderName = "debug";
 
     private readonly WindowRegistry _windows;
     private readonly IClassMatcher _matcher;
     private readonly ILogger<CaptureDumpService> _logger;
 
-    /// <summary>Production constructor: <c>debug/</c> next to the executable.</summary>
+    /// <summary>Боевой конструктор: <c>debug/</c> рядом с исполняемым файлом.</summary>
     public CaptureDumpService(WindowRegistry windows, IClassMatcher matcher, ILogger<CaptureDumpService> logger)
         : this(AppContext.BaseDirectory, windows, matcher, logger)
     {
     }
 
-    /// <param name="baseDirectory">Folder that will contain <c>debug/</c>. Tests point this at a temp dir.</param>
-    /// <param name="windows">Source of the windows to capture and of their hwnd → facade lookup.</param>
-    /// <param name="matcher">Supplies the binarised class-region view.</param>
-    /// <param name="logger">Diagnostics sink.</param>
+    /// <param name="baseDirectory">Папка, внутри которой окажется <c>debug/</c>. Тесты направляют её во временный каталог.</param>
+    /// <param name="windows">Источник окон для захвата и поиска «hwnd → фасад».</param>
+    /// <param name="matcher">Поставляет бинаризованный вид области класса.</param>
+    /// <param name="logger">Приёмник диагностики.</param>
     public CaptureDumpService(
         string baseDirectory,
         WindowRegistry windows,
@@ -58,16 +58,17 @@ public sealed partial class CaptureDumpService
         FolderPath = Path.Combine(baseDirectory, FolderName);
     }
 
-    /// <summary>Absolute path of the dump folder. Exists only after the first <see cref="DumpAsync"/>.</summary>
+    /// <summary>Абсолютный путь к папке дампа. Существует только после первого <see cref="DumpAsync"/>.</summary>
     public string FolderPath { get; }
 
     /// <summary>
-    /// Captures every registered window and writes the two PNGs per window.
+    /// Захватывает каждое зарегистрированное окно и пишет по два PNG на окно.
     /// </summary>
+    /// <param name="cancellationToken">Токен отмены.</param>
     /// <returns>
-    /// <see cref="FolderPath"/> — the caller (UI, over IPC) only needs somewhere to point
-    /// Explorer at. A registry with no windows still yields the created, empty folder
-    /// rather than an error: "nothing was captured" is itself the diagnostic.
+    /// <see cref="FolderPath"/> — вызывающему (UI, по IPC) нужно только куда-то направить
+    /// проводник. Реестр без окон всё равно даёт созданную пустую папку, а не ошибку: «ничего
+    /// не захвачено» само по себе и есть диагностика.
     /// </returns>
     public async Task<string> DumpAsync(CancellationToken cancellationToken = default)
     {
@@ -79,9 +80,9 @@ public sealed partial class CaptureDumpService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // The registry is the only hwnd → drivable-window lookup there is; an entry
-            // registered without a facade (or a window that died since the snapshot) simply
-            // has nothing to capture.
+            // Реестр — единственный способ найти по hwnd управляемое окно; у записи,
+            // зарегистрированной без фасада (или у окна, умершего после снятия снимка), просто
+            // нечего захватывать.
             if (_windows.TryGetWindow(info.Hwnd) is not { } window)
             {
                 continue;
@@ -93,7 +94,8 @@ public sealed partial class CaptureDumpService
             try
             {
                 fullCapture = window.CaptureScreenshot();
-                await File.WriteAllBytesAsync(Path.Combine(FolderPath, $"{stem}-full.png"), fullCapture, cancellationToken)
+                await File.WriteAllBytesAsync(Path.Combine(FolderPath, $"{stem}-full.png"), fullCapture,
+                        cancellationToken)
                     .ConfigureAwait(false);
                 captured++;
             }
@@ -108,7 +110,8 @@ public sealed partial class CaptureDumpService
             try
             {
                 var binarised = _matcher.DebugBinarizeClassRegion(fullCapture);
-                await File.WriteAllBytesAsync(Path.Combine(FolderPath, $"{stem}-class-bin.png"), binarised, cancellationToken)
+                await File.WriteAllBytesAsync(Path.Combine(FolderPath, $"{stem}-class-bin.png"), binarised,
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -123,8 +126,8 @@ public sealed partial class CaptureDumpService
         return FolderPath;
     }
 
-    // "{process}-{tag+tag}", or the handle when the window has no tags yet — which is the
-    // interesting case anyway (a dump is usually taken because identification failed).
+    // «{process}-{тег+тег}» либо дескриптор, если тегов у окна пока нет, — а это как раз и есть
+    // интересный случай (дамп обычно снимают потому, что опознание не сработало).
     private static string StemFor(ManagedWindowInfo info)
     {
         var label = info.Tags.Count > 0
@@ -144,6 +147,7 @@ public sealed partial class CaptureDumpService
                 chars[i] = '_';
             }
         }
+
         return new string(chars);
     }
 
@@ -156,8 +160,8 @@ public sealed partial class CaptureDumpService
         }
         catch (Exception writeEx) when (writeEx is IOException or UnauthorizedAccessException)
         {
-            // The dump folder itself is unwritable. Already logged the real failure above;
-            // losing the .txt copy of it is not worth aborting the sweep for.
+            // В саму папку дампа писать нельзя. Настоящий сбой уже записан в лог выше, и
+            // потеря его .txt-копии не стоит того, чтобы обрывать обход.
         }
     }
 
@@ -167,6 +171,7 @@ public sealed partial class CaptureDumpService
     [LoggerMessage(LogLevel.Warning, "Capture dump: class-region binarisation failed for hwnd=0x{Hwnd:X}")]
     partial void LogBinarizeFailed(Exception ex, long hwnd);
 
-    [LoggerMessage(LogLevel.Information, "Capture dump finished: {Captured} window(s) captured, {Failed} failure(s) → '{Folder}'")]
+    [LoggerMessage(LogLevel.Information,
+        "Capture dump finished: {Captured} window(s) captured, {Failed} failure(s) → '{Folder}'")]
     partial void LogDumpFinished(int captured, int failed, string folder);
 }

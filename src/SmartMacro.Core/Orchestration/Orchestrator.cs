@@ -12,25 +12,27 @@ using SmartMacro.ProcessMonitoring;
 
 namespace SmartMacro.Orchestration;
 
-// The one place a trigger turns into a macro run. Every path — hotkey, process-appeared,
-// UI Run — funnels through RunAsync:
+// Единственное место, где триггер превращается в прогон макроса. Все пути — хоткей, появление
+// процесса, кнопка «Запустить» в UI — сходятся в RunAsync:
 //
-//   trigger → MacroGraphStore.TryGet(name)
-//           → MacroRunRegistry.TryBegin(name, singleFlightKey)   [null = already running]
+//   триггер → MacroGraphStore.TryGet(name)
+//           → MacroRunRegistry.TryBegin(name, singleFlightKey)   [null = уже выполняется]
 //           → MacroExecutor.RunAsync(graph, context, handle.Token)
-//           → MacroRunRegistry.Complete(runId)                   [always, in finally]
+//           → MacroRunRegistry.Complete(runId)                   [всегда, в finally]
 //
-// The two trigger sources differ only in what they put in the context:
-//   * hotkey           — no context window; the macro routes via tag selectors, and
-//                        single-flight is per macro NAME (hammering a hotkey is a no-op).
-//   * process-appeared — the new window IS the context, and single-flight is per
-//                        (macro, window) so nine clients launching at once each boot.
-// Both seed the `cursor` variable, because a macro can't know how it was started.
+// Два источника триггеров отличаются только тем, что кладут в контекст:
+//   * хоткей            — контекст-окна нет; макрос маршрутизирует по теговым селекторам, а
+//                         single-flight идёт по ИМЕНИ макроса (долбить по хоткею бесполезно).
+//   * появление процесса — контекстом СЛУЖИТ новое окно, а single-flight идёт по паре
+//                         (макрос, окно), чтобы девять одновременно запущенных клиентов
+//                         загрузились каждый.
+// Оба засевают переменную `cursor`, потому что макрос не может знать, как именно его запустили.
 //
-// Beyond that the orchestrator only owns agent lifecycle: spawn one per appeared process,
-// hold them so shutdown can stop them all. Nothing outside observes that set — since W0.3
-// the UI watches WindowRegistry and MacroRunRegistry instead. Agents no longer receive
-// commands either — there is no inbox broadcast any more, just macro runs against handles.
+// Сверх этого оркестратор владеет только жизненным циклом агентов: породить по одному на каждый
+// появившийся процесс и держать их, чтобы при выключении остановить всех. Наружу это множество
+// никто не наблюдает — с W0.3 UI смотрит на WindowRegistry и MacroRunRegistry. Команд агенты
+// тоже больше не получают: широковещательной рассылки во входящие нет, есть только прогоны
+// макросов по дескрипторам.
 public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDisposable
 {
     private readonly ILogger<Orchestrator> _logger;
@@ -69,18 +71,19 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         _executor = executor;
         _runs = runs;
         _cursor = cursor;
-        // Optional: the daemon always supplies one, and it is the panel's live canvas. A
-        // host without it (or a test) runs uninstrumented, which is also what the daemon
-        // effectively does while nobody is subscribed.
+        // Необязателен: демон всегда подаёт его, и именно на нём живёт подсветка на канве в
+        // панели. Хост без наблюдателя (или тест) работает без съёма показаний — ровно так же,
+        // как по сути ведёт себя и демон, пока никто не подписан.
         _observer = observer;
-        // Same shape: inert until a panel attaches, at which point it can park a walk between
-        // two nodes. A host without one simply cannot be paused.
+        // Устроен так же: бездействует, пока не подключится панель, и вот тогда может
+        // припарковать обход между двумя нодами. Хост без отладчика просто нельзя поставить на
+        // паузу.
         _debugger = debugger;
 
         _processMonitor = processMonitor;
         _processMonitor.ProcessAppeared += OnProcessAppeared;
-        // No subscription to ProcessDisappeared — agents detect dead windows via
-        // IGameWindow.IsAlive themselves and self-terminate via AgentStoppingMessage.
+        // На ProcessDisappeared не подписываемся — агенты сами замечают мёртвые окна через
+        // IGameWindow.IsAlive и сами завершаются, сообщая об этом AgentStoppingMessage.
 
         _hotkeyListener = hotkeyListener;
         _hotkeyListener.MacroTriggered += OnMacroTriggered;
@@ -92,8 +95,8 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
     }
 
     /// <summary>
-    /// Starts a macro by name with no context window — the manual equivalent of pressing
-    /// its hotkey. Used by the UI's Run button. Fire-and-forget; failures are logged.
+    /// Запускает макрос по имени без контекст-окна — ручной эквивалент нажатия его хоткея. Этим
+    /// пользуется кнопка «Запустить» в UI. «Отправил и забыл»; сбои уходят в лог.
     /// </summary>
     public void RunMacro(string macroName)
     {
@@ -101,11 +104,11 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
     }
 
     /// <summary>
-    /// Runs one macro to completion under the run registry.
+    /// Прогоняет один макрос до конца под присмотром реестра прогонов.
     /// </summary>
-    /// <param name="macroName">Graph to run; unknown names are a logged no-op.</param>
-    /// <param name="contextWindow">Window targetless nodes act on, or <c>null</c> for selector-only macros.</param>
-    /// <param name="singleFlightKey">Dedupe key; <c>null</c> = the macro name (see <see cref="MacroRunRegistry.TryBegin"/>).</param>
+    /// <param name="macroName">Граф для прогона; неизвестное имя ничего не делает, только пишет в лог.</param>
+    /// <param name="contextWindow">Окно, по которому работают ноды без цели, или <c>null</c> для макросов, живущих одними селекторами.</param>
+    /// <param name="singleFlightKey">Ключ схлопывания повторов; <c>null</c> = имя макроса (см. <see cref="MacroRunRegistry.TryBegin"/>).</param>
     public async Task RunAsync(string macroName, IntPtr? contextWindow, string? singleFlightKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(macroName);
@@ -120,7 +123,7 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         var handle = _runs.TryBegin(macroName, singleFlightKey);
         if (handle is null)
         {
-            // Already running under this key — the registry logged it.
+            // По этому ключу уже что-то выполняется — реестр это записал.
             return;
         }
 
@@ -143,8 +146,8 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         }
         catch (Exception ex)
         {
-            // MacroExecutor converts run-level failures into results; anything reaching
-            // here is a bug, and must still not take the host down.
+            // MacroExecutor превращает сбои уровня прогона в результаты; всё, что долетело
+            // сюда, — это баг, и он всё равно не имеет права уронить хост.
             LogMacroFailed(ex, macroName);
         }
         finally
@@ -175,8 +178,9 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
             {
                 _agents.Add(agent);
             }
-            // Start registers the window (and its drivable facade) in WindowRegistry — it
-            // must happen before any macro targets the handle.
+
+            // Start регистрирует окно (и фасад управления им) в WindowRegistry — это обязано
+            // случиться раньше, чем какой-нибудь макрос нацелится на этот дескриптор.
             agent.Start();
         }
         catch (Exception ex)
@@ -188,15 +192,16 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         StartProcessAppearedMacros(info.ProcessName, agent.Handle);
     }
 
-    // Every graph with a matching ProcessAppearedTrigger runs against the new window.
-    // Several may match — a boot macro plus, say, a window-positioning one — so they all
-    // start in parallel, each with its own run entry.
+    // По новому окну прогоняется каждый граф с подходящим ProcessAppearedTrigger. Подойти может
+    // сразу несколько — загрузочный макрос плюс, скажем, расстановщик окон, — поэтому все они
+    // стартуют параллельно, каждый со своей записью о прогоне.
     private void StartProcessAppearedMacros(string processName, IntPtr hwnd)
     {
         foreach (var graph in _macros.All)
         {
             if (!graph.Triggers.OfType<ProcessAppearedTrigger>()
-                    .Any(trigger => string.Equals(trigger.ProcessName, processName, StringComparison.OrdinalIgnoreCase)))
+                    .Any(trigger =>
+                        string.Equals(trigger.ProcessName, processName, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
@@ -222,8 +227,8 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        // Cancel in-flight macro runs first: they drive windows the agents are about to
-        // tear down, and a run left mid-activation would keep a client woken up.
+        // Сначала отменяем прогоны на лету: они управляют окнами, которые агенты вот-вот
+        // снесут, а прогон, брошенный посреди активации, оставил бы клиент разбуженным.
         try
         {
             await _runs.StopAllAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -259,8 +264,8 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         }
     }
 
-    // Asks every agent to stop and waits for their RunningTask. Best-effort within the
-    // host's shutdown deadline; survivors get torn down by process exit.
+    // Просит каждого агента остановиться и ждёт их RunningTask. По возможности укладывается в
+    // отведённый хостом срок на выключение; выжившие сносятся вместе с выходом процесса.
     private async Task StopAllAgentsAsync(CancellationToken cancellationToken)
     {
         CharacterAgent[] snapshot;
@@ -268,6 +273,7 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         {
             snapshot = _agents.ToArray();
         }
+
         if (snapshot.Length == 0)
         {
             return;
@@ -322,12 +328,14 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
                 {
                     _agents.Remove(stopping.Agent);
                 }
+
                 break;
 
             default:
                 LogUnhandledUpstreamMessageType(message.GetType().Name);
                 break;
         }
+
         return Task.CompletedTask;
     }
 

@@ -4,27 +4,27 @@ using SmartMacro.Native;
 namespace SmartMacro.Macros.Execution;
 
 /// <summary>
-/// Run-scoped variables: name → <see cref="VariableValue"/> (string | number | point).
-/// Written by the trigger (always seeds <see cref="CursorVariableName"/>) and by
-/// conditional nodes (<c>ResultVar</c>/<c>FoundPointVar</c>); read via <c>PointVar</c>
-/// and <c>{name}</c> interpolation in string parameters. Sub-runs get a <see cref="Clone"/>,
-/// never the same instance — writes don't leak across runs.
+/// Переменные в области видимости прогона: имя → <see cref="VariableValue"/> (строка | число |
+/// точка). Пишут их триггер (всегда засевает <see cref="CursorVariableName"/>) и условные ноды
+/// (<c>ResultVar</c>/<c>FoundPointVar</c>); читают через <c>PointVar</c> и через интерполяцию
+/// <c>{name}</c> в строковых параметрах. Под-прогонам достаётся <see cref="Clone"/>, а не тот же
+/// экземпляр, — записи между прогонами не протекают.
 ///
-/// Not thread-safe by design: only the single walker of one run writes; parallel fan-outs
-/// only read, and sub-runs own their clones.
+/// Не потокобезопасно по замыслу: пишет только единственный walker одного прогона; параллельные
+/// ветки разветвления лишь читают, а у под-прогонов свои копии.
 /// </summary>
 public sealed class MacroVariables
 {
     /// <summary>
-    /// Variable every trigger writes: the cursor position at fire time. Aliases the Contracts
-    /// constant rather than repeating the literal — the panel's variables panel labels the
-    /// same name as «триггер (сид)» and the two must not be able to drift.
+    /// Переменная, которую пишет любой триггер: позиция курсора в момент срабатывания. Это
+    /// псевдоним константы из Contracts, а не повторение литерала: панель переменных подписывает
+    /// то же имя как «триггер (сид)», и разъехаться этим двоим нельзя.
     /// </summary>
     public const string CursorVariableName = MacroVariableNames.Cursor;
 
     private readonly Dictionary<string, VariableValue> _values;
 
-    /// <summary>Creates an empty variable set.</summary>
+    /// <summary>Создаёт пустой набор переменных.</summary>
     public MacroVariables()
     {
         _values = new Dictionary<string, VariableValue>(StringComparer.Ordinal);
@@ -35,20 +35,21 @@ public sealed class MacroVariables
         _values = values;
     }
 
-    /// <summary>Number of defined variables.</summary>
+    /// <summary>Сколько переменных определено.</summary>
     public int Count => _values.Count;
 
     /// <summary>
-    /// Every variable currently set, for the run-event stream's <c>VariableSet</c> report at
-    /// the head of a walk. Enumerated on the walker's own thread before the first node, which
-    /// is the only moment nothing can be writing — see the thread-safety note above.
+    /// Все установленные на данный момент переменные — для доклада <c>VariableSet</c> в поток
+    /// событий прогона в начале обхода. Перечисляется на собственном потоке walker'а до первой
+    /// ноды, и это единственный момент, когда писать точно никто не может, — см. замечание о
+    /// потокобезопасности выше.
     /// </summary>
     public IEnumerable<KeyValuePair<string, VariableValue>> Entries => _values;
 
     /// <summary>
-    /// Creates the variable set for a fresh trigger-initiated run: <c>cursor</c> is set to
-    /// the cursor position at fire time. Every launch path (hotkey, process-appeared,
-    /// UI Run) goes through this.
+    /// Создаёт набор переменных для нового прогона от триггера: <c>cursor</c> ставится в
+    /// позицию курсора на момент срабатывания. Через это проходит любой путь запуска (хоткей,
+    /// появление процесса, кнопка «Запустить» в UI).
     /// </summary>
     public static MacroVariables ForTrigger(ScreenPoint cursorPosition)
     {
@@ -57,7 +58,7 @@ public sealed class MacroVariables
         return variables;
     }
 
-    /// <summary>Sets (or overwrites) a variable. Names are case-sensitive.</summary>
+    /// <summary>Ставит (или перезаписывает) переменную. Регистр в именах важен.</summary>
     public void Set(string name, VariableValue value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -65,22 +66,22 @@ public sealed class MacroVariables
         _values[name] = value;
     }
 
-    /// <summary>Non-throwing read.</summary>
+    /// <summary>Чтение, которое не бросает.</summary>
     public bool TryGet(string name, out VariableValue value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         return _values.TryGetValue(name, out value!);
     }
 
-    /// <summary>Reads a variable; missing name throws <see cref="MacroVariableNotFoundException"/>.</summary>
+    /// <summary>Читает переменную; на отсутствующее имя бросает <see cref="MacroVariableNotFoundException"/>.</summary>
     public VariableValue Get(string name)
     {
         return TryGet(name, out var value) ? value : throw new MacroVariableNotFoundException(name);
     }
 
     /// <summary>
-    /// Reads a variable that must hold a point (ClickNode.PointVar). Missing name throws
-    /// <see cref="MacroVariableNotFoundException"/>; a non-point value throws
+    /// Читает переменную, которая обязана держать точку (ClickNode.PointVar). На отсутствующее
+    /// имя бросает <see cref="MacroVariableNotFoundException"/>; на значение не-точку —
     /// <see cref="MacroVariableTypeMismatchException"/>.
     /// </summary>
     public ScreenPoint GetPoint(string name)
@@ -92,9 +93,9 @@ public sealed class MacroVariables
     }
 
     /// <summary>
-    /// Replaces every <c>{name}</c> placeholder in <paramref name="template"/> with the
-    /// variable's display string. A placeholder referencing an undefined variable throws
-    /// <see cref="MacroVariableNotFoundException"/> — the executor aborts the run.
+    /// Заменяет каждый заполнитель <c>{name}</c> в <paramref name="template"/> строкой показа
+    /// соответствующей переменной. Заполнитель, ссылающийся на неопределённую переменную,
+    /// бросает <see cref="MacroVariableNotFoundException"/> — исполнитель обрывает прогон.
     /// </summary>
     public string Interpolate(string template)
     {
@@ -102,7 +103,7 @@ public sealed class MacroVariables
         return MacroVariableNames.Placeholder().Replace(template, match => Get(match.Groups[1].Value).DisplayString);
     }
 
-    /// <summary>Independent copy for a sub-run: reads inherit, writes never flow back.</summary>
+    /// <summary>Независимая копия для под-прогона: чтения наследуются, записи обратно не текут.</summary>
     public MacroVariables Clone()
     {
         return new MacroVariables(new Dictionary<string, VariableValue>(_values, StringComparer.Ordinal));

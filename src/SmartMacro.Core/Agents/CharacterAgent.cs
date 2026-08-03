@@ -7,27 +7,28 @@ using SmartMacro.Windows;
 
 namespace SmartMacro.Agents;
 
-// One agent per watched game-client process — now purely a WINDOW LIFETIME OWNER.
+// По одному агенту на каждый отслеживаемый процесс игрового клиента — теперь это чистый
+// ВЛАДЕЛЕЦ ВРЕМЕНИ ЖИЗНИ ОКНА.
 //
-// Everything that used to make this class interesting (boot flow, identification, inbox
-// commands, per-class keys) moved into macro graphs: the orchestrator runs those against
-// window handles, and the primitives layer resolves a handle back to this window through
-// WindowRegistry. What's left is the part macros can't do for themselves:
+// Всё, что делало этот класс интересным (загрузочный сценарий, идентификация, команды из
+// входящей очереди, клавиши под класс персонажа), переехало в графы макросов: оркестратор
+// гоняет их по дескрипторам окон, а слой примитивов возвращается от дескриптора к этому окну
+// через WindowRegistry. Осталось то, что макрос не может сделать сам за себя:
 //
-//   * Start()  — registers the window (handle + process name + drivable facade) in
-//                WindowRegistry and starts the aliveness loop.
-//   * the loop — notices when the client is gone and tears the registration down, which
-//                is what removes the window from every macro's selector reach.
-//   * Stop()   — cancels the loop for orderly shutdown.
+//   * Start()  — регистрирует окно (дескриптор + имя процесса + фасад, через который окном
+//                управляют) в WindowRegistry и запускает цикл проверки живости.
+//   * цикл     — замечает, что клиента больше нет, и сносит регистрацию, а это и есть то, что
+//                убирает окно из зоны досягаемости всех селекторов.
+//   * Stop()   — отменяет цикл при штатном выключении.
 //
-// Identity lives entirely in the registry: "identified" just means "carries at least one
-// tag". Tags are applied by RecognizeTagNode/AddTagNode, or by hand from the UI — the agent
-// itself never reads them, and logs the hwnd, which is the stable key everything else
-// addresses this window by.
+// Идентичность целиком живёт в реестре: «опознан» означает всего лишь «несёт хотя бы один
+// тег». Теги проставляют RecognizeTagNode/AddTagNode или руками из UI — сам агент их никогда
+// не читает и логирует hwnd, стабильный ключ, по которому к этому окну обращается всё
+// остальное.
 //
-// TODO(W0.4): now that this is a lifetime shell, folding it into WindowRegistry (or a
-// small WindowHost) is the natural next simplification — the remaining obstacle is that
-// the registry has no async creation path and no per-window poll loop of its own.
+// TODO(W0.4): раз это уже оболочка над временем жизни, естественное следующее упрощение —
+// сложить её в WindowRegistry (или в маленький WindowHost); мешает пока то, что у реестра нет
+// ни асинхронного пути создания, ни собственного цикла опроса на окно.
 public sealed partial class CharacterAgent
 {
     private readonly IGameWindow _window;
@@ -55,17 +56,17 @@ public sealed partial class CharacterAgent
         _logger = logger;
     }
 
-    /// <summary>Underlying game-window handle — the key macros address this window by.</summary>
+    /// <summary>Дескриптор игрового окна под капотом — ключ, по которому к этому окну обращаются макросы.</summary>
     public IntPtr Handle => _window.Handle;
 
     public Task? RunningTask { get; private set; }
 
     /// <summary>
-    /// Registers the window in <see cref="WindowRegistry"/> — handle, process name, and
-    /// the facade the macro primitives drive it through — and starts the aliveness loop.
-    /// Macros triggered by this window's process must not start before this returns.
+    /// Регистрирует окно в <see cref="WindowRegistry"/> — дескриптор, имя процесса и фасад,
+    /// через который им управляют примитивы макросов, — и запускает цикл проверки живости.
+    /// Макросы, которые запускает процесс этого окна, не должны стартовать до возврата отсюда.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown when called on an already-running agent.</exception>
+    /// <exception cref="InvalidOperationException">Бросается при вызове на уже запущенном агенте.</exception>
     public void Start()
     {
         if (RunningTask is not null)
@@ -81,18 +82,19 @@ public sealed partial class CharacterAgent
     }
 
     /// <summary>
-    /// Signals the run loop to stop. The loop exits, unregisters the window from
-    /// <see cref="WindowRegistry"/>, writes <see cref="AgentStoppingMessage"/>, and the
-    /// task completes via <see cref="RunningTask"/>.
+    /// Даёт рабочему циклу сигнал остановиться. Цикл выходит, снимает окно с регистрации в
+    /// <see cref="WindowRegistry"/>, пишет <see cref="AgentStoppingMessage"/>, и задача
+    /// завершается через <see cref="RunningTask"/>.
     /// </summary>
     public void Stop()
     {
         _runCts?.Cancel();
     }
 
-    // Window-death detection, nothing else. Ticking is cheap (one IsWindow call) and the
-    // registry entry has to disappear promptly: a dead hwnd left registered would keep
-    // matching tag selectors, so every fan-out would waste an activation cycle on it.
+    // Обнаружение смерти окна и больше ничего. Тик дешёвый (один вызов IsWindow), а запись в
+    // реестре обязана исчезнуть быстро: мёртвый hwnd, оставшийся зарегистрированным, продолжал
+    // бы подходить под теговые селекторы, и каждое разветвление тратило бы на него цикл
+    // активации впустую.
     private async Task RunLoopAsync(CancellationToken cancellationToken)
     {
         LogStarted(Handle.ToInt64(), _pollInterval);
@@ -123,8 +125,8 @@ public sealed partial class CharacterAgent
         finally
         {
             LogStopped(Handle.ToInt64());
-            // Window is gone (or we're shutting down) — the registry entry and its tags
-            // die with it. Raises WindowClosed for registry subscribers.
+            // Окна больше нет (или мы выключаемся) — запись в реестре и её теги умирают
+            // вместе с ним. Поднимает WindowClosed для подписчиков реестра.
             _registry.Unregister(Handle);
             _outbox.TryWrite(new AgentStoppingMessage(this));
             _runCts?.Dispose();

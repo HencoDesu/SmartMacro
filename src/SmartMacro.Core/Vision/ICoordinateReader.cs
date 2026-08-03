@@ -2,30 +2,30 @@ using SmartMacro.Models;
 
 namespace SmartMacro.Vision;
 
-// Reads the player's in-game coordinates from the HUD by OCR'ing the top-right "X, Z · Y"
-// indicator on a screenshot. Returns null when:
-//   * the screenshot doesn't contain a recognizable coord region (wrong UI scale,
-//     character-select screen, etc.)
-//   * OCR confidence is too low or the parsed text doesn't yield three integers
+// Читает игровые координаты игрока с HUD, распознавая (OCR) индикатор «X, Z · Y» в правом
+// верхнем углу скриншота. Возвращает null, когда:
+//   * на скриншоте нет узнаваемой области координат (не тот масштаб интерфейса, экран выбора
+//     персонажа и тому подобное);
+//   * уверенность OCR слишком мала либо из разобранного текста не выходит трёх целых чисел.
 //
-// All inputs/outputs are raw image bytes / value types so the interface stays free of
-// OpenCV/Tesseract types.
+// Все входы и выходы — сырые байты изображения и значимые типы, чтобы интерфейс оставался
+// свободным от типов OpenCV и Tesseract.
 public interface ICoordinateReader
 {
     /// <summary>
-    /// Reads the coordinates HUD region from a screenshot.
+    /// Читает со скриншота область HUD с координатами.
     /// </summary>
-    /// <returns>The parsed coordinates, or <c>null</c> when the region is missing / OCR fails / the parse doesn't yield three integers.</returns>
+    /// <returns>Разобранные координаты или <c>null</c>, если области нет, OCR не справился либо разбор не дал трёх целых чисел.</returns>
     Coordinates? Read(byte[] screenshot);
 
     /// <summary>
-    /// Diagnostic — returns the raw cropped coord region. Used by the sample runner to
-    /// visualise/tune the preprocessing pipeline.
+    /// Диагностика — возвращает сырую обрезку области координат. Нужна прогонщику образцов,
+    /// чтобы разглядеть и подогнать конвейер предобработки.
     /// </summary>
     byte[] DebugCrop(byte[] screenshot);
 
     /// <summary>
-    /// Diagnostic — returns the binarised view that Tesseract actually sees.
+    /// Диагностика — возвращает бинаризованный вид, который Tesseract на самом деле и видит.
     /// </summary>
     byte[] DebugBinarize(byte[] screenshot);
 }

@@ -4,22 +4,23 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Input;
 
-// Wraps the activation lifecycle around every input send to a game window. The macro
-// primitives layer delegates here for any keypress / click — keeps the walker focused on
-// graph traversal, off the concerns of "wake the window, send, drain the queue, put it
-// back to sleep".
+// Оборачивает жизненный цикл активации вокруг каждой отправки ввода в игровое окно. Слой
+// примитивов макроса делегирует сюда любое нажатие клавиши и любой клик — так walker занят
+// обходом графа, а не заботами вида «разбуди окно, отправь, дай очереди слиться, уложи обратно
+// спать».
 //
-// All methods follow the same shape:
-//   1. ActivateAsync (wake the frozen background window)
-//   2. send the input via PostMessage primitives
-//   3. DeactivateAsync (drain delay + put the window back to sleep, unless foreground)
+// Все методы устроены одинаково:
+//   1. ActivateAsync (разбудить замороженное фоновое окно)
+//   2. отправить ввод примитивами через PostMessage
+//   3. DeactivateAsync (пауза на слив + уложить окно обратно спать, если оно не на переднем
+//      плане)
 //
-// Exception-safe: try/finally guarantees Deactivate runs even if the inner send throws,
-// and send failures are logged rather than thrown — one unreachable window must not abort
-// a macro that legitimately targeted eight others.
+// Безопасно к исключениям: try/finally гарантирует, что Deactivate отработает, даже если
+// внутренняя отправка бросила, а сбои отправки пишутся в лог, а не пробрасываются — одно
+// недостижимое окно не должно обрывать макрос, который законно нацелился ещё на восемь.
 //
-// Logging is structured around the action label the caller passes ("Key(F8)", "Click") so
-// the operator can grep log lines for a specific action.
+// Логирование выстроено вокруг метки действия, которую передаёт вызывающий («Key(F8)»,
+// «Click»), чтобы оператор мог грепать строки лога по конкретному действию.
 public sealed partial class AgentInputDispatcher
 {
     private readonly ILogger<AgentInputDispatcher> _logger;
@@ -29,9 +30,11 @@ public sealed partial class AgentInputDispatcher
         _logger = logger;
     }
 
-    /// <summary>Single-key send, wrapped in one activation cycle.</summary>
-    /// <param name="actionName">Semantic label for logging ("Key(F8)") — purely diagnostic, doesn't affect behavior.</param>
-    /// <param name="agentName">Window label used in log messages so the operator can grep per-window activity.</param>
+    /// <summary>Отправка одной клавиши, обёрнутая в один цикл активации.</summary>
+    /// <param name="window">Целевое игровое окно.</param>
+    /// <param name="key">Отправляемая клавиша.</param>
+    /// <param name="actionName">Смысловая метка для лога («Key(F8)») — чисто диагностическая, на поведение не влияет.</param>
+    /// <param name="agentName">Метка окна в сообщениях лога, чтобы оператор мог грепать активность по окну.</param>
     public async Task FireKeyAsync(IGameWindow window, VirtualKey key, string actionName, string agentName)
     {
         try
@@ -46,6 +49,7 @@ public sealed partial class AgentInputDispatcher
             {
                 await window.DeactivateAsync().ConfigureAwait(false);
             }
+
             LogActionFired(actionName, key, agentName);
         }
         catch (Exception ex)
@@ -55,9 +59,9 @@ public sealed partial class AgentInputDispatcher
     }
 
     /// <summary>
-    /// Single left/double click at a client-space point. Multi-boxing setups reuse one
-    /// point across identically-sized clients, which is what makes a cursor-broadcast
-    /// macro work.
+    /// Одиночный или двойной клик левой кнопкой в точку в клиентских координатах. В сборках с
+    /// несколькими клиентами одна и та же точка переиспользуется по клиентам одинакового
+    /// размера — на этом и держится макрос, рассылающий клик по позиции курсора.
     /// </summary>
     public async Task FireClickAsync(IGameWindow window, ScreenPoint point, bool doubleClick, string agentName)
     {

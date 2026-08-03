@@ -7,45 +7,48 @@ using SmartMacro.Config;
 
 namespace SmartMacro.ProcessMonitoring;
 
-// Polls Process.GetProcessesByName at a configurable interval and raises ProcessAppeared /
-// ProcessDisappeared events for every diff against the previous snapshot. Watches the
-// UNION of all ProcessProfiles process names — one enumeration per profile name per tick.
-// Designed to be cheap and tolerant of process crashes (a disappeared process is normal,
-// not an error).
+// Опрашивает Process.GetProcessesByName с настраиваемым интервалом и поднимает события
+// ProcessAppeared / ProcessDisappeared на каждое расхождение с предыдущим снимком. Следит за
+// ОБЪЕДИНЕНИЕМ имён процессов из всех ProcessProfiles — по одному перечислению на имя профиля за
+// тик. Задуман дешёвым и терпимым к падениям процессов (исчезнувший процесс — норма, а не
+// ошибка).
 //
-// The monitor is a passive observer — it doesn't know who listens to its events. The
-// orchestrator subscribes during construction. Other consumers (UI, diagnostics) can
-// subscribe too without the monitor caring.
+// Монитор — пассивный наблюдатель, он не знает, кто слушает его события. Оркестратор
+// подписывается при создании. Другие потребители (UI, диагностика) тоже могут подписаться, и
+// монитору до этого нет дела.
 public sealed partial class ProcessMonitor : IHostedService, IDisposable
 {
     private readonly IReadOnlyList<string> _processNames;
     private readonly TimeSpan _pollInterval;
     private readonly ILogger<ProcessMonitor> _logger;
 
-    // Pids for which we've already fired ProcessAppeared (i.e. their MainWindowHandle was
-    // non-zero by the time we got to them).
+    // Pid'ы, по которым мы уже подняли ProcessAppeared (то есть к моменту, когда мы до них
+    // добрались, их MainWindowHandle был ненулевым).
     private readonly HashSet<int> _knownPids = [];
 
-    // Pids we've seen with hwnd=0 and logged about. PW's launcher creates the process
-    // several seconds before its main window is initialised; without this two-stage
-    // tracking we'd fire ProcessAppeared with hwnd=0 (which crashes GameWindow's ctor)
-    // and then never retry. We keep polling these pids each tick until hwnd != 0; the
-    // "waiting" log fires once per pid so the operator sees the wait without log spam.
+    // Pid'ы, которые мы видели с hwnd=0 и о которых уже написали в лог. Лаунчер PW создаёт
+    // процесс за несколько секунд до того, как инициализируется его главное окно; без этого
+    // двухступенчатого учёта мы подняли бы ProcessAppeared с hwnd=0 (что роняет конструктор
+    // GameWindow) и больше никогда бы не попробовали. Такие pid'ы мы продолжаем опрашивать
+    // каждый тик, пока hwnd != 0; запись «ждём» пишется по разу на pid, чтобы оператор видел
+    // ожидание, но лог не засорялся.
     private readonly HashSet<int> _pidsLoggedWaiting = [];
 
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
     /// <summary>
-    /// Raised when a new watched process is detected with a valid main-window handle.
-    /// Late-bound: PW spawns its process before initialising the main window; the monitor
-    /// keeps polling until <see cref="ProcessInfo.MainWindowHandle"/> is non-zero, then fires.
+    /// Поднимается, когда обнаружен новый отслеживаемый процесс с годным дескриптором главного
+    /// окна. Событие «позднее»: PW порождает процесс раньше, чем инициализирует главное окно, и
+    /// монитор продолжает опрашивать, пока <see cref="ProcessInfo.MainWindowHandle"/> не станет
+    /// ненулевым, и только тогда стреляет.
     /// </summary>
     public event Action<ProcessInfo>? ProcessAppeared;
 
     /// <summary>
-    /// Raised when a previously-announced process is no longer present in the OS process
-    /// list. Only fires for pids we previously emitted via <see cref="ProcessAppeared"/>.
+    /// Поднимается, когда ранее объявленного процесса больше нет в списке процессов ОС.
+    /// Стреляет только по тем pid'ам, которые мы до этого выпустили через
+    /// <see cref="ProcessAppeared"/>.
     /// </summary>
     public event Action<int>? ProcessDisappeared;
 
@@ -68,9 +71,10 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
 
         if (_processNames.Count == 0)
         {
-            // Legal but almost certainly a config mistake — no profiles means no windows
-            // will ever be tracked. Keep the loop running anyway so hot-added consumers
-            // see consistent (empty) behavior instead of a dead service.
+            // Законно, но почти наверняка ошибка в конфиге: нет профилей — значит, ни одно окно
+            // никогда не будет отслежено. Цикл всё равно оставляем крутиться, чтобы
+            // подключившиеся на ходу потребители видели последовательное (пустое) поведение, а
+            // не мёртвую службу.
             LogNoProfiles();
         }
 
@@ -115,10 +119,10 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
             .Select(x => x.Pid)
             .ToImmutableHashSet();
 
-        // Disappearance — only fire for pids we previously announced as appeared. Pids
-        // that died while still waiting for their window are silently dropped from the
-        // "waiting" set; there's no need to fire Disappeared for something we never said
-        // had appeared in the first place.
+        // Исчезновение — стреляем только по тем pid'ам, о появлении которых мы раньше
+        // объявляли. Pid'ы, умершие, пока они ещё ждали своего окна, молча выбрасываются из
+        // множества «ждущих»: незачем поднимать Disappeared по тому, о чьём появлении мы
+        // изначально ничего не говорили.
         var gone = _knownPids
             .Where(knownPid => !currentPids.Contains(knownPid))
             .ToList();
@@ -132,13 +136,14 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
                 ProcessDisappeared?.Invoke(pid);
             }
         }
+
         _pidsLoggedWaiting.RemoveWhere(pid => !currentPids.Contains(pid));
 
-        // New appearances — defer ProcessAppeared until MainWindowHandle is non-zero.
-        // PW's elementclient_64 spawns the process several seconds before the main
-        // window is created; firing too early crashes GameWindow.ctor and the pid is
-        // never re-evaluated. Keeping the pid out of _knownPids until hwnd is ready
-        // means the next poll tick re-checks it.
+        // Новые появления — откладываем ProcessAppeared, пока MainWindowHandle не станет
+        // ненулевым. elementclient_64 у PW порождает процесс за несколько секунд до создания
+        // главного окна; выстрелить слишком рано — уронить конструктор GameWindow, после чего
+        // pid уже никогда не пересматривается. Пока hwnd не готов, pid не попадает в
+        // _knownPids, а значит, следующий тик опроса проверит его снова.
         foreach (var info in current)
         {
             if (_knownPids.Contains(info.Pid))
@@ -152,6 +157,7 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
                 {
                     LogProcessWaitingForWindow(info.Pid, info.ProcessName);
                 }
+
                 continue;
             }
 
@@ -169,6 +175,7 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
         {
             result.AddRange(SnapshotByName(name));
         }
+
         return result;
     }
 
@@ -186,16 +193,17 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
                 }
                 catch
                 {
-                    // Process may have died between enumeration and property access — skip it
-                    // so a single dying process doesn't blow up the whole poll tick.
+                    // Процесс мог умереть между перечислением и обращением к свойству —
+                    // пропускаем его, чтобы один умирающий процесс не подорвал весь тик опроса.
                 }
             }
+
             return result;
         }
         finally
         {
-            // Process holds an unmanaged handle; must be disposed deterministically rather
-            // than waiting for GC.
+            // Process держит неуправляемый дескриптор; освобождать его нужно детерминированно,
+            // а не ждать сборщика мусора.
             foreach (var p in procs)
             {
                 p.Dispose();
@@ -242,7 +250,8 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
     [LoggerMessage(LogLevel.Information, "ProcessMonitor stopped for [{ProcessNames}]")]
     partial void LogStopped(string processNames);
 
-    [LoggerMessage(LogLevel.Warning, "No ProcessProfiles configured — ProcessMonitor has nothing to watch; add entries to the \"ProcessProfiles\" section in appsettings.json")]
+    [LoggerMessage(LogLevel.Warning,
+        "No ProcessProfiles configured — ProcessMonitor has nothing to watch; add entries to the \"ProcessProfiles\" section in appsettings.json")]
     partial void LogNoProfiles();
 
     [LoggerMessage(LogLevel.Information, "Process appeared: pid={Pid} name='{ProcessName}' hwnd=0x{Hwnd:X}")]
@@ -254,7 +263,8 @@ public sealed partial class ProcessMonitor : IHostedService, IDisposable
     [LoggerMessage(LogLevel.Error, "Poll iteration failed; continuing loop")]
     partial void LogPollFailed(Exception ex);
 
-    [LoggerMessage(LogLevel.Information, "Process seen but main window not ready yet: pid={Pid} name='{ProcessName}' — will keep polling until hwnd appears")]
+    [LoggerMessage(LogLevel.Information,
+        "Process seen but main window not ready yet: pid={Pid} name='{ProcessName}' — will keep polling until hwnd appears")]
     partial void LogProcessWaitingForWindow(int pid, string processName);
 
     #endregion

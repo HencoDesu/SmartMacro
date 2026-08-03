@@ -15,49 +15,52 @@ using SmartMacro.Windows;
 namespace SmartMacro.Ipc;
 
 /// <summary>
-/// The daemon's control endpoint: a named pipe (<see cref="PipeName"/>) speaking JSON
-/// Lines, serving several UI clients at once, dispatching their requests through
-/// <see cref="IpcRequestDispatcher"/> and pushing engine events at all of them.
+/// Управляющая точка входа демона: named pipe (<see cref="PipeName"/>), говорящий на JSON
+/// Lines, обслуживающий сразу несколько клиентов UI, направляющий их запросы через
+/// <see cref="IpcRequestDispatcher"/> и толкающий им всем события движка.
 ///
-/// <b>Shape.</b> Three layers, split so that only the outermost one needs a real pipe:
-/// <see cref="IpcConnection"/> does framing and write serialisation over any
-/// <see cref="Stream"/>; <see cref="IpcRequestDispatcher"/> turns an envelope into an
-/// envelope; this class owns the accept loop, the live-connection set and event fan-out.
-/// <see cref="ServeConnectionAsync(Stream, CancellationToken)"/> is the seam: the accept
-/// loop calls it with a pipe, the tests call it with in-memory halves, and everything
-/// below the seam is identical in both cases.
+/// <b>Устройство.</b> Три слоя, разделённые так, чтобы настоящая труба была нужна только
+/// самому внешнему: <see cref="IpcConnection"/> занимается кадрированием и сериализацией
+/// записи поверх любого <see cref="Stream"/>; <see cref="IpcRequestDispatcher"/> превращает
+/// конверт в конверт; этот класс владеет циклом приёма, множеством живых соединений и
+/// рассылкой событий. Шов — это
+/// <see cref="ServeConnectionAsync(Stream, CancellationToken)"/>: цикл приёма зовёт его с
+/// трубой, тесты зовут его с половинками в памяти, и всё, что ниже шва, в обоих случаях
+/// одинаково.
 ///
-/// <b>Per-connection concurrency.</b> Each connection runs two tasks: a reader loop and an
-/// event pump. The reader loop does NOT await a handler before reading the next request —
-/// <c>StopMacro</c> waits for a runner to acknowledge and <c>DumpCaptures</c> screenshots
-/// every window, and neither may head-of-line-block the panel's other traffic. Responses
-/// can therefore come back out of order, which is exactly what
-/// <see cref="IpcRequest.Id"/> is for.
+/// <b>Параллелизм внутри соединения.</b> У каждого соединения две задачи: цикл чтения и насос
+/// событий. Цикл чтения НЕ дожидается обработчика, прежде чем прочитать следующий запрос:
+/// <c>StopMacro</c> ждёт подтверждения от бегуна, а <c>DumpCaptures</c> снимает скриншот с
+/// каждого окна, и ни то ни другое не имеет права заткнуть собой остальной трафик панели.
+/// Отсюда следует, что ответы могут приходить не по порядку, — и ровно за этим и нужен
+/// <see cref="IpcRequest.Id"/>.
 ///
-/// <b>Event delivery: one bounded queue per connection.</b> Engine events are raised on
-/// engine threads (a macro node adding a tag, the store's watcher reloading), so the
-/// handlers here do nothing but a non-blocking <c>TryWrite</c> into each client's queue and
-/// return. A client that stops draining fills its queue, the <c>TryWrite</c> fails, and
-/// that connection is DROPPED rather than allowed to slow the producer down — the UI
-/// reconnects and re-fetches a fresh snapshot, which is both cheaper and more correct than
-/// a UI catching up through a backlog. A single global queue was the alternative and is
-/// worse: one wedged client would stall event delivery to every other client.
+/// <b>Доставка событий: по одной ограниченной очереди на соединение.</b> События движка
+/// поднимаются на его же потоках (нода макроса ставит тег, наблюдатель хранилища
+/// перезагружает файлы), поэтому здешние обработчики не делают ничего, кроме неблокирующего
+/// <c>TryWrite</c> в очередь каждого клиента, и возвращаются. Клиент, переставший разбирать
+/// очередь, забивает её, <c>TryWrite</c> падает, и это соединение ОТКЛЮЧАЮТ, вместо того чтобы
+/// позволить ему тормозить производителя: UI переподключится и заново вытянет свежий снимок, а
+/// это и дешевле, и правильнее, чем UI, догоняющий жизнь по накопленному хвосту. Альтернативой
+/// была одна общая очередь, и она хуже: один залипший клиент застопорил бы доставку событий
+/// всем остальным.
 /// </summary>
 public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBroadcaster
 {
     /// <summary>
-    /// Pipe name — taken from <see cref="IpcPipe.Name"/> in Contracts, which is the only
-    /// place either end may define it. The UI shares no assembly with this one.
+    /// Имя трубы — берётся из <see cref="IpcPipe.Name"/> в Contracts, и это единственное место,
+    /// где любому из концов позволено его задать. С этой сборкой UI не делит ни одной.
     /// </summary>
     public const string PipeName = IpcPipe.Name;
 
-    // The UI is normally a single client; the headroom is for a debug console attached
-    // alongside it, and for the window between a UI crashing and Windows reclaiming its
-    // handle. Beyond this the accept loop backs off and retries instead of failing.
+    // UI обычно и есть единственный клиент; запас — на отладочную консоль рядом с ним и на
+    // промежуток между падением UI и тем моментом, когда Windows заберёт его дескриптор. Сверх
+    // этого цикл приёма отступает и пробует снова, а не падает.
     private const int MaxServerInstances = IpcPipe.MaxServerInstances;
 
-    // Events per connection before we give up on it. A UI that has not drained 256 events
-    // is not slow, it is gone (or deadlocked), and the reconnect path handles both.
+    // Сколько событий на соединение мы терпим, прежде чем поставить на нём крест. UI, не
+    // разобравший 256 событий, не медленный — его уже нет (или он в клинче), и путь
+    // переподключения справляется и с тем и с другим.
     private const int EventQueueCapacity = 256;
 
     private const int PipeBufferBytes = 64 * 1024;
@@ -97,20 +100,19 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         _debug = debug;
         _logger = logger;
 
-        // Hand ourselves to the dispatcher so RequestActivate has something to broadcast
-        // through. Done here rather than by DI because the dependency is genuinely circular
-        // (server → dispatcher → server) and this is the end of it that already holds the
-        // other object.
+        // Вручаем себя диспетчеру, чтобы у RequestActivate было через что рассылать. Делается
+        // здесь, а не через DI, потому что зависимость по-настоящему циклическая
+        // (сервер → диспетчер → сервер), и это тот её конец, который другой объект уже держит.
         dispatcher.AttachBroadcaster(this);
-        // Same cycle, same resolution: the run-event pump pushes through us, and we hold it
-        // so each connection can flip its own subscription on and off.
+        // Тот же цикл, то же решение: насос событий прогона толкает через нас, а мы держим его,
+        // чтобы каждое соединение могло щёлкать своей подпиской.
         runEvents.AttachBroadcaster(this);
     }
 
-    /// <summary>Number of clients currently connected. Diagnostics and tests.</summary>
+    /// <summary>Сколько клиентов подключено прямо сейчас. Диагностика и тесты.</summary>
     public int ConnectionCount => _clients.Count;
 
-    // ---------------------------------------------------------------- hosted lifecycle
+    // ------------------------------------------------- жизненный цикл размещённой службы
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -127,8 +129,8 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
 
         if (_acceptLoop is { } loop)
         {
-            // The loop is parked in WaitForConnectionAsync; cancelling unblocks it. The
-            // timeout is belt-and-braces for a pipe that refuses to cancel.
+            // Цикл стоит в WaitForConnectionAsync; отмена его разблокирует. Таймаут — это
+            // подстраховка на случай трубы, которая отменяться отказывается.
             try
             {
                 await loop.WaitAsync(DrainTimeout, cancellationToken).ConfigureAwait(false);
@@ -137,25 +139,28 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             {
                 LogAcceptLoopDidNotStop();
             }
+
             _acceptLoop = null;
         }
 
-        // Every live connection is dropped, which closes its pipe — the signal the panel's
-        // client turns into "служба остановлена" (and an exit) instead of a silent hang.
+        // Каждое живое соединение отключается, а это закрывает его трубу — тот самый сигнал,
+        // который клиент панели превращает в «служба остановлена» (и в выход), а не в молчаливое
+        // зависание.
         foreach (var client in _clients.Keys)
         {
             client.Drop();
         }
+
         await WaitForClientsAsync(cancellationToken).ConfigureAwait(false);
         LogStopped();
     }
 
     /// <summary>
-    /// Wires the engine's change events to the broadcast fan-out. Idempotent.
+    /// Подводит события изменений движка к рассылке. Идемпотентно.
     ///
-    /// Public and separate from <see cref="StartAsync"/> because the protocol tests need
-    /// the event wiring WITHOUT a named pipe: they subscribe, drive a connection over
-    /// in-memory streams, and mutate the registry directly.
+    /// Публичный и отдельный от <see cref="StartAsync"/>, потому что протокольным тестам нужна
+    /// проводка событий БЕЗ named pipe: они подписываются, гоняют соединение поверх потоков в
+    /// памяти и правят реестр напрямую.
     /// </summary>
     public void SubscribeToEngine()
     {
@@ -165,6 +170,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             {
                 return;
             }
+
             _subscribed = true;
             _windows.WindowAppeared += OnWindowAppeared;
             _windows.WindowTagsChanged += OnWindowTagsChanged;
@@ -174,7 +180,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         }
     }
 
-    /// <summary>Detaches every engine subscription. Idempotent.</summary>
+    /// <summary>Отцепляет все подписки на движок. Идемпотентно.</summary>
     public void UnsubscribeFromEngine()
     {
         lock (_subscriptionLock)
@@ -183,6 +189,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             {
                 return;
             }
+
             _subscribed = false;
             _windows.WindowAppeared -= OnWindowAppeared;
             _windows.WindowTagsChanged -= OnWindowTagsChanged;
@@ -192,7 +199,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         }
     }
 
-    // ------------------------------------------------------------------- accept loop
+    // ------------------------------------------------------------------- цикл приёма
 
     private async Task AcceptLoopAsync(CancellationToken cancellationToken)
     {
@@ -210,17 +217,20 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
                 {
                     await pipe.DisposeAsync().ConfigureAwait(false);
                 }
+
                 return;
             }
             catch (Exception ex)
             {
-                // Usually "all pipe instances are busy" (MaxServerInstances reached) — back
-                // off until a slot frees. Anything else (ACL trouble, a name collision with
-                // a second daemon that beat the mutex) also lands here and is worth a line.
+                // Обычно это «все экземпляры трубы заняты» (упёрлись в MaxServerInstances) —
+                // отступаем, пока не освободится слот. Всё прочее (беда с ACL, коллизия имён со
+                // вторым демоном, обошедшим мьютекс) приземляется сюда же и заслуживает строки
+                // в логе.
                 if (pipe is not null)
                 {
                     await pipe.DisposeAsync().ConfigureAwait(false);
                 }
+
                 LogAcceptFailed(ex, PipeName);
                 try
                 {
@@ -230,6 +240,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
                 {
                     return;
                 }
+
                 continue;
             }
 
@@ -266,44 +277,52 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             CreatePipeSecurity());
 
     /// <summary>
-    /// One ACE: the user running the daemon gets full control. Nothing else — not
-    /// Administrators, not SYSTEM — needs to talk to this pipe.
+    /// Одна ACE: пользователь, под которым работает демон, получает полный доступ. Больше
+    /// говорить с этой трубой не нужно никому — ни администраторам, ни SYSTEM.
     ///
-    /// This is deliberately the simple case, because today BOTH processes run elevated as
-    /// the same interactive user (the ⚠ QUESTIONABLE elevation item in the split plan). If
-    /// the UI is ever de-elevated, the DACL below still matches — the user SID is identical
-    /// in the filtered and the full token — but the pipe would ALSO inherit the daemon's
-    /// High mandatory integrity label, and Windows' mandatory policy blocks a
-    /// Medium-integrity client from opening it for write. Fixing that means adding a SACL
-    /// with a Medium (or Low) <c>SYSTEM_MANDATORY_LABEL</c> ACE, and — more importantly —
-    /// deciding that a less-privileged peer is still allowed to drive elevated game
-    /// windows. That is a security decision, not a plumbing one, so it is not pre-empted here.
+    /// Это намеренно простой случай, потому что сегодня ОБА процесса работают с повышением от
+    /// одного и того же интерактивного пользователя (пункт ⚠ СОМНИТЕЛЬНО про повышение в плане
+    /// разделения). Если UI когда-нибудь лишат повышения, DACL ниже по-прежнему подойдёт — SID
+    /// пользователя одинаков и в отфильтрованном, и в полном токене, — но труба ВДОБАВОК
+    /// унаследует у демона высокую метку обязательной целостности, а обязательная политика
+    /// Windows не даст клиенту средней целостности открыть её на запись. Чинить это — значит
+    /// добавить SACL с ACE <c>SYSTEM_MANDATORY_LABEL</c> уровня Medium (или Low) и, что важнее,
+    /// решить, что менее привилегированному собеседнику всё ещё позволено управлять
+    /// повышенными игровыми окнами. Это решение про безопасность, а не про сантехнику, поэтому
+    /// заранее оно здесь не принимается.
     /// </summary>
     private static PipeSecurity CreatePipeSecurity()
     {
         var security = new PipeSecurity();
         using var identity = WindowsIdentity.GetCurrent();
-        // identity.User is null only for exotic tokens (anonymous / no user SID); the
-        // account name is the fallback the OS can still resolve.
+        // identity.User бывает null только у экзотических токенов (анонимный, без SID
+        // пользователя); имя учётной записи — запасной вариант, который ОС ещё способна
+        // разрешить.
         IdentityReference user = (IdentityReference?)identity.User ?? new NTAccount(identity.Name);
         security.AddAccessRule(new PipeAccessRule(user, PipeAccessRights.FullControl, AccessControlType.Allow));
         return security;
     }
 
-    // --------------------------------------------------------------- one connection
+    // --------------------------------------------------------------- одно соединение
 
     /// <summary>
-    /// Serves one already-connected duplex stream until the peer disconnects, the stream
-    /// breaks, or the server stops. Never throws for a peer-side failure.
+    /// Обслуживает один уже подключённый дуплексный поток, пока собеседник не отключится, поток
+    /// не оборвётся или сервер не остановится. При сбое на стороне собеседника не бросает
+    /// никогда.
     /// </summary>
+    /// <param name="duplex">Поток, из которого и читают, и в который пишут.</param>
+    /// <param name="cancellationToken">Срабатывает, когда соединение или сервер закрываются.</param>
     public Task ServeConnectionAsync(Stream duplex, CancellationToken cancellationToken = default) =>
         ServeConnectionAsync(duplex, duplex, cancellationToken);
 
     /// <summary>
-    /// Split-stream overload — the shape an in-memory test pair has (and what an anonymous
-    /// pipe pair would need too). <paramref name="input"/> and <paramref name="output"/>
-    /// are left open; the caller owns them.
+    /// Перегрузка с раздельными потоками — та форма, которую имеет пара потоков в памяти в
+    /// тестах (и которая понадобилась бы паре анонимных труб). <paramref name="input"/> и
+    /// <paramref name="output"/> остаются открытыми; ими владеет вызывающий.
     /// </summary>
+    /// <param name="input">Поток, по которому приходят строки собеседника.</param>
+    /// <param name="output">Поток, в который уходят наши строки.</param>
+    /// <param name="cancellationToken">Срабатывает, когда соединение или сервер закрываются.</param>
     public async Task ServeConnectionAsync(Stream input, Stream output, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -318,8 +337,8 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         _clients.TryAdd(client, 0);
         LogClientConnected(_clients.Count);
 
-        // Started before the reader loop so an event raised while the first request is
-        // still being parsed is queued, not lost.
+        // Запускаем до цикла чтения, чтобы событие, поднятое, пока разбирается первый запрос,
+        // попало в очередь, а не пропало.
         var pump = PumpEventsAsync(client, linked.Token);
         try
         {
@@ -328,12 +347,12 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         finally
         {
             _clients.TryRemove(client, out _);
-            // Before anything else: a client that died without unsubscribing must not leave
-            // the executor instrumented for the rest of the daemon's life.
+            // Прежде всего прочего: клиент, умерший, не отписавшись, не имеет права оставить
+            // исполнителя под съёмом показаний до конца жизни демона.
             client.SetRunEventSubscription(false);
             client.CompleteEvents();
-            // The pump may be parked in a write to a pipe nobody is reading; cancelling is
-            // what unblocks it, and the WhenAny guards the case where even that doesn't.
+            // Насос может стоять в записи в трубу, которую никто не читает; разблокирует его
+            // именно отмена, а WhenAny страхует случай, когда даже она не помогла.
             client.Drop();
             await Task.WhenAny(pump, Task.Delay(DrainTimeout, CancellationToken.None)).ConfigureAwait(false);
             await client.DisposeAsync().ConfigureAwait(false);
@@ -343,8 +362,9 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
 
     private async Task ReadLoopAsync(ClientConnection client, CancellationToken cancellationToken)
     {
-        // Completed handlers are pruned every iteration, so this stays small on a long-lived
-        // connection while still letting the teardown path wait for genuine in-flight work.
+        // Завершённые обработчики выпалываются на каждой итерации, так что на долгоживущем
+        // соединении список остаётся маленьким и при этом путь сноса всё ещё может дождаться
+        // настоящей незаконченной работы.
         var inFlight = new List<Task>();
 
         while (!cancellationToken.IsCancellationRequested)
@@ -356,8 +376,8 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             }
             catch (JsonException ex)
             {
-                // One unparseable line is not a broken connection: the reader is already
-                // positioned at the next one. Skip it and keep serving.
+                // Одна неразбираемая строка ещё не сломанное соединение: читатель уже стоит на
+                // следующей. Пропускаем её и продолжаем обслуживать.
                 LogMalformedLine(ex);
                 continue;
             }
@@ -373,7 +393,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
 
             if (request is null)
             {
-                break; // clean EOF — the peer closed its write half
+                break; // чистый EOF — собеседник закрыл свою половину на запись
             }
 
             inFlight.RemoveAll(static task => task.IsCompleted);
@@ -386,12 +406,14 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         }
         catch (Exception)
         {
-            // HandleRequestAsync swallows everything; this only guards against a future edit
-            // to it turning teardown into an unobserved-exception crash.
+            // HandleRequestAsync проглатывает всё; это лишь страховка от будущей правки в нём,
+            // которая превратила бы снос соединения в падение из-за неперехваченного
+            // исключения.
         }
     }
 
-    private async Task HandleRequestAsync(ClientConnection client, IpcRequest request, CancellationToken cancellationToken)
+    private async Task HandleRequestAsync(ClientConnection client, IpcRequest request,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -400,7 +422,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         }
         catch (OperationCanceledException)
         {
-            // Connection or server is going away; nobody is waiting for this reply.
+            // Соединение или сервер уходят; этого ответа никто не ждёт.
         }
         catch (Exception ex)
         {
@@ -428,11 +450,11 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         }
     }
 
-    // ------------------------------------------------------------------- broadcasting
+    // ---------------------------------------------------------------------- рассылка
 
     /// <summary>
-    /// Queues <paramref name="evt"/> on every live connection. Non-blocking: safe to call
-    /// from an engine thread. A connection whose queue is full is dropped.
+    /// Ставит <paramref name="evt"/> в очередь каждому живому соединению. Не блокирует —
+    /// вызывать с потока движка безопасно. Соединение с заполненной очередью отключается.
     /// </summary>
     public void Broadcast(IpcEvent evt)
     {
@@ -449,13 +471,13 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     }
 
     /// <summary>
-    /// Queues <paramref name="evt"/> on the connections that asked for the run-event stream
-    /// and on no others.
+    /// Ставит <paramref name="evt"/> в очередь тем соединениям, которые просили поток событий
+    /// прогона, и никаким другим.
     ///
-    /// The filter is the point, not an optimisation: <c>RunEvents</c> is the only event in
-    /// the protocol whose natural rate can outrun a connection's queue, and the penalty for
-    /// a full queue is being dropped. A second panel — or a debug console — that never
-    /// subscribed must not be exposed to that.
+    /// Фильтр здесь и есть смысл, а не оптимизация: <c>RunEvents</c> — единственное событие в
+    /// протоколе, чей естественный темп способен обогнать очередь соединения, а расплата за
+    /// заполненную очередь — отключение. Вторая панель (или отладочная консоль), которая ни на
+    /// что не подписывалась, не должна попадать под эту раздачу.
     /// </summary>
     public void BroadcastToRunSubscribers(IpcEvent evt)
     {
@@ -480,18 +502,20 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         {
             return;
         }
+
         LogClientBacklogged(evt.Type, EventQueueCapacity);
         client.Drop();
     }
 
-    // Payload construction is deferred so a daemon running with no panel attached doesn't
-    // serialise a WindowDto on every tag a macro sets.
+    // Построение нагрузки отложено, чтобы демон, работающий без подключённой панели, не
+    // сериализовал WindowDto на каждый тег, который проставляет макрос.
     private void Broadcast(string type, Func<JsonElement?>? payload = null)
     {
         if (_clients.IsEmpty)
         {
             return;
         }
+
         Broadcast(new IpcEvent(type, payload?.Invoke()));
     }
 
@@ -501,24 +525,26 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     private void OnWindowTagsChanged(ManagedWindowInfo window) =>
         Broadcast(IpcMessageTypes.WindowTagsChanged, () => IpcJson.Write(window.ToDto()));
 
-    // The window is already gone, so there is nothing left to describe but the handle.
+    // Окна уже нет, так что описывать, кроме дескриптора, нечего.
     private void OnWindowClosed(ManagedWindowInfo window) =>
         Broadcast(IpcMessageTypes.WindowClosed, () => IpcJson.Write(new WindowClosedEvent(window.Hwnd.ToInt64())));
 
-    // No payload by protocol: the library can be large and the client re-fetches with GetMacros.
+    // По протоколу без нагрузки: библиотека бывает большой, а клиент дотянет её сам через
+    // GetMacros.
     private void OnMacrosChanged(IReadOnlyList<MacroGraph> macros) =>
         Broadcast(IpcMessageTypes.MacrosChanged);
 
-    // The run list is small and the UI needs it immediately, so this one does carry state.
+    // Список прогонов маленький, а UI он нужен немедленно, поэтому это событие состояние всё же
+    // несёт.
     private void OnRunsChanged() =>
         Broadcast(IpcMessageTypes.RunningMacrosChanged, () => IpcJson.Write(_runs.Snapshot().ToDto()));
 
-    // IpcMessageTypes.ActivateWindow has two producers, both outside this class and both
-    // going through the public Broadcast(IpcEvent) overload via IIpcBroadcaster: the tray's
-    // "Открыть панель" when the panel it launched is still alive, and the dispatcher's
-    // RequestActivate handler (a second UI launch asking the first one to come forward).
+    // У IpcMessageTypes.ActivateWindow два производителя, оба вне этого класса и оба идущие
+    // через публичную перегрузку Broadcast(IpcEvent) по IIpcBroadcaster: пункт трея «Открыть
+    // панель», когда запущенная им панель ещё жива, и обработчик RequestActivate в диспетчере
+    // (второй запуск UI просит первый выйти вперёд).
 
-    // ------------------------------------------------------------------------ teardown
+    // ---------------------------------------------------------------------------- снос
 
     private async Task WaitForClientsAsync(CancellationToken cancellationToken)
     {
@@ -527,6 +553,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         {
             await Task.Delay(25, CancellationToken.None).ConfigureAwait(false);
         }
+
         if (!_clients.IsEmpty)
         {
             LogClientsDidNotDrain(_clients.Count);
@@ -546,23 +573,24 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         {
             client.Drop();
         }
+
         _stopping.Dispose();
     }
 
     /// <summary>
-    /// One connected client: the framed stream plus its own event queue, its own
-    /// cancellation source and its own subscription state. Dropping a client cancels only
-    /// that source, which is why one dead peer cannot take the accept loop or its siblings
-    /// down with it.
+    /// Один подключённый клиент: кадрированный поток плюс собственная очередь событий,
+    /// собственный источник отмены и собственное состояние подписки. Отключение клиента
+    /// отменяет только его источник, и именно поэтому один мёртвый собеседник не утащит за
+    /// собой ни цикл приёма, ни своих соседей.
     /// </summary>
     private sealed class ClientConnection : IAsyncDisposable, IIpcSession
     {
         private readonly Channel<IpcEvent> _events = Channel.CreateBounded<IpcEvent>(
             new BoundedChannelOptions(EventQueueCapacity)
             {
-                // Wait mode with a TryWrite caller: a full queue makes TryWrite return
-                // false instead of blocking the engine thread that raised the event, and
-                // the caller turns that into "drop the connection".
+                // Режим Wait при вызывающем, который пользуется TryWrite: на заполненной
+                // очереди TryWrite вернёт false, а не заблокирует поток движка, поднявший
+                // событие, и вызывающий превратит это в «отключить соединение».
                 FullMode = BoundedChannelFullMode.Wait,
                 SingleReader = true,
             });
@@ -600,24 +628,26 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         /// <inheritdoc />
         public void SetRunEventSubscription(bool enabled)
         {
-            // Locked and edge-triggered: the publisher gates the whole executor on a
-            // subscriber COUNT, so a double subscribe (or a disconnect racing an explicit
-            // unsubscribe) leaking a reference would leave the engine instrumented with
-            // nobody watching.
+            // Под блокировкой и по фронту: публикатор запирает всего исполнителя на СЧЁТЧИКЕ
+            // подписчиков, так что двойная подписка (или отключение, наперегонки с явной
+            // отпиской) с утечкой одной ссылки оставила бы движок под съёмом показаний, хотя
+            // смотреть уже некому.
             lock (_subscriptionLock)
             {
                 if (_wantsRunEvents == enabled)
                 {
                     return;
                 }
+
                 _wantsRunEvents = enabled;
             }
 
-            // The DEBUGGER attach count rides on this same edge, deliberately. A connection
-            // watching run events is exactly a connection that can see a paused walk and
-            // press resume, so the two lifetimes are the same lifetime — and tying them
-            // together is what makes "the last panel went away" release every parked walk,
-            // through the disconnect path below that already calls this with false.
+            // Счёт подключённых ОТЛАДЧИКОВ едет на этом же фронте, и это сделано намеренно.
+            // Соединение, которое смотрит события прогона, — это ровно то соединение, которое
+            // способно увидеть обход на паузе и нажать «продолжить», так что два времени жизни
+            // здесь суть одно время жизни. Связав их, мы и получаем, что «последняя панель
+            // ушла» распускает каждый припаркованный обход — через путь отключения ниже,
+            // который и так вызывает это с false.
             if (enabled)
             {
                 _runEvents.Acquire();
@@ -642,8 +672,8 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             }
             catch (ObjectDisposedException)
             {
-                // Already torn down — dropping twice is normal (the pump and the reader
-                // loop can both notice the same broken pipe).
+                // Уже снесено — отключить дважды это норма (сломанную трубу могут заметить и
+                // насос, и цикл чтения).
             }
         }
 

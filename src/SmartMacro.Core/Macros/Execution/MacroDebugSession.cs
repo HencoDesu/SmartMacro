@@ -4,64 +4,68 @@ using SmartMacro.Contracts.Dto;
 namespace SmartMacro.Macros.Execution;
 
 /// <summary>
-/// The debugger's state: which nodes are breakpoints, which walks are parked, and how many
-/// panels are attached. One instance per daemon.
+/// Состояние отладчика: какие ноды объявлены точками останова, какие обходы припаркованы и
+/// сколько панелей подключено. По одному экземпляру на демон.
 ///
 /// ────────────────────────────────────────────────────────────────────────────────────────
-/// <b>Where breakpoints live, and why it is here rather than in the macro file.</b>
+/// <b>Где живут точки останова и почему здесь, а не в файле макроса.</b>
 ///
-/// The plan asked "in the graph, or in the session?" and left it open. They live HERE, in the
-/// daemon's memory, for the whole life of the daemon process and no longer.
+/// План спрашивал «в графе или в сессии?» и оставлял вопрос открытым. Они живут ЗДЕСЬ, в памяти
+/// демона, всю жизнь его процесса — и ни минутой дольше.
 ///
-///   · A breakpoint is a fact about a debugging session, not about a macro. Persisting one
-///     into <c>macros/*.json</c> would put it in the artefact the user edits, diffs and — the
-///     examples especially — ships to someone else. «Почему у меня макрос встаёт на третьей
-///     ноде» is not a question anyone should have to answer.
-///   · Saving one would also mean a breakpoint DIRTIES the editor, so toggling a red dot on a
-///     clean graph would demand a save, and forgetting to save would silently drop it. Both
-///     are worse than losing it on daemon restart.
-///   · The ergonomic win people actually want from persistence — "my breakpoints are still
-///     there when I reopen the panel" — costs nothing here, because the daemon outlives the
-///     panel by design. That is the whole point of the split.
+///   · Точка останова — это факт о сессии отладки, а не о макросе. Сохранив её в
+///     <c>macros/*.json</c>, мы положили бы её в тот самый артефакт, который пользователь
+///     правит, смотрит диффом и — особенно это касается примеров — отдаёт другим людям.
+///     «Почему у меня макрос встаёт на третьей ноде» — вопрос, на который никому не следует
+///     отвечать.
+///   · Сохранение означало бы ещё и то, что точка останова ПАЧКАЕТ редактор: поставил красную
+///     точку на чистом графе — изволь сохранять, забыл сохранить — она молча пропала. И то и
+///     другое хуже, чем потерять её при перезапуске демона.
+///   · А та эргономическая выгода, ради которой люди на самом деле и хотят сохранения, —
+///     «мои точки останова на месте, когда я снова открываю панель», — достаётся здесь даром,
+///     потому что демон по замыслу переживает панель. В этом и весь смысл разделения.
 ///
-/// What is therefore given up: breakpoints do not survive «Выход» from the tray. That is the
-/// right trade — a daemon restart is also when every macro run, every tag and every hotkey
-/// registration is rebuilt, so nothing about the session survives it anyway.
+/// Чем за это платим: точки останова не переживают «Выход» из трея. И это правильный размен —
+/// перезапуск демона есть заодно и тот момент, когда пересобирается каждый прогон макроса,
+/// каждый тег и каждая регистрация хоткея, так что от сессии всё равно ничего не остаётся.
 /// ────────────────────────────────────────────────────────────────────────────────────────
 ///
-/// <b>A parked walk must never outlive its audience.</b> This is the failure mode the whole
-/// attach count exists for. A walk waiting inside <see cref="MacroDebugGate.WaitAsync"/> holds
-/// its run's single-flight slot in <see cref="MacroRunRegistry"/>, so that macro's hotkey is
-/// dead until it moves. The daemon is resident and drives a live game — "until the user
-/// restarts it" is not an acceptable answer. So:
+/// <b>Припаркованный обход не должен пережить свою аудиторию.</b> Именно ради этого режима
+/// отказа и существует весь счёт подключений. Обход, ждущий внутри
+/// <see cref="MacroDebugGate.WaitAsync"/>, держит слот single-flight своего прогона в
+/// <see cref="MacroRunRegistry"/>, то есть хоткей этого макроса мёртв, пока обход не сдвинется.
+/// Демон резидентен и управляет живой игрой — «пока пользователь его не перезапустит» здесь не
+/// ответ. Поэтому:
 ///
-///   · Every attached debugger is a run-event subscriber (<c>SubscribeRunEvents</c>), which
-///     the server already releases on disconnect, crash included.
-///   · When the LAST one detaches, <see cref="Release"/> unparks every walk and forgets every
-///     pause request. Breakpoints stay stored but stop biting, because a breakpoint that
-///     halted a walk nobody could resume would recreate the same wedge.
-///   · Resuming, rather than aborting, is the conservative choice: the run was started
-///     legitimately (usually by a hotkey) and abandoning a macro halfway through can leave
-///     the game in a worse state than letting it finish.
+///   · Каждый подключённый отладчик есть подписчик событий прогона
+///     (<c>SubscribeRunEvents</c>), а его сервер и так освобождает при отключении, в том числе
+///     при падении.
+///   · Когда отцепляется ПОСЛЕДНИЙ, <see cref="Release"/> распускает все обходы и забывает все
+///     запросы на паузу. Точки останова остаются лежать, но перестают кусаться: точка,
+///     остановившая обход, который некому распустить, воспроизвела бы тот же самый клин.
+///   · Распустить, а не прервать — это консервативный выбор: прогон запустили законно (обычно
+///     хоткеем), а брошенный на полпути макрос способен оставить игру в худшем состоянии, чем
+///     если бы он доработал.
 ///
-/// <b>No inactivity timeout, deliberately.</b> The remaining case a timeout would cover is
-/// "the panel is up and the user walked away", and there the pause is doing exactly its job —
-/// resuming a live game automation under a user who is reading the screen is worse than the
-/// thing it would be protecting against. Cancellation (■ Стоп, shutdown) already unparks.
+/// <b>Таймаута по бездействию нет, и это намеренно.</b> Единственный случай, который таймаут
+/// бы покрыл, — «панель открыта, а пользователь отошёл», и там пауза делает ровно свою работу:
+/// возобновить автоматизацию живой игры под человеком, который читает экран, хуже того, от чего
+/// таймаут защищал бы. Отмена («■ Стоп», выключение) и так распускает парковку.
 /// </summary>
 public sealed partial class MacroDebugSession : IMacroDebugger
 {
     private readonly Lock _lock = new();
 
-    // macro name → node ids. Ordinal throughout: node ids and macro names are both
-    // case-sensitive everywhere else in the system.
+    // Имя макроса → id нод. Везде порядковое (ordinal) сравнение: и id нод, и имена макросов во
+    // всей остальной системе чувствительны к регистру.
     private readonly Dictionary<string, HashSet<string>> _breakpoints = new(StringComparer.Ordinal);
 
     private readonly Dictionary<Guid, WalkState> _walks = [];
 
     /// <summary>
-    /// Walks the session has seen at least one node of, so a Pause aimed at a walk that has
-    /// already finished can be refused rather than creating state nothing will ever consume.
+    /// Обходы, у которых сессия видела хотя бы одну ноду, — чтобы «Паузе», нацеленной на уже
+    /// завершившийся обход, можно было отказать, а не заводить состояние, которое никто никогда
+    /// не заберёт.
     /// </summary>
     private readonly HashSet<Guid> _live = [];
 
@@ -73,21 +77,22 @@ public sealed partial class MacroDebugSession : IMacroDebugger
 
     /// <inheritdoc />
     /// <remarks>
-    /// True as soon as one panel is attached, whether or not any breakpoint exists — a Pause
-    /// can be requested at any moment, so the gate has to be reachable. The cost when it is
-    /// true and nothing is armed is one lock and two dictionary lookups per node, against a
-    /// walker whose cheapest node is a Win32 round trip.
+    /// Становится true, как только подключена хотя бы одна панель, независимо от того, есть ли
+    /// вообще точки останова: «Паузу» могут запросить в любой момент, а значит, до затвора надо
+    /// суметь дотянуться. Когда свойство истинно, а ничего не взведено, цена — одна блокировка и
+    /// два поиска по словарю на ноду, против walker'а, у которого самая дешёвая нода стоит
+    /// round trip по Win32.
     /// </remarks>
     public bool IsActive => Volatile.Read(ref _attached) > 0;
 
-    /// <summary>How many panels are attached. Diagnostics and tests.</summary>
+    /// <summary>Сколько панелей подключено. Диагностика и тесты.</summary>
     public int AttachedCount => Volatile.Read(ref _attached);
 
-    // ------------------------------------------------------------------- attach/detach
+    // -------------------------------------------------------- подключение и отключение
 
     /// <summary>
-    /// One more attached debugger. Paired with <see cref="Release"/> by <c>IpcServer</c> on
-    /// the same edge as the run-event subscription, disconnect path included.
+    /// Ещё один подключённый отладчик. <c>IpcServer</c> спаривает это с <see cref="Release"/> по
+    /// тому же фронту, что и подписку на события прогона, включая путь отключения.
     /// </summary>
     public void Acquire()
     {
@@ -98,8 +103,8 @@ public sealed partial class MacroDebugSession : IMacroDebugger
     }
 
     /// <summary>
-    /// One fewer. The last one out unparks everything — see the class comment; this is the
-    /// answer to "the panel died with a walk paused".
+    /// Одним меньше. Последний уходящий распускает всё — см. комментарий к классу; это и есть
+    /// ответ на «панель умерла, а обход остался на паузе».
     /// </summary>
     public void Release()
     {
@@ -113,8 +118,8 @@ public sealed partial class MacroDebugSession : IMacroDebugger
         {
             stranded = [.. _walks.Values.Select(state => state.Gate).OfType<MacroDebugGate>()];
             _walks.Clear();
-            // The roster too: whatever is still walking will re-register itself the moment a
-            // debugger attaches again, and keeping dead ids would leak a Guid per run.
+            // И список тоже: всё, что ещё идёт, само перерегистрируется, как только отладчик
+            // подключится снова, а хранить мёртвые id — значит течь по Guid на каждый прогон.
             _live.Clear();
         }
 
@@ -122,18 +127,20 @@ public sealed partial class MacroDebugSession : IMacroDebugger
         {
             gate.Release();
         }
+
         if (stranded.Count > 0)
         {
             LogAutoResumed(stranded.Count);
         }
+
         LogDetached();
     }
 
-    // ---------------------------------------------------------------------- breakpoints
+    // ------------------------------------------------------------------ точки останова
 
     /// <summary>
-    /// Replaces one macro's breakpoints. An empty list removes the macro from the map
-    /// entirely, so <see cref="Breakpoints"/> never reports an empty set.
+    /// Заменяет точки останова одного макроса. Пустой список убирает макрос из отображения
+    /// целиком, поэтому <see cref="Breakpoints"/> никогда не сообщает о пустом наборе.
     /// </summary>
     public void SetBreakpoints(string macroName, IReadOnlyList<string> nodeIds)
     {
@@ -155,10 +162,11 @@ public sealed partial class MacroDebugSession : IMacroDebugger
                 _breakpoints[macroName] = wanted;
             }
         }
+
         LogBreakpointsSet(macroName, wanted.Count);
     }
 
-    /// <summary>Every macro that has breakpoints, ordered by name. The answer to <c>GetBreakpoints</c>.</summary>
+    /// <summary>Все макросы, у которых есть точки останова, по алфавиту. Ответ на <c>GetBreakpoints</c>.</summary>
     public IReadOnlyList<BreakpointSetDto> Breakpoints()
     {
         lock (_lock)
@@ -174,14 +182,18 @@ public sealed partial class MacroDebugSession : IMacroDebugger
         }
     }
 
-    // ------------------------------------------------------------------------ commands
+    // ------------------------------------------------------------------------- команды
 
     /// <summary>
-    /// Applies one panel command to one walk.
+    /// Применяет одну команду панели к одному обходу.
     /// </summary>
+    /// <param name="walkId">Обход, к которому команда адресована.</param>
+    /// <param name="command">Что от него требуется.</param>
+    /// <param name="nodeId">Целевая нода для <see cref="DebugCommand.RunToNode"/>; остальными командами не читается.</param>
     /// <returns>
-    /// The acknowledgement the protocol returns. <c>Accepted = false</c> means the walk is
-    /// unknown — it finished, or it belongs to a daemon run that predates this session.
+    /// Подтверждение приёма, которое возвращает протокол. <c>Accepted = false</c> означает, что
+    /// обход неизвестен: он завершился либо принадлежит прогону демона, который старше этой
+    /// сессии.
     /// </returns>
     public DebugAckDto Command(Guid walkId, DebugCommand command, string? nodeId)
     {
@@ -190,15 +202,17 @@ public sealed partial class MacroDebugSession : IMacroDebugger
 
         lock (_lock)
         {
-            // Pause is the one command that may address a walk we have never gated: the walk
-            // is running normally and we are asking it to stop at its next node. Every other
-            // command acts on state that must already exist.
+            // «Пауза» — единственная команда, которая вправе адресовать обход, ни разу нами не
+            // затворённый: обход идёт как ни в чём не бывало, а мы просим его встать на
+            // следующей ноде. Все прочие команды работают по состоянию, которое обязано уже
+            // существовать.
             if (!_walks.TryGetValue(walkId, out var state))
             {
                 if (command != DebugCommand.Pause || !_live.Contains(walkId))
                 {
                     return new DebugAckDto(Accepted: false, Paused: false, PauseRequested: false);
                 }
+
                 state = new WalkState();
                 _walks[walkId] = state;
             }
@@ -206,14 +220,16 @@ public sealed partial class MacroDebugSession : IMacroDebugger
             switch (command)
             {
                 case DebugCommand.Pause:
-                    // Already parked ⇒ nothing to ask for. Otherwise it is a REQUEST honoured
-                    // at the next node boundary, which can be a 60-second WaitForElement away
-                    // — the panel says «пауза…» until the Paused event confirms it.
+                    // Уже припаркован ⇒ просить нечего. Иначе это ЗАПРОС, который исполнится на
+                    // ближайшей границе нод, а до неё может быть шестидесятисекундный
+                    // WaitForElement — панель пишет «пауза…», пока событие Paused это не
+                    // подтвердит.
                     if (state.Gate is null)
                     {
                         state.Pending = DebugPauseReason.Requested;
                         state.RunToNodeId = null;
                     }
+
                     break;
 
                 case DebugCommand.Resume:
@@ -229,12 +245,13 @@ public sealed partial class MacroDebugSession : IMacroDebugger
                     break;
 
                 case DebugCommand.RunToNode:
-                    // No node id would mean "run to nowhere", i.e. a plain Resume with a
-                    // misleading name. Refuse instead.
+                    // Без id ноды это означало бы «идти в никуда», то есть обычный Resume под
+                    // вводящим в заблуждение именем. Лучше отказать.
                     if (string.IsNullOrWhiteSpace(nodeId))
                     {
                         return new DebugAckDto(Accepted: false, state.Gate is not null, state.Pending is not null);
                     }
+
                     state.Pending = null;
                     state.RunToNodeId = nodeId;
                     release = Take(state);
@@ -244,11 +261,12 @@ public sealed partial class MacroDebugSession : IMacroDebugger
                     return new DebugAckDto(Accepted: false, state.Gate is not null, state.Pending is not null);
             }
 
-            ack = new DebugAckDto(Accepted: true, state.Gate is not null, state.Pending is not null || state.RunToNodeId is not null);
+            ack = new DebugAckDto(Accepted: true, state.Gate is not null,
+                state.Pending is not null || state.RunToNodeId is not null);
         }
 
-        // Outside the lock: releasing runs the walker's continuation, which will call back
-        // into Arm on the next node.
+        // Снаружи блокировки: отпускание запускает продолжение walker'а, а оно на следующей
+        // ноде позовёт Arm обратно.
         release?.Release();
         LogCommand(command.ToString(), walkId);
         return ack;
@@ -259,8 +277,8 @@ public sealed partial class MacroDebugSession : IMacroDebugger
     /// <inheritdoc />
     public MacroDebugGate? Arm(Guid walkId, string macroName, string nodeId)
     {
-        // Re-checked inside the lock is unnecessary: a detach that races this releases the
-        // gate the moment it sees it, because Release() drains _walks.
+        // Перепроверять внутри блокировки незачем: отключение, бегущее с нами наперегонки,
+        // отпустит затвор в ту же секунду, как его увидит, — Release() выгребает _walks.
         if (!IsActive)
         {
             return null;
@@ -272,14 +290,16 @@ public sealed partial class MacroDebugSession : IMacroDebugger
             _live.Add(walkId);
             var state = _walks.TryGetValue(walkId, out var existing) ? existing : null;
 
-            // Breakpoint first: an explicit red dot outranks a step that happened to land here,
-            // and the panel renders it differently.
+            // Точка останова первой: явная красная точка старше шага, который случайно сюда
+            // приземлился, да и панель рисует её иначе.
             DebugPauseReason? reason =
-                HasBreakpoint(macroName, nodeId) ? DebugPauseReason.Breakpoint
-                : state?.Pending is { } pending ? pending
-                : state?.RunToNodeId is { } target && string.Equals(target, nodeId, StringComparison.Ordinal)
-                    ? DebugPauseReason.Cursor
-                    : null;
+                HasBreakpoint(macroName, nodeId)
+                    ? DebugPauseReason.Breakpoint
+                    : state?.Pending is { } pending
+                        ? pending
+                        : state?.RunToNodeId is { } target && string.Equals(target, nodeId, StringComparison.Ordinal)
+                            ? DebugPauseReason.Cursor
+                            : null;
 
             if (reason is not { } pauseReason)
             {
@@ -288,7 +308,7 @@ public sealed partial class MacroDebugSession : IMacroDebugger
 
             state ??= new WalkState();
             _walks[walkId] = state;
-            // Consumed: a step is one node, a run-to-cursor is one arrival.
+            // Израсходовано: шаг — это одна нода, «до курсора» — одно прибытие.
             state.Pending = null;
             state.RunToNodeId = null;
             gate = new MacroDebugGate(walkId, nodeId, pauseReason);
@@ -332,16 +352,16 @@ public sealed partial class MacroDebugSession : IMacroDebugger
         return gate;
     }
 
-    /// <summary>Per-walk debugger state. Guarded by the session lock; never escapes it except as a gate.</summary>
+    /// <summary>Состояние отладчика по одному обходу. Под замком сессии; наружу выходит только в виде затвора.</summary>
     private sealed class WalkState
     {
-        /// <summary>Reason to park at the NEXT node, whatever it is. Consumed on use.</summary>
+        /// <summary>Причина припарковаться на СЛЕДУЮЩЕЙ ноде, какой бы она ни оказалась. Расходуется при использовании.</summary>
         public DebugPauseReason? Pending { get; set; }
 
-        /// <summary>Park when this node is reached. Consumed on arrival; never reaching it is legal.</summary>
+        /// <summary>Припарковаться, когда дойдём до этой ноды. Расходуется по прибытии; не дойти вовсе — законно.</summary>
         public string? RunToNodeId { get; set; }
 
-        /// <summary>The gate the walk is currently held by, or <c>null</c> when it is running.</summary>
+        /// <summary>Затвор, которым обход сейчас удерживают, либо <c>null</c>, когда он идёт.</summary>
         public MacroDebugGate? Gate { get; set; }
     }
 
@@ -351,7 +371,8 @@ public sealed partial class MacroDebugSession : IMacroDebugger
     [LoggerMessage(LogLevel.Debug, "Debugger detached")]
     partial void LogDetached();
 
-    [LoggerMessage(LogLevel.Warning, "Last debugger detached — auto-resumed {Count} paused walk(s) so they cannot hold their single-flight slots forever")]
+    [LoggerMessage(LogLevel.Warning,
+        "Last debugger detached — auto-resumed {Count} paused walk(s) so they cannot hold their single-flight slots forever")]
     partial void LogAutoResumed(int count);
 
     [LoggerMessage(LogLevel.Debug, "Breakpoints for '{MacroName}': {Count}")]

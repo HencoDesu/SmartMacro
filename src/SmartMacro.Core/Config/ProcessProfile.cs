@@ -1,32 +1,34 @@
 namespace SmartMacro.Config;
 
 /// <summary>
-/// Per-process activation profile. Bound from an element of the "ProcessProfiles" array
-/// in appsettings.json. Replaces the single global Agent:GameProcessName + Input:Activating
-/// activation tuning — the WM_ACTIVATEAPP wake-up dance is a Perfect World quirk, so it
-/// lives with the process it belongs to. ProcessMonitor watches the union of all profile
-/// process names; GameWindowFactory picks the matching profile per window.
+/// Профиль активации на один процесс. Привязывается к элементу массива "ProcessProfiles" в
+/// appsettings.json. Пришёл на смену единственной глобальной настройке активации
+/// Agent:GameProcessName + Input:Activating — пляска с побудкой через WM_ACTIVATEAPP есть
+/// причуда Perfect World, поэтому она живёт при том процессе, которому принадлежит.
+/// ProcessMonitor следит за объединением имён процессов из всех профилей; GameWindowFactory
+/// подбирает подходящий профиль каждому окну.
 /// </summary>
 public sealed class ProcessProfile
 {
-    /// <summary>OS-level process name (no extension), e.g. "elementclient_64".</summary>
+    /// <summary>Имя процесса на уровне ОС (без расширения), например "elementclient_64".</summary>
     public string ProcessName { get; init; } = string.Empty;
 
     /// <summary>
-    /// Magic lParam paired with WM_ACTIVATEAPP to wake a frozen client before input.
-    /// <c>null</c> = plain input: no wake-up signal is sent and no deactivation follows.
+    /// Магический lParam в паре с WM_ACTIVATEAPP, которым замороженного клиента будят перед
+    /// вводом. <c>null</c> = простой ввод: сигнал побудки не отправляется и деактивации следом
+    /// не будет.
     /// </summary>
     public uint? ActivationLParam { get; init; }
 
-    /// <summary>Wait after the wake-up signal before sending input (engine unfreeze time).</summary>
+    /// <summary>Пауза после сигнала побудки перед отправкой ввода (время на разморозку движка).</summary>
     public int SettleDelayMs { get; init; }
 
-    /// <summary>Wait before the deactivation signal so the target's message pump drains queued input.</summary>
+    /// <summary>Пауза перед сигналом деактивации, чтобы насос сообщений цели успел разобрать очередь ввода.</summary>
     public int DeactivationDelayMs { get; init; }
 
     /// <summary>
-    /// Fallback profile for windows whose process has no configured entry: plain input,
-    /// no delays, no wake-up dance.
+    /// Запасной профиль для окон, чей процесс не описан в конфиге: простой ввод, без задержек,
+    /// без пляски с побудкой.
     /// </summary>
     public static ProcessProfile Inert { get; } = new();
 }

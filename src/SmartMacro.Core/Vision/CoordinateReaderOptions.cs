@@ -1,7 +1,7 @@
 namespace SmartMacro.Vision;
 
-// Configuration for TesseractCoordinateReader. TessdataPath points to the directory
-// containing eng.traineddata (downloaded into tessdata/ alongside the .exe at build time).
+// Настройки TesseractCoordinateReader. TessdataPath указывает на каталог с eng.traineddata
+// (он скачивается в tessdata/ рядом с .exe на этапе сборки).
 public sealed class CoordinateReaderOptions
 {
     public string TessdataPath { get; init; } = "tessdata";

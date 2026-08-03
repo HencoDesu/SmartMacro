@@ -1,15 +1,15 @@
 namespace SmartMacro.Agents;
 
 /// <summary>
-/// Base of the agent → orchestrator notification channel. What used to be a two-way
-/// command bus is now one-way: every command became a macro run against window handles,
-/// so the only traffic left is lifecycle.
+/// Основание канала уведомлений «агент → оркестратор». То, что раньше было двусторонней
+/// шиной команд, стало односторонним: каждая команда превратилась в прогон макроса по
+/// дескрипторам окон, так что от трафика остался только жизненный цикл.
 /// </summary>
 public abstract record AgentMessage;
 
 /// <summary>
-/// The agent's run loop has exited (its window died, or the app is shutting down). The
-/// orchestrator drops it from the tracked set and notifies the UI. The agent reference
-/// doubles as the identity key — no separate id field needed.
+/// Рабочий цикл агента завершился (его окно умерло либо приложение выключается). Оркестратор
+/// выбрасывает агента из отслеживаемого набора и уведомляет UI. Ссылка на агента заодно
+/// служит ключом идентичности — отдельное поле с id не нужно.
 /// </summary>
 public sealed record AgentStoppingMessage(CharacterAgent Agent) : AgentMessage;

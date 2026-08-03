@@ -10,47 +10,51 @@ using Rect = OpenCvSharp.Rect;
 
 namespace SmartMacro.Vision;
 
-// Tesseract-backed coordinate reader. Pipeline:
-//   1. Crop to the fixed HUD coord region (top-right corner, tuned for 3840×2160).
-//   2. 3× cubic-interpolated upscale — Tesseract's LSTM works best on text 40-50 px
-//      tall and PW's digits are only ~25 px at native 4K.
-//   3. Grayscale + luminance threshold — drops the cyan location name and dim
-//      background, keeps the bright yellow digit text.
-//   4. Invert to black-on-white (LSTM training assumption).
-//   5. OCR with PageSegMode.SingleLine.
-//   6. Regex out "XXX, ZZZ · YY" (with comma + optional separator) → Coordinates(X,Z,Y).
+// Чтение координат на Tesseract. Конвейер:
+//   1. Обрезать по фиксированной области координат на HUD (правый верхний угол, подогнано под
+//      3840×2160).
+//   2. Увеличить втрое с кубической интерполяцией — LSTM у Tesseract лучше всего работает по
+//      тексту высотой 40–50 px, а цифры PW в родном 4K всего около 25 px.
+//   3. Полутона + порог яркости — убирает голубое название локации и тусклый фон, оставляет
+//      яркий жёлтый текст цифр.
+//   4. Инвертировать в «чёрное по белому» (на этом обучалась LSTM).
+//   5. OCR с PageSegMode.SingleLine.
+//   6. Вытащить регуляркой «XXX, ZZZ · YY» (запятая плюс необязательный разделитель) →
+//      Coordinates(X,Z,Y).
 //
-// Accuracy note: Tesseract's general-purpose LSTM model has stable misreads on PW's
-// custom digit font (notably 5→6, 1→7 in some contexts). Errors are POSITION-PRESERVING
-// per glyph, so delta-based logic (stuck detection, master-follower distance) still
-// works correctly — the bias cancels out on subtraction. If exact values become
-// important, the right fix is training a Tesseract model on PW's font, or switching to
-// digit-template matching with cropped reference glyphs. Either is a separate workstream.
+// О точности: универсальная LSTM-модель Tesseract стабильно ошибается на самодельном шрифте
+// цифр PW (заметнее всего 5→6 и 1→7 в некоторых сочетаниях). Ошибки СОХРАНЯЮТ ПОЗИЦИЮ глифа,
+// поэтому логика на разностях (обнаружение застревания, расстояние от ведущего до ведомого)
+// по-прежнему работает верно — при вычитании смещение взаимно гасится. Если точные значения
+// станут важны, правильное решение — обучить модель Tesseract на шрифте PW либо перейти на
+// сопоставление шаблонов цифр по вырезанным эталонным глифам. И то и другое — отдельный
+// фронт работ.
 //
-// TesseractEngine isn't thread-safe per its docs, so we lock around Process. With 9
-// agents at ~2s poll and ~50 ms per Read, contention is negligible.
+// TesseractEngine, по его же документации, не потокобезопасен, поэтому Process мы берём под
+// блокировку. При девяти агентах с опросом раз в ~2 с и ~50 мс на Read конкуренция за неё
+// пренебрежимо мала.
 [SupportedOSPlatform("windows")]
 public sealed partial class TesseractCoordinateReader : ICoordinateReader, IDisposable
 {
-    // Hand-tuned for 3840×2160 captures (standard 4K UHD) at default in-game UI scale.
-    // Wide enough for varying location-name length (the coords are right-aligned to the
-    // HUD edge; the location name pushes them left when long) plus the height-component.
-    // Note: the location name (in cyan/teal) co-lives in this region — but it's far less
-    // bright than the digit text, so the luminance threshold below filters it out.
+    // Подогнано руками под захваты 3840×2160 (обычный 4K UHD) при масштабе игрового интерфейса
+    // по умолчанию. Достаточно широкая, чтобы вместить название локации любой длины (координаты
+    // прижаты вправо к краю HUD, и длинное название сдвигает их влево) плюс компоненту высоты.
+    // Замечание: название локации (голубым) живёт в этой же области — но оно куда тусклее текста
+    // цифр, так что порог яркости ниже его отфильтровывает.
     private static readonly Rect CoordRegion = new(3460, 12, 380, 48);
 
-    // Luminance threshold for binarisation. PW digit text renders near-white with a
-    // saturated yellow tint; in grayscale that's ~Y=200+. The smaller height-component
-    // digits are slightly less bright, so we keep the threshold conservative (180) to
-    // catch them. The cyan location name in the same strip is closer to Y=150 and drops
-    // out — at the cost of some text-edge speckle that Tesseract handles fine.
+    // Порог яркости для бинаризации. Текст цифр PW отрисован почти белым с насыщенным жёлтым
+    // отливом; в полутонах это примерно Y=200 и выше. Цифры компоненты высоты помельче и чуть
+    // тусклее, поэтому порог держим осторожным (180), чтобы поймать и их. Голубое название
+    // локации в той же полосе ближе к Y=150 и выпадает — ценой некоторой ряби по краям букв, с
+    // которой Tesseract прекрасно справляется.
     private const double LuminanceThreshold = 180.0;
 
-    // Match the exact coord triple pattern "XXX, YYY · ZZ" — three integers separated by
-    // a comma and either a bullet (·), period (.), or middle-dot (•). Tesseract may
-    // garble the bullet character; we accept several alternatives. Skipping the
-    // free-form "find any 3 integers" approach because the sun-icon binarises into an
-    // artifact that's sometimes read as a stray digit, polluting a naive int-extraction.
+    // Ищем ровно тройку координат «XXX, YYY · ZZ» — три целых числа, разделённых запятой и либо
+    // маркером (·), либо точкой (.), либо средней точкой (•). Tesseract может исковеркать символ
+    // маркера, поэтому принимаем несколько вариантов. От вольного подхода «найти любые три целых
+    // числа» отказались: иконка солнца при бинаризации даёт артефакт, который иногда читается как
+    // лишняя цифра и загрязняет наивное извлечение чисел.
     private static readonly Regex CoordPattern = new(
         @"(-?\d+)\s*,\s*(-?\d+)\s*[·.•:|\-]?\s*(-?\d+)",
         RegexOptions.Compiled);
@@ -116,12 +120,12 @@ public sealed partial class TesseractCoordinateReader : ICoordinateReader, IDisp
         return coords;
     }
 
-    // Diagnostic — returns the binarised view that Tesseract actually sees. Used by
-    // VisionSampleRunner to eyeball the preprocessing pipeline.
+    // Диагностика — возвращает бинаризованный вид, который Tesseract на самом деле и видит.
+    // Нужна VisionSampleRunner, чтобы глазами оценить конвейер предобработки.
     public byte[] DebugBinarize(byte[] screenshot) => Preprocess(screenshot);
 
-    // Diagnostic — returns the raw cropped coord region (full colour). Lets us verify
-    // the region is positioned correctly before any HSV/threshold work.
+    // Диагностика — возвращает сырую обрезку области координат (в цвете). Позволяет убедиться,
+    // что область стоит на своём месте, ещё до всякой возни с HSV и порогами.
     public byte[] DebugCrop(byte[] screenshot)
     {
         using var full = Cv2.ImDecode(screenshot, ImreadModes.Color);
@@ -129,6 +133,7 @@ public sealed partial class TesseractCoordinateReader : ICoordinateReader, IDisp
         {
             throw new InvalidOperationException("Failed to decode screenshot bytes.");
         }
+
         var clamped = ClampToImage(CoordRegion, full.Size());
         using var crop = new Mat(full, clamped);
         Cv2.ImEncode(".png", crop, out var bytes);
@@ -146,9 +151,9 @@ public sealed partial class TesseractCoordinateReader : ICoordinateReader, IDisp
         var clamped = ClampToImage(CoordRegion, full.Size());
         using var crop = new Mat(full, clamped);
 
-        // Upscale 3× before binarisation. At native 4K the digit glyphs are ~25 px tall,
-        // well below Tesseract's comfort zone (40-50 px). Bicubic preserves stroke shape
-        // better than nearest-neighbor for antialiased text.
+        // Увеличиваем втрое до бинаризации. В родном 4K глифы цифр высотой около 25 px — сильно
+        // ниже комфортной для Tesseract зоны (40–50 px). Бикубика сохраняет форму штриха лучше,
+        // чем ближайший сосед, когда текст сглажен.
         using var upscaled = new Mat();
         Cv2.Resize(crop, upscaled, new Size(0, 0), 3.0, 3.0, InterpolationFlags.Cubic);
 
@@ -158,8 +163,8 @@ public sealed partial class TesseractCoordinateReader : ICoordinateReader, IDisp
         using var binary = new Mat();
         Cv2.Threshold(gray, binary, LuminanceThreshold, 255, ThresholdTypes.Binary);
 
-        // Tesseract is trained on black text on white background — invert so the digits
-        // are dark and the surroundings are light.
+        // Tesseract обучен на чёрном тексте по белому фону — инвертируем, чтобы цифры стали
+        // тёмными, а всё вокруг светлым.
         using var inverted = new Mat();
         Cv2.BitwiseNot(binary, inverted);
 

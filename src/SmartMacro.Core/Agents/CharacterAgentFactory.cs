@@ -9,10 +9,10 @@ using SmartMacro.Windows;
 
 namespace SmartMacro.Agents;
 
-// Default factory — composes IGameWindow + WindowRegistry into a fresh agent. The agent
-// starts tagless; nothing tries to identify it here (when ProcessMonitor first sees the
-// game process the user is still on the server-select screen). Identification is a macro
-// concern now. Holds no state; safe as a singleton in DI.
+// Фабрика по умолчанию — собирает IGameWindow и WindowRegistry в свежего агента. Агент
+// рождается без тегов; опознавать его здесь никто не пытается (когда ProcessMonitor впервые
+// видит процесс игры, пользователь ещё на экране выбора сервера). Идентификация теперь дело
+// макросов. Состояния не держит, синглтоном в DI безопасна.
 [SupportedOSPlatform("windows")]
 public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
 {
@@ -42,10 +42,11 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
     {
         var window = _windowFactory.Create(info);
 
-        // Filter out processes whose main window can't be captured — typically launcher
-        // instances of elementclient.exe that don't have a real game client surface.
-        // ProcessMonitor matches by process name so launchers slip through; we drop them
-        // here so the orchestrator, the macro registry, and the UI never see a doomed agent.
+        // Отсеиваем процессы, чьё главное окно нечего захватывать, — обычно это экземпляры
+        // elementclient.exe от лаунчера, у которых нет настоящей поверхности игрового клиента.
+        // ProcessMonitor сопоставляет по имени процесса, поэтому лаунчеры просачиваются; мы
+        // выбрасываем их здесь, чтобы ни оркестратор, ни реестр макросов, ни UI никогда не
+        // увидели заведомо обречённого агента.
         var (w, h) = window.ClientSize;
         if (w <= 0 || h <= 0)
         {
@@ -68,6 +69,7 @@ public sealed partial class CharacterAgentFactory : ICharacterAgentFactory
     [LoggerMessage(LogLevel.Information, "Agent created for pid={Pid} (awaiting identification)")]
     partial void LogAgentCreated(int pid);
 
-    [LoggerMessage(LogLevel.Information, "Skipping pid={Pid} — main window has zero client area (likely a launcher process)")]
+    [LoggerMessage(LogLevel.Information,
+        "Skipping pid={Pid} — main window has zero client area (likely a launcher process)")]
     partial void LogSkippedZeroSize(int pid);
 }

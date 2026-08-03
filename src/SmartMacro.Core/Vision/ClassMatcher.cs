@@ -7,14 +7,14 @@ using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace SmartMacro.Vision;
 
-// OpenCV-based template matcher for the in-game stats-window class-value text. Keyed by
-// free tag strings (template filename stems) and tunable via ClassMatcherOptions (region
-// + thresholds in appsettings.json):
-//   1. Crop the screenshot to the configured stats-window class-value region.
-//   2. Convert to grayscale + binarize at LuminanceThreshold to keep just the text.
-//   3. For each (tag, template) pair: binarize the template the same way, run
-//      Cv2.MatchTemplate with TM_CCOEFF_NORMED, take the max score.
-//   4. Return the highest-scoring tag if it crosses MatchThreshold.
+// Сопоставитель шаблонов на OpenCV для текста значения класса в игровом окне характеристик.
+// Ключи — свободные строки тегов (основы имён файлов шаблонов), настройки — через
+// ClassMatcherOptions (область + пороги в appsettings.json):
+//   1. Обрезать скриншот по настроенной области со значением класса в окне характеристик.
+//   2. Перевести в полутона и бинаризовать по LuminanceThreshold, чтобы остался только текст.
+//   3. Для каждой пары (тег, шаблон): бинаризовать шаблон так же, запустить Cv2.MatchTemplate с
+//      TM_CCOEFF_NORMED, взять максимальную оценку.
+//   4. Вернуть тег с наибольшей оценкой, если она переваливает за MatchThreshold.
 [SupportedOSPlatform("windows")]
 public sealed partial class ClassMatcher : IClassMatcher
 {
@@ -46,9 +46,10 @@ public sealed partial class ClassMatcher : IClassMatcher
         var totalPixels = sourceCrop.Width * sourceCrop.Height;
         if (brightPixels < totalPixels * 0.01)
         {
-            // Nearly-empty binarised region — typically means the stats window wasn't
-            // actually open when the screenshot was taken, or the configured region
-            // points at empty UI. Log and decline to match.
+            // Почти пустая бинаризованная область — обычно значит, что в момент снятия
+            // скриншота окно характеристик на самом деле не было открыто либо что настроенная
+            // область указывает на пустое место интерфейса. Пишем в лог и отказываемся
+            // сопоставлять.
             LogEmptyRegion(brightPixels, totalPixels);
             return null;
         }
@@ -85,15 +86,16 @@ public sealed partial class ClassMatcher : IClassMatcher
 
     public byte[] DebugBinarizeClassRegion(byte[] screenshot)
     {
-        // Diagnostic path keeps using the CONFIGURED region — it exists so the operator
-        // can eyeball whether "Vision:ClassMatcher:Region" is tuned for their resolution.
+        // Диагностический путь продолжает работать по НАСТРОЕННОЙ области — он для того и есть,
+        // чтобы оператор мог на глаз оценить, подогнан ли "Vision:ClassMatcher:Region" под его
+        // разрешение.
         using var binary = DecodeAndCropAndBinarize(screenshot, default);
         Cv2.ImEncode(".png", binary, out var bytes);
         return bytes;
     }
 
-    // Empty region falls back to the configured one, so the diagnostic path and any
-    // caller that hasn't got a region yet still behave as before.
+    // Пустая область откатывается на настроенную, чтобы диагностический путь и любой
+    // вызывающий, у которого области ещё нет, вели себя как раньше.
     private Mat DecodeAndCropAndBinarize(byte[] screenshot, ScreenRect region)
     {
         using var full = Cv2.ImDecode(screenshot, ImreadModes.Color);
@@ -117,6 +119,7 @@ public sealed partial class ClassMatcher : IClassMatcher
         {
             throw new InvalidOperationException("Failed to decode template bytes.");
         }
+
         return Binarize(template);
     }
 
@@ -139,7 +142,8 @@ public sealed partial class ClassMatcher : IClassMatcher
         return new Rect(x, y, w, h);
     }
 
-    [LoggerMessage(LogLevel.Information, "ClassMatcher configured: region=({X},{Y} {W}x{H}) luminance={Lum:F0} matchThreshold={Match:F2}")]
+    [LoggerMessage(LogLevel.Information,
+        "ClassMatcher configured: region=({X},{Y} {W}x{H}) luminance={Lum:F0} matchThreshold={Match:F2}")]
     partial void LogConfigured(int x, int y, int w, int h, double lum, double match);
 
     [LoggerMessage(LogLevel.Debug, "Tag template '{Tag}' score: {Score:F3}")]
@@ -148,9 +152,11 @@ public sealed partial class ClassMatcher : IClassMatcher
     [LoggerMessage(LogLevel.Information, "Tag match: best={Tag} score={Score:F3} threshold={Threshold:F3}")]
     partial void LogNoMatch(string? tag, double? score, double threshold);
 
-    [LoggerMessage(LogLevel.Warning, "Tag template '{Tag}' ({TemplateW}x{TemplateH}) is larger than the search region ({SourceW}x{SourceH}); skipping")]
+    [LoggerMessage(LogLevel.Warning,
+        "Tag template '{Tag}' ({TemplateW}x{TemplateH}) is larger than the search region ({SourceW}x{SourceH}); skipping")]
     partial void LogTemplateTooLarge(string tag, int templateW, int templateH, int sourceW, int sourceH);
 
-    [LoggerMessage(LogLevel.Debug, "Binarised stats-class region is nearly empty ({Bright}/{Total} bright pixels) — stats window probably not open")]
+    [LoggerMessage(LogLevel.Debug,
+        "Binarised stats-class region is nearly empty ({Bright}/{Total} bright pixels) — stats window probably not open")]
     partial void LogEmptyRegion(int bright, int total);
 }

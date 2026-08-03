@@ -8,28 +8,29 @@ using SmartMacro.Macros.Validation;
 namespace SmartMacro.Macros.Storage;
 
 /// <summary>
-/// The macro library on disk: one JSON file per graph under <c>macros/</c> next to the
-/// executable, where the FILE NAME STEM is the macro name. One file per macro (rather
-/// than the legacy single <c>macros.json</c>) so hand-editing, diffing, and sharing a
-/// single macro are all natural operations.
+/// Библиотека макросов на диске: по одному JSON-файлу на граф в папке <c>macros/</c> рядом с
+/// исполняемым файлом, где ОСНОВА ИМЕНИ ФАЙЛА и есть имя макроса. Файл на макрос (вместо
+/// прежнего единого <c>macros.json</c>) — чтобы править руками, смотреть диффом и делиться
+/// отдельным макросом было естественными действиями.
 ///
-/// Responsibilities:
-///   * load-all on construction, skipping (never failing on) unreadable files;
-///   * <see cref="SaveAsync"/> / <see cref="DeleteAsync"/> CRUD with NTFS name validation;
-///   * hot-reload via <see cref="FileSystemWatcher"/>, debounced, with our own writes
-///     suppressed by comparing a folder signature of last-write timestamps;
-///   * one-time migration of a legacy <c>macros.json</c>, and seeding of the PW example
-///     set when the folder ends up empty.
+/// За что отвечает:
+///   * загрузить всё при создании, пропуская (а не падая на) нечитаемые файлы;
+///   * CRUD через <see cref="SaveAsync"/> / <see cref="DeleteAsync"/> с проверкой имени по
+///     правилам NTFS;
+///   * горячую перезагрузку через <see cref="FileSystemWatcher"/> с гашением дребезга, где
+///     собственные записи подавляются сравнением подписи папки по временам последней записи;
+///   * одноразовую миграцию унаследованного <c>macros.json</c> и посев набора примеров PW,
+///     когда папка оказывается пустой.
 ///
-/// Implements <see cref="IMacroGraphResolver"/>, so <c>RunMacroNode</c> resolves
-/// sub-macros straight out of the live library.
+/// Реализует <see cref="IMacroGraphResolver"/>, так что <c>RunMacroNode</c> разрешает
+/// под-макросы прямо из живой библиотеки.
 ///
-/// Concurrency: writes are serialised by a semaphore; reads go through the immutable
-/// <see cref="All"/> snapshot and are lock-free.
+/// Параллелизм: записи выстраивает в очередь семафор; чтения идут через неизменяемый снимок
+/// <see cref="All"/> и обходятся без блокировок.
 /// </summary>
 public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
 {
-    /// <summary>Name of the macro folder, relative to the app directory.</summary>
+    /// <summary>Имя папки с макросами относительно каталога приложения.</summary>
     public const string FolderName = "macros";
 
     private const int ReloadDebounceMs = 300;
@@ -41,23 +42,25 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
 
     private CancellationTokenSource? _pendingReload;
     private int _disposed;
+
     private ImmutableList<MacroGraph> _macros = [];
-    // Snapshot of "path → last write time" as of the last load/write WE performed. A
-    // debounced reload whose signature matches this is either our own write echoing back
-    // or a duplicate event, and is dropped.
+
+    // Снимок «путь → время последней записи» на момент последней загрузки или записи, которую
+    // выполнили МЫ. Перезагрузка, дождавшаяся конца дребезга и совпавшая с этой подписью, —
+    // это либо эхо нашей же записи, либо дубль события, и она выбрасывается.
     private ImmutableDictionary<string, DateTime> _signature = ImmutableDictionary<string, DateTime>.Empty;
 
-    /// <summary>Production constructor: <c>macros/</c> next to the executable.</summary>
+    /// <summary>Боевой конструктор: <c>macros/</c> рядом с исполняемым файлом.</summary>
     public MacroGraphStore(ILogger<MacroGraphStore> logger)
         : this(AppContext.BaseDirectory, logger)
     {
     }
 
-    /// <param name="baseDirectory">Folder containing (or to contain) <c>macros/</c> and any legacy <c>macros.json</c>.</param>
-    /// <param name="logger">Diagnostics sink.</param>
+    /// <param name="baseDirectory">Папка, в которой лежит (или появится) <c>macros/</c> и, возможно, унаследованный <c>macros.json</c>.</param>
+    /// <param name="logger">Приёмник диагностики.</param>
     /// <param name="seedDefaults">
-    /// Write the built-in PW example graphs when the folder ends up empty. Tests that
-    /// want a bare library pass <c>false</c>.
+    /// Записывать встроенные графы-примеры PW, когда папка оказывается пустой. Тесты, которым
+    /// нужна голая библиотека, передают <c>false</c>.
     /// </param>
     public MacroGraphStore(string baseDirectory, ILogger<MacroGraphStore> logger, bool seedDefaults = true)
     {
@@ -71,10 +74,12 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         {
             SeedDefaultsIfEmpty();
         }
+
         Reload(raiseEvent: false);
 
-        // Best-effort watcher — hot-reload is a nice-to-have, so permission/platform
-        // failures degrade to "restart to pick up external edits" instead of crashing.
+        // Наблюдатель ставится по возможности: горячая перезагрузка — приятное дополнение, так
+        // что сбои прав или платформы деградируют до «перезапустите, чтобы подхватить внешние
+        // правки», а не до падения.
         try
         {
             _watcher = new FileSystemWatcher(_directory, "*.json")
@@ -93,13 +98,13 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
     }
 
-    /// <summary>Raised after the library changes — save, delete, or an external edit.</summary>
+    /// <summary>Поднимается после изменения библиотеки — сохранения, удаления или внешней правки.</summary>
     public event Action<IReadOnlyList<MacroGraph>>? MacrosChanged;
 
-    /// <summary>Absolute path of the macro folder.</summary>
+    /// <summary>Абсолютный путь к папке с макросами.</summary>
     public string FolderPath => _directory;
 
-    /// <summary>Current immutable snapshot of the library, ordered by name.</summary>
+    /// <summary>Текущий неизменяемый снимок библиотеки, упорядоченный по имени.</summary>
     public IReadOnlyList<MacroGraph> All => _macros;
 
     /// <inheritdoc />
@@ -109,6 +114,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         {
             return null;
         }
+
         foreach (var macro in _macros)
         {
             if (string.Equals(macro.Name, name, StringComparison.Ordinal))
@@ -116,14 +122,17 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
                 return macro;
             }
         }
+
         return null;
     }
 
     /// <summary>
-    /// Writes <paramref name="graph"/> to <c>macros/{Name}.json</c>, replacing any
-    /// existing file of that name, and raises <see cref="MacrosChanged"/>.
+    /// Пишет <paramref name="graph"/> в <c>macros/{Name}.json</c>, заменяя любой существующий
+    /// файл с этим именем, и поднимает <see cref="MacrosChanged"/>.
     /// </summary>
-    /// <exception cref="ArgumentException">The graph's name is not a usable file name.</exception>
+    /// <param name="graph">Сохраняемый граф; его имя становится основой имени файла.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <exception cref="ArgumentException">Имя графа не годится в качестве имени файла.</exception>
     public async Task SaveAsync(MacroGraph graph, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(graph);
@@ -132,9 +141,9 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             throw new ArgumentException(nameError, nameof(graph));
         }
 
-        // Errors don't block the save — the editor must be able to persist a
-        // work-in-progress graph — but they're loud, because the executor will abort a
-        // run that reaches the broken part.
+        // Ошибки сохранению не мешают — редактор обязан уметь сохранить недоделанный граф, — но
+        // они громкие, потому что исполнитель оборвёт прогон, который дойдёт до сломанного
+        // места.
         foreach (var issue in MacroGraphValidator.Validate(graph))
         {
             if (issue.Severity == ValidationSeverity.Error)
@@ -147,7 +156,8 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         try
         {
             var path = PathFor(graph.Name);
-            await File.WriteAllTextAsync(path, MacroGraphJson.Serialize(graph), cancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(path, MacroGraphJson.Serialize(graph), cancellationToken)
+                .ConfigureAwait(false);
             LogSaved(graph.Name, path);
             Reload(raiseEvent: false);
         }
@@ -160,9 +170,11 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     }
 
     /// <summary>
-    /// Deletes <c>macros/{name}.json</c> and raises <see cref="MacrosChanged"/>.
+    /// Удаляет <c>macros/{name}.json</c> и поднимает <see cref="MacrosChanged"/>.
     /// </summary>
-    /// <returns><c>false</c> when no such file exists (no event raised).</returns>
+    /// <param name="name">Имя удаляемого макроса.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns><c>false</c>, если такого файла нет (события не будет).</returns>
     public async Task<bool> DeleteAsync(string name, CancellationToken cancellationToken = default)
     {
         if (ValidateName(name) is not null)
@@ -178,6 +190,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             {
                 return false;
             }
+
             File.Delete(path);
             LogDeleted(name, path);
             Reload(raiseEvent: false);
@@ -192,52 +205,60 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     }
 
     /// <summary>
-    /// Checks a macro name against NTFS file-name rules (the name IS the file stem).
+    /// Проверяет имя макроса по правилам имён файлов NTFS (имя И ЕСТЬ основа имени файла).
     /// </summary>
-    /// <returns>An error description, or <c>null</c> when the name is usable.</returns>
+    /// <param name="name">Проверяемое имя.</param>
+    /// <returns>Описание ошибки или <c>null</c>, если имя годится.</returns>
     public static string? ValidateName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            return "Macro name must not be empty.";
+            return "Имя макроса не может быть пустым.";
         }
+
         if (name.Length > 100)
         {
-            return "Macro name must be 100 characters or shorter.";
+            return "Имя макроса должно быть не длиннее 100 символов.";
         }
+
         var invalid = name.IndexOfAny(Path.GetInvalidFileNameChars());
         if (invalid >= 0)
         {
-            return $"Macro name must not contain '{name[invalid]}'.";
+            return $"Имя макроса не может содержать «{name[invalid]}».";
         }
+
         if (name.EndsWith('.') || name.EndsWith(' '))
         {
-            return "Macro name must not end with a dot or a space.";
+            return "Имя макроса не может заканчиваться точкой или пробелом.";
         }
+
         if (IsReservedDeviceName(name))
         {
-            return $"'{name}' is a reserved Windows device name.";
+            return $"«{name}» — зарезервированное имя устройства Windows.";
         }
+
         return null;
     }
 
     private static bool IsReservedDeviceName(string name)
     {
-        // CON, PRN, AUX, NUL, COM0-9, LPT0-9 — unusable as file stems on Windows.
+        // CON, PRN, AUX, NUL, COM0-9, LPT0-9 — в Windows негодны как основы имён файлов.
         var stem = name.Split('.')[0];
         if (stem is "CON" or "PRN" or "AUX" or "NUL")
         {
             return true;
         }
+
         return stem.Length == 4
-               && (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) || stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase))
+               && (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
+                   stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase))
                && char.IsAsciiDigit(stem[3]);
     }
 
     private string PathFor(string name) => Path.Combine(_directory, $"{name}.json");
 
-    // Full re-read of the folder. Never throws: a file we can't parse is logged and
-    // skipped so one bad hand-edit can't empty the library.
+    // Полное перечитывание папки. Не бросает никогда: файл, который не разобрался, попадает в
+    // лог и пропускается, чтобы одна кривая правка руками не опустошила библиотеку.
     private void Reload(bool raiseEvent)
     {
         var macros = new List<MacroGraph>();
@@ -252,7 +273,8 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             }
             catch (IOException)
             {
-                // Mid-write or deleted between enumeration and stat; the next event re-reads.
+                // Файл пишут прямо сейчас либо его удалили между перечислением и опросом
+                // атрибутов; следующее событие перечитает.
             }
 
             var stem = Path.GetFileNameWithoutExtension(path);
@@ -261,7 +283,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
                 var graph = MacroGraphJson.Deserialize(File.ReadAllText(path));
                 if (!string.Equals(graph.Name, stem, StringComparison.Ordinal))
                 {
-                    // The file name is authoritative — renaming a file renames the macro.
+                    // Главенствует имя файла — переименовали файл, значит переименовали макрос.
                     LogNameMismatch(graph.Name, stem);
                     graph = new MacroGraph
                     {
@@ -271,6 +293,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
                         Nodes = graph.Nodes,
                     };
                 }
+
                 macros.Add(graph);
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
@@ -295,7 +318,8 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     {
         try
         {
-            return Directory.EnumerateFiles(_directory, "*.json").OrderBy(static p => p, StringComparer.OrdinalIgnoreCase).ToArray();
+            return Directory.EnumerateFiles(_directory, "*.json")
+                .OrderBy(static p => p, StringComparer.OrdinalIgnoreCase).ToArray();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -304,8 +328,9 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
     }
 
-    // FileSystemWatcher fires on the threadpool and editors emit several events per save,
-    // so every burst inside the debounce window collapses into one reload check.
+    // FileSystemWatcher стреляет с пула потоков, а редакторы выдают по нескольку событий на одно
+    // сохранение, поэтому весь всплеск внутри окна гашения дребезга схлопывается в одну проверку
+    // на перезагрузку.
     private void OnFileChanged(object? sender, FileSystemEventArgs e)
     {
         var cts = new CancellationTokenSource();
@@ -323,7 +348,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
         catch (OperationCanceledException)
         {
-            return; // superseded by a newer event
+            return; // вытеснено более свежим событием
         }
 
         var changed = false;
@@ -340,9 +365,10 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         {
             if (!HasFolderChanged())
             {
-                // Our own write echoing back, or a duplicate event — nothing to do.
+                // Эхо нашей же записи или дубль события — делать нечего.
                 return;
             }
+
             Reload(raiseEvent: false);
             changed = true;
             LogReloadedExternally(_macros.Count);
@@ -356,7 +382,8 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             _writeLock.Release();
         }
 
-        // Raised outside the lock so subscribers can call back in without deadlocking.
+        // Поднимается снаружи блокировки, чтобы подписчики могли вызывать нас обратно без
+        // взаимной блокировки.
         if (changed)
         {
             MacrosChanged?.Invoke(_macros);
@@ -374,6 +401,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             {
                 return true;
             }
+
             try
             {
                 if (File.GetLastWriteTimeUtc(path) != known)
@@ -386,10 +414,11 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
                 return true;
             }
         }
+
         return seen != current.Count;
     }
 
-    // ---- first-run bootstrap -------------------------------------------------------
+    // ---- начальная подготовка при первом запуске -----------------------------------
 
     private void MigrateLegacyIfNeeded(string baseDirectory)
     {
@@ -410,8 +439,8 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             return;
         }
 
-        // Hotkeys come along for the ride: their whole point in the new model is to live
-        // inside the macro they start.
+        // Хоткеи едут прицепом: весь их смысл в новой модели в том, чтобы жить внутри того
+        // макроса, который они запускают.
         var legacyHotkeysPath = Path.Combine(baseDirectory, LegacyMacroMigration.LegacyHotkeysFileName);
         string? hotkeysJson = null;
         if (File.Exists(legacyHotkeysPath))
@@ -441,10 +470,12 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         {
             LogMigrationSkipped(migration.SkippedMacros);
         }
+
         if (migration.AttachedHotkeys > 0)
         {
             LogMigrationHotkeysAttached(migration.AttachedHotkeys);
         }
+
         if (migration.OrphanedHotkeys > 0)
         {
             LogMigrationHotkeysOrphaned(migration.OrphanedHotkeys);
@@ -465,7 +496,8 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             }
         }
 
-        // Keep the source data, just move it out of the way so we never migrate twice.
+        // Исходные данные сохраняем, просто убираем с дороги, чтобы никогда не мигрировать
+        // дважды.
         RenameMigrated(legacyPath);
         if (hotkeysJson is not null)
         {
@@ -487,13 +519,13 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
     }
 
-    // Seeded exactly once per install, tracked by a marker file rather than by
-    // "is the folder empty". Empty-folder gating looked equivalent but wasn't: a user
-    // migrating from the legacy pipeline lands here with a non-empty folder (their own
-    // macros) and would never receive the pw-* examples — which are the ONLY remaining
-    // implementation of the built-in broadcasts (immunity/assist/cursor-click/identify)
-    // that migration deletes. The marker also keeps deletions sticky: remove an example
-    // you don't want and it stays gone.
+    // Посев происходит ровно один раз на установку, и отслеживается это файлом-маркером, а не
+    // вопросом «пуста ли папка». Проверка на пустую папку выглядела равнозначной, но таковой не
+    // была: пользователь, переезжающий с прежнего конвейера, попадает сюда с непустой папкой
+    // (там его собственные макросы) и примеров pw-* не получил бы никогда, — а ведь они
+    // ЕДИНСТВЕННАЯ оставшаяся реализация встроенных рассылок (имун / помощь / клик по курсору /
+    // опознание), которые миграция удаляет. Маркер заодно делает удаления окончательными:
+    // выбросил ненужный пример — он больше не вернётся.
     private void SeedDefaultsIfEmpty()
     {
         var marker = Path.Combine(_directory, ".examples-seeded");
@@ -505,12 +537,13 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         var written = 0;
         foreach (var graph in DefaultMacroGraphs.Build())
         {
-            // Never clobber a user's own macro that happens to share the name.
+            // Никогда не затираем собственный макрос пользователя, если имя случайно совпало.
             var path = PathFor(graph.Name);
             if (File.Exists(path))
             {
                 continue;
             }
+
             try
             {
                 File.WriteAllText(path, MacroGraphJson.Serialize(graph));
@@ -528,23 +561,24 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
         catch (Exception ex)
         {
-            // Marker write failed — examples would be re-offered next start. Harmless
-            // (the File.Exists guard above makes re-seeding a no-op), so just log.
+            // Маркер записать не удалось — при следующем старте примеры предложатся снова. Это
+            // безобидно (проверка File.Exists выше превращает повторный посев в
+            // ничегонеделание), так что просто пишем в лог.
             LogSeedFailed(ex, ".examples-seeded");
         }
 
         LogSeeded(written, _directory);
     }
 
-    // Idempotent, and it has to be: the store is registered twice (as itself and as
-    // IMacroGraphResolver via a factory), so the DI scope tracks the SAME instance in its
-    // disposable list twice and calls this method twice on shutdown. The second call used
-    // to reach an already-disposed _pendingReload and throw ObjectDisposedException out of
-    // host teardown — which surfaced as "SmartMacro daemon terminated unexpectedly" and a
-    // non-zero exit code, but only in sessions where the watcher had actually fired (a
-    // never-touched macros/ folder leaves _pendingReload null and the throw invisible).
-    // Taking the field with Interlocked also closes the race against a watcher callback
-    // that slipped in while we were tearing down.
+    // Идемпотентно — и обязано таким быть: хранилище зарегистрировано дважды (само по себе и как
+    // IMacroGraphResolver через фабрику), поэтому область DI держит ОДИН И ТОТ ЖЕ экземпляр в
+    // своём списке освобождаемых дважды и при выключении вызывает этот метод тоже дважды.
+    // Раньше второй вызов добирался до уже освобождённого _pendingReload и выбрасывал
+    // ObjectDisposedException прямо из сноса хоста — а наружу это выглядело как «демон
+    // SmartMacro завершился неожиданно» и ненулевой код возврата, причём только в тех сеансах,
+    // где наблюдатель действительно срабатывал (у нетронутой папки macros/ _pendingReload
+    // остаётся null, и исключения не видно). Забирая поле через Interlocked, мы заодно
+    // закрываем гонку с обратным вызовом наблюдателя, проскочившим, пока мы сносились.
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -569,9 +603,10 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
         catch (ObjectDisposedException)
         {
-            // A concurrent OnFileChanged superseded and disposed it between our read and
-            // the Cancel. Nothing to cancel then.
+            // Параллельный OnFileChanged вытеснил и освободил его между нашим чтением и
+            // вызовом Cancel. Значит, отменять уже нечего.
         }
+
         pending?.Dispose();
 
         _writeLock.Dispose();
