@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
@@ -66,25 +67,33 @@ internal sealed class RecordingPrimitives : IMacroPrimitives
         return Task.CompletedTask;
     }
 
-    public Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, string template, ScreenRect? region,
+    // Волна F2: в интерфейс приезжают БАЙТЫ, разрешённые обходчиком из бандла прогона. Тесты
+    // walker'а при этом проверяют, какое ИМЯ шаблона нода назвала, — поэтому подделка источника
+    // (FakeTemplateSource) кодирует имя в байты, а здесь оно читается обратно. Сговор двух
+    // подделок, и он честнее, чем сверять массивы байтов: проверяется ровно то, что проверялось
+    // до F2, — что до примитивов доехал шаблон ТОЙ ноды.
+    public Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, byte[] template, ScreenRect? region,
         double? matchThreshold, CancellationToken ct)
     {
-        Record(new Call("Find", hwnd, template), matchThreshold);
-        return Task.FromResult(FindHandler(hwnd, template, region));
+        var name = FakeTemplateSource.NameOf(template);
+        Record(new Call("Find", hwnd, name), matchThreshold);
+        return Task.FromResult(FindHandler(hwnd, name, region));
     }
 
-    public Task<ScreenPoint?> WaitForElementAsync(IntPtr hwnd, string template, ScreenRect? region, int timeoutMs,
+    public Task<ScreenPoint?> WaitForElementAsync(IntPtr hwnd, byte[] template, ScreenRect? region, int timeoutMs,
         double? matchThreshold, CancellationToken ct)
     {
-        Record(new Call("Wait", hwnd, template, timeoutMs), matchThreshold);
-        return Task.FromResult(WaitHandler(hwnd, template, region, timeoutMs));
+        var name = FakeTemplateSource.NameOf(template);
+        Record(new Call("Wait", hwnd, name, timeoutMs), matchThreshold);
+        return Task.FromResult(WaitHandler(hwnd, name, region, timeoutMs));
     }
 
-    public Task<string?> RecognizeAsync(IntPtr hwnd, string templateSet, ScreenRect region, double? matchThreshold,
-        CancellationToken ct)
+    public Task<string?> RecognizeAsync(IntPtr hwnd, IReadOnlyDictionary<string, byte[]> templates, ScreenRect region,
+        double? matchThreshold, CancellationToken ct)
     {
-        Record(new Call("Recognize", hwnd, templateSet), matchThreshold);
-        return Task.FromResult(RecognizeHandler(hwnd, templateSet, region));
+        var setName = FakeTemplateSource.SetNameOf(templates);
+        Record(new Call("Recognize", hwnd, setName), matchThreshold);
+        return Task.FromResult(RecognizeHandler(hwnd, setName, region));
     }
 
     public Task SetIconAsync(IntPtr hwnd, string iconPath, CancellationToken ct)
@@ -101,6 +110,37 @@ internal sealed class RecordingPrimitives : IMacroPrimitives
             _thresholds.Add(threshold);
         }
     }
+}
+
+/// <summary>
+/// Подделка <see cref="IMacroTemplateSource"/>: имя шаблона кодируется в его же байты.
+///
+/// Так тесты walker'а продолжают говорить про ИМЕНА, хотя интерфейс примитивов с волны F2 берёт
+/// байты. <see cref="Missing"/> изображает шаблон, которого в бандле нет, — именно этим путём
+/// проверяется, что нода уходит по «не найдено», не позвав примитив вовсе.
+/// </summary>
+internal sealed class FakeTemplateSource : IMacroTemplateSource
+{
+    /// <summary>Имена, которых в «бандле» нет.</summary>
+    public HashSet<string> Missing { get; } = new(StringComparer.Ordinal);
+
+    public byte[]? TryGetTemplate(string templateName) =>
+        Missing.Contains(templateName) ? null : Encoding.UTF8.GetBytes(templateName);
+
+    public IReadOnlyDictionary<string, byte[]> GetSet(string setName) =>
+        Missing.Contains(setName)
+            ? new Dictionary<string, byte[]>(StringComparer.Ordinal)
+            : new Dictionary<string, byte[]>(StringComparer.Ordinal)
+            {
+                [setName] = Encoding.UTF8.GetBytes(setName),
+            };
+
+    /// <summary>Обратное преобразование для записывающих примитивов.</summary>
+    public static string NameOf(byte[] template) => Encoding.UTF8.GetString(template);
+
+    /// <summary>Имя набора из словаря, который построил <see cref="GetSet"/>.</summary>
+    public static string SetNameOf(IReadOnlyDictionary<string, byte[]> templates) =>
+        templates.Count == 1 ? templates.Keys.First() : string.Join('+', templates.Keys);
 }
 
 /// <summary>Разрешатель <see cref="IMacroGraphResolver"/> поверх словаря — для тестов с под-макросами.</summary>
@@ -125,6 +165,7 @@ internal sealed class ExecutorHarness
     public WindowRegistry Registry { get; } = new(NullLogger<WindowRegistry>.Instance);
     public RecordingPrimitives Primitives { get; } = new();
     public DictionaryResolver Resolver { get; } = new();
+    public FakeTemplateSource Templates { get; } = new();
     public MacroExecutor Executor { get; }
 
     public ExecutorHarness()
@@ -144,6 +185,9 @@ internal sealed class ExecutorHarness
         {
             ContextWindow = window,
             Variables = variables ?? new MacroVariables(),
+            // Источник шаблонов в контексте — это и есть порунное разрешение из F2; в бою его
+            // ставит Orchestrator.RunAsync.
+            Templates = Templates,
             OnNodeEntered = onNodeEntered,
             Observer = observer,
             RunId = runId,

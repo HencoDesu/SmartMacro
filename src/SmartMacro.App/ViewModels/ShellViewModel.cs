@@ -20,7 +20,6 @@ public enum ShellMode
     Windows,
     Macros,
     Runs,
-    Templates,
     Log,
     Settings,
 }
@@ -29,8 +28,7 @@ public enum ShellMode
 /// Одна строка полосы режимов: имя и счётчик.
 ///
 /// Счётчик — <see cref="int"/>? намеренно: выдуманное число хуже, чем никакого, поэтому режим,
-/// за которым нет данных, рисуется вовсе без счётчика. К этому моменту таких режимов не
-/// осталось — «Шаблоны» вышли из положения с <c>GetTemplates</c>, «Лог» с <c>SubscribeLog</c>, —
+/// за которым нет данных, рисуется вовсе без счётчика. Сейчас таких режимов нет,
 /// но <c>null</c> остаётся законным значением и должен им остаться: следующий пустой режим
 /// обязан выглядеть пустым, а не показывать ноль, которого никто не считал.
 /// </summary>
@@ -161,30 +159,32 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public ShellViewModel(
         WorkspaceViewModel workspace,
         MacroEditorViewModel editor,
-        TemplatesViewModel templates,
         LogViewModel log,
         SettingsViewModel settings,
         IMacroLauncher? launcher = null)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(editor);
-        ArgumentNullException.ThrowIfNull(templates);
         ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(settings);
 
         Workspace = workspace;
         Editor = editor;
-        Templates = templates;
         Log = log;
         Settings = settings;
         _launcher = launcher;
 
+        // ⚠️ Строки «Шаблоны» здесь БОЛЬШЕ НЕТ (волна F2). Рейка — про сущности, а шаблон
+        // перестал ею быть: общего дерева templates/ не существует, файл лежит внутри бандла
+        // .hsm ровно одного макроса. Браузер сложился внутрь редактора, в инспектор макроса,
+        // рядом с триггерами и переменными — то есть туда, где живут остальные свойства макроса
+        // как целого. Заодно исчез счётчик, который отвечал на вопрос «сколько всего шаблонов»,
+        // — теперь этого числа не существует, есть только «сколько их у ЭТОГО макроса».
         Modes =
         [
             new ShellModeViewModel(ShellMode.Windows, "Окна"),
             new ShellModeViewModel(ShellMode.Macros, "Макросы"),
             new ShellModeViewModel(ShellMode.Runs, "Прогоны"),
-            new ShellModeViewModel(ShellMode.Templates, "Шаблоны"),
             new ShellModeViewModel(ShellMode.Log, "Лог"),
         ];
 
@@ -198,14 +198,12 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Workspace.WindowsChanged += OnWindowsChanged;
         Workspace.Runs.CollectionChanged += OnRunsChanged;
         Editor.Macros.CollectionChanged += OnMacrosChanged;
-        Templates.TemplatesChanged += OnTemplatesChanged;
         Log.LogChanged += OnLogChanged;
         Settings.SettingsChanged += OnSettingsChanged;
 
         RefreshWindowState();
         RefreshRunState();
         RefreshMacroState();
-        RefreshTemplateState();
         RefreshLogState();
 
         // Лента журнала включается сразу и на всю жизнь панели — в отличие от событий прогона,
@@ -222,20 +220,17 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// <summary>Библиотека макросов и редактор на canvas — тело «Макросов».</summary>
     public MacroEditorViewModel Editor { get; }
 
-    /// <summary>Дерево шаблонов машинного зрения — тело «Шаблонов».</summary>
-    public TemplatesViewModel Templates { get; }
-
     /// <summary>Лента журнала демона — тело «Лога».</summary>
     public LogViewModel Log { get; }
 
     /// <summary>Настройки демона и диагностика среды — тело «Настроек».</summary>
     public SettingsViewModel Settings { get; }
 
-    /// <summary>Пять рабочих строк боковой полосы, в порядке показа.</summary>
+    /// <summary>Четыре рабочих строки боковой полосы, в порядке показа.</summary>
     public IReadOnlyList<ShellModeViewModel> Modes { get; }
 
     /// <summary>
-    /// Шестая строка полосы — «Настройки», отделённая от пяти рабочих.
+    /// Пятая строка полосы — «Настройки», отделённая от четырёх рабочих.
     ///
     /// Держится отдельно от <see cref="Modes"/> ровно потому, что она не равноправна: своего
     /// счётчика у неё нет (счётчики отвечают «сколько сейчас есть», а у настроек такого числа
@@ -339,8 +334,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     public bool IsRunsMode => CurrentMode == ShellMode.Runs;
 
-    public bool IsTemplatesMode => CurrentMode == ShellMode.Templates;
-
     public bool IsLogMode => CurrentMode == ShellMode.Log;
 
     public bool IsSettingsMode => CurrentMode == ShellMode.Settings;
@@ -416,12 +409,11 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Workspace.WindowsChanged -= OnWindowsChanged;
         Workspace.Runs.CollectionChanged -= OnRunsChanged;
         Editor.Macros.CollectionChanged -= OnMacrosChanged;
-        Templates.TemplatesChanged -= OnTemplatesChanged;
         Log.LogChanged -= OnLogChanged;
         Settings.SettingsChanged -= OnSettingsChanged;
         Workspace.Dispose();
+        // Браузер шаблонов освобождает редактор: он его и создал.
         Editor.Dispose();
-        Templates.Dispose();
         Settings.Dispose();
         // Отписываться от ленты у демона отдельным запросом не нужно и негде: этот путь ведёт к
         // закрытию панели, а разрыв трубы сервер разбирает сам — соединение уходит вместе со
@@ -449,12 +441,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsWindowsMode));
         OnPropertyChanged(nameof(IsMacrosMode));
         OnPropertyChanged(nameof(IsRunsMode));
-        OnPropertyChanged(nameof(IsTemplatesMode));
         OnPropertyChanged(nameof(IsLogMode));
         OnPropertyChanged(nameof(IsSettingsMode));
 
         ApplyMacrosModeScope();
-        RefreshTemplatesOnEntry();
         RefreshSettingsOnEntry();
     }
 
@@ -522,22 +512,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
             : SafeAsync(Editor.ResumeHotkeysAsync(), "resume");
     }
 
-    /// <summary>
-    /// Перечитывает дерево шаблонов на каждый вход в режим.
-    ///
-    /// Пуша про изменения в <c>Assets/templates</c> в протоколе нет (наблюдатель заведён на
-    /// <c>macros/</c>, а не на ассеты), а типичный сценарий — «положил PNG в папку и пошёл
-    /// смотреть». Вход в режим — единственный момент, когда это заведомо интересно, и стоит он
-    /// двух коротких запросов; на выходе, в отличие от событий прогона, гасить нечего.
-    /// </summary>
-    private void RefreshTemplatesOnEntry()
-    {
-        if (CurrentMode == ShellMode.Templates)
-        {
-            _ = SafeAsync(Templates.RefreshAsync(), "templates");
-        }
-    }
-
     private static async Task SafeAsync(Task task, string what)
     {
         try
@@ -558,13 +532,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
 
     private void OnMacrosChanged(object? sender, NotifyCollectionChangedEventArgs e) => RefreshMacroState();
 
-    private void OnTemplatesChanged() => RefreshTemplateState();
-
     private void OnLogChanged() => RefreshLogState();
-
-    // Ноль — честное число, а не пустота: за счётчиком стоит GetTemplates, и «файлов нет» — это
-    // ответ демона.
-    private void RefreshTemplateState() => Mode(ShellMode.Templates).SetCount(Templates.Templates.Count);
 
     /// <summary>
     /// Счётчик «Лога» — это ПРОБЛЕМЫ (предупреждения и хуже) в ленте, а не число записей в ней.

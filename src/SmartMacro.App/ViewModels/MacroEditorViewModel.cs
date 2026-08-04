@@ -272,6 +272,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _hotkeys = hotkeys;
         _dispatcher = dispatcher ?? AvaloniaUiDispatcher.Instance;
         FolderPath = macroFolderPath ?? Path.Combine(AppContext.BaseDirectory, MacroFolderName);
+        // Браузер шаблонов принадлежит РЕДАКТОРУ, а не оболочке (волна F2): с переездом шаблонов
+        // внутрь бандла они перестали быть самостоятельной сущностью и стали свойством макроса —
+        // таким же, как триггеры и переменные, и живущим там же, в инспекторе.
+        Templates = new TemplatesViewModel(client, _dispatcher);
 
         _client.Connected += OnConnected;
         _client.EventReceived += OnEventReceived;
@@ -286,6 +290,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             _ = RefreshAsync();
         }
     }
+
+    /// <summary>
+    /// Шаблоны машинного зрения ОТКРЫТОГО макроса — раздел инспектора, бывший режим «Шаблоны».
+    /// Наводится на макрос из <see cref="LoadGraph"/> и <see cref="CloseEditor"/>, а «какие ноды
+    /// его называют» пересчитывается по живому графу, ещё до сохранения.
+    /// </summary>
+    public TemplatesViewModel Templates { get; }
 
     // ---- библиотека (левая панель) ----------------------------------------------------
 
@@ -1195,6 +1206,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         // его не трогала, а «Сохранить» создавало, а не переименовывало.
         _loadedName = null;
         _diskJson = string.Empty;
+        // LoadGraph выше навёл браузер шаблонов на имя черновика; файла под ним нет, так что
+        // навести надо заново — уже на «ничего».
+        SyncTemplateUsage();
         _suppressSelectionReload = true;
         SelectedMacro = null;
         _suppressSelectionReload = false;
@@ -1356,6 +1370,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         // где переменную записывают.
         PushBreakpoints();
         RebuildVariables();
+        SyncTemplateUsage();
     }
 
     /// <summary>Подсвечивает ноду, о которой говорит замечание.</summary>
@@ -1440,7 +1455,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             rejected = await _client
                 .RequestAsync<ValidationIssueDto[]>(
                     IpcMessageTypes.SaveMacro,
-                    new SaveMacroRequest(graph),
+                    // previousName едет вместе с графом: под НОВЫМ именем бандла ещё нет, и без
+                    // подсказки демону не от чего унаследовать шаблоны переименованного макроса.
+                    new SaveMacroRequest(graph, previousName is null || string.Equals(previousName, name, StringComparison.Ordinal) ? null : previousName),
                     cancellationToken: cancellationToken)
                 .ConfigureAwait(true);
         }
@@ -1490,7 +1507,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         // Удачное сохранение по протоколу возвращает ПУСТОЙ список, предупреждения в том числе,
         // — поэтому их выводят здесь заново тем же валидатором, который гонял демон. Ошибок тут
         // появиться не может: демон бы отказал в записи.
-        foreach (var issue in MacroGraphValidator.Validate(graph))
+        //
+        // Опись шаблонов подаётся ТА ЖЕ, что у демона (волна F2): перечень бандла у панели уже
+        // есть — его держит браузер шаблонов, — и без него проверка «нода называет шаблон,
+        // которого нет» здесь молча не сработала бы, хотя у демона сработала. Расхождение двух
+        // прогонов одного валидатора — ровно та ложь, которой этот проект избегает у бейджа
+        // целей.
+        foreach (var issue in MacroGraphValidator.Validate(graph, Templates.Inventory))
         {
             if (issue.Severity != ValidationSeverity.Error)
             {
@@ -1499,6 +1522,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
 
         SetLibrary(MergeSaved(graph, previousName));
+        // Бандл теперь есть (а при переименовании — под новым именем): браузер шаблонов обязан
+        // перенацелиться, иначе кнопка «+ Шаблон» продолжит говорить «сохраните макрос».
+        SyncTemplateUsage();
         ChangedOnDisk = false;
         SelectByName(name);
         StatusMessage = Issues.Count > 0
@@ -1579,6 +1605,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         // помечена.
         ApplyBreakpointsToRows();
         RebuildVariables();
+        SyncTemplateUsage();
 
         // Последним, потому что он способен зажечь коробку: переключатель пересобирается для
         // ЭТОГО графа, и если по нему прямо сейчас идут, canvas подхватит прогон на лету.
@@ -1666,6 +1693,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             DetachNode(row);
         }
+
+        Templates.Dispose();
     }
 
     // ---- конфликты хоткеев (макет 1f, четвёртое состояние) ------------------------------
@@ -2063,6 +2092,24 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// иконке <c>{tag}</c> добавляет читателя, и панель обязана показать его ещё до того, как
     /// макрос хоть раз запускали. Дёшево: в макросе десятки нод.
     /// </summary>
+    /// <summary>
+    /// Наводит браузер шаблонов на открытый макрос и пересчитывает «какие ноды называют этот
+    /// шаблон».
+    ///
+    /// Считается по ЖИВОМУ графу, а не по тому, что лежит на диске: имя шаблона, набранное в
+    /// ноде, должно снять со строки пометку «не используется» немедленно, а не после сохранения.
+    /// Зовётся из тех же мест, что <see cref="RebuildVariables"/>, и по той же причине — обе
+    /// панели читают одну и ту же форму графа.
+    /// </summary>
+    /// <remarks>
+    /// Наводится на <c>_loadedName</c>, а не на текущее имя в поле: браузер работает с ФАЙЛОМ, а у
+    /// несохранённого черновика файла нет — и класть шаблон в бандл, которого не существует,
+    /// некуда. Панель про это так и говорит, вместо того чтобы предлагать кнопку, которая
+    /// откажет.
+    /// </remarks>
+    private void SyncTemplateUsage() =>
+        Templates.ShowMacro(HasOpenMacro ? _loadedName : null, HasOpenMacro ? BuildGraph() : null);
+
     private void RebuildVariables()
     {
         var hovered = Variables.FirstOrDefault(row => row.IsHighlighted)?.RawName;
@@ -2382,6 +2429,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         RebuildChoices();
         SyncCurrentFlags();
         RebuildVariables();
+        SyncTemplateUsage();
         // Граф не открыт ⇒ следовать не за чем. Сами обходы остаются отслеживаемыми, так что
         // повторное открытие макроса возвращает его лог.
         RebuildRuns();
@@ -2458,11 +2506,14 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 // карточки переменных, которые называют ноду по имени.
                 RefreshChoiceLabels();
                 RebuildVariables();
+                SyncTemplateUsage();
                 break;
             case nameof(NodeRowViewModel.Summary):
                 // Набранный в пути к иконке {tag} добавляет читателя — панель обязана показать
-                // его ещё до того, как макрос хоть раз запускали.
+                // его ещё до того, как макрос хоть раз запускали. То же и с именем шаблона:
+                // набрал — и строка браузера перестала быть «не используется».
                 RebuildVariables();
+                SyncTemplateUsage();
                 break;
             default:
                 break;

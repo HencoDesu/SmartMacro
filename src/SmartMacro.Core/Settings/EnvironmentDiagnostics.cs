@@ -5,7 +5,6 @@ using SmartMacro.Hotkeys;
 using SmartMacro.Macros.Analysis;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Native.Diagnostics;
-using SmartMacro.Vision;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Settings;
@@ -43,7 +42,6 @@ public sealed class EnvironmentDiagnostics
 
     private readonly WindowRegistry _windows;
     private readonly MacroGraphStore _macros;
-    private readonly TemplateSetProvider _templates;
     private readonly IHotkeyRegistration _hotkeys;
     private readonly SettingsStore _settings;
     private readonly AutoStartManager _autoStart;
@@ -51,14 +49,12 @@ public sealed class EnvironmentDiagnostics
     public EnvironmentDiagnostics(
         WindowRegistry windows,
         MacroGraphStore macros,
-        TemplateSetProvider templates,
         IHotkeyRegistration hotkeys,
         SettingsStore settings,
         AutoStartManager autoStart)
     {
         _windows = windows;
         _macros = macros;
-        _templates = templates;
         _hotkeys = hotkeys;
         _settings = settings;
         _autoStart = autoStart;
@@ -165,28 +161,36 @@ public sealed class EnvironmentDiagnostics
     };
 
     /// <summary>
-    /// Шаблоны, которые называют ноды, против файлов на диске.
+    /// Шаблоны, которые называют ноды, против того, что лежит в их бандлах.
+    ///
+    /// С волны F2 общего дерева <c>templates/</c> нет: шаблон живёт внутри <c>.hsm</c> и
+    /// принадлежит ровно одному макросу, поэтому сверка идёт ПОМАКРОСНО, а имя в отчёте
+    /// называется вместе с макросом — иначе «нет Лучник.png» ничего не говорит о том, где искать.
     ///
     /// Правило «какой макрос какой шаблон называет» берётся из
-    /// <see cref="MacroTemplateAnalysis"/> — той же реализации, что показывает браузер шаблонов.
-    /// Второй копии этой логики быть не должно: диагностика, расходящаяся с режимом «Шаблоны»,
-    /// хуже отсутствующей.
+    /// <see cref="MacroTemplateAnalysis"/> — той же реализации, что кормит валидатор и браузер
+    /// шаблонов в редакторе. Второй копии этой логики быть не должно: диагностика, расходящаяся с
+    /// тем, что показывает редактор, хуже отсутствующей.
+    ///
+    /// Дублирование с валидатором мнимое: тот говорит про ОТКРЫТЫЙ макрос, а сюда заходят, когда
+    /// «просто не работает» и открывать по очереди десять макросов не хочется.
     /// </summary>
     private DiagnosticDto CheckTemplates()
     {
-        var onDisk = _templates.Catalog();
-        var sets = new HashSet<string>(
-            onDisk.Where(file => file.Set is not null).Select(file => file.Set!), StringComparer.OrdinalIgnoreCase);
-        var singles = new HashSet<string>(
-            onDisk.Where(file => file.Set is null).Select(file => file.Name), StringComparer.OrdinalIgnoreCase);
+        var files = 0;
+        var missing = new List<string>();
 
-        var missing = new List<TemplateUsage>();
-        foreach (var usage in MacroTemplateAnalysis.Analyze(_macros.All))
+        foreach (var entry in _macros.Entries)
         {
-            var exists = usage.IsSet ? sets.Contains(usage.Name) : singles.Contains(usage.Name);
-            if (!exists)
+            files += entry.TemplatePaths.Count;
+            foreach (var usage in MacroTemplateAnalysis.Analyze(entry.Graph))
             {
-                missing.Add(usage);
+                if (!entry.Templates.Has(usage.Name, usage.IsSet))
+                {
+                    missing.Add(usage.IsSet
+                        ? $"{entry.Name} → набор «{usage.Name}»"
+                        : $"{entry.Name} → «{usage.Name}»");
+                }
             }
         }
 
@@ -194,19 +198,17 @@ public sealed class EnvironmentDiagnostics
         {
             return new DiagnosticDto(DiagnosticIds.Templates, DiagnosticStatus.Ok,
                 "Шаблоны на месте",
-                string.Create(CultureInfo.CurrentCulture, $"файлов {onDisk.Count}, все ссылки разрешаются"));
+                string.Create(CultureInfo.CurrentCulture,
+                    $"файлов {files} в макросах: {_macros.Entries.Count}, все ссылки разрешаются"));
         }
 
-        var first = missing[0];
-        var name = first.IsSet ? $"templates/{first.Name}/" : $"templates/{first.Name}.png";
-        var detail = string.Create(CultureInfo.CurrentCulture,
-            $"{name} отсутствует, на него ссылаются шагов: {first.References.Count} в макросах: {first.MacroCount}.");
+        var detail = missing[0] + " — такого шаблона в бандле нет.";
         if (missing.Count > 1)
         {
-            detail += string.Create(CultureInfo.CurrentCulture, $" И ещё ненайденных имён: {missing.Count - 1}.");
+            detail += string.Create(CultureInfo.CurrentCulture, $" И ещё ненайденных ссылок: {missing.Count - 1}.");
         }
 
-        return new DiagnosticDto(DiagnosticIds.Templates, DiagnosticStatus.Failed, "Файл шаблона не найден", detail);
+        return new DiagnosticDto(DiagnosticIds.Templates, DiagnosticStatus.Failed, "Шаблон в макросе не найден", detail);
     }
 
     /// <summary>

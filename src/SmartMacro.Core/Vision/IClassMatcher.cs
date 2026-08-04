@@ -14,7 +14,7 @@ public interface IClassMatcher
     /// Сопоставляет область <paramref name="region"/> скриншота с переданными шаблонами.
     /// </summary>
     /// <param name="screenshot">Полный захват клиентской области окна.</param>
-    /// <param name="templates">Отображение «тег → байты PNG шаблона», например один набор шаблонов из <c>TemplateSetProvider</c>.</param>
+    /// <param name="templates">Отображение «тег → байты PNG шаблона» — один набор из бандла макроса (<c>IMacroTemplateSource.GetSet</c>).</param>
     /// <param name="region">Обрезка в клиентских координатах, по которой сопоставляется набор. Пустая (Width или Height ≤ 0) = весь захват.</param>
     /// <param name="matchThreshold">Порог, заданный нодой; <c>null</c> = настроенное умолчание сопоставителя.</param>
     /// <returns>Подошедший тег с оценкой выше порога или <c>null</c>, если совпадения нет.</returns>

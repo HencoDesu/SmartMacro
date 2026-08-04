@@ -8,15 +8,23 @@ using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// Режим «Шаблоны». Здесь сходятся две половины, и каждая проверяется отдельно:
+// Браузер шаблонов ОТКРЫТОГО МАКРОСА — бывший режим «Шаблоны», сложившийся внутрь редактора
+// (волна F2). Здесь сходятся две половины, и каждая проверяется отдельно:
 //
-//   · что приехало от демона (GetTemplates — метаданные, GetTemplateImage — байты одного файла);
-//   · что панель посчитала сама по библиотеке макросов (кому нужен шаблон и какого шаблона нет).
+//   · что приехало от демона (GetTemplates — метаданные бандла, GetTemplateImage — байты одного
+//     файла, AddMacroTemplate/DeleteMacroTemplate — правка бандла);
+//   · что панель посчитала сама по ЖИВОМУ графу (какие ноды называют этот шаблон).
+//
+// Раздела «НЕТ ФАЙЛА» здесь больше нет: «нода называет шаблон, которого нет» ловит валидатор
+// (MacroGraphValidatorTests), и это повышение класса ошибки — статическая проверка вместо
+// раздела, куда надо было пойти.
 //
 // Плюс сама политика передачи картинок: по одной за выделением, с кэшем, без запроса за тем, что
 // заведомо не пролезет.
 public class TemplatesViewModelTests
 {
+    private const string Macro1 = "pw-boot";
+
     private static readonly ScreenRect Region = new(0, 0, 100, 40);
 
     private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 1, 2, 3];
@@ -31,13 +39,23 @@ public class TemplatesViewModelTests
         Nodes = [.. nodes],
     };
 
-    private static TemplatesViewModel Create(FakeIpcClient client) =>
-        new(client, ImmediateUiDispatcher.Instance);
+    /// <summary>Собирает браузер и сразу наводит его на макрос — так его и заводит редактор.</summary>
+    private static TemplatesViewModel Create(FakeIpcClient client, MacroGraph? graph = null)
+    {
+        var vm = new TemplatesViewModel(client, ImmediateUiDispatcher.Instance);
+        vm.ShowMacro(graph?.Name ?? Macro1, graph ?? Macro(Macro1));
+        return vm;
+    }
 
-    private static FakeIpcClient Client(TemplateDto[]? files = null, MacroGraph[]? macros = null) =>
-        new FakeIpcClient()
-            .Respond(IpcMessageTypes.GetTemplates, files ?? [])
-            .Respond(IpcMessageTypes.GetMacros, macros ?? []);
+    private static FakeIpcClient Client(TemplateDto[]? files = null) =>
+        new FakeIpcClient().Respond(IpcMessageTypes.GetTemplates, files ?? []);
+
+    private static FakeIpcClient WithImages(FakeIpcClient client) =>
+        client.Respond(IpcMessageTypes.GetTemplateImage, payload =>
+        {
+            var request = (GetTemplateImageRequest)payload!;
+            return new TemplateImageDto(request.MacroName, request.Set, request.Name, Png);
+        });
 
     // ---- список --------------------------------------------------------------------------
 
@@ -55,17 +73,17 @@ public class TemplatesViewModelTests
             .IsEquivalentTo(new[] { "одиночные 1", "classes 2" });
         await Assert.That(vm.Groups[0].IsSet).IsFalse();
         await Assert.That(vm.Groups[1].IsSet).IsTrue();
-        await Assert.That(vm.SummaryText).IsEqualTo("3 файла · наборов: 1");
+        await Assert.That(vm.CountText).IsEqualTo("3");
     }
 
     [Test]
-    public async Task EmptyTree_SaysSo()
+    public async Task EmptyBundle_SaysSo()
     {
         using var vm = Create(Client());
 
         await Assert.That(vm.IsEmpty).IsTrue();
         await Assert.That(vm.Templates).IsEmpty();
-        await Assert.That(vm.SummaryText).IsEqualTo("дерево шаблонов пусто");
+        await Assert.That(vm.CountText).IsEqualTo("0");
     }
 
     [Test]
@@ -87,88 +105,184 @@ public class TemplatesViewModelTests
     [Test]
     public async Task AFileThatIsNotAPng_StaysInTheList_ButSaysWhatIsWrong()
     {
-        // Демон отдаёт 0×0, когда заголовок не разобрался. Прятать такой файл нельзя — он лежит
-        // в папке, и матчер на нём споткнётся; вот это и есть та причина, которую надо показать.
+        // Демон отдаёт 0×0, когда заголовок не разобрался. Прятать такую запись нельзя — она
+        // лежит в бандле, и матчер на ней споткнётся; вот это и есть та причина, которую надо
+        // показать.
         using var vm = Create(Client([new TemplateDto(null, "Сломанный", 0, 0, 12)]));
 
         await Assert.That(vm.Templates[0].SizeText).IsEqualTo("не PNG");
         await Assert.That(vm.Templates[0].IsDecodable).IsFalse();
     }
 
-    // ---- «кому нужен» --------------------------------------------------------------------
+    // ---- «какие ноды называют» ---------------------------------------------------------------
 
     [Test]
-    public async Task Rows_KnowWhichMacrosNeedThem_WithoutAnyExtraRequest()
+    public async Task Rows_KnowWhichNodesNeedThem_WithoutAnyExtraRequest()
     {
-        var client = Client(
-            [File(null, "ServerSelectButton"), File(null, "Ничей"), File("classes", "Лучник")],
-            [
-                Macro("pw-boot", new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "ServerSelectButton" }),
-                Macro("pw-identify", new RecognizeTagNode { Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "classes", Region = Region }),
-            ]);
-        using var vm = Create(client);
+        var client = Client([File(null, "ServerSelectButton"), File(null, "Ничей"), File("classes", "Лучник")]);
+        using var vm = Create(client, Macro(
+            Macro1,
+            new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "ServerSelectButton" },
+            new RecognizeTagNode { Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "classes", Region = Region }));
 
         var button = vm.Templates.Single(t => t.Name == "ServerSelectButton");
         var archer = vm.Templates.Single(t => t.Name == "Лучник");
         var orphan = vm.Templates.Single(t => t.Name == "Ничей");
 
-        await Assert.That(button.UsageText).IsEqualTo("1 макрос");
+        await Assert.That(button.UsageText).IsEqualTo("1 нода");
         // RecognizeTag называет НАБОР целиком, поэтому ссылка достаётся каждому его файлу: иначе
         // «Лучник.png не используется» было бы враньём про шаблон, которым опознают лучника.
-        await Assert.That(archer.UsageText).IsEqualTo("1 макрос");
+        await Assert.That(archer.UsageText).IsEqualTo("1 нода");
         await Assert.That(orphan.IsUnused).IsTrue();
         await Assert.That(orphan.UsageText).IsEqualTo("не используется");
 
-        // И ни одного запроса сверх двух: список файлов и библиотека, больше ничего.
+        // И ни одного запроса сверх одного: перечень шаблонов бандла, больше ничего. Библиотеку
+        // браузер не спрашивает вовсе — граф ему подаёт редактор.
         await Assert.That(client.Requests.Select(r => r.Type).Distinct())
-            .IsEquivalentTo(new[] { IpcMessageTypes.GetTemplates, IpcMessageTypes.GetMacros });
+            .IsEquivalentTo(new[] { IpcMessageTypes.GetTemplates });
     }
 
+    // Имя, набранное в ноде, обязано снять пометку «не используется» НЕМЕДЛЕННО: редактор подаёт
+    // живой граф, а не тот, что лежит на диске.
     [Test]
-    public async Task ANodeNamingATemplateThatIsNotThere_ShowsUpBeforeAnyoneRunsIt()
-    {
-        using var vm = Create(Client(
-            [File("classes", "Лучник")],
-            [
-                Macro("pw-boot", new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "КнопкаКоторойНет" }),
-                Macro("боссы", new RecognizeTagNode { Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "bosses", Region = Region }),
-            ]));
-
-        await Assert.That(vm.HasMissing).IsTrue();
-        await Assert.That(vm.MissingHeaderText).IsEqualTo("НЕТ ФАЙЛА · 2");
-        await Assert.That(vm.Missing.Select(m => $"{m.Kind}:{m.Name}"))
-            .IsEquivalentTo(new[] { "набор:bosses", "шаблон:КнопкаКоторойНет" });
-        await Assert.That(vm.Missing.Single(m => m.IsSet).UsageText).IsEqualTo("боссы / rec");
-    }
-
-    [Test]
-    public async Task Missing_IsEmptyWhenEveryNameHasItsFile()
-    {
-        using var vm = Create(Client(
-            [File(null, "ServerSelectButton"), File("classes", "Лучник")],
-            [
-                Macro("pw-boot", new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "ServerSelectButton" }),
-                Macro("pw-identify", new RecognizeTagNode { Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "classes", Region = Region }),
-            ]));
-
-        await Assert.That(vm.HasMissing).IsFalse();
-        await Assert.That(vm.Missing).IsEmpty();
-    }
-
-    [Test]
-    public async Task MacrosChangedPush_RecountsUsage_WithoutTheUserDoingAnything()
+    public async Task ShowMacro_WithANewGraph_RecountsUsage_WithoutRefetchingTheList()
     {
         var client = Client([File(null, "Кнопка")]);
         using var vm = Create(client);
         await Assert.That(vm.Templates[0].IsUnused).IsTrue();
+        var before = client.CountOf(IpcMessageTypes.GetTemplates);
 
-        client.Respond(
-            IpcMessageTypes.GetMacros,
-            new[] { Macro("новый", new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "Кнопка" }) });
-        client.RaiseEvent(IpcMessageTypes.MacrosChanged);
+        vm.ShowMacro(Macro1, Macro(
+            Macro1,
+            new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "Кнопка" }));
 
         await Assert.That(vm.Templates[0].IsUnused).IsFalse();
-        await Assert.That(vm.Templates[0].UsageText).IsEqualTo("1 макрос");
+        await Assert.That(vm.Templates[0].UsageText).IsEqualTo("1 нода");
+        await Assert.That(client.CountOf(IpcMessageTypes.GetTemplates)).IsEqualTo(before);
+    }
+
+    [Test]
+    public async Task ShowMacro_OfAnotherMacro_RefetchesTheList()
+    {
+        var client = Client([File(null, "A")]);
+        using var vm = Create(client);
+        var before = client.CountOf(IpcMessageTypes.GetTemplates);
+
+        client.Respond(IpcMessageTypes.GetTemplates, new[] { File(null, "B") });
+        vm.ShowMacro("другой", Macro("другой"));
+
+        await Assert.That(client.CountOf(IpcMessageTypes.GetTemplates)).IsEqualTo(before + 1);
+        await Assert.That(vm.Templates.Select(t => t.Name)).IsEquivalentTo(new[] { "B" });
+    }
+
+    [Test]
+    public async Task ShowMacro_OfADraft_ShowsNothingAndAsksNothing()
+    {
+        // У несохранённого черновика файла нет, а значит, нет и бандла, в который класть шаблон.
+        var client = Client([File(null, "A")]);
+        using var vm = Create(client);
+
+        vm.ShowMacro(null, null);
+
+        await Assert.That(vm.HasMacro).IsFalse();
+        await Assert.That(vm.Templates).IsEmpty();
+    }
+
+    [Test]
+    public async Task MacrosChangedPush_RereadsTheBundle()
+    {
+        // Одно и то же событие отзывается и на нашу собственную правку (добавили шаблон), и на
+        // чужую (бандл подменили в проводнике).
+        var client = Client();
+        using var vm = Create(client);
+        await Assert.That(vm.Templates).IsEmpty();
+
+        client.Respond(IpcMessageTypes.GetTemplates, new[] { File(null, "Кнопка") });
+        client.RaiseEvent(IpcMessageTypes.MacrosChanged);
+
+        await Assert.That(vm.Templates).Count().IsEqualTo(1);
+    }
+
+    // ---- правка бандла ----------------------------------------------------------------------
+
+    [Test]
+    public async Task Import_SendsTheFileStemAsTheName_AndTheSetFromTheField()
+    {
+        var client = Client();
+        AddMacroTemplateRequest? seen = null;
+        client.Respond(IpcMessageTypes.AddMacroTemplate, payload =>
+        {
+            seen = (AddMacroTemplateRequest)payload!;
+            return new[] { File("classes", "Лучник") };
+        });
+        using var vm = Create(client);
+        vm.ImportSet = "classes";
+
+        var ok = await vm.ImportAsync("Лучник.png", Png);
+
+        await Assert.That(ok).IsTrue();
+        await Assert.That(seen).IsNotNull();
+        await Assert.That(seen!.MacroName).IsEqualTo(Macro1);
+        await Assert.That(seen.Set).IsEqualTo("classes");
+        await Assert.That(seen.Name).IsEqualTo("Лучник");
+        // Ответ несёт новый перечень — второго запроса за списком не нужно.
+        await Assert.That(vm.Templates.Select(t => t.Name)).IsEquivalentTo(new[] { "Лучник" });
+    }
+
+    [Test]
+    public async Task Import_WithAnEmptySetField_MeansASingleTemplate()
+    {
+        var client = Client();
+        AddMacroTemplateRequest? seen = null;
+        client.Respond(IpcMessageTypes.AddMacroTemplate, payload =>
+        {
+            seen = (AddMacroTemplateRequest)payload!;
+            return Array.Empty<TemplateDto>();
+        });
+        using var vm = Create(client);
+
+        await vm.ImportAsync("ServerSelectButton.png", Png);
+
+        await Assert.That(seen!.Set).IsNull();
+    }
+
+    [Test]
+    public async Task Import_OverTheCeiling_IsNotEvenSent()
+    {
+        var client = Client();
+        using var vm = Create(client);
+
+        var ok = await vm.ImportAsync("Огромный.png", new byte[TemplateLimits.MaxImageBytes + 1]);
+
+        await Assert.That(ok).IsFalse();
+        await Assert.That(vm.HasImportProblem).IsTrue();
+        await Assert.That(vm.ImportProblem).Contains("потолк");
+        await Assert.That(client.CountOf(IpcMessageTypes.AddMacroTemplate)).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task Import_ReportsARefusal()
+    {
+        var client = Client();
+        client.Fail(IpcMessageTypes.AddMacroTemplate, "бандл не читается");
+        using var vm = Create(client);
+
+        var ok = await vm.ImportAsync("A.png", Png);
+
+        await Assert.That(ok).IsFalse();
+        await Assert.That(vm.ImportProblem).Contains("бандл не читается");
+    }
+
+    [Test]
+    public async Task Delete_RemovesTheRow_FromTheAnswer()
+    {
+        var client = Client([File("classes", "Лучник"), File("classes", "Жрец")]);
+        client.Respond(IpcMessageTypes.DeleteMacroTemplate, _ => new[] { File("classes", "Жрец") });
+        using var vm = Create(client);
+
+        await vm.DeleteAsync(vm.Templates.Single(t => t.Name == "Лучник"));
+
+        await Assert.That(vm.Templates.Select(t => t.Name)).IsEquivalentTo(new[] { "Жрец" });
     }
 
     // ---- превью ----------------------------------------------------------------------------
@@ -176,15 +290,10 @@ public class TemplatesViewModelTests
     [Test]
     public async Task Preview_IsFetchedOnlyForTheSelectedTemplate()
     {
-        var client = Client([File(null, "A"), File(null, "B")])
-            .Respond(IpcMessageTypes.GetTemplateImage, payload =>
-            {
-                var request = (GetTemplateImageRequest)payload!;
-                return new TemplateImageDto(request.Set, request.Name, Png);
-            });
+        var client = WithImages(Client([File(null, "A"), File(null, "B")]));
         using var vm = Create(client);
 
-        // Открытие режима картинок не тянет: список — это метаданные, и в этом весь смысл.
+        // Открытие макроса картинок не тянет: список — это метаданные, и в этом весь смысл.
         await Assert.That(client.CountOf(IpcMessageTypes.GetTemplateImage)).IsEqualTo(0);
         await Assert.That(vm.HasPreview).IsFalse();
 
@@ -198,12 +307,7 @@ public class TemplatesViewModelTests
     [Test]
     public async Task Preview_IsCached_SoGoingBackAndForthCostsNothing()
     {
-        var client = Client([File(null, "A"), File(null, "B")])
-            .Respond(IpcMessageTypes.GetTemplateImage, payload =>
-            {
-                var request = (GetTemplateImageRequest)payload!;
-                return new TemplateImageDto(request.Set, request.Name, Png);
-            });
+        var client = WithImages(Client([File(null, "A"), File(null, "B")]));
         using var vm = Create(client);
 
         vm.Selected = vm.Templates[0];
@@ -260,9 +364,22 @@ public class TemplatesViewModelTests
     public async Task Preview_IgnoresAnAnswerAboutSomethingElse()
     {
         // Гонка выделения: демон отвечает не про ту строку, что подсвечена сейчас. Эхо в ответе
-        // существует ровно для этого.
+        // существует ровно для этого — и с переездом браузера внутрь редактора устареть успевает
+        // не только строка, но и весь макрос, поэтому в эхо вошло и его имя.
         var client = Client([File(null, "A"), File(null, "B")])
-            .Respond(IpcMessageTypes.GetTemplateImage, _ => new TemplateImageDto(null, "Посторонний", Png));
+            .Respond(IpcMessageTypes.GetTemplateImage, _ => new TemplateImageDto(Macro1, null, "Посторонний", Png));
+        using var vm = Create(client);
+
+        vm.Selected = vm.Templates[0];
+
+        await Assert.That(vm.HasPreview).IsFalse();
+    }
+
+    [Test]
+    public async Task Preview_IgnoresAnAnswerAboutAnotherMacro()
+    {
+        var client = Client([File(null, "A")])
+            .Respond(IpcMessageTypes.GetTemplateImage, _ => new TemplateImageDto("чужой", null, "A", Png));
         using var vm = Create(client);
 
         vm.Selected = vm.Templates[0];
@@ -273,8 +390,7 @@ public class TemplatesViewModelTests
     [Test]
     public async Task Deselecting_ClearsThePreview()
     {
-        var client = Client([File(null, "A")])
-            .Respond(IpcMessageTypes.GetTemplateImage, _ => new TemplateImageDto(null, "A", Png));
+        var client = WithImages(Client([File(null, "A")]));
         using var vm = Create(client);
         vm.Selected = vm.Templates[0];
         await Assert.That(vm.HasPreview).IsTrue();
@@ -296,7 +412,7 @@ public class TemplatesViewModelTests
 
         await vm.RefreshAsync();
 
-        // Иначе кнопка «Обновить» выбрасывала бы пользователя из того шаблона, который он
+        // Иначе добавление соседнего шаблона выбрасывало бы пользователя из того, который он
         // разглядывает.
         await Assert.That(vm.Selected).IsNotNull();
         await Assert.That(vm.Selected!.Name).IsEqualTo("B");

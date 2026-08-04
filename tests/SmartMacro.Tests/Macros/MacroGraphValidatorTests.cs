@@ -1,3 +1,4 @@
+using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
 using SmartMacro.Native;
@@ -306,6 +307,81 @@ public class MacroGraphValidatorTests
     {
         var graph = Graph(Ids.Of("f"), [Process],
             new FindElementNode { Id = Ids.Of("f"), DisplayName = "find-1", Template = "т" });
+
+        await Assert.That(MacroGraphValidator.Validate(graph)).IsEmpty();
+    }
+    // ---- шаблоны бандла (F2) ----------------------------------------------------------------
+
+    [Test]
+    public async Task ANodeNamingATemplateTheBundleDoesNotHave_IsAWarningOnThatNode()
+    {
+        // Повышение класса ошибки: раньше это выяснялось из раздела «НЕТ ФАЙЛА» в отдельном
+        // режиме (куда надо было пойти) либо строчкой в журнале посреди прогона (когда уже
+        // поздно). Набор шаблонов бандла известен статически — значит, и сказать можно статически.
+        var graph = Graph(Ids.Of("f"), [Process],
+            new FindElementNode { Id = Ids.Of("f"), DisplayName = "find-1", Template = "КнопкаКоторойНет" });
+
+        var issues = MacroGraphValidator.Validate(graph, MacroTemplateInventory.Empty);
+
+        await Assert.That(Errors(issues)).IsEmpty();
+        var missing = Warnings(issues).Single(i => i.Message.Contains("нет шаблона"));
+        await Assert.That(missing.NodeId).IsEqualTo(Ids.Of("f"));
+        await Assert.That(missing.Message).Contains("КнопкаКоторойНет");
+    }
+
+    // ПРЕДУПРЕЖДЕНИЕ, а не ошибка: ошибка запрещает сохранение, а «набрал имя → импортировал
+    // файл» — нормальный порядок действий. К тому же ненайденный шаблон прогон не обрывает, нода
+    // честно уходит по «не найдено».
+    [Test]
+    public async Task AMissingTemplate_DoesNotBlockSaving()
+    {
+        var graph = Graph(Ids.Of("f"), [Process],
+            new FindElementNode { Id = Ids.Of("f"), DisplayName = "find-1", Template = "нет" });
+
+        await Assert.That(MacroGraphValidator.Validate(graph, MacroTemplateInventory.Empty)
+            .All(i => i.Severity == ValidationSeverity.Warning)).IsTrue();
+    }
+
+    [Test]
+    public async Task AMissingSet_SaysSetRatherThanTemplate()
+    {
+        // «Нет набора» и «нет файла» — разные новости: в первом случае не хватает целой папки, и
+        // искать надо не тот же файл.
+        var graph = Graph(Ids.Of("r"), [Process],
+            new RecognizeTagNode
+            {
+                Id = Ids.Of("r"), DisplayName = "recognize-1", TemplateSet = "classes",
+                Region = new ScreenRect(0, 0, 10, 10),
+            });
+
+        var issues = MacroGraphValidator.Validate(graph, MacroTemplateInventory.Empty);
+
+        await Assert.That(Warnings(issues).Single(i => i.Message.Contains("набора")).Message).Contains("classes");
+    }
+
+    [Test]
+    public async Task TemplatesThatAreInTheBundle_AreClean()
+    {
+        var graph = Graph(Ids.Of("f"), [Process],
+            new FindElementNode { Id = Ids.Of("f"), DisplayName = "find-1", Template = "Кнопка", Found = Ids.Of("r") },
+            new RecognizeTagNode
+            {
+                Id = Ids.Of("r"), DisplayName = "recognize-1", TemplateSet = "classes",
+                Region = new ScreenRect(0, 0, 10, 10),
+            });
+        var inventory = MacroTemplateInventory.FromPaths(["Кнопка.png", "classes/Лучник.png"]);
+
+        await Assert.That(MacroGraphValidator.Validate(graph, inventory)).IsEmpty();
+    }
+
+    // null и пустая опись — разные вещи. null значит «состав бандла неизвестен», и обвинить ноду
+    // в ссылке на несуществующий файл, не посмотрев в файл, значило бы соврать: именно так зовёт
+    // валидатор редактор, пересчитывая предупреждения по несохранённому черновику.
+    [Test]
+    public async Task WithoutAnInventory_TheTemplateCheckIsSkippedEntirely()
+    {
+        var graph = Graph(Ids.Of("f"), [Process],
+            new FindElementNode { Id = Ids.Of("f"), DisplayName = "find-1", Template = "нет" });
 
         await Assert.That(MacroGraphValidator.Validate(graph)).IsEmpty();
     }

@@ -1,4 +1,6 @@
 using System.Globalization;
+using SmartMacro.Macros.Analysis;
+using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 
 namespace SmartMacro.Macros.Validation;
@@ -30,11 +32,37 @@ namespace SmartMacro.Macros.Validation;
 /// Но строка лога «0:01.2 · Клик · ок», встретившаяся дважды, читателю уже ни о чём не говорит —
 /// на канве неоднозначность снимет подсветка, а в тексте снять её нечем. Поэтому сказать надо, а
 /// запрещать — нет.
+///
+/// <b>Шаблоны (волна F2).</b> С переездом шаблонов внутрь бандла набор шаблонов макроса известен
+/// статически — ровно так же точно, как имена в нодах, — поэтому «нода называет шаблон, которого
+/// нет» стало проверкой ЗДЕСЬ. До этого о том же узнавали двумя худшими способами: из раздела
+/// «НЕТ ФАЙЛА» в браузере шаблонов (куда надо было пойти) и строчкой в журнале демона посреди
+/// прогона (когда уже поздно). Проверка требует ОПИСИ и без неё пропускается целиком — см.
+/// перегрузку <see cref="Validate(MacroGraph, MacroTemplateInventory?)"/>.
 /// </summary>
 public static class MacroGraphValidator
 {
-    /// <summary>Проверяет граф. Пустой список = всё чисто.</summary>
-    public static IReadOnlyList<ValidationIssue> Validate(MacroGraph macro)
+    /// <summary>
+    /// Проверяет граф без сверки шаблонов. Пустой список = всё чисто.
+    ///
+    /// Так зовут те, у кого описи бандла на руках нет: редактор, пересчитывающий предупреждения
+    /// по несохранённому черновику, и тесты модели.
+    /// </summary>
+    public static IReadOnlyList<ValidationIssue> Validate(MacroGraph macro) => Validate(macro, templates: null);
+
+    /// <summary>
+    /// Проверяет граф вместе с описью шаблонов его бандла.
+    /// </summary>
+    /// <param name="macro">Граф.</param>
+    /// <param name="templates">
+    /// Опись шаблонов бандла или <c>null</c>.
+    ///
+    /// <b><c>null</c> и пустая опись — РАЗНЫЕ вещи, и путать их нельзя.</b> <c>null</c> значит
+    /// «состав бандла неизвестен» — тогда сверка не делается вовсе, потому что обвинить ноду в
+    /// ссылке на несуществующий файл, не посмотрев в файл, значит соврать. Пустая опись значит
+    /// «в бандле шаблонов нет», и это законный повод сказать про каждую ссылку.
+    /// </param>
+    public static IReadOnlyList<ValidationIssue> Validate(MacroGraph macro, MacroTemplateInventory? templates)
     {
         ArgumentNullException.ThrowIfNull(macro);
 
@@ -101,6 +129,36 @@ public static class MacroGraphValidator
             {
                 issues.Add(Error(node,
                     $"Порог совпадения {threshold.ToString("0.###", CultureInfo.InvariantCulture)} вне диапазона (0; 1]."));
+            }
+        }
+
+        // Шаблоны, которых в бандле нет.
+        //
+        // ПРЕДУПРЕЖДЕНИЕ, а не ошибка, и это выбор, а не осторожность. Ошибка запрещает
+        // сохранение, а «набрал имя шаблона → импортировал файл» — совершенно нормальный порядок
+        // действий, и запрещать первый шаг до второго значило бы требовать держать имя в голове.
+        // К тому же ненайденный шаблон не обрывает прогон: нода честно уходит по «не найдено» /
+        // «не совпало», и ветка на этот случай в графе как раз и предусмотрена. Сказать надо —
+        // запрещать нет; та же логика, что у дубликата подписи выше.
+        if (templates is not null)
+        {
+            foreach (var usage in MacroTemplateAnalysis.Analyze(macro))
+            {
+                if (templates.Has(usage.Name, usage.IsSet))
+                {
+                    continue;
+                }
+
+                foreach (var reference in usage.References)
+                {
+                    issues.Add(new ValidationIssue(
+                        ValidationSeverity.Warning,
+                        reference.NodeId,
+                        reference.NodeName,
+                        usage.IsSet
+                            ? $"В макросе нет набора шаблонов «{usage.Name}» — нода всегда будет уходить по «не совпало»."
+                            : $"В макросе нет шаблона «{usage.Name}» — нода всегда будет уходить по «не найдено»."));
+                }
             }
         }
 

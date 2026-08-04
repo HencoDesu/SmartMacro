@@ -15,15 +15,14 @@ public enum TemplateSlot
     RecognizeSet,
 }
 
-/// <summary>Одно место, где макрос называет шаблон.</summary>
-/// <param name="MacroName">Граф, в котором это написано.</param>
-/// <param name="NodeId">Нода внутри него.</param>
-/// <param name="NodeName">Её подпись — то, что браузер шаблонов печатает в списке «кому нужен».</param>
+/// <summary>Одно место в графе, где макрос называет шаблон.</summary>
+/// <param name="NodeId">Нода — по нему её находят и подсвечивают.</param>
+/// <param name="NodeName">Её подпись — по ней её печатают. Ни того, ни другого поодиночке не хватает.</param>
 /// <param name="Slot">Какое именно поле этой ноды.</param>
-public sealed record TemplateReference(string MacroName, Guid NodeId, string NodeName, TemplateSlot Slot);
+public sealed record TemplateReference(Guid NodeId, string NodeName, TemplateSlot Slot);
 
 /// <summary>
-/// Всё, что библиотека макросов говорит про одно имя шаблона.
+/// Всё, что ОДИН граф говорит про одно имя шаблона.
 /// </summary>
 /// <param name="Name">Имя ровно в том виде, в каком его несёт нода. Регистр важен.</param>
 /// <param name="IsSet">
@@ -31,70 +30,73 @@ public sealed record TemplateReference(string MacroName, Guid NodeId, string Nod
 /// одиночного файла, названное <c>Find</c>/<c>Wait</c>. Ключ разбора — пара «имя + вид», потому
 /// что папка <c>classes</c> и файл <c>classes.png</c> суть разные вещи и обе законны.
 /// </param>
-/// <param name="References">Все места, где на него ссылаются, в порядке обхода библиотеки.</param>
-public sealed record TemplateUsage(string Name, bool IsSet, IReadOnlyList<TemplateReference> References)
-{
-    /// <summary>Сколько РАЗНЫХ макросов на него ссылаются — то число, что показывает браузер.</summary>
-    public int MacroCount => References.Select(r => r.MacroName).Distinct(StringComparer.Ordinal).Count();
-}
+/// <param name="References">Все ноды, которые на него ссылаются, в порядке обхода графа.</param>
+public sealed record TemplateUsage(string Name, bool IsSet, IReadOnlyList<TemplateReference> References);
 
 /// <summary>
-/// Статический разбор «какой макрос какой шаблон называет» по библиотеке графов — вторая
-/// половина браузера шаблонов (первую, «какие файлы лежат в папке», сообщает демон).
+/// Статический разбор «какие шаблоны называет этот граф».
+///
+/// <b>Раньше разбор шёл по всей БИБЛИОТЕКЕ</b> и отвечал на вопрос «каким макросам нужен этот
+/// шаблон» — вопрос браузера шаблонов, когда дерево <c>templates/</c> было общим. С волны F2
+/// общего дерева нет: шаблон лежит внутри бандла и принадлежит ровно одному макросу, так что
+/// вопрос перестал существовать вместе с ответом. Разбор остался, но сузился до одного графа, и
+/// потребителей у него теперь двое:
+/// <list type="bullet">
+///   <item><b>валидатор</b> — сверяет эти имена с описью бандла
+///     (<see cref="Bundle.MacroTemplateInventory"/>) и говорит «нода называет шаблон, которого в
+///     бандле нет» ДО запуска, а не строчкой в журнале посреди прогона;</item>
+///   <item><b>браузер шаблонов внутри редактора</b> — показывает у каждого файла, какие ноды его
+///     называют, и приглушает те, что не называет никто.</item>
+/// </list>
+/// Реализация правила ОДНА, второй копии заводить нельзя, — то же требование, что у бейджа целей
+/// (D4): диагностика, расходящаяся с тем, что делает исполнитель, хуже отсутствующей.
 ///
 /// <b>Чистая функция и намеренно в Shared</b>, ровно как <see cref="MacroVariableAnalysis"/>
-/// рядом: нужна только модель, ни файлового ввода-вывода, ни реестра. Поэтому вопрос «кому нужен
-/// этот шаблон» панель отвечает сама, по библиотеке, которая у неё уже есть, — нового типа
-/// сообщения он не требует. Это тот же приём, что у бейджа целей (D4), и с тем же главным
-/// правилом: реализация правила ОДНА, второй копии заводить нельзя.
+/// рядом: нужна только модель, ни файлового ввода-вывода, ни реестра.
 ///
-/// <b>Имена шаблонов НЕ интерполируются.</b> В отличие от тега, пути иконки и имени
-/// вызываемого макроса, <c>Template</c> и <c>TemplateSet</c> уезжают в примитивы такой строкой,
-/// какая записана в ноде, — исполнитель не прогоняет их через
-/// <see cref="MacroVariableNames.Placeholder"/>. Поэтому <c>{tag}</c> в имени шаблона здесь
-/// считается частью имени, а не чтением переменной: разбор, который сообщал бы иначе, врал бы
-/// про то, что делает движок.
+/// <b>Имена шаблонов НЕ интерполируются.</b> В отличие от тега, пути иконки и имени вызываемого
+/// макроса, <c>Template</c> и <c>TemplateSet</c> уезжают в примитивы такой строкой, какая записана
+/// в ноде, — исполнитель не прогоняет их через <see cref="MacroVariableNames.Placeholder"/>.
+/// Поэтому <c>{tag}</c> в имени шаблона здесь считается частью имени, а не чтением переменной:
+/// разбор, который сообщал бы иначе, врал бы про то, что делает движок.
 /// </summary>
 public static class MacroTemplateAnalysis
 {
     /// <summary>
-    /// Разбирает библиотеку целиком.
+    /// Разбирает один граф.
     /// </summary>
-    /// <param name="macros">Библиотека графов.</param>
+    /// <param name="macro">Граф.</param>
     /// <returns>
     /// По записи на «имя + вид», сперва наборы, затем одиночные, внутри — по имени. Пустое или
     /// пробельное имя не попадает никуда: это не ссылка на шаблон, а незаполненное поле, и
-    /// сказать про него должен валидатор, а не браузер.
+    /// сказать про него должна отдельная проверка, а не эта.
     /// </returns>
-    public static IReadOnlyList<TemplateUsage> Analyze(IEnumerable<MacroGraph> macros)
+    public static IReadOnlyList<TemplateUsage> Analyze(MacroGraph macro)
     {
-        ArgumentNullException.ThrowIfNull(macros);
+        ArgumentNullException.ThrowIfNull(macro);
 
         var found = new Dictionary<(string Name, bool IsSet), List<TemplateReference>>();
 
-        foreach (var macro in macros)
+        foreach (var node in macro.Nodes)
         {
-            foreach (var node in macro.Nodes)
+            switch (node)
             {
-                switch (node)
-                {
-                    case FindElementNode n:
-                        Add(found, n.Template, isSet: false, macro.Name, node, TemplateSlot.FindTemplate);
-                        break;
+                case FindElementNode n:
+                    Add(found, n.Template, isSet: false, node, TemplateSlot.FindTemplate);
+                    break;
 
-                    case WaitForElementNode n:
-                        Add(found, n.Template, isSet: false, macro.Name, node, TemplateSlot.WaitTemplate);
-                        break;
+                case WaitForElementNode n:
+                    Add(found, n.Template, isSet: false, node, TemplateSlot.WaitTemplate);
+                    break;
 
-                    case RecognizeTagNode n:
-                        Add(found, n.TemplateSet, isSet: true, macro.Name, node, TemplateSlot.RecognizeSet);
-                        break;
+                case RecognizeTagNode n:
+                    Add(found, n.TemplateSet, isSet: true, node, TemplateSlot.RecognizeSet);
+                    break;
 
-                    default:
-                        // Остальные ноды шаблонов не касаются. НОВАЯ нода с картинкой попадёт
-                        // сюда молча — единственное, о чём стоит помнить, добавляя такую.
-                        break;
-                }
+                default:
+                    // Остальные ноды шаблонов не касаются. НОВАЯ нода с картинкой попадёт
+                    // сюда молча — единственное, о чём стоит помнить, добавляя такую.
+                    break;
             }
         }
 
@@ -111,7 +113,6 @@ public static class MacroTemplateAnalysis
         Dictionary<(string, bool), List<TemplateReference>> found,
         string? name,
         bool isSet,
-        string macroName,
         MacroNode node,
         TemplateSlot slot)
     {
@@ -127,6 +128,6 @@ public static class MacroTemplateAnalysis
             found[key] = references;
         }
 
-        references.Add(new TemplateReference(macroName, node.Id, MacroNodeNames.Display(node), slot));
+        references.Add(new TemplateReference(node.Id, MacroNodeNames.Display(node), slot));
     }
 }

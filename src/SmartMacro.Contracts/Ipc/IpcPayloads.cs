@@ -29,7 +29,16 @@ public sealed record StopMacroRequest(Guid RunId);
 
 /// <summary>Нагрузка <see cref="IpcMessageTypes.SaveMacro"/>.</summary>
 /// <param name="Macro">Граф, который надо сохранить. Его <see cref="MacroGraph.Name"/> становится именем файла.</param>
-public sealed record SaveMacroRequest(MacroGraph Macro);
+/// <param name="RenamedFrom">
+/// Прежнее имя, когда сохранение является переименованием, иначе <c>null</c>.
+///
+/// Поле появилось вместе с бандлами (F2) и решает ровно одну беду: макрос — это уже не только
+/// граф, а ещё и его шаблоны, и записать граф под НОВЫМ именем значит создать бандл, которому
+/// нечего унаследовать. Переименование по-прежнему делается «записать новый → удалить старый»
+/// (в этом порядке: сбой между шагами обязан оставить две копии, а не ноль), но демон, зная
+/// прежнее имя, переносит в новый бандл шаблоны, под-макросы и паспорт целиком.
+/// </param>
+public sealed record SaveMacroRequest(MacroGraph Macro, string? RenamedFrom = null);
 
 /// <summary>Нагрузка <see cref="IpcMessageTypes.DeleteMacro"/>.</summary>
 /// <param name="Name">Макрос, который надо удалить. Удалить несуществующий макрос — не ошибка, а пустая операция.</param>
@@ -59,17 +68,40 @@ public sealed record SubscribeRunEventsRequest(bool Enabled);
 public sealed record SubscribeLogRequest(bool Enabled);
 
 /// <summary>
-/// Нагрузка <see cref="IpcMessageTypes.GetTemplateImage"/>. Пара «набор + имя» и есть
-/// идентичность шаблона: имя уникально только внутри своей папки, и <c>Лучник</c> из набора
-/// <c>classes</c> — это не тот же файл, что одиночный <c>Лучник</c> в корне дерева.
+/// Нагрузка <see cref="IpcMessageTypes.GetTemplates"/> — перечень шаблонов ОДНОГО макроса.
 /// </summary>
-/// <param name="Set">Набор (подпапка) либо <c>null</c> — одиночный шаблон в корне <c>templates/</c>.</param>
+/// <param name="MacroName">Макрос, в бандл которого смотрим. Неизвестное имя даёт пустой список, а не отказ.</param>
+public sealed record GetTemplatesRequest(string MacroName);
+
+/// <summary>
+/// Нагрузка <see cref="IpcMessageTypes.GetTemplateImage"/>. Тройка «макрос + набор + имя» и есть
+/// идентичность шаблона: имя уникально только внутри своей папки внутри своего бандла, и
+/// <c>Лучник</c> из набора <c>classes</c> — это не тот же файл, что одиночный <c>Лучник</c> в
+/// корне, а <c>Лучник</c> из другого макроса — вообще другая картинка.
+/// </summary>
+/// <param name="MacroName">Макрос, в бандле которого лежит шаблон.</param>
+/// <param name="Set">Набор (подпапка) либо <c>null</c> — одиночный шаблон в корне <c>templates/</c> бандла.</param>
 /// <param name="Name">
 /// Основа имени файла из <c>TemplateDto.Name</c>. Сегменты пути в ней запрос отклоняют: это
 /// строка, приехавшая по проводу, и <c>..\</c> в ней означает попытку вычитать что-то за
-/// пределами дерева <c>templates/</c>, а не шаблон, которого не хватает.
+/// пределами <c>templates/</c>, а не шаблон, которого не хватает.
 /// </param>
-public sealed record GetTemplateImageRequest(string? Set, string Name);
+public sealed record GetTemplateImageRequest(string MacroName, string? Set, string Name);
+
+/// <summary>
+/// Нагрузка <see cref="IpcMessageTypes.AddMacroTemplate"/> — положить PNG в бандл макроса.
+/// </summary>
+/// <param name="MacroName">Макрос, которому шаблон принадлежит.</param>
+/// <param name="Set">Набор (подпапка) либо <c>null</c> — одиночный шаблон.</param>
+/// <param name="Name">Имя шаблона = основа имени файла; для набора это тег, которым его навесит <c>RecognizeTag</c>.</param>
+/// <param name="Png">Содержимое файла; потолок — <see cref="Dto.TemplateLimits.MaxImageBytes"/>, как у превью.</param>
+public sealed record AddMacroTemplateRequest(string MacroName, string? Set, string Name, byte[]? Png);
+
+/// <summary>Нагрузка <see cref="IpcMessageTypes.DeleteMacroTemplate"/>. Удалить несуществующий — пустая операция.</summary>
+/// <param name="MacroName">Макрос, которому шаблон принадлежит.</param>
+/// <param name="Set">Набор (подпапка) либо <c>null</c>.</param>
+/// <param name="Name">Имя шаблона.</param>
+public sealed record DeleteMacroTemplateRequest(string MacroName, string? Set, string Name);
 
 /// <summary>Нагрузка события <see cref="IpcMessageTypes.WindowClosed"/>.</summary>
 /// <param name="Hwnd">Хендл исчезнувшего окна. Никакие другие его данные не переживают закрытия.</param>

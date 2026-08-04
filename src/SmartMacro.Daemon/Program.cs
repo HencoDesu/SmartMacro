@@ -245,7 +245,6 @@ internal static class Program
         services.AddSingleton<WindowRegistry>();
 
         services.AddSingleton<IClassMatcher, ClassMatcher>();
-        services.AddSingleton<TemplateSetProvider>();
         // ВНИМАНИЕ: ICoordinateReader/TesseractCoordinateReader намеренно НЕ регистрируется
         // (стадия 4B). В демоне его никто не внедряет, а конструктор жадно открывает
         // TesseractEngine — то есть регистрация стоила бы первому же запросившему компоненту
@@ -265,6 +264,11 @@ internal static class Program
         // ни одного файла — инвариант вместе с причинами записан на самом MacroGraphStore.
         services.AddSingleton<MacroGraphStore>();
         services.AddSingleton<IMacroGraphResolver>(sp => sp.GetRequiredService<MacroGraphStore>());
+        // Волна F2: шаблоны зрения переехали внутрь бандла макроса, поэтому разрешение имён стало
+        // порунным. Кэш живёт между прогонами (иначе каждый прогон открывал бы zip), ключуется
+        // именем макроса и сбрасывается по MacrosChanged — подписку на неё он берёт у хранилища,
+        // отсюда и порядок регистрации.
+        services.AddSingleton<MacroTemplateCache>();
         services.AddSingleton<IMacroPrimitives, MacroPrimitives>();
         services.AddSingleton<MacroExecutor>();
         services.AddSingleton<MacroRunRegistry>();

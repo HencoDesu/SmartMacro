@@ -292,9 +292,8 @@
                         <views:MacrosView DataContext="{Binding Editor}" />
                     </Panel>
                     <views:RunsView IsVisible="{Binding IsRunsMode}" />
-                    <Panel IsVisible="{Binding IsTemplatesMode}">
-                        <views:TemplatesView DataContext="{Binding Templates}" />
-                    </Panel>
+                    <!-- Режима «Шаблоны» здесь больше нет: с волны F2 шаблон живёт внутри бандла
+                         своего макроса, а браузер — в инспекторе редактора (см. MacrosView). -->
                     <Panel IsVisible="{Binding IsLogMode}">
                         <views:LogView DataContext="{Binding Log}" />
                     </Panel>

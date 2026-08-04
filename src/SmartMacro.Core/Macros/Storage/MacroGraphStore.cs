@@ -1,8 +1,7 @@
 using System.Collections.Immutable;
-using System.Globalization;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
@@ -10,15 +9,21 @@ using SmartMacro.Macros.Validation;
 namespace SmartMacro.Macros.Storage;
 
 /// <summary>
-/// Библиотека макросов на диске: по одному JSON-файлу на граф в папке <c>macros/</c> в корне
-/// установки, где ОСНОВА ИМЕНИ ФАЙЛА и есть имя макроса. Файл на макрос (вместо
-/// прежнего единого <c>macros.json</c>) — чтобы править руками, смотреть диффом и делиться
-/// отдельным макросом было естественными действиями.
+/// Библиотека макросов на диске: по одному БАНДЛУ <c>.hsm</c> на макрос в папке <c>macros/</c> в
+/// корне установки, где ОСНОВА ИМЕНИ ФАЙЛА и есть имя макроса.
+///
+/// <b>До волны F2 здесь лежали голые <c>*.json</c> с графом, а шаблоны жили одним общим деревом
+/// <c>templates/</c>.</b> Связь между графом и его шаблонами при этом не была скреплена ничем:
+/// отданный другому человеку файл молча не работал, потому что <c>templates/classes/Лучник.png</c>
+/// был только у автора. Теперь макрос — это zip без сжатия, внутри которого лежит и граф, и его
+/// собственные шаблоны (§13.1 спеки, <see cref="MacroBundleFormat"/>). Цена названа честно: два
+/// макроса с распознаванием класса несут по своей копии одиннадцати PNG, и поправленный шаблон
+/// приходится разносить руками.
 ///
 /// За что отвечает:
-///   * загрузить всё при создании, пропуская (а не падая на) нечитаемые файлы;
+///   * загрузить всё при создании, пропуская (а не падая на) непрочитавшиеся бандлы;
 ///   * CRUD через <see cref="SaveAsync"/> / <see cref="DeleteAsync"/> с проверкой имени по
-///     правилам NTFS;
+///     правилам NTFS, плюс правку шаблонов внутри бандла;
 ///   * горячую перезагрузку через <see cref="FileSystemWatcher"/> с гашением дребезга, где
 ///     собственные записи подавляются сравнением подписи папки по временам последней записи.
 ///
@@ -33,18 +38,17 @@ namespace SmartMacro.Macros.Storage;
 /// <c>pw-*</c> и ставил маркер <c>.examples-seeded</c>. То есть «создать объект» означало
 /// «изменить состояние на диске»: тест не мог построить хранилище, не получив в придачу чужих
 /// файлов, а пользователь не мог понять, откуда в его папке макросы, которых он не писал.
-/// Примеров теперь нет вовсе — ни в коде, ни отдельной раздаточной папкой, — а мигрировать
-/// больше нечего. Побочные эффекты сюда не возвращать: если что-то нужно записать на старте, это
-/// отдельный метод, видимый на месте вызова.
+/// Побочные эффекты сюда не возвращать: если что-то нужно записать на старте, это отдельный
+/// метод, видимый на месте вызова.
 ///
-/// ЕДИНСТВЕННОЕ ИСКЛЮЧЕНИЕ — <c>*.json.incompatible</c>. Файл, который не разбирается, ОТОДВИГАЕТСЯ
-/// в сторону переименованием: содержимого это не сочиняет, но состояние на диске меняет, поэтому
-/// названо здесь явно. Появилось вместе с переходом нод на <c>Guid</c>: миграции нет, старые
-/// <c>"Id": "n1"</c> перестали разбираться разом, и «пропустить и записать строку в лог» означало
-/// бы, что пользователь открывает панель, видит пустую библиотеку и НИЧЕГО не видит на её месте.
-/// Отодвинутый файл видно в проводнике рядом с макросами — это и есть объяснение.
-/// Переименовываются только сбои РАЗБОРА: занятый или недоступный файл — история временная, и
-/// трогать его было бы прямым вредительством.
+/// <b><c>*.json.incompatible</c> больше нет, и это тоже решение, а не пропажа.</b> Отодвигание
+/// непарсимого файла в сторону появилось, когда ноды перешли на <c>Guid</c>: старые файлы
+/// перестали разбираться ВСЕ РАЗОМ, и пользователь открыл бы панель с пустой библиотекой без
+/// единого следа. У бандла эта беда снята форматом: <see cref="MacroBundleReader"/> не бросает и
+/// различает «повреждён» и «сделан другой версией формата», а версия пишется в файл с первого
+/// дня. Отодвинуть бандл БУДУЩЕЙ версии значило бы соврать ровно тем способом, ради недопущения
+/// которого поле версии и заведено. Поэтому файл остаётся на месте, а причина уходит в журнал
+/// целиком — и оба конца остаются у пользователя в руках.
 ///
 /// Реализует <see cref="IMacroGraphResolver"/>, так что <c>RunMacroNode</c> разрешает
 /// под-макросы прямо из живой библиотеки.
@@ -59,6 +63,12 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
 
     private const int ReloadDebounceMs = 300;
 
+    // Наблюдатель смотрит только на бандлы. Временный файл атомарной записи назван так, чтобы под
+    // этот фильтр не попадать ни длинным именем («foo.hsm.tmp»), ни коротким 8.3
+    // («FOOHSM~1.TMP»): 8.3 берёт первые три символа ПОСЛЕДНЕГО расширения — см.
+    // MacroBundleWriter.
+    private static readonly string BundleFilter = "*" + MacroBundleFormat.Extension;
+
     private readonly string _directory;
     private readonly ILogger<MacroGraphStore> _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -67,6 +77,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     private CancellationTokenSource? _pendingReload;
     private int _disposed;
 
+    private ImmutableList<MacroLibraryEntry> _entries = [];
     private ImmutableList<MacroGraph> _macros = [];
 
     // Снимок «путь → время последней записи» на момент последней загрузки или записи, которую
@@ -102,7 +113,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         // правки», а не до падения.
         try
         {
-            _watcher = new FileSystemWatcher(_directory, "*.json")
+            _watcher = new FileSystemWatcher(_directory, BundleFilter)
             {
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
                 EnableRaisingEvents = true,
@@ -127,19 +138,29 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     /// <summary>Текущий неизменяемый снимок библиотеки, упорядоченный по имени.</summary>
     public IReadOnlyList<MacroGraph> All => _macros;
 
+    /// <summary>
+    /// Тот же снимок, но целыми бандлами: граф плюс паспорт плюс опись шаблонов. Нужен тем, кто
+    /// спрашивает про ФАЙЛ, а не про граф, — валидации при сохранении, диагностике и браузеру
+    /// шаблонов.
+    /// </summary>
+    public IReadOnlyList<MacroLibraryEntry> Entries => _entries;
+
     /// <inheritdoc />
-    public MacroGraph? TryGet(string name)
+    public MacroGraph? TryGet(string name) => TryGetEntry(name)?.Graph;
+
+    /// <summary>Запись библиотеки по имени или <c>null</c>.</summary>
+    public MacroLibraryEntry? TryGetEntry(string name)
     {
         if (string.IsNullOrEmpty(name))
         {
             return null;
         }
 
-        foreach (var macro in _macros)
+        foreach (var entry in _entries)
         {
-            if (string.Equals(macro.Name, name, StringComparison.Ordinal))
+            if (string.Equals(entry.Name, name, StringComparison.Ordinal))
             {
-                return macro;
+                return entry;
             }
         }
 
@@ -147,13 +168,28 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     }
 
     /// <summary>
-    /// Пишет <paramref name="graph"/> в <c>macros/{Name}.json</c>, заменяя любой существующий
-    /// файл с этим именем, и поднимает <see cref="MacrosChanged"/>.
+    /// Пишет <paramref name="graph"/> в <c>macros/{Name}.hsm</c> и поднимает
+    /// <see cref="MacrosChanged"/>.
+    ///
+    /// <b>Пишется бандл целиком, а меняется в нём только граф.</b> Шаблоны, под-макросы и паспорт
+    /// (в том числе <see cref="MacroBundleMetadata.Id"/> и дата создания) читаются из
+    /// существующего файла и кладутся обратно; меняется лишь дата правки. Иначе сохранение графа
+    /// стирало бы шаблоны — то есть ровно то, ради чего бандл и заведён.
     /// </summary>
     /// <param name="graph">Сохраняемый граф; его имя становится основой имени файла.</param>
+    /// <param name="renamedFrom">
+    /// Прежнее имя, если это переименование.
+    ///
+    /// Без него переименование теряло бы шаблоны: редактор переименовывает записью под новым
+    /// именем и удалением старого файла (именно в таком порядке — сбой между шагами обязан
+    /// оставить две копии, а не ноль), а под новым именем бандла ещё нет, и наследовать вложения
+    /// не от чего. Паспорт при переименовании тоже переезжает целиком: <c>Id</c> не меняется
+    /// никогда, а переименование — это не дублирование.
+    /// </param>
     /// <param name="cancellationToken">Токен отмены.</param>
     /// <exception cref="ArgumentException">Имя графа не годится в качестве имени файла.</exception>
-    public async Task SaveAsync(MacroGraph graph, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(MacroGraph graph, string? renamedFrom = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(graph);
         if (ValidateName(graph.Name) is { } nameError)
@@ -161,24 +197,36 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             throw new ArgumentException(nameError, nameof(graph));
         }
 
-        // Ошибки сохранению не мешают — редактор обязан уметь сохранить недоделанный граф, — но
-        // они громкие, потому что исполнитель оборвёт прогон, который дойдёт до сломанного
-        // места.
-        foreach (var issue in MacroGraphValidator.Validate(graph))
-        {
-            if (issue.Severity == ValidationSeverity.Error)
-            {
-                LogValidationError(graph.Name, issue.NodeName ?? "(граф)", issue.Message);
-            }
-        }
-
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var path = PathFor(graph.Name);
-            await File.WriteAllTextAsync(path, MacroGraphJson.Serialize(graph), cancellationToken)
-                .ConfigureAwait(false);
-            LogSaved(graph.Name, path);
+            var previous = ReadContentOrNull(path)
+                           ?? (renamedFrom is null ? null : ReadContentOrNull(PathFor(renamedFrom)));
+
+            var content = new MacroBundleContent
+            {
+                Metadata = previous?.Metadata.Touch() ?? MacroBundleMetadata.CreateNew(graph.Name),
+                Graph = graph,
+                Templates = previous?.Templates ?? [],
+                Submacros = previous?.Submacros ?? [],
+            };
+
+            // Ошибки сохранению не мешают — редактор обязан уметь сохранить недоделанный граф, —
+            // но они громкие, потому что исполнитель оборвёт прогон, который дойдёт до сломанного
+            // места. Проверяем ПОСЛЕ того, как собрали содержимое: опись шаблонов берётся из того
+            // бандла, который сейчас ляжет на диск, а не из того, что лежал раньше.
+            var inventory = MacroTemplateInventory.FromPaths(content.Templates.Select(file => file.Path));
+            foreach (var issue in MacroGraphValidator.Validate(graph, inventory))
+            {
+                if (issue.Severity == ValidationSeverity.Error)
+                {
+                    LogValidationError(graph.Name, issue.NodeName ?? "(граф)", issue.Message);
+                }
+            }
+
+            MacroBundleWriter.Write(path, content);
+            LogSaved(graph.Name, path, content.Templates.Count);
             Reload(raiseEvent: false);
         }
         finally
@@ -190,7 +238,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     }
 
     /// <summary>
-    /// Удаляет <c>macros/{name}.json</c> и поднимает <see cref="MacrosChanged"/>.
+    /// Удаляет <c>macros/{name}.hsm</c> и поднимает <see cref="MacrosChanged"/>.
     /// </summary>
     /// <param name="name">Имя удаляемого макроса.</param>
     /// <param name="cancellationToken">Токен отмены.</param>
@@ -222,6 +270,93 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
 
         MacrosChanged?.Invoke(_macros);
         return true;
+    }
+
+    // ------------------------------------------------------------------ шаблоны бандла
+
+    /// <summary>
+    /// Кладёт шаблон в бандл макроса, заменяя одноимённый.
+    ///
+    /// Бандл при этом переписывается целиком — иначе не выйдет атомарной замены, — так что цена
+    /// добавления одного PNG равна цене сохранения макроса. Для файлов в десятки килобайт это
+    /// ничто, а взамен «добавили шаблон» ничем не отличается от «сохранили граф»: тот же
+    /// временный файл, то же переименование, то же событие.
+    /// </summary>
+    /// <param name="macroName">Макрос, которому принадлежит шаблон.</param>
+    /// <param name="set">Набор (подпапка) либо <c>null</c> — одиночный шаблон.</param>
+    /// <param name="templateName">Имя шаблона = основа имени файла; для набора это тег.</param>
+    /// <param name="png">Содержимое файла.</param>
+    /// <param name="cancellationToken">Токен отмены.</param>
+    /// <returns><c>false</c>, если такого макроса нет или его бандл не читается.</returns>
+    public Task<bool> AddTemplateAsync(string macroName, string? set, string templateName, byte[] png,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(templateName);
+        ArgumentNullException.ThrowIfNull(png);
+
+        var relativePath = MacroBundleFormat.TemplatePath(set, templateName);
+        if (!MacroBundleFormat.TryParseTemplatePath(relativePath, out _, out _))
+        {
+            return Task.FromResult(false);
+        }
+
+        return EditBundleAsync(macroName, content =>
+        {
+            var templates = content.Templates
+                .Where(file => !SamePath(file.Path, relativePath))
+                .Append(new MacroBundleFile(relativePath, png))
+                .ToList();
+            LogTemplateAdded(macroName, relativePath, png.Length);
+            return content with { Templates = templates };
+        }, cancellationToken);
+    }
+
+    /// <summary>Убирает шаблон из бандла макроса. <c>false</c> — такого шаблона там нет.</summary>
+    public Task<bool> DeleteTemplateAsync(string macroName, string? set, string templateName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(templateName);
+
+        var relativePath = MacroBundleFormat.TemplatePath(set, templateName);
+        return EditBundleAsync(macroName, content =>
+        {
+            var templates = content.Templates.Where(file => !SamePath(file.Path, relativePath)).ToList();
+            if (templates.Count == content.Templates.Count)
+            {
+                return null;
+            }
+
+            LogTemplateDeleted(macroName, relativePath);
+            return content with { Templates = templates };
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Перечень шаблонов макроса для браузера в редакторе: пути, размеры, вес — без байтов.
+    ///
+    /// <b>Это ВТОРАЯ дорога чтения, и она намеренно ходит на диск каждый раз</b>, минуя кэш
+    /// исполнителя (<c>MacroTemplateCache</c>). Довод тот же, что был у общего дерева: браузер
+    /// существует ровно затем, чтобы показать, что в бандле лежит СЕЙЧАС, — а список, отвечающий
+    /// снимком из кэша, был бы для этого бесполезен.
+    /// </summary>
+    public IReadOnlyList<MacroBundleTemplateInfo> TemplateCatalog(string macroName) =>
+        TryGetEntry(macroName) is { } entry ? MacroBundleReader.ReadTemplateCatalog(entry.Path) : [];
+
+    /// <summary>Байты одного шаблона для превью — с диска, минуя кэш исполнителя.</summary>
+    /// <returns><c>null</c>, если макроса, шаблона или файла нет.</returns>
+    public byte[]? ReadTemplate(string macroName, string? set, string templateName)
+    {
+        if (string.IsNullOrWhiteSpace(templateName) || TryGetEntry(macroName) is not { } entry)
+        {
+            return null;
+        }
+
+        var relativePath = MacroBundleFormat.TemplatePath(set, templateName);
+        // Сегменты пути в имени — это попытка вычитать что-то за пределами templates/, а не
+        // шаблон, которого не хватает; разбор их не пропустит.
+        return MacroBundleFormat.TryParseTemplatePath(relativePath, out _, out _)
+            ? MacroBundleReader.ReadTemplate(entry.Path, relativePath)
+            : null;
     }
 
     /// <summary>
@@ -275,13 +410,58 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
                && char.IsAsciiDigit(stem[3]);
     }
 
-    private string PathFor(string name) => Path.Combine(_directory, $"{name}.json");
+    // NTFS регистр не различает, так что «Лучник.png» и «лучник.png» — это не два шаблона.
+    private static bool SamePath(string left, string right) =>
+        string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
-    // Полное перечитывание папки. Не бросает никогда: файл, который не разобрался, попадает в
+    private string PathFor(string name) => Path.Combine(_directory, name + MacroBundleFormat.Extension);
+
+    private static MacroBundleContent? ReadContentOrNull(string path) =>
+        File.Exists(path) ? MacroBundleReader.ReadContent(path) : null;
+
+    // Общий ход всякой правки бандла: прочитать всё → поменять одно → записать всё. Писатель умеет
+    // только «файл целиком», и это не ограничение, а условие атомарности: заменить переименованием
+    // можно только готовый файл.
+    private async Task<bool> EditBundleAsync(string macroName, Func<MacroBundleContent, MacroBundleContent?> edit,
+        CancellationToken cancellationToken)
+    {
+        if (ValidateName(macroName) is not null)
+        {
+            return false;
+        }
+
+        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var path = PathFor(macroName);
+            if (ReadContentOrNull(path) is not { } content)
+            {
+                LogBundleNotRewritable(macroName);
+                return false;
+            }
+
+            if (edit(content) is not { } updated)
+            {
+                return false;
+            }
+
+            MacroBundleWriter.Write(path, updated with { Metadata = updated.Metadata.Touch() });
+            Reload(raiseEvent: false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+
+        MacrosChanged?.Invoke(_macros);
+        return true;
+    }
+
+    // Полное перечитывание папки. Не бросает никогда: бандл, который не прочитался, попадает в
     // лог и пропускается, чтобы одна кривая правка руками не опустошила библиотеку.
     private void Reload(bool raiseEvent)
     {
-        var macros = new List<MacroGraph>();
+        var entries = new List<MacroLibraryEntry>();
         var signature = ImmutableDictionary.CreateBuilder<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         var skipped = 0;
 
@@ -298,46 +478,41 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             }
 
             var stem = Path.GetFileNameWithoutExtension(path);
-            try
+            var read = MacroBundleReader.Read(path);
+            if (read is not { IsOk: true, Graph: not null, Metadata.Metadata: not null })
             {
-                var graph = MacroGraphJson.Deserialize(File.ReadAllText(path));
-                if (!string.Equals(graph.Name, stem, StringComparison.Ordinal))
-                {
-                    // Главенствует имя файла — переименовали файл, значит переименовали макрос.
-                    LogNameMismatch(graph.Name, stem);
-                    graph = new MacroGraph
-                    {
-                        Name = stem,
-                        Triggers = graph.Triggers,
-                        StartNodeId = graph.StartNodeId,
-                        Nodes = graph.Nodes,
-                    };
-                }
+                // Читатель не бросает и различает «повреждён», «занят», «сделан другой версией
+                // формата» — поэтому здесь достаточно перенести его вердикт в журнал целиком.
+                // Файл при этом НЕ трогаем; см. про *.incompatible в комментарии класса.
+                var fault = read.Metadata.IsOk ? read.GraphFault : read.Metadata.Fault;
+                var message = (read.Metadata.IsOk ? read.GraphMessage : read.Metadata.Message) ?? "(без подробностей)";
+                LogBundleSkipped(path, fault.ToString(), message);
+                skipped++;
+                continue;
+            }
 
-                macros.Add(graph);
-            }
-            catch (JsonException ex)
+            var graph = read.Graph;
+            if (!string.Equals(graph.Name, stem, StringComparison.Ordinal))
             {
-                // Разобрать не вышло — и не выйдет впредь, потому что файл не поменяется сам.
-                // Отодвигаем в сторону, чтобы пустая библиотека имела на диске видимое
-                // объяснение; см. инвариант в комментарии класса.
-                LogFileSkipped(ex, path);
-                MoveAside(path);
-                skipped++;
+                // Главенствует имя файла — переименовали файл, значит переименовали макрос.
+                LogNameMismatch(graph.Name, stem);
+                graph = new MacroGraph
+                {
+                    Name = stem,
+                    Triggers = graph.Triggers,
+                    StartNodeId = graph.StartNodeId,
+                    Nodes = graph.Nodes,
+                };
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // Файл занят или недоступен — это состояние временное, и трогать его нельзя:
-                // следующая перезагрузка, скорее всего, прочитает его как ни в чём не бывало.
-                LogFileSkipped(ex, path);
-                skipped++;
-            }
+
+            entries.Add(new MacroLibraryEntry(stem, graph, read.Metadata.Metadata, read.TemplatePaths, path));
         }
 
-        macros.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
-        _macros = [.. macros];
+        entries.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
+        _entries = [.. entries];
+        _macros = [.. entries.Select(entry => entry.Graph)];
         _signature = signature.ToImmutable();
-        LogLoaded(macros.Count, skipped, _directory);
+        LogLoaded(entries.Count, skipped, _directory);
 
         if (raiseEvent)
         {
@@ -345,41 +520,11 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
     }
 
-    /// <summary>
-    /// Суффикс, который получает файл, не разобравшийся в <see cref="MacroGraph"/>.
-    /// Расширение <c>.json</c> сохраняется целиком (<c>pw-boot.json.incompatible</c>), чтобы в
-    /// проводнике было видно, чем файл был; наблюдатель на такое имя уже не смотрит.
-    /// </summary>
-    public const string IncompatibleSuffix = ".incompatible";
-
-    // Отодвигает непарсимый файл. Не бросает никогда: не получилось — значит, файл останется на
-    // месте и будет пропускаться дальше, ровно как до этой волны, и об этом пишется в лог.
-    private void MoveAside(string path)
-    {
-        try
-        {
-            var target = path + IncompatibleSuffix;
-            // Второй заход по тому же имени (файл вернули руками и он снова не разобрался) не
-            // должен ни падать, ни молча затирать предыдущую попытку.
-            for (var i = 2; File.Exists(target); i++)
-            {
-                target = string.Create(CultureInfo.InvariantCulture, $"{path}{IncompatibleSuffix}-{i}");
-            }
-
-            File.Move(path, target);
-            LogFileMovedAside(path, target);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            LogMoveAsideFailed(ex, path);
-        }
-    }
-
     private IEnumerable<string> EnumerateFilesSafe()
     {
         try
         {
-            return Directory.EnumerateFiles(_directory, "*.json")
+            return Directory.EnumerateFiles(_directory, BundleFilter)
                 .OrderBy(static p => p, StringComparer.OrdinalIgnoreCase).ToArray();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

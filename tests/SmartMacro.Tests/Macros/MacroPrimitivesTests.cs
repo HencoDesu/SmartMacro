@@ -13,9 +13,20 @@ namespace SmartMacro.Tests.Macros;
 // W0.2b: слой примитивов — тот шов, на котором адресованные по hwnd операции обходчика
 // превращаются в настоящий ввод, vision и косметику окна. Всё, что ниже шва (IGameWindow,
 // IClassMatcher), подделано; проверяется сама обвязка.
+//
+// Волна F2 убрала отсюда целый пласт: раньше здесь стоял TemplateSetProvider поверх временной
+// папки, и половина тестов проверяла РАЗРЕШЕНИЕ ИМЁН — «шаблона нет», «набор пуст», «набор
+// classes стал подпапкой». Разрешением больше не занимается этот слой: с переездом шаблонов
+// внутрь бандла имя без макроса ничего не значит, и в примитивы приезжают готовые байты
+// (см. IMacroPrimitives). Те проверки переехали туда, где решение теперь принимается, —
+// MacroExecutorWalkerTests («нода уходит по „не найдено“, не позвав примитив») и
+// MacroTemplateCacheTests («что вообще есть в бандле»).
 public class MacroPrimitivesTests
 {
     private static readonly IntPtr Hwnd = new(0xBEEF);
+
+    /// <summary>Байты «шаблона»: через шов едет массив, а какой именно — проверяют по нему же.</summary>
+    private static byte[] Template(string label) => System.Text.Encoding.UTF8.GetBytes(label);
 
     private sealed class Harness : IDisposable
     {
@@ -28,8 +39,7 @@ public class MacroPrimitivesTests
         public Harness()
         {
             AssetsRoot = Path.Combine(Path.GetTempPath(), $"smartmacro-assets-{Guid.NewGuid():N}");
-            Directory.CreateDirectory(Path.Combine(AssetsRoot, "templates"));
-            Directory.CreateDirectory(Path.Combine(AssetsRoot, "templates", TemplateSetProvider.ClassesSetName));
+            Directory.CreateDirectory(AssetsRoot);
 
             Registry = new WindowRegistry(NullLogger<WindowRegistry>.Instance);
             Window = A.Fake<IGameWindow>();
@@ -40,23 +50,9 @@ public class MacroPrimitivesTests
             Primitives = new MacroPrimitives(
                 Registry,
                 new AgentInputDispatcher(NullLogger<AgentInputDispatcher>.Instance),
-                new TemplateSetProvider(AssetsRoot, NullLogger<TemplateSetProvider>.Instance),
                 Matcher,
                 new WindowIconService(NullLogger<WindowIconService>.Instance),
                 NullLogger<MacroPrimitives>.Instance);
-        }
-
-        /// <summary>
-        /// Пишет файл-заглушку шаблона; через шов едут только его байты.
-        /// <paramref name="set"/> = <c>null</c> кладёт его в корень <c>templates/</c>, то есть
-        /// делает одиночным шаблоном для Find/Wait.
-        /// </summary>
-        public void WriteTemplate(string? set, string stem, string content)
-        {
-            var directory = set is null
-                ? Path.Combine(AssetsRoot, "templates")
-                : Path.Combine(AssetsRoot, "templates", set);
-            File.WriteAllText(Path.Combine(directory, $"{stem}.png"), content);
         }
 
         public void Dispose()
@@ -75,17 +71,18 @@ public class MacroPrimitivesTests
     public async Task FindElement_ReturnsTheMatchCenter_FromTheWindow()
     {
         using var harness = new Harness();
-        harness.WriteTemplate(null, "ServerSelectButton", "png-bytes");
+        var template = Template("ServerSelectButton");
         var center = new ScreenPoint(640, 480);
         A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, A<ScreenRect>._, A<double?>._, A<CancellationToken>._))
             .Returns(Task.FromResult<ScreenPoint?>(center));
 
         var region = new ScreenRect(10, 20, 30, 40);
-        var found = await harness.Primitives.FindElementAsync(Hwnd, "ServerSelectButton", region, matchThreshold: null, CancellationToken.None);
+        var found = await harness.Primitives.FindElementAsync(Hwnd, template, region, matchThreshold: null, CancellationToken.None);
 
         await Assert.That(found).IsEqualTo(center);
-        // Область из ноды передаётся дословно — обрезка это забота окна.
-        A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, region, A<double?>._, A<CancellationToken>._))
+        // Область из ноды передаётся дословно — обрезка это забота окна; байты шаблона тоже
+        // уезжают как есть.
+        A.CallTo(() => harness.Window.FindElementAsync(template, region, A<double?>._, A<CancellationToken>._))
             .MustHaveHappenedOnceExactly();
     }
 
@@ -93,35 +90,21 @@ public class MacroPrimitivesTests
     public async Task FindElement_NullRegion_BecomesTheEmptyRect_MeaningWholeClientArea()
     {
         using var harness = new Harness();
-        harness.WriteTemplate(null, "Anywhere", "png-bytes");
 
-        await harness.Primitives.FindElementAsync(Hwnd, "Anywhere", region: null, matchThreshold: null, CancellationToken.None);
+        await harness.Primitives.FindElementAsync(Hwnd, Template("Anywhere"), region: null, matchThreshold: null, CancellationToken.None);
 
         A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, default(ScreenRect), A<double?>._, A<CancellationToken>._))
             .MustHaveHappenedOnceExactly();
     }
 
     [Test]
-    public async Task FindElement_MissingTemplate_IsNotFound_AndNeverTouchesTheWindow()
-    {
-        using var harness = new Harness();
-
-        var found = await harness.Primitives.FindElementAsync(Hwnd, "NoSuchTemplate", null, matchThreshold: null, CancellationToken.None);
-
-        await Assert.That(found).IsNull();
-        A.CallTo(() => harness.Window.FindElementAsync(A<byte[]>._, A<ScreenRect>._, A<double?>._, A<CancellationToken>._))
-            .MustNotHaveHappened();
-    }
-
-    [Test]
     public async Task WaitForElement_ConvertsTheTimeoutToABudget()
     {
         using var harness = new Harness();
-        harness.WriteTemplate(null, "ChatPanelButtons", "png-bytes");
         A.CallTo(() => harness.Window.WaitForElementAsync(A<byte[]>._, A<ScreenRect>._, A<TimeSpan>._, A<double?>._, A<CancellationToken>._))
             .Returns(Task.FromResult<ScreenPoint?>(new ScreenPoint(1, 2)));
 
-        var found = await harness.Primitives.WaitForElementAsync(Hwnd, "ChatPanelButtons", null, 1500, matchThreshold: null, CancellationToken.None);
+        var found = await harness.Primitives.WaitForElementAsync(Hwnd, Template("ChatPanelButtons"), null, 1500, matchThreshold: null, CancellationToken.None);
 
         await Assert.That(found).IsEqualTo(new ScreenPoint(1, 2));
         A.CallTo(() => harness.Window.WaitForElementAsync(A<byte[]>._, A<ScreenRect>._, TimeSpan.FromMilliseconds(1500), A<double?>._, A<CancellationToken>._))
@@ -129,11 +112,14 @@ public class MacroPrimitivesTests
     }
 
     [Test]
-    public async Task Recognize_MapsTheSetToItsTemplates_AndReturnsTheWinningTag()
+    public async Task Recognize_PassesTheSetThroughToTheMatcher_AndReturnsTheWinningTag()
     {
         using var harness = new Harness();
-        harness.WriteTemplate(TemplateSetProvider.ClassesSetName, "Лучник", "archer-template");
-        harness.WriteTemplate(TemplateSetProvider.ClassesSetName, "Жрец", "priest-template");
+        var set = new Dictionary<string, byte[]>(StringComparer.Ordinal)
+        {
+            ["Лучник"] = Template("archer-template"),
+            ["Жрец"] = Template("priest-template"),
+        };
         A.CallTo(() => harness.Window.CaptureScreenshot()).Returns([1, 2, 3]);
 
         IReadOnlyDictionary<string, byte[]>? seen = null;
@@ -142,11 +128,10 @@ public class MacroPrimitivesTests
             .Returns(new TagMatch("Лучник", 0.93));
 
         var region = new ScreenRect(3200, 1060, 160, 35);
-        var tag = await harness.Primitives.RecognizeAsync(Hwnd, TemplateSetProvider.ClassesSetName, region, matchThreshold: null, CancellationToken.None);
+        var tag = await harness.Primitives.RecognizeAsync(Hwnd, set, region, matchThreshold: null, CancellationToken.None);
 
         await Assert.That(tag).IsEqualTo("Лучник");
-        // Имя набора "classes" разрешается в подпапку templates/classes с ключом по
-        // основе имени файла — эта основа И ЕСТЬ тег, который навешивает нода.
+        // Ключ словаря И ЕСТЬ тег, который навесит нода: сопоставителю он доезжает нетронутым.
         await Assert.That(seen).IsNotNull();
         await Assert.That(seen!.Keys.Order().ToList()).IsEquivalentTo(new List<string> { "Жрец", "Лучник" });
         A.CallTo(() => harness.Matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._, region, A<double?>._))
@@ -157,12 +142,12 @@ public class MacroPrimitivesTests
     public async Task Recognize_NoMatch_IsNull()
     {
         using var harness = new Harness();
-        harness.WriteTemplate(TemplateSetProvider.ClassesSetName, "Лучник", "archer-template");
+        var set = new Dictionary<string, byte[]>(StringComparer.Ordinal) { ["Лучник"] = Template("archer") };
         A.CallTo(() => harness.Window.CaptureScreenshot()).Returns([1]);
         A.CallTo(() => harness.Matcher.Match(A<byte[]>._, A<IReadOnlyDictionary<string, byte[]>>._, A<ScreenRect>._, A<double?>._))
             .Returns(null);
 
-        var tag = await harness.Primitives.RecognizeAsync(Hwnd, "classes", new ScreenRect(0, 0, 10, 10), matchThreshold: null, CancellationToken.None);
+        var tag = await harness.Primitives.RecognizeAsync(Hwnd, set, new ScreenRect(0, 0, 10, 10), matchThreshold: null, CancellationToken.None);
 
         await Assert.That(tag).IsNull();
     }
@@ -172,7 +157,15 @@ public class MacroPrimitivesTests
     {
         using var harness = new Harness();
 
-        var tag = await harness.Primitives.RecognizeAsync(Hwnd, "no-such-set", new ScreenRect(0, 0, 10, 10), matchThreshold: null, CancellationToken.None);
+        // Пустой словарь доезжает сюда только тогда, когда обходчик не нашёл набора в бандле и
+        // уже сказал об этом в журнал. Захват — самая дорогая операция слоя, и ради заведомо
+        // безрезультатного сопоставления её делать нельзя.
+        var tag = await harness.Primitives.RecognizeAsync(
+            Hwnd,
+            new Dictionary<string, byte[]>(StringComparer.Ordinal),
+            new ScreenRect(0, 0, 10, 10),
+            matchThreshold: null,
+            CancellationToken.None);
 
         await Assert.That(tag).IsNull();
         A.CallTo(() => harness.Window.CaptureScreenshot()).MustNotHaveHappened();
@@ -187,8 +180,13 @@ public class MacroPrimitivesTests
         // Веер, попавший в гонку со сносом окна, не имеет права разорвать прогон.
         await harness.Primitives.PressKeyAsync(stranger, VirtualKey.F8, CancellationToken.None);
         await harness.Primitives.ClickAsync(stranger, new ScreenPoint(1, 1), false, CancellationToken.None);
-        var found = await harness.Primitives.FindElementAsync(stranger, "whatever", null, matchThreshold: null, CancellationToken.None);
-        var tag = await harness.Primitives.RecognizeAsync(stranger, "classes", default, matchThreshold: null, CancellationToken.None);
+        var found = await harness.Primitives.FindElementAsync(stranger, Template("whatever"), null, matchThreshold: null, CancellationToken.None);
+        var tag = await harness.Primitives.RecognizeAsync(
+            stranger,
+            new Dictionary<string, byte[]>(StringComparer.Ordinal) { ["Лучник"] = Template("archer") },
+            default,
+            matchThreshold: null,
+            CancellationToken.None);
 
         await Assert.That(found).IsNull();
         await Assert.That(tag).IsNull();

@@ -6,11 +6,12 @@ using SmartMacro.App.Mvvm;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Analysis;
+using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 
 namespace SmartMacro.App.ViewModels;
 
-/// <summary>Одна строка браузера: файл шаблона, лежащий у демона.</summary>
+/// <summary>Одна строка браузера: шаблон, лежащий в бандле открытого макроса.</summary>
 public sealed class TemplateRowViewModel : ObservableObject
 {
     private bool _isSelected;
@@ -28,7 +29,7 @@ public sealed class TemplateRowViewModel : ObservableObject
         UsedBy = usedBy;
     }
 
-    /// <summary>Набор (подпапка) либо <c>null</c> — одиночный шаблон в корне дерева.</summary>
+    /// <summary>Набор (подпапка) либо <c>null</c> — одиночный шаблон в корне <c>templates/</c> бандла.</summary>
     public string? Set { get; }
 
     /// <summary>Имя файла без расширения — та самая строка, которой шаблон называет нода.</summary>
@@ -47,21 +48,16 @@ public sealed class TemplateRowViewModel : ObservableObject
     public bool IsDecodable { get; }
 
     /// <summary>
-    /// Все места в библиотеке, которые называют этот шаблон. Считает
-    /// <see cref="MacroTemplateAnalysis"/> — по графам, которые у панели и так есть, без единого
-    /// нового запроса.
+    /// Ноды ОТКРЫТОГО макроса, которые называют этот шаблон. Считает
+    /// <see cref="MacroTemplateAnalysis"/> — по графу, который у панели и так есть, без единого
+    /// нового запроса. Ссылка на набор достаётся каждому файлу набора: <c>RecognizeTag</c>
+    /// называет набор целиком, так что «Лучник.png никому не нужен» было бы враньём про шаблон,
+    /// которым опознают лучника.
     /// </summary>
     public IReadOnlyList<TemplateReference> UsedBy { get; }
 
-    /// <summary>«3 макроса» либо «не используется». Второе — не ошибка, просто факт.</summary>
-    public string UsageText
-    {
-        get
-        {
-            var macros = UsedBy.Select(r => r.MacroName).Distinct(StringComparer.Ordinal).Count();
-            return macros == 0 ? "не используется" : Plural(macros);
-        }
-    }
+    /// <summary>«3 ноды» либо «не используется». Второе — не ошибка, просто факт.</summary>
+    public string UsageText => UsedBy.Count == 0 ? "не используется" : Plural(UsedBy.Count);
 
     /// <summary><c>true</c>, когда на шаблон не ссылается ни одна нода, — строка рисуется приглушённо.</summary>
     public bool IsUnused => UsedBy.Count == 0;
@@ -76,11 +72,11 @@ public sealed class TemplateRowViewModel : ObservableObject
     /// <summary>«classes / Лучник» либо просто «ServerSelectButton» — заголовок панели превью.</summary>
     public string FullName => Set is null ? Name : $"{Set} / {Name}";
 
-    internal static string Plural(int macros) => (macros % 10, macros % 100) switch
+    internal static string Plural(int nodes) => (nodes % 10, nodes % 100) switch
     {
-        (1, not 11) => string.Create(CultureInfo.CurrentCulture, $"{macros} макрос"),
-        (2 or 3 or 4, not (12 or 13 or 14)) => string.Create(CultureInfo.CurrentCulture, $"{macros} макроса"),
-        _ => string.Create(CultureInfo.CurrentCulture, $"{macros} макросов"),
+        (1, not 11) => string.Create(CultureInfo.CurrentCulture, $"{nodes} нода"),
+        (2 or 3 or 4, not (12 or 13 or 14)) => string.Create(CultureInfo.CurrentCulture, $"{nodes} ноды"),
+        _ => string.Create(CultureInfo.CurrentCulture, $"{nodes} нод"),
     };
 }
 
@@ -91,7 +87,7 @@ public sealed class TemplateGroupViewModel
     {
         Set = set;
         Rows = rows;
-        // «одиночные» — не имя папки, а роль: это файлы в корне дерева, и называет их не
+        // «одиночные» — не имя папки, а роль: это файлы в корне, и называет их не
         // RecognizeTag целиком, а Find/Wait поимённо.
         Title = set ?? "одиночные";
         CountText = rows.Count.ToString(CultureInfo.InvariantCulture);
@@ -115,80 +111,48 @@ public sealed class TemplateGroupViewModel
 }
 
 /// <summary>
-/// Нода называет шаблон, которого в папке нет. До этого режима такое выяснялось только в момент
-/// прогона — и то строчкой в логе демона.
-/// </summary>
-public sealed class MissingTemplateViewModel
-{
-    internal MissingTemplateViewModel(TemplateUsage usage)
-    {
-        Name = usage.Name;
-        IsSet = usage.IsSet;
-        Kind = usage.IsSet ? "набор" : "шаблон";
-        UsageText = string.Join(
-            ", ",
-            usage.References
-                .Select(r => $"{r.MacroName} / {r.NodeName}")
-                .Distinct(StringComparer.Ordinal));
-        // Ровно то, что произойдёт в прогоне: примитивы не бросают, они возвращают «не нашлось».
-        Consequence = usage.IsSet
-            ? "нет папки templates/ — RecognizeTag всегда пойдёт по «не совпало»"
-            : "нет файла в templates/ — Find/Wait всегда пойдут по «не найдено»";
-    }
-
-    /// <summary>Имя, которое написано в ноде.</summary>
-    public string Name { get; }
-
-    /// <summary><c>true</c>, когда не хватает НАБОРА (подпапки), а не одиночного файла.</summary>
-    public bool IsSet { get; }
-
-    /// <summary>«шаблон» либо «набор» — что именно потеряно.</summary>
-    public string Kind { get; }
-
-    /// <summary>«pw-boot / find-server, pw-boot / wait-server».</summary>
-    public string UsageText { get; }
-
-    /// <summary>Чем это обернётся в прогоне.</summary>
-    public string Consequence { get; }
-}
-
-/// <summary>
-/// Режим «Шаблоны»: что лежит в дереве <c>Assets/templates</c> у демона, как оно выглядит и кому
-/// оно нужно.
+/// Браузер шаблонов ОТКРЫТОГО МАКРОСА — то, что лежит в <c>templates/</c> внутри его бандла
+/// <c>.hsm</c>: какие файлы там есть, как они выглядят и какие ноды их называют.
 ///
-/// <b>Две половины из двух источников, и это главное решение здесь.</b> Файлы знает только демон
-/// (<c>GetTemplates</c> — метаданные, <c>GetTemplateImage</c> — байты одного). А вот «кому нужен
-/// этот шаблон» панель считает САМА: библиотека макросов у неё уже есть, имена шаблонов лежат в
-/// нодах, и разбор живёт одной реализацией в <see cref="MacroTemplateAnalysis"/> (Shared) —
-/// тот же приём, что у бейджа целей в D4, и с тем же правилом «второй копии правила не заводить».
-/// Запроса «кто ссылается» в протоколе нет и не нужно.
+/// <b>Раньше это был самостоятельный режим рейки «Шаблоны», и он исчез (волна F2).</b> Рейка —
+/// про сущности, а шаблон перестал быть сущностью: общего дерева <c>templates/</c> нет, файл
+/// принадлежит ровно одному макросу и живёт внутри него. Поэтому браузер сложился внутрь
+/// редактора, в инспектор макроса — туда же, где триггеры и переменные, то есть к остальным
+/// свойствам макроса как целого.
+///
+/// <b>Раздел «НЕТ ФАЙЛА» отсюда тоже пропал, и это повышение класса ошибки, а не потеря.</b>
+/// «Нода называет шаблон, которого нет» теперь ловит ВАЛИДАТОР — при сохранении и при загрузке
+/// библиотеки, — потому что набор шаблонов бандла известен статически. Раньше об этом можно было
+/// узнать, только зайдя в отдельный режим и посмотрев в специальный раздел.
 ///
 /// <b>Картинки — по одной, за выделением.</b> Список это метаданные, они мелкие; PNG — килобайты
 /// каждый, а труба общая с потоком событий прогона. Поэтому байты запрашиваются на смену
-/// выделения, кэшируются на время жизни режима (повторный клик по строке бесплатен), и файл
+/// выделения, кэшируются на время жизни панели (повторный клик по строке бесплатен), и файл
 /// крупнее <see cref="TemplateLimits.MaxImageBytes"/> не запрашивается вовсе — его размер уже
 /// известен из списка.
 ///
-/// <b>Список читается заново на каждый вход в режим</b> (и по кнопке «Обновить»): пользователь
-/// кладёт PNG в папку именно затем, чтобы на него посмотреть, и снимок с момента старта демона
-/// был бы для этого бесполезен. Пуша про изменение дерева в протоколе нет — <c>FileSystemWatcher</c>
-/// заведён на <c>macros/</c>, а не на ассеты.
+/// <b>Список перечитывается при каждой смене открытого макроса и по <c>MacrosChanged</c>.</b>
+/// Второе несёт двойную нагрузку: этим же событием отзывается собственная правка (добавили или
+/// удалили шаблон) и чужая (бандл подменили в проводнике).
 /// </summary>
 public sealed class TemplatesViewModel : ObservableObject, IDisposable
 {
     private readonly IIpcClient _client;
     private readonly IUiDispatcher _dispatcher;
 
-    // Кэш превью на время жизни режима. Ключ — та же пара «набор + имя», что и идентичность
-    // шаблона; счёт записей равен числу шаблонов, которые пользователь успел ткнуть.
-    private readonly Dictionary<(string? Set, string Name), byte[]> _previews = [];
+    // Кэш превью. Ключ — тройка «макрос + набор + имя», то есть полная идентичность шаблона:
+    // одноимённые шаблоны двух макросов — разные картинки, и общий ключ показал бы чужую.
+    private readonly Dictionary<(string Macro, string? Set, string Name), byte[]> _previews = [];
 
+    private string? _macroName;
+    private MacroGraph? _graph;
     private IReadOnlyList<TemplateDto> _files = [];
-    private IReadOnlyList<MacroGraph> _macros = [];
 
     private TemplateRowViewModel? _selected;
     private byte[]? _previewPng;
     private string? _previewProblem;
+    private string? _importProblem;
+    private string _importSet = string.Empty;
     private bool _isLoading;
 
     public TemplatesViewModel(IIpcClient client, IUiDispatcher? dispatcher = null)
@@ -198,49 +162,50 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
 
         _client.Connected += OnConnected;
         _client.EventReceived += OnEventReceived;
-
-        if (_client.IsConnected)
-        {
-            _ = RefreshAsync();
-        }
     }
 
     /// <summary>Разделы списка: сперва одиночные шаблоны, затем наборы по алфавиту.</summary>
     public ObservableCollection<TemplateGroupViewModel> Groups { get; } = [];
 
-    /// <summary>Все строки одним списком — счётчик рейки и тесты смотрят сюда.</summary>
+    /// <summary>Все строки одним списком — счётчик заголовка и тесты смотрят сюда.</summary>
     public ObservableCollection<TemplateRowViewModel> Templates { get; } = [];
 
-    /// <summary>Имена, которые называют ноды, но которых в дереве нет.</summary>
-    public ObservableCollection<MissingTemplateViewModel> Missing { get; } = [];
+    /// <summary>Имя открытого макроса или <c>null</c>, когда в редакторе ничего не открыто.</summary>
+    public string? MacroName => _macroName;
 
-    /// <summary><c>true</c>, когда разделу «нет файла» есть что показать.</summary>
-    public bool HasMissing => Missing.Count > 0;
+    /// <summary>
+    /// Опись шаблонов открытого макроса — то, чем валидатор ловит «нода называет шаблон, которого
+    /// в бандле нет».
+    ///
+    /// <c>null</c>, пока макроса нет: <c>null</c> и пустая опись — разные вещи, и валидатор их
+    /// различает. У несохранённого черновика бандла не существует, и обвинять его ноды в ссылке
+    /// на несуществующий файл значило бы соврать.
+    /// </summary>
+    public MacroTemplateInventory? Inventory => _macroName is null
+        ? null
+        : MacroTemplateInventory.FromPaths(_files.Select(file => MacroBundleFormat.TemplatePath(file.Set, file.Name)));
 
-    /// <summary>Заголовок раздела «нет файла», капсом, — как «НЕ ОПОЗНАНО · 3» в «Окнах».</summary>
-    public string MissingHeaderText =>
-        string.Create(CultureInfo.CurrentCulture, $"НЕТ ФАЙЛА · {Missing.Count}");
+    /// <summary><c>true</c>, когда браузеру есть что показывать (макрос открыт).</summary>
+    public bool HasMacro => _macroName is not null;
 
-    /// <summary>Строка шапки: «14 файлов · наборов: 1».</summary>
-    public string SummaryText
-    {
-        get
-        {
-            if (Templates.Count == 0)
-            {
-                return "дерево шаблонов пусто";
-            }
+    /// <summary>Число в заголовке раздела инспектора.</summary>
+    public string CountText => Templates.Count.ToString(CultureInfo.InvariantCulture);
 
-            var sets = Groups.Count(group => group.IsSet);
-            var files = FilesWord(Templates.Count);
-            return sets == 0
-                ? files
-                : string.Create(CultureInfo.CurrentCulture, $"{files} · наборов: {sets}");
-        }
-    }
-
-    /// <summary><c>true</c>, пока демон не сообщает ни одного файла, — пустое состояние режима.</summary>
+    /// <summary><c>true</c>, когда в бандле открытого макроса шаблонов нет.</summary>
     public bool IsEmpty => Templates.Count == 0;
+
+    /// <summary>
+    /// Набор, в который поедет следующий импорт. Пусто = одиночный шаблон в корне.
+    ///
+    /// Поле рядом с кнопкой, а не диалог: набор — это одна строка, а спрашивать её отдельным окном
+    /// значило бы городить модальность ради текстового поля. Имя самого шаблона не спрашивается
+    /// вовсе — им становится основа имени выбранного файла, ровно как было в общем дереве.
+    /// </summary>
+    public string ImportSet
+    {
+        get => _importSet;
+        set => SetField(ref _importSet, value);
+    }
 
     /// <summary>Выбранная строка. Присвоение подгружает её превью.</summary>
     public TemplateRowViewModel? Selected
@@ -276,10 +241,10 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     /// <summary><c>true</c>, когда панель превью показывает шаблон, а не своё пустое состояние.</summary>
     public bool HasSelection => _selected is not null;
 
-    /// <summary>«pw-boot / find-server» на каждую ссылку выбранного шаблона.</summary>
+    /// <summary>Подписи нод, которые называют выбранный шаблон.</summary>
     public IReadOnlyList<string> SelectedUsages => _selected is null
         ? []
-        : [.. _selected.UsedBy.Select(r => $"{r.MacroName} / {r.NodeName}")];
+        : [.. _selected.UsedBy.Select(r => r.NodeName).Distinct(StringComparer.Ordinal)];
 
     /// <summary>Заголовок раздела ссылок в панели превью.</summary>
     public string SelectedUsageHeader => _selected is null
@@ -323,7 +288,26 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     /// <summary><c>true</c>, когда <see cref="PreviewProblem"/> есть что сказать.</summary>
     public bool HasPreviewProblem => _previewProblem is not null;
 
-    /// <summary>Идёт запрос списка — гасит кнопку «Обновить».</summary>
+    /// <summary>
+    /// Почему не получилось положить или убрать шаблон. Отдельно от <see cref="PreviewProblem"/>:
+    /// у отказа записи и у отсутствующей картинки разные причины и разное время жизни.
+    /// </summary>
+    public string? ImportProblem
+    {
+        get => _importProblem;
+        private set
+        {
+            if (SetField(ref _importProblem, value))
+            {
+                OnPropertyChanged(nameof(HasImportProblem));
+            }
+        }
+    }
+
+    /// <summary><c>true</c>, когда <see cref="ImportProblem"/> есть что сказать.</summary>
+    public bool HasImportProblem => _importProblem is not null;
+
+    /// <summary>Идёт запрос — гасит кнопки.</summary>
     public bool IsLoading
     {
         get => _isLoading;
@@ -339,35 +323,84 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     /// <summary>Обратное <see cref="IsLoading"/> — для привязки <c>IsEnabled</c>.</summary>
     public bool IsNotLoading => !_isLoading;
 
-    /// <summary>
-    /// Поднимается после любой пересборки списка — по нему оболочка обновляет счётчик рейки, не
-    /// спрашивая ни о чём демон.
-    /// </summary>
+    /// <summary>Поднимается после любой пересборки списка.</summary>
     public event Action? TemplatesChanged;
 
     /// <summary>
-    /// Перечитывает дерево у демона и заново считает «кто чем пользуется».
+    /// Наводит браузер на макрос, открытый в редакторе. <c>null</c> — редактор закрыт; тогда
+    /// список пуст и никаких запросов не уходит.
     ///
-    /// Превью НЕ сбрасывает: файлы обычно те же самые, а гашение картинки при каждом входе в
-    /// режим читалось бы как мигание. Устаревшие записи вымываются сами — ключ у них тот же, а
-    /// строка после обновления новая.
+    /// Граф передаётся вместе с именем, потому что «какие ноды называют этот шаблон» считается по
+    /// НЕМУ, а не по тому, что лежит на диске: набрал имя шаблона в ноде — и строка сразу
+    /// перестала быть «не используется», ещё до сохранения.
     /// </summary>
+    public void ShowMacro(string? macroName, MacroGraph? graph)
+    {
+        var macroChanged = !string.Equals(_macroName, macroName, StringComparison.Ordinal);
+        _macroName = macroName;
+        _graph = graph;
+
+        if (macroName is null)
+        {
+            _files = [];
+            _selected = null;
+            PreviewPng = null;
+            PreviewProblem = null;
+            ImportProblem = null;
+            Rebuild();
+            OnPropertyChanged(nameof(MacroName));
+            OnPropertyChanged(nameof(HasMacro));
+            return;
+        }
+
+        OnPropertyChanged(nameof(MacroName));
+        OnPropertyChanged(nameof(HasMacro));
+
+        if (macroChanged)
+        {
+            // Другой макрос — другие файлы; пока не приехал список, показывать старый нельзя.
+            _files = [];
+            _selected = null;
+            PreviewPng = null;
+            PreviewProblem = null;
+            ImportProblem = null;
+            Rebuild();
+            _ = RefreshAsync();
+        }
+        else
+        {
+            // Тот же макрос, новый граф (правят ноды) — файлы те же, пересчитать надо только
+            // «кто на что ссылается».
+            Rebuild();
+        }
+    }
+
+    /// <summary>Перечитывает перечень шаблонов открытого макроса у демона.</summary>
     public async Task RefreshAsync()
     {
+        if (_macroName is not { } macroName)
+        {
+            return;
+        }
+
         // Через диспетчер даже здесь: RefreshAsync зовётся и из обработчика Connected, а тот
-        // поднимается на потоке читателя IPC — уведомление об изменении свойства оттуда пошло бы
-        // в привязку IsEnabled кнопки мимо потока UI.
+        // поднимается на потоке читателя IPC.
         _dispatcher.Post(() => IsLoading = true);
         try
         {
-            var files = await _client.RequestAsync<TemplateDto[]>(IpcMessageTypes.GetTemplates)
-                .ConfigureAwait(false);
-            var macros = await _client.RequestAsync<MacroGraph[]>(IpcMessageTypes.GetMacros)
+            var files = await _client
+                .RequestAsync<TemplateDto[]>(IpcMessageTypes.GetTemplates, new GetTemplatesRequest(macroName))
                 .ConfigureAwait(false);
             _dispatcher.Post(() =>
             {
+                // Пока летел ответ, редактор мог открыть другой макрос: список не его — выбросить.
+                if (!string.Equals(_macroName, macroName, StringComparison.Ordinal))
+                {
+                    IsLoading = false;
+                    return;
+                }
+
                 _files = files ?? [];
-                _macros = macros ?? [];
                 Rebuild();
                 IsLoading = false;
             });
@@ -376,8 +409,98 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
         {
             // Обрыв между подключением и запросом. Поддерживающий цикл переподключится, снова
             // сработает Connected, и он это повторит.
-            Log.Warning(ex, "Не удалось получить список шаблонов");
+            Log.Warning(ex, "Не удалось получить список шаблонов макроса '{Macro}'", macroName);
             _dispatcher.Post(() => IsLoading = false);
+        }
+    }
+
+    /// <summary>
+    /// Кладёт PNG в бандл открытого макроса. Имя шаблона = основа имени файла, набор —
+    /// <see cref="ImportSet"/>.
+    /// </summary>
+    /// <param name="fileName">Имя выбранного файла (с расширением).</param>
+    /// <param name="png">Его содержимое.</param>
+    public async Task<bool> ImportAsync(string fileName, byte[] png)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+        ArgumentNullException.ThrowIfNull(png);
+
+        ImportProblem = null;
+        if (_macroName is not { } macroName)
+        {
+            return false;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(fileName);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            ImportProblem = $"«{fileName}» — не годится как имя шаблона.";
+            return false;
+        }
+
+        // Потолок сверяем ДО отправки: демон откажет по тому же числу, а round trip ради отказа не
+        // нужен — ровно как с превью.
+        if (png.Length > TemplateLimits.MaxImageBytes)
+        {
+            ImportProblem =
+                $"{TemplateFormat.Bytes(png.Length)} — больше потолка в {TemplateFormat.Bytes(TemplateLimits.MaxImageBytes)}.";
+            return false;
+        }
+
+        var set = string.IsNullOrWhiteSpace(_importSet) ? null : _importSet.Trim();
+        IsLoading = true;
+        try
+        {
+            var files = await _client
+                .RequestAsync<TemplateDto[]>(
+                    IpcMessageTypes.AddMacroTemplate,
+                    new AddMacroTemplateRequest(macroName, set, name, png))
+                .ConfigureAwait(true);
+            Apply(macroName, files);
+            // Байты у нас на руках — класть их в кэш превью сразу дешевле, чем просить обратно.
+            _previews[(macroName, set, name)] = png;
+            return true;
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        {
+            ImportProblem = $"Не удалось добавить шаблон: {ex.Message}";
+            return false;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    /// <summary>Убирает шаблон из бандла открытого макроса.</summary>
+    public async Task DeleteAsync(TemplateRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        ImportProblem = null;
+        if (_macroName is not { } macroName)
+        {
+            return;
+        }
+
+        IsLoading = true;
+        try
+        {
+            var files = await _client
+                .RequestAsync<TemplateDto[]>(
+                    IpcMessageTypes.DeleteMacroTemplate,
+                    new DeleteMacroTemplateRequest(macroName, row.Set, row.Name))
+                .ConfigureAwait(true);
+            _previews.Remove((macroName, row.Set, row.Name));
+            Apply(macroName, files);
+        }
+        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        {
+            ImportProblem = $"Не удалось удалить шаблон: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
@@ -393,25 +516,36 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
 
     private void OnEventReceived(IpcEvent evt)
     {
-        // Библиотека изменилась — значит, изменился и ответ на «кому нужен этот шаблон», причём
-        // без всякого движения в самом дереве файлов. Список файлов перечитывается заодно: он
-        // маленький, а два запроса дешевле, чем отдельный путь пересчёта.
+        // Библиотека изменилась — это могла быть и наша собственная правка бандла (добавление или
+        // удаление шаблона поднимает то же событие), и чужая правка файла в проводнике. Дешевле
+        // перечитать список, чем заводить отдельный путь на каждый случай.
         if (string.Equals(evt.Type, IpcMessageTypes.MacrosChanged, StringComparison.Ordinal))
         {
             _ = RefreshAsync();
         }
     }
 
+    private void Apply(string macroName, TemplateDto[]? files)
+    {
+        if (!string.Equals(_macroName, macroName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _files = files ?? [];
+        Rebuild();
+    }
+
     private async Task LoadPreviewAsync(TemplateRowViewModel? row)
     {
         PreviewProblem = null;
-        if (row is null)
+        if (row is null || _macroName is not { } macroName)
         {
             PreviewPng = null;
             return;
         }
 
-        if (_previews.TryGetValue((row.Set, row.Name), out var cached))
+        if (_previews.TryGetValue((macroName, row.Set, row.Name), out var cached))
         {
             PreviewPng = cached;
             return;
@@ -440,7 +574,7 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
             image = await _client
                 .RequestAsync<TemplateImageDto>(
                     IpcMessageTypes.GetTemplateImage,
-                    new GetTemplateImageRequest(row.Set, row.Name))
+                    new GetTemplateImageRequest(macroName, row.Set, row.Name))
                 .ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
@@ -455,12 +589,13 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _previews[(image.Set, image.Name)] = image.Png;
+        _previews[(image.MacroName, image.Set, image.Name)] = image.Png;
 
         // Гонка выделения: пользователь щёлкает быстрее, чем отвечает демон, и ответ на
         // предпоследний выбор может прийти последним. Без этой сверки в превью осталась бы
-        // картинка не той строки, что подсвечена.
-        if (image.Describes(_selected?.Set, _selected?.Name ?? string.Empty))
+        // картинка не той строки, что подсвечена, — а с переездом браузера внутрь редактора
+        // устареть успевает и весь макрос.
+        if (image.Describes(_macroName ?? string.Empty, _selected?.Set, _selected?.Name ?? string.Empty))
         {
             PreviewPng = image.Png;
         }
@@ -470,11 +605,9 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
 
     private void Rebuild()
     {
-        var usage = MacroTemplateAnalysis.Analyze(_macros);
-
         // Ссылки на ОДИНОЧНЫЙ файл ключуются его именем; ссылки на НАБОР — именем папки, и
-        // достаются они каждому файлу этого набора: RecognizeTag называет набор целиком, так что
-        // «кому нужен Лучник.png» честно отвечается через «кому нужен classes».
+        // достаются они каждому файлу этого набора: RecognizeTag называет набор целиком.
+        var usage = _graph is null ? [] : MacroTemplateAnalysis.Analyze(_graph);
         var singles = usage
             .Where(u => !u.IsSet)
             .ToDictionary(u => u.Name, u => u.References, StringComparer.Ordinal);
@@ -504,19 +637,8 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
             Groups.Add(new TemplateGroupViewModel(group.Key, [.. group]));
         }
 
-        // Обратная сторона: имя названо, файла нет. Считается тем же разбором, только с другого
-        // конца, — и это тот случай, который до сих пор всплывал лишь в момент прогона.
-        var haveSets = _files.Where(f => f.Set is not null).Select(f => f.Set!).ToHashSet(StringComparer.Ordinal);
-        var haveSingles = _files.Where(f => f.Set is null).Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
-
-        Missing.Clear();
-        foreach (var missing in usage.Where(u => u.IsSet ? !haveSets.Contains(u.Name) : !haveSingles.Contains(u.Name)))
-        {
-            Missing.Add(new MissingTemplateViewModel(missing));
-        }
-
-        // Выделение переживает обновление, пока файл на месте, — иначе кнопка «Обновить»
-        // выбрасывала бы пользователя из того шаблона, который он разглядывает.
+        // Выделение переживает обновление, пока файл на месте, — иначе добавление соседнего
+        // шаблона выбрасывало бы пользователя из того, который он разглядывает.
         _selected = null;
         Selected = previousKey is { } key
             ? rows.FirstOrDefault(row =>
@@ -524,19 +646,10 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
                 && string.Equals(row.Name, key.Item2, StringComparison.Ordinal))
             : null;
 
-        OnPropertyChanged(nameof(SummaryText));
+        OnPropertyChanged(nameof(CountText));
         OnPropertyChanged(nameof(IsEmpty));
-        OnPropertyChanged(nameof(HasMissing));
-        OnPropertyChanged(nameof(MissingHeaderText));
         TemplatesChanged?.Invoke();
     }
-
-    private static string FilesWord(int count) => (count % 10, count % 100) switch
-    {
-        (1, not 11) => string.Create(CultureInfo.CurrentCulture, $"{count} файл"),
-        (2 or 3 or 4, not (12 or 13 or 14)) => string.Create(CultureInfo.CurrentCulture, $"{count} файла"),
-        _ => string.Create(CultureInfo.CurrentCulture, $"{count} файлов"),
-    };
 }
 
 /// <summary>Форматирование размеров — одно на строку списка и на сообщение о потолке.</summary>

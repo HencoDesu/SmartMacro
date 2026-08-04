@@ -11,7 +11,6 @@
     SmartMacro\
       SmartMacro.exe        панель, single-file — ЕДИНСТВЕННОЕ, что видно в корне
       macros\               графы пользователя
-      templates\            шаблоны зрения (переезжают сюда из выхлопа демона, см. ниже)
       settings.json         настройки движка; создаёт демон при первом запуске
       logs\  debug\         журнал панели и дампы захватов — их смотрит человек
       daemon\
@@ -93,7 +92,7 @@
              Properties="Configuration=$(Configuration)" />
   </Target>
 
-  <Target Name="Publish" DependsOnTargets="Restore;Clean;PublishDaemon;LiftSharedContent;PublishPanel">
+  <Target Name="Publish" DependsOnTargets="Restore;Clean;PublishDaemon;PublishPanel">
     <ItemGroup>
       <_RootFile Include="$(PortableDir)*" />
       <_DaemonFile Include="$(PortableDaemonDir)**\*" />
@@ -115,35 +114,14 @@
   </Target>
 
   <!--
-    ШАБЛОНЫ ПОДНИМАЮТСЯ ИЗ daemon\ В КОРЕНЬ.
+    ⚠️ ЦЕЛИ LiftSharedContent БОЛЬШЕ НЕТ, и это волна F2.
 
-    templates\ — данные пользователя, а не выхлоп сборки: туда роняют PNG, чтобы посмотреть на
-    них в режиме «Шаблоны», и оттуда же их читает исполнитель. Место им рядом с macros\.
-
-    Приезжают они, однако, из проекта демона (файлы лежат в src\SmartMacro.Daemon\Assets\
-    templates\, csproj кладёт их в выхлоп с Link=templates\...), а публикуется демон в
-    подпапку — значит, в daemon\templates\. В дереве разработки это правильный адрес: корень
-    установки там и есть выходная папка демона. В поставке — на уровень ниже нужного, и
-    единственное честное место починить это здесь: csproj не знает, куда его в итоге
-    опубликуют.
-
-    Move, а не Copy: копия в daemon\templates\ была бы декорацией, которую пользователь однажды
-    отредактирует и не поймёт, почему ничего не изменилось.
+    Она поднимала templates\ из daemon\ в корень поставки: файлы приезжали из проекта демона, а
+    демон публикуется в подпапку, так что общее дерево оказывалось уровнем ниже нужного, и
+    починить это могла только сборка. Общего дерева больше не существует — шаблон живёт внутри
+    бандла .hsm своего макроса (§13.1 спеки), — так что поднимать нечего, а Move, который ничего
+    не находит, был бы ошибкой сборки на пустом месте.
   -->
-  <Target Name="LiftSharedContent">
-    <ItemGroup>
-      <_DaemonTemplate Include="$(PortableDaemonDir)templates\**\*" />
-    </ItemGroup>
-
-    <!-- Пустой список означал бы, что шаблоны не доехали вовсе, — поставка без них тихо
-         перестаёт находить что-либо на экране. -->
-    <Error Condition="'@(_DaemonTemplate)' == ''"
-           Text="В выхлопе демона нет templates\ — проверьте glob в SmartMacro.Daemon.csproj." />
-
-    <Move SourceFiles="@(_DaemonTemplate)"
-          DestinationFiles="@(_DaemonTemplate->'$(PortableDir)templates\%(RecursiveDir)%(Filename)%(Extension)')" />
-    <RemoveDir Directories="$(PortableDaemonDir)templates" />
-  </Target>
 
   <!--
     Чистая папка — часть Publish, а не отдельный ритуал: артефакт обязан собираться с нуля,

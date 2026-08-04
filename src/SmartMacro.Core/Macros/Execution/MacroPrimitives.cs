@@ -25,12 +25,15 @@ namespace SmartMacro.Macros.Execution;
 /// Понодовая зернистость означает, что нода паузы между двумя нодами клавиш действительно даёт
 /// окну на это время уснуть обратно; это совпадает с тем, как граф читается, и с тем, что делал
 /// прежний путь «на сообщение».
+///
+/// Шаблонов этот класс больше не разрешает: с волны F2 они приезжают байтами из бандла прогона
+/// (<see cref="IMacroTemplateSource"/>), и провайдер общего дерева, который здесь когда-то лежал
+/// полем, удалён вместе с самим деревом.
 /// </summary>
 public sealed partial class MacroPrimitives : IMacroPrimitives
 {
     private readonly WindowRegistry _windows;
     private readonly AgentInputDispatcher _input;
-    private readonly TemplateSetProvider _templates;
     private readonly IClassMatcher _matcher;
     private readonly WindowIconService _icons;
     private readonly ILogger<MacroPrimitives> _logger;
@@ -38,14 +41,12 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
     public MacroPrimitives(
         WindowRegistry windows,
         AgentInputDispatcher input,
-        TemplateSetProvider templates,
         IClassMatcher matcher,
         WindowIconService icons,
         ILogger<MacroPrimitives> logger)
     {
         _windows = windows;
         _input = input;
-        _templates = templates;
         _matcher = matcher;
         _icons = icons;
         _logger = logger;
@@ -74,56 +75,47 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
     }
 
     /// <inheritdoc />
-    public async Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, string template, ScreenRect? region,
+    public async Task<ScreenPoint?> FindElementAsync(IntPtr hwnd, byte[] template, ScreenRect? region,
         double? matchThreshold, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(template);
         if (Resolve(hwnd, nameof(FindElementAsync)) is not { } window)
         {
             return null;
         }
 
-        if (_templates.TryGetTemplate(template) is not { } bytes)
-        {
-            LogTemplateUnavailable(template);
-            return null;
-        }
-
-        return await window.FindElementAsync(bytes, region ?? default, matchThreshold, ct).ConfigureAwait(false);
+        return await window.FindElementAsync(template, region ?? default, matchThreshold, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public async Task<ScreenPoint?> WaitForElementAsync(IntPtr hwnd, string template, ScreenRect? region, int timeoutMs,
-        double? matchThreshold, CancellationToken ct)
+    public async Task<ScreenPoint?> WaitForElementAsync(IntPtr hwnd, byte[] template, ScreenRect? region,
+        int timeoutMs, double? matchThreshold, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(template);
         if (Resolve(hwnd, nameof(WaitForElementAsync)) is not { } window)
         {
             return null;
         }
 
-        if (_templates.TryGetTemplate(template) is not { } bytes)
-        {
-            LogTemplateUnavailable(template);
-            return null;
-        }
-
         var budget = TimeSpan.FromMilliseconds(Math.Max(0, timeoutMs));
-        return await window.WaitForElementAsync(bytes, region ?? default, budget, matchThreshold, ct)
+        return await window.WaitForElementAsync(template, region ?? default, budget, matchThreshold, ct)
             .ConfigureAwait(false);
     }
 
     /// <inheritdoc />
-    public Task<string?> RecognizeAsync(IntPtr hwnd, string templateSet, ScreenRect region, double? matchThreshold,
-        CancellationToken ct)
+    public Task<string?> RecognizeAsync(IntPtr hwnd, IReadOnlyDictionary<string, byte[]> templates, ScreenRect region,
+        double? matchThreshold, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(templates);
         if (Resolve(hwnd, nameof(RecognizeAsync)) is not { } window)
         {
             return Task.FromResult<string?>(null);
         }
 
-        var templates = _templates.GetSet(templateSet);
         if (templates.Count == 0)
         {
-            LogEmptyTemplateSet(templateSet);
+            // Пустой набор сюда доходит только тогда, когда обходчик уже сказал в журнал, какого
+            // имени не хватило: собственного имени набора у нас здесь больше нет.
             return Task.FromResult<string?>(null);
         }
 
@@ -148,16 +140,16 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
             var match = _matcher.Match(screenshot, templates, region, matchThreshold);
             if (match is null)
             {
-                LogRecognizeNoMatch(templateSet, hwnd.ToInt64());
+                LogRecognizeNoMatch(templates.Count, hwnd.ToInt64());
                 return Task.FromResult<string?>(null);
             }
 
-            LogRecognized(match.Tag, match.Score, templateSet);
+            LogRecognized(match.Tag, match.Score);
             return Task.FromResult<string?>(match.Tag);
         }
         catch (Exception ex)
         {
-            LogRecognizeFailed(ex, templateSet);
+            LogRecognizeFailed(ex, templates.Count);
             return Task.FromResult<string?>(null);
         }
     }
@@ -195,21 +187,15 @@ public sealed partial class MacroPrimitives : IMacroPrimitives
     [LoggerMessage(LogLevel.Warning, "{Operation}: для hwnd=0x{Hwnd:X} в реестре нет управляемого окна — пропускаем")]
     partial void LogUnknownWindow(string operation, long hwnd);
 
-    [LoggerMessage(LogLevel.Warning, "Шаблон '{Template}' недоступен — нода считается «не найдено»")]
-    partial void LogTemplateUnavailable(string template);
-
-    [LoggerMessage(LogLevel.Warning, "Набор шаблонов '{TemplateSet}' пуст — нода считается «не совпало»")]
-    partial void LogEmptyTemplateSet(string templateSet);
-
     [LoggerMessage(LogLevel.Warning, "Не удался захват hwnd=0x{Hwnd:X} при распознавании")]
     partial void LogCaptureFailed(Exception ex, long hwnd);
 
-    [LoggerMessage(LogLevel.Information, "Распознан '{Tag}' (оценка {Score:F3}) из набора '{TemplateSet}'")]
-    partial void LogRecognized(string tag, double score, string templateSet);
+    [LoggerMessage(LogLevel.Information, "Распознан '{Tag}' (оценка {Score:F3})")]
+    partial void LogRecognized(string tag, double score);
 
-    [LoggerMessage(LogLevel.Information, "Ни один шаблон набора '{TemplateSet}' не совпал на hwnd=0x{Hwnd:X}")]
-    partial void LogRecognizeNoMatch(string templateSet, long hwnd);
+    [LoggerMessage(LogLevel.Information, "Ни один из {Count} шаблонов не совпал на hwnd=0x{Hwnd:X}")]
+    partial void LogRecognizeNoMatch(int count, long hwnd);
 
-    [LoggerMessage(LogLevel.Error, "Распознавание по набору '{TemplateSet}' бросило исключение")]
-    partial void LogRecognizeFailed(Exception ex, string templateSet);
+    [LoggerMessage(LogLevel.Error, "Распознавание по набору из {Count} шаблонов бросило исключение")]
+    partial void LogRecognizeFailed(Exception ex, int count);
 }

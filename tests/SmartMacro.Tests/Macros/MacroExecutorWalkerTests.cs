@@ -270,6 +270,92 @@ public class MacroExecutorWalkerTests
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
     }
 
+    // ---- шаблоны из бандла (F2) --------------------------------------------------------
+
+    // Разрешение имени в байты делает ОБХОДЧИК, а не примитивы: с переездом шаблонов внутрь
+    // бандла имя без макроса ничего не значит. Отсюда и это поведение: шаблона в бандле нет —
+    // нода уходит по «не найдено», НЕ ПОЗВАВ примитив вовсе. Обрывать прогон нельзя: ветка на
+    // этот исход в графе уже нарисована, а валидатор сказал про это заранее.
+    [Test]
+    public async Task FindElement_WhoseTemplateIsNotInTheBundle_TakesNotFound_WithoutCallingThePrimitive()
+    {
+        var h = new ExecutorHarness();
+        h.Templates.Missing.Add("нет-в-бандле");
+        var graph = ExecutorHarness.Graph("м", Ids.Of("f"),
+            new FindElementNode
+            {
+                Id = Ids.Of("f"), DisplayName = "f", Template = "нет-в-бандле",
+                Found = Ids.Of("нашлось"), NotFound = Ids.Of("k"),
+            },
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8 },
+            new KeyPressNode { Id = Ids.Of("нашлось"), DisplayName = "нашлось", Key = VirtualKey.F1 });
+
+        var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
+
+        await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
+        await Assert.That(h.Primitives.Calls.Select(c => c.Op)).IsEquivalentTo(new[] { "PressKey" });
+        await Assert.That(h.Primitives.Calls[0].A).IsEqualTo(VirtualKey.F8);
+    }
+
+    [Test]
+    public async Task WaitForElement_WhoseTemplateIsNotInTheBundle_TakesTimeout()
+    {
+        var h = new ExecutorHarness();
+        h.Templates.Missing.Add("нет-в-бандле");
+        var graph = ExecutorHarness.Graph("м", Ids.Of("w"),
+            new WaitForElementNode
+            {
+                Id = Ids.Of("w"), DisplayName = "w", Template = "нет-в-бандле", TimeoutMs = 5000,
+                Found = Ids.Of("нашлось"), Timeout = Ids.Of("k"),
+            },
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8 },
+            new KeyPressNode { Id = Ids.Of("нашлось"), DisplayName = "нашлось", Key = VirtualKey.F1 });
+
+        var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
+
+        // И ни секунды таймаута: примитив не звали, ждать нечего.
+        await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
+        await Assert.That(h.Primitives.Calls.Select(c => c.Op)).IsEquivalentTo(new[] { "PressKey" });
+    }
+
+    [Test]
+    public async Task RecognizeTag_WhoseSetIsNotInTheBundle_TakesNotMatched()
+    {
+        var h = new ExecutorHarness();
+        h.Templates.Missing.Add("classes");
+        var graph = ExecutorHarness.Graph("м", Ids.Of("r"),
+            new RecognizeTagNode
+            {
+                Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 10, 10),
+                Matched = Ids.Of("совпало"), NotMatched = Ids.Of("k"),
+            },
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8 },
+            new KeyPressNode { Id = Ids.Of("совпало"), DisplayName = "совпало", Key = VirtualKey.F1 });
+
+        var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
+
+        await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
+        await Assert.That(h.Primitives.Calls.Select(c => c.Op)).IsEquivalentTo(new[] { "PressKey" });
+    }
+
+    // Прогон никогда не покидает свой бандл, поэтому дочерний обход берёт шаблоны РОДИТЕЛЯ —
+    // в F4 под-макросы переедут внутрь бандла, и это станет единственно возможным.
+    [Test]
+    public async Task ASubRun_InheritsTheTemplateSourceOfItsParent()
+    {
+        var h = new ExecutorHarness();
+        h.Primitives.FindHandler = (_, _, _) => new ScreenPoint(5, 6);
+        h.Resolver.Add(ExecutorHarness.Graph("под", Ids.Of("f"),
+            new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка" }));
+        var graph = ExecutorHarness.Graph("м", Ids.Of("run"),
+            new RunMacroNode { Id = Ids.Of("run"), DisplayName = "run", MacroName = "под", Await = true });
+
+        var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
+
+        await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
+        await Assert.That(h.Primitives.Calls.Select(c => $"{c.Op}:{c.A}")).IsEquivalentTo(new[] { "Find:кнопка" });
+    }
+
     [Test]
     public async Task EdgeToUnknownNode_Aborts()
     {

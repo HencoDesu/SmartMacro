@@ -6,6 +6,7 @@ using SmartMacro.Contracts.Ipc;
 using SmartMacro.Hotkeys;
 using SmartMacro.Settings;
 using SmartMacro.Ipc;
+using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Orchestration;
@@ -48,9 +49,6 @@ internal sealed class IpcDispatcherHarness : IDisposable
         Lifetime = A.Fake<IHostApplicationLifetime>();
 
         Captures = new CaptureDumpService(_baseDirectory, Windows, Matcher, NullLogger<CaptureDumpService>.Instance);
-        Templates = new TemplateSetProvider(
-            Path.Combine(_baseDirectory, "Assets"),
-            NullLogger<TemplateSetProvider>.Instance);
         RunEvents = new RunEventPublisher(NullLogger<RunEventPublisher>.Instance);
         Log = new LogEventPublisher();
         Debug = new MacroDebugSession(NullLogger<MacroDebugSession>.Instance);
@@ -63,7 +61,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
         LogLevel = new FakeLogLevelSwitch();
         SettingsSnapshots = new SettingsSnapshotProvider(SettingsFile, LogLevel);
         AutoStart = new AutoStartManager(NullLogger<AutoStartManager>.Instance);
-        Diagnostics = new EnvironmentDiagnostics(Windows, Macros, Templates, Hotkeys, SettingsFile, AutoStart);
+        Diagnostics = new EnvironmentDiagnostics(Windows, Macros, Hotkeys, SettingsFile, AutoStart);
 
         Dispatcher = new IpcRequestDispatcher(
             Windows,
@@ -72,7 +70,6 @@ internal sealed class IpcDispatcherHarness : IDisposable
             Runner,
             Hotkeys,
             Captures,
-            Templates,
             Lifetime,
             RunEvents,
             Log,
@@ -128,20 +125,12 @@ internal sealed class IpcDispatcherHarness : IDisposable
     public CaptureDumpService Captures { get; }
 
     /// <summary>
-    /// Настоящий, над пустой временной папкой <c>Assets/templates</c>: обработчики шаблонов —
-    /// это тонкий слой над ним, и подделав его, мы проверяли бы только собственный маппер.
+    /// Кладёт шаблон в бандл макроса — тем же путём, которым это делает панель, то есть через
+    /// настоящее хранилище. Отдельного провайдера шаблонов у диспетчера больше нет: с волны F2
+    /// шаблон живёт внутри <c>.hsm</c>, и владелец у него один — <see cref="MacroGraphStore"/>.
     /// </summary>
-    public TemplateSetProvider Templates { get; }
-
-    /// <summary>Кладёт файл в дерево шаблонов. <paramref name="set"/> = <c>null</c> — корень.</summary>
-    public void WriteTemplate(string? set, string name, byte[] bytes)
-    {
-        var directory = set is null
-            ? Templates.TemplatesRoot
-            : Path.Combine(Templates.TemplatesRoot, set);
-        Directory.CreateDirectory(directory);
-        File.WriteAllBytes(Path.Combine(directory, name + ".png"), bytes);
-    }
+    public Task<bool> WriteTemplateAsync(string macroName, string? set, string name, byte[] bytes) =>
+        Macros.AddTemplateAsync(macroName, set, name, bytes);
 
     /// <summary>Настоящий: именно из насоса событий прогона и отвечает <c>SubscribeRunEvents</c>.</summary>
     public RunEventPublisher RunEvents { get; }
@@ -166,7 +155,8 @@ internal sealed class IpcDispatcherHarness : IDisposable
     public string BaseDirectory => _baseDirectory;
 
     /// <summary>Путь к файлу, который занял бы макрос с таким именем.</summary>
-    public string MacroFile(string name) => Path.Combine(_baseDirectory, MacroGraphStore.FolderName, $"{name}.json");
+    public string MacroFile(string name) =>
+        Path.Combine(_baseDirectory, MacroGraphStore.FolderName, name + MacroBundleFormat.Extension);
 
     public Task<IpcResponse> DispatchAsync(string type, object? payload = null, int id = 1,
         IIpcSession? session = null) =>

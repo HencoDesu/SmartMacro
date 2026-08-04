@@ -1,6 +1,6 @@
 using SmartMacro.Contracts.Dto;
+using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Execution;
-using SmartMacro.Vision;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Ipc;
@@ -47,18 +47,28 @@ public static class DtoMappers
         return [.. runs.Select(run => run.ToDto())];
     }
 
-    /// <summary>Проецирует описание файла шаблона на его проводную форму.</summary>
-    public static TemplateDto ToDto(this TemplateFileInfo template)
-    {
-        ArgumentNullException.ThrowIfNull(template);
-        return new TemplateDto(template.Set, template.Name, template.Width, template.Height, template.Bytes);
-    }
-
-    /// <summary>Проецирует перечень файлов шаблонов на их проводную форму.</summary>
-    public static IReadOnlyList<TemplateDto> ToDto(this IEnumerable<TemplateFileInfo> templates)
+    /// <summary>
+    /// Проецирует перечень шаблонов ОДНОГО бандла на проводную форму.
+    ///
+    /// Путь внутри бандла разбирается на пару «набор + имя» тем же
+    /// <see cref="MacroBundleFormat.TryParseTemplatePath"/>, которым его читают исполнитель и
+    /// валидатор, — иначе браузер показывал бы не то множество, которое найдёт движок. Записи,
+    /// шаблоном не являющиеся, каталог уже отфильтровал.
+    /// </summary>
+    public static IReadOnlyList<TemplateDto> ToDto(this IEnumerable<MacroBundleTemplateInfo> templates)
     {
         ArgumentNullException.ThrowIfNull(templates);
-        return [.. templates.Select(template => template.ToDto())];
+
+        var rows = new List<TemplateDto>();
+        foreach (var template in templates)
+        {
+            if (MacroBundleFormat.TryParseTemplatePath(template.Path, out var set, out var name))
+            {
+                rows.Add(new TemplateDto(set, name, template.Size.Width, template.Size.Height, template.Bytes));
+            }
+        }
+
+        return rows;
     }
 
     // Реестр штампует DateTime.UtcNow, так что значение и ЕСТЬ UTC, — но DateTime, попавший

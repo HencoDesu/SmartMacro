@@ -48,10 +48,13 @@ public static class MacroBundleFormat
 
     /// <summary>
     /// Папка с шаблонами машинного зрения ЭТОГО макроса, со слешем на конце.
-    /// Общего дерева <c>templates/</c> после волны F2 не будет: каждый макрос верхнего уровня —
+    /// Общего дерева <c>templates/</c> с волны F2 нет: каждый макрос верхнего уровня —
     /// остров, и цена этого (поправил шаблон — обойди все макросы) названа в §13.1.
     /// </summary>
     public const string TemplateFolder = "templates/";
+
+    /// <summary>Расширение файла шаблона. Всё остальное внутри <see cref="TemplateFolder"/> шаблоном не считается.</summary>
+    public const string TemplateExtension = ".png";
 
     /// <summary>
     /// Папка с под-макросами, со слешем на конце.
@@ -108,5 +111,75 @@ public static class MacroBundleFormat
         }
 
         return !normalized.Split('/').Any(segment => segment is "..");
+    }
+
+    /// <summary>
+    /// Разбирает путь внутри <see cref="TemplateFolder"/> в пару «набор + имя» — ту самую пару,
+    /// которой шаблон называет нода.
+    ///
+    /// <b>Правило именования здесь ОДНО на весь проект</b>, и это главное, ради чего метод
+    /// существует. Его читают трое: снимок шаблонов, который исполнитель кладёт в кэш; опись
+    /// (<see cref="MacroTemplateInventory"/>), по которой валидатор ловит «нода называет шаблон,
+    /// которого в бандле нет»; и каталог для браузера шаблонов в редакторе. Разъехавшись, они
+    /// дали бы ровно ту ложь, из-за которой в D4 бейдж целей считали одной реализацией на два
+    /// процесса.
+    ///
+    /// Раскладка досталась от упразднённого глобального дерева без единого изменения — <b>ни одно
+    /// имя, которое несут ноды, при переезде в бандл не поменялось</b>:
+    /// <code>
+    ///   Find.png            → одиночный шаблон «Find»  (FindElement / WaitForElement)
+    ///   classes/Лучник.png  → набор «classes», тег «Лучник»  (RecognizeTag)
+    /// </code>
+    /// Корень и подпапки — разные пространства имён: <c>Find</c> по имени тега из набора ничего не
+    /// находит. Вложенность ГЛУБЖЕ одного уровня и любое расширение, кроме
+    /// <see cref="TemplateExtension"/>, — не шаблон вовсе: назвать такую запись из ноды нечем, и
+    /// перечислять её как шаблон значило бы обещать то, чего исполнитель не сделает.
+    /// </summary>
+    /// <param name="relativePath">Путь ОТНОСИТЕЛЬНО <see cref="TemplateFolder"/>.</param>
+    /// <param name="set">Набор (подпапка) либо <c>null</c> — одиночный шаблон в корне.</param>
+    /// <param name="name">Основа имени файла — то, что несёт нода (для набора это тег).</param>
+    /// <returns><c>false</c>, если запись шаблоном не является.</returns>
+    public static bool TryParseTemplatePath(string relativePath, out string? set, out string name)
+    {
+        set = null;
+        name = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(relativePath) || !IsSafeRelativePath(relativePath))
+        {
+            return false;
+        }
+
+        var normalized = NormalizeEntryPath(relativePath);
+        if (!normalized.EndsWith(TemplateExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var segments = normalized.Split('/');
+        if (segments.Length > 2)
+        {
+            return false;
+        }
+
+        var stem = segments[^1][..^TemplateExtension.Length];
+        if (stem.Length == 0)
+        {
+            return false;
+        }
+
+        set = segments.Length == 2 ? segments[0] : null;
+        name = stem;
+        return set is not { Length: 0 };
+    }
+
+    /// <summary>
+    /// Обратное к <see cref="TryParseTemplatePath"/>: пара «набор + имя» в путь внутри
+    /// <see cref="TemplateFolder"/>. Держится рядом с разбором, чтобы правило и его обращение
+    /// нельзя было поправить порознь.
+    /// </summary>
+    public static string TemplatePath(string? set, string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return set is null ? name + TemplateExtension : $"{set}/{name}{TemplateExtension}";
     }
 }

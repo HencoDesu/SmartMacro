@@ -3,7 +3,10 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Serilog;
 using SmartMacro.App.ViewModels;
 using SmartMacro.App.ViewModels.Canvas;
 using SmartMacro.App.ViewModels.Nodes;
@@ -50,6 +53,8 @@ public partial class MacrosView : UserControl
     private Point _dragOffset;
     private NodeEdgeViewModel? _draggedEdge;
     private MacroEditorViewModel? _watched;
+    private TemplatesViewModel? _watchedTemplates;
+    private Bitmap? _templatePreview;
 
     /// <summary>
     /// Подгоняет «0:12.4» у отладчика.
@@ -84,6 +89,9 @@ public partial class MacrosView : UserControl
     }
 
     private MacroEditorViewModel? Vm => DataContext as MacroEditorViewModel;
+
+    /// <summary>Браузер шаблонов открытого макроса — раздел инспектора, живёт внутри редактора.</summary>
+    private TemplatesViewModel? TemplatesVm => Vm?.Templates;
 
     // ---- библиотека ---------------------------------------------------------------------
 
@@ -124,6 +132,107 @@ public partial class MacrosView : UserControl
         {
             await vm.DeleteMacroAsync(item);
         }
+    }
+
+    // ---- шаблоны макроса (F2) -------------------------------------------------------------
+
+    /// <summary>
+    /// Клик по строке шаблона — выделение, ровно как у строк библиотеки: это тоже не
+    /// <c>ListBoxItem</c>, а строки внутри дерева групп.
+    /// </summary>
+    private void OnTemplateRowPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (TemplatesVm is { } templates && sender is Control { DataContext: TemplateRowViewModel row })
+        {
+            templates.Selected = row;
+        }
+    }
+
+    private async void OnDeleteTemplateClicked(object? sender, RoutedEventArgs e)
+    {
+        if (TemplatesVm is { } templates && sender is Button { DataContext: TemplateRowViewModel row })
+        {
+            await templates.DeleteAsync(row);
+        }
+    }
+
+    /// <summary>
+    /// «+ файл…» — системный диалог выбора PNG, дальше байты уезжают демону.
+    ///
+    /// Множественный выбор разрешён: одиннадцать имён классов кладут в набор одной пачкой, а не
+    /// одиннадцатью походами в диалог. Каждый файл едет отдельным запросом — бандл переписывается
+    /// на каждый, но это десятки килобайт, а взамен один битый файл не отменяет остальных.
+    /// </summary>
+    private async void OnAddTemplateClicked(object? sender, RoutedEventArgs e)
+    {
+        if (TemplatesVm is not { } templates || TopLevel.GetTopLevel(this) is not { } top)
+        {
+            return;
+        }
+
+        IReadOnlyList<IStorageFile> picked;
+        try
+        {
+            picked = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Шаблон машинного зрения",
+                AllowMultiple = true,
+                FileTypeFilter = [new FilePickerFileType("PNG") { Patterns = ["*.png"] }],
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Диалог выбора шаблона не открылся");
+            return;
+        }
+
+        foreach (var file in picked)
+        {
+            try
+            {
+                await using var stream = await file.OpenReadAsync();
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer);
+                await templates.ImportAsync(file.Name, buffer.ToArray());
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warning(ex, "Файл шаблона {File} не прочитался", file.Name);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Декодирование превью шаблона.
+    ///
+    /// <b>Здесь, а не в конвертере привязки</b>, и это то же решение, что стояло в удалённом
+    /// <c>TemplatesView</c>. View-model отдаёт БАЙТЫ и про Avalonia не знает — это условие того,
+    /// что её гоняют headless. Значит, кто-то должен превратить их в <see cref="Bitmap"/>, а тот
+    /// держит неуправляемую память Skia и требует освобождения. Конвертер, вызываемый на каждое
+    /// обновление привязки, оставлял бы каждую предыдущую картинку финализатору; здесь живая
+    /// картинка ровно одна, и следующая вытесняет предыдущую.
+    /// </summary>
+    private void UpdateTemplatePreview()
+    {
+        _templatePreview?.Dispose();
+        _templatePreview = null;
+
+        if (TemplatesVm?.PreviewPng is { Length: > 0 } bytes)
+        {
+            try
+            {
+                using var stream = new MemoryStream(bytes, writable: false);
+                _templatePreview = new Bitmap(stream);
+            }
+            catch (Exception ex)
+            {
+                // Запись лежит в бандле, но картинкой не является. Демон отдал её честно —
+                // ругаться должен вид, а не превращать это в отказ запроса.
+                Log.Warning(ex, "Не удалось декодировать превью шаблона");
+            }
+        }
+
+        TemplatePreviewImage.Source = _templatePreview;
     }
 
     // ---- триггеры --------------------------------------------------------------------
@@ -635,6 +744,18 @@ public partial class MacrosView : UserControl
             _watched.PropertyChanged += OnViewModelPropertyChanged;
         }
 
+        if (_watchedTemplates is not null)
+        {
+            _watchedTemplates.PropertyChanged -= OnTemplatesPropertyChanged;
+        }
+
+        _watchedTemplates = TemplatesVm;
+        if (_watchedTemplates is not null)
+        {
+            _watchedTemplates.PropertyChanged += OnTemplatesPropertyChanged;
+        }
+
+        UpdateTemplatePreview();
         ApplyTransform();
     }
 
@@ -649,6 +770,18 @@ public partial class MacrosView : UserControl
     {
         base.OnDetachedFromVisualTree(e);
         _elapsedTimer.Stop();
+        // Неуправляемая память Skia у превью шаблона: панель закрыли — отпускаем сразу, а не
+        // финализатором.
+        _templatePreview?.Dispose();
+        _templatePreview = null;
+    }
+
+    private void OnTemplatesPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (string.Equals(e.PropertyName, nameof(TemplatesViewModel.PreviewPng), StringComparison.Ordinal))
+        {
+            UpdateTemplatePreview();
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

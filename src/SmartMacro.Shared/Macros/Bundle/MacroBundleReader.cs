@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
@@ -73,6 +74,102 @@ public static class MacroBundleReader
     /// <summary>То же для <see cref="MacroBundleFormat.SubmacroFolder"/>.</summary>
     public static byte[]? ReadSubmacro(string path, string relativePath) =>
         ReadEntryBytes(path, MacroBundleFormat.SubmacroFolder, relativePath);
+
+    /// <summary>
+    /// ВСЕ шаблоны бандла разом, вместе с байтами, за одно открытие архива.
+    ///
+    /// ⚠️ <b>Исключение из правила «список — метаданные, пиксели — по требованию», и оно ровно
+    /// одно.</b> Правило написано для БРАУЗЕРА: там пользователь смотрит на один шаблон, а «на
+    /// всякий случай прочитаем всё» тянуло бы по трубе десятки килобайт ради одной картинки.
+    /// Здесь потребитель другой — кэш исполнителя (<c>MacroTemplateCache</c>), который наполняется
+    /// один раз на макрос и обслуживает потом каждый тик зрения, не открывая архив вовсе. Ему
+    /// нужны именно все байты сразу: открывать zip по разу на имя значило бы платить открытием за
+    /// каждую ноду, а тик сопоставления не имеет права ходить на диск.
+    ///
+    /// Записи, шаблоном не являющиеся (не PNG, глубже одного уровня), отбрасываются — см.
+    /// <see cref="MacroBundleFormat.TryParseTemplatePath"/>. Нечитаемая запись пропускается: один
+    /// битый PNG не должен лишать макрос остальных.
+    /// </summary>
+    /// <returns>Пути (относительно <see cref="MacroBundleFormat.TemplateFolder"/>) и содержимое; пусто, если файл не читается.</returns>
+    public static IReadOnlyList<MacroBundleFile> ReadAllTemplates(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return WithArchive<IReadOnlyList<MacroBundleFile>>(
+            path,
+            archive => ReadFolder(archive, MacroBundleFormat.TemplateFolder, templatesOnly: true),
+            _ => []);
+    }
+
+    /// <summary>
+    /// Всё содержимое бандла целиком, вместе с байтами вложений, — то, что нужно ПЕРЕЗАПИСАТЬ
+    /// бандл, поменяв в нём одну вещь.
+    ///
+    /// Хранилище правит бандл по частям (сохранили граф; добавили шаблон; удалили шаблон), а
+    /// писатель умеет только «весь файл целиком» — иначе замена переименованием, на которой стоит
+    /// атомарность, была бы невозможна. Поэтому цикл всегда один и тот же: прочитать всё,
+    /// поменять одно, записать всё. <b>Под-макросы едут через этот метод байт в байт</b>, хотя
+    /// наполнит их только F4: бандл, собранный будущей версией и прошедший через сегодняшнее
+    /// сохранение, не имеет права их потерять.
+    /// </summary>
+    /// <returns><c>null</c>, если бандл не читается настолько, что переписывать нечего.</returns>
+    public static MacroBundleContent? ReadContent(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return WithArchive<MacroBundleContent?>(
+            path,
+            archive =>
+            {
+                var metadata = ReadMetadata(archive);
+                var (graph, _, _) = ReadGraph(archive);
+                if (metadata.Metadata is not { } passport || graph is null)
+                {
+                    return null;
+                }
+
+                return new MacroBundleContent
+                {
+                    Metadata = passport,
+                    Graph = graph,
+                    Templates = ReadFolder(archive, MacroBundleFormat.TemplateFolder, templatesOnly: true),
+                    Submacros = ReadFolder(archive, MacroBundleFormat.SubmacroFolder, templatesOnly: false),
+                };
+            },
+            _ => null);
+    }
+
+    /// <summary>
+    /// Перечень шаблонов бандла для БРАУЗЕРА: путь, размеры в пикселях и вес — и ни одного
+    /// пикселя.
+    ///
+    /// Тот же довод, что у <c>TemplateDto</c> в протоколе: одна запись весит десятки байт, так что
+    /// весь список приезжает разом при открытии макроса, а картинка — за выделением, по одной.
+    /// Размеры берутся из заголовка IHDR (24 байта), картинка не декодируется; вес — это
+    /// <see cref="System.IO.Compression.ZipArchiveEntry.Length"/>, то есть РАСПАКОВАННЫЙ размер, и
+    /// он же размер файла, потому что бандл не сжимается.
+    /// </summary>
+    public static IReadOnlyList<MacroBundleTemplateInfo> ReadTemplateCatalog(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        return WithArchive<IReadOnlyList<MacroBundleTemplateInfo>>(
+            path,
+            archive =>
+            {
+                var found = new List<MacroBundleTemplateInfo>();
+                foreach (var (entry, relativePath) in EnumerateFolder(archive, MacroBundleFormat.TemplateFolder))
+                {
+                    if (!MacroBundleFormat.TryParseTemplatePath(relativePath, out _, out _))
+                    {
+                        continue;
+                    }
+
+                    found.Add(new MacroBundleTemplateInfo(relativePath, ReadPngSize(entry), entry.Length));
+                }
+
+                found.Sort(static (a, b) => string.CompareOrdinal(a.Path, b.Path));
+                return found;
+            },
+            _ => []);
+    }
 
     private static byte[]? ReadEntryBytes(string path, string folder, string relativePath)
     {
@@ -236,6 +333,21 @@ public static class MacroBundleReader
     private static IReadOnlyList<string> ListFolder(ZipArchive archive, string folder)
     {
         var files = new List<string>();
+        foreach (var (_, relativePath) in EnumerateFolder(archive, folder))
+        {
+            files.Add(relativePath);
+        }
+
+        files.Sort(StringComparer.Ordinal);
+        return files;
+    }
+
+    // Записи одной папки архива с уже отрезанным префиксом. Запись-«папка» (пустое имя) и всё,
+    // что пытается вылезти наружу, не проходят — см. MacroBundleFormat.IsSafeRelativePath.
+    private static IEnumerable<(ZipArchiveEntry Entry, string RelativePath)> EnumerateFolder(
+        ZipArchive archive,
+        string folder)
+    {
         foreach (var entry in archive.Entries)
         {
             if (!entry.FullName.StartsWith(folder, StringComparison.Ordinal))
@@ -244,17 +356,66 @@ public static class MacroBundleReader
             }
 
             var relativePath = entry.FullName[folder.Length..];
-            // Запись-«папка» (пустое имя) и всё, что пытается вылезти наружу, в перечень не
-            // попадают — см. MacroBundleFormat.IsSafeRelativePath.
             if (MacroBundleFormat.IsSafeRelativePath(relativePath))
             {
-                files.Add(relativePath);
+                yield return (entry, relativePath);
+            }
+        }
+    }
+
+    private static IReadOnlyList<MacroBundleFile> ReadFolder(ZipArchive archive, string folder, bool templatesOnly)
+    {
+        var files = new List<MacroBundleFile>();
+        foreach (var (entry, relativePath) in EnumerateFolder(archive, folder))
+        {
+            if (templatesOnly && !MacroBundleFormat.TryParseTemplatePath(relativePath, out _, out _))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var source = entry.Open();
+                using var buffer = new MemoryStream();
+                source.CopyTo(buffer);
+                files.Add(new MacroBundleFile(relativePath, buffer.ToArray()));
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException)
+            {
+                // Один битый PNG не должен лишать макрос остальных: нода, назвавшая его, пойдёт
+                // по «не найдено» — ровно так же, как если бы файла не было вовсе.
             }
         }
 
-        files.Sort(StringComparer.Ordinal);
+        files.Sort(static (a, b) => string.CompareOrdinal(a.Path, b.Path));
         return files;
     }
+
+    /// <summary>
+    /// Ширина и высота PNG из заголовка IHDR: 8 байт сигнатуры, 8 байт длины и типа чанка, дальше
+    /// два big-endian int32. Читаем 24 байта вместо того, чтобы декодировать картинку; запись, не
+    /// похожая на PNG, отдаёт 0×0 и из перечня НЕ пропадает — она ведь лежит в бандле, и увидеть
+    /// её пользователь должен именно затем, чтобы понять, что там не то.
+    /// </summary>
+    private static (int Width, int Height) ReadPngSize(ZipArchiveEntry entry)
+    {
+        try
+        {
+            Span<byte> header = stackalloc byte[24];
+            using var stream = entry.Open();
+            return stream.ReadAtLeast(header, header.Length, throwOnEndOfStream: false) == header.Length
+                   && header[..8].SequenceEqual(PngSignature)
+                ? (BinaryPrimitives.ReadInt32BigEndian(header[16..20]),
+                    BinaryPrimitives.ReadInt32BigEndian(header[20..24]))
+                : (0, 0);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            return (0, 0);
+        }
+    }
+
+    private static ReadOnlySpan<byte> PngSignature => [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A];
 
     private static string ReadText(ZipArchiveEntry entry)
     {
@@ -282,7 +443,12 @@ public static class MacroBundleReader
         FileStream stream;
         try
         {
-            stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            // FileShare.Delete ОБЯЗАТЕЛЕН, и это половина атомарной записи (см.
+            // MacroBundleWriter): замена файла переименованием — это MoveFileEx с
+            // MOVEFILE_REPLACE_EXISTING, а он отказывает, если существующий получатель открыт без
+            // разрешения на удаление. Без этого флага сохранение макроса падало бы ровно тогда,
+            // когда его в этот момент кто-то читает, — то есть изредка и невоспроизводимо.
+            stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
         }
         catch (FileNotFoundException)
         {

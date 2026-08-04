@@ -44,7 +44,6 @@ public class ShellViewModelTests
             new WorkspaceViewModel(client, ImmediateUiDispatcher.Instance),
             new MacroEditorViewModel(client, launcher, hotkeys, ImmediateUiDispatcher.Instance,
                 @"C:\smartmacro\macros"),
-            new TemplatesViewModel(client, ImmediateUiDispatcher.Instance),
             new LogViewModel(client, ImmediateUiDispatcher.Instance),
             new SettingsViewModel(client, ImmediateUiDispatcher.Instance),
             launcher);
@@ -63,7 +62,7 @@ public class ShellViewModelTests
         using var shell = CreateShell(new FakeIpcClient());
 
         await Assert.That(shell.Modes.Select(m => m.Title))
-            .IsEquivalentTo(new[] { "Окна", "Макросы", "Прогоны", "Шаблоны", "Лог" });
+            .IsEquivalentTo(new[] { "Окна", "Макросы", "Прогоны", "Лог" });
         await Assert.That(shell.CurrentMode).IsEqualTo(ShellMode.Windows);
         await Assert.That(shell.IsWindowsMode).IsTrue();
         await Assert.That(Row(shell, ShellMode.Windows).IsSelected).IsTrue();
@@ -182,51 +181,37 @@ public class ShellViewModelTests
         await Assert.That(client.CountOf(IpcMessageTypes.SubscribeLog)).IsEqualTo(1);
     }
 
+    // Строки «Шаблоны» на рейке больше нет (F2), и три теста про её счётчик ушли вместе с ней:
+    // числа «сколько всего шаблонов» не существует — общего дерева нет, есть только «сколько их
+    // у ЭТОГО макроса», и это число живёт в инспекторе редактора.
     [Test]
-    public async Task TemplatesCounter_CountsTheFilesTheDaemonReports()
+    public async Task Rail_HasNoTemplatesRow_BecauseATemplateIsNotAnEntityAnyMore()
     {
-        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetTemplates, new[]
-        {
-            new TemplateDto(null, "ServerSelectButton", 210, 44, 35889),
-            new TemplateDto("classes", "Лучник", 96, 18, 469),
-            new TemplateDto("classes", "Жрец", 96, 18, 415),
-        });
-
-        using var shell = CreateShell(client);
-
-        await Assert.That(Row(shell, ShellMode.Templates).HasCounter).IsTrue();
-        await Assert.That(Row(shell, ShellMode.Templates).CounterText).IsEqualTo("3");
-    }
-
-    [Test]
-    public async Task TemplatesCounter_IsZeroRatherThanBlank_WhenTheTreeIsEmpty()
-    {
-        // Разница принципиальная: «0» — это ответ демона, а пустота была бы признанием, что
-        // спросить не у кого. Спросить теперь есть у кого, и счётчик обязан это показывать.
         using var shell = CreateShell(new FakeIpcClient());
 
-        await Assert.That(Row(shell, ShellMode.Templates).HasCounter).IsTrue();
-        await Assert.That(Row(shell, ShellMode.Templates).CounterText).IsEqualTo("0");
+        await Assert.That(shell.Modes.Select(row => row.Mode).ToList()).IsEquivalentTo(new List<ShellMode>
+        {
+            ShellMode.Windows,
+            ShellMode.Macros,
+            ShellMode.Runs,
+            ShellMode.Log,
+        });
+        await Assert.That(shell.Modes.Select(row => row.Title)).DoesNotContain("Шаблоны");
     }
 
+    // Ни один режим, кроме «Макросов», не спрашивает шаблоны: браузер наводится на ОТКРЫТЫЙ
+    // макрос, а не на вход в режим.
     [Test]
-    public async Task EnteringTemplates_RereadsTheTree()
+    public async Task SwitchingModes_DoesNotAskForTemplates()
     {
-        // Пуша про изменения в Assets/templates нет: наблюдатель заведён на macros/, а не на
-        // ассеты. Вход в режим — единственный момент, когда «я только что положил туда PNG»
-        // заведомо стоит перечитать.
         var client = new FakeIpcClient().Respond(IpcMessageTypes.GetTemplates, Array.Empty<TemplateDto>());
         using var shell = CreateShell(client);
-        var before = client.CountOf(IpcMessageTypes.GetTemplates);
 
-        shell.SelectMode(ShellMode.Templates);
-
-        await Assert.That(client.CountOf(IpcMessageTypes.GetTemplates)).IsEqualTo(before + 1);
-
+        shell.SelectMode(ShellMode.Runs);
+        shell.SelectMode(ShellMode.Log);
         shell.SelectMode(ShellMode.Windows);
 
-        // На выходе гасить нечего — в отличие от событий прогона, тут нет ничего, что бы шло.
-        await Assert.That(client.CountOf(IpcMessageTypes.GetTemplates)).IsEqualTo(before + 1);
+        await Assert.That(client.CountOf(IpcMessageTypes.GetTemplates)).IsEqualTo(0);
     }
 
     [Test]
@@ -394,7 +379,6 @@ public class ShellViewModelTests
         using var shell = CreateShell(new FakeIpcClient(), hotkeys: hotkeys);
 
         shell.SelectMode(ShellMode.Runs);
-        shell.SelectMode(ShellMode.Templates);
         shell.SelectMode(ShellMode.Log);
 
         await Assert.That(shell.HotkeysSuspended).IsFalse();

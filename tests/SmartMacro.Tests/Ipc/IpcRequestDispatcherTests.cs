@@ -344,19 +344,37 @@ public class IpcRequestDispatcherTests
     }
 
     // ------------------------------------------------------------------------- шаблоны
+    //
+    // С волны F2 все три запроса адресованы КОНКРЕТНОМУ МАКРОСУ: общего дерева templates/ нет,
+    // шаблон лежит в бандле .hsm, и «какому» — это уже не поле ответа, а параметр вопроса.
 
-    // 1×1 PNG: заголовок настоящий, потому что именно его читает Catalog().
+    // 1×1 PNG: заголовок настоящий, потому что именно его читает каталог бандла.
     private static readonly byte[] OnePixelPng = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
 
+    private const string TemplateMacro = "с-картинками";
+
+    private static async Task SeedTemplatesAsync(IpcDispatcherHarness harness,
+        params (string? Set, string Name, byte[] Bytes)[] templates)
+    {
+        await harness.Macros.SaveAsync(SimpleMacro(TemplateMacro));
+        foreach (var (set, name, bytes) in templates)
+        {
+            await harness.WriteTemplateAsync(TemplateMacro, set, name, bytes);
+        }
+    }
+
     [Test]
-    public async Task GetTemplates_ListsTheWholeTree_WithoutASinglePixel()
+    public async Task GetTemplates_ListsTheMacrosOwnBundle_WithoutASinglePixel()
     {
         using var harness = new IpcDispatcherHarness();
-        harness.WriteTemplate(null, "ServerSelectButton", OnePixelPng);
-        harness.WriteTemplate("classes", "Лучник", OnePixelPng);
+        await SeedTemplatesAsync(harness,
+            (null, "ServerSelectButton", OnePixelPng),
+            ("classes", "Лучник", OnePixelPng));
 
-        var response = await harness.DispatchAsync(IpcMessageTypes.GetTemplates);
+        var response = await harness.DispatchAsync(
+            IpcMessageTypes.GetTemplates,
+            new GetTemplatesRequest(TemplateMacro));
         var templates = IpcJson.Read<TemplateDto[]>(response.Payload);
 
         await Assert.That(response.Ok).IsTrue();
@@ -365,16 +383,21 @@ public class IpcRequestDispatcherTests
             .IsEquivalentTo(new[] { "/ServerSelectButton", "classes/Лучник" });
         // Размеры — да, байты — нет: за байтами ходят по одному файлу, и вся суть разделения в
         // том, чтобы список можно было тянуть целиком, не завалив трубу картинками.
-        await Assert.That(templates![0].Width).IsEqualTo(1);
-        await Assert.That(templates[0].Bytes).IsEqualTo(OnePixelPng.Length);
+        var single = templates!.Single(t => t.Set is null);
+        await Assert.That(single.Width).IsEqualTo(1);
+        await Assert.That(single.Bytes).IsEqualTo(OnePixelPng.Length);
     }
 
     [Test]
-    public async Task GetTemplates_WithNoTreeAtAll_IsAnEmptyArray()
+    public async Task GetTemplates_ForAMacroThatDoesNotExist_IsAnEmptyArray()
     {
+        // Пустой список, а не отказ: панель спрашивает про то, что открыто в редакторе, а открыт
+        // вполне может быть черновик, которого на диске ещё нет.
         using var harness = new IpcDispatcherHarness();
 
-        var response = await harness.DispatchAsync(IpcMessageTypes.GetTemplates);
+        var response = await harness.DispatchAsync(
+            IpcMessageTypes.GetTemplates,
+            new GetTemplatesRequest("черновик"));
 
         await Assert.That(response.Ok).IsTrue();
         await Assert.That(IpcJson.Read<TemplateDto[]>(response.Payload)!).IsEmpty();
@@ -384,11 +407,11 @@ public class IpcRequestDispatcherTests
     public async Task GetTemplateImage_AnswersWithTheBytes_AndEchoesWhichTemplate()
     {
         using var harness = new IpcDispatcherHarness();
-        harness.WriteTemplate("classes", "Жрец", OnePixelPng);
+        await SeedTemplatesAsync(harness, ("classes", "Жрец", OnePixelPng));
 
         var response = await harness.DispatchAsync(
             IpcMessageTypes.GetTemplateImage,
-            new GetTemplateImageRequest("classes", "Жрец"));
+            new GetTemplateImageRequest(TemplateMacro, "classes", "Жрец"));
         var image = IpcJson.Read<TemplateImageDto>(response.Payload);
 
         await Assert.That(response.Ok).IsTrue();
@@ -396,18 +419,20 @@ public class IpcRequestDispatcherTests
         await Assert.That(image!.Png).IsEquivalentTo(OnePixelPng);
         // Эхо нужно панели против гонки выделения: щёлкнув по списку быстрее, чем отвечает
         // демон, она обязана уметь отличить ответ на предпоследний выбор от ответа на последний.
-        await Assert.That(image.Describes("classes", "Жрец")).IsTrue();
-        await Assert.That(image.Describes(null, "Жрец")).IsFalse();
+        await Assert.That(image.Describes(TemplateMacro, "classes", "Жрец")).IsTrue();
+        await Assert.That(image.Describes(TemplateMacro, null, "Жрец")).IsFalse();
+        await Assert.That(image.Describes("другой", "classes", "Жрец")).IsFalse();
     }
 
     [Test]
     public async Task GetTemplateImage_ForSomethingThatIsNotThere_Fails()
     {
         using var harness = new IpcDispatcherHarness();
+        await SeedTemplatesAsync(harness);
 
         var response = await harness.DispatchAsync(
             IpcMessageTypes.GetTemplateImage,
-            new GetTemplateImageRequest(null, "НетТакого"));
+            new GetTemplateImageRequest(TemplateMacro, null, "НетТакого"));
 
         // Отказ, а не пустая картинка: панель просит по строке из собственного списка, так что
         // промах означает, что список устарел, и молчание спрятало бы ровно это.
@@ -419,10 +444,11 @@ public class IpcRequestDispatcherTests
     public async Task GetTemplateImage_RefusesAPathDressedUpAsAName()
     {
         using var harness = new IpcDispatcherHarness();
+        await SeedTemplatesAsync(harness);
 
         var response = await harness.DispatchAsync(
             IpcMessageTypes.GetTemplateImage,
-            new GetTemplateImageRequest(null, @"..\..\appsettings"));
+            new GetTemplateImageRequest(TemplateMacro, null, @"..\..\appsettings"));
 
         await Assert.That(response.Ok).IsFalse();
     }
@@ -431,16 +457,81 @@ public class IpcRequestDispatcherTests
     public async Task GetTemplateImage_RefusesAnythingOverThePreviewCeiling()
     {
         using var harness = new IpcDispatcherHarness();
-        harness.WriteTemplate(null, "Огромный", new byte[TemplateLimits.MaxImageBytes + 1]);
+        await SeedTemplatesAsync(harness, (null, "Огромный", new byte[TemplateLimits.MaxImageBytes + 1]));
 
         var response = await harness.DispatchAsync(
             IpcMessageTypes.GetTemplateImage,
-            new GetTemplateImageRequest(null, "Огромный"));
+            new GetTemplateImageRequest(TemplateMacro, null, "Огромный"));
 
         // Труба у превью общая с потоком событий прогона, и запись в неё сериализована: строка
         // base64 на много мегабайт встала бы перед пачкой событий живого макроса.
         await Assert.That(response.Ok).IsFalse();
         await Assert.That(response.Error).Contains("потолк");
+    }
+
+    [Test]
+    public async Task AddMacroTemplate_PutsTheFileInTheBundle_AndAnswersWithTheNewList()
+    {
+        using var harness = new IpcDispatcherHarness();
+        await harness.Macros.SaveAsync(SimpleMacro(TemplateMacro));
+
+        var response = await harness.DispatchAsync(
+            IpcMessageTypes.AddMacroTemplate,
+            new AddMacroTemplateRequest(TemplateMacro, "classes", "Лучник", OnePixelPng));
+        var templates = IpcJson.Read<TemplateDto[]>(response.Payload);
+
+        await Assert.That(response.Ok).IsTrue();
+        await Assert.That(templates!.Select(t => $"{t.Set}/{t.Name}"))
+            .IsEquivalentTo(new[] { "classes/Лучник" });
+        // Байты действительно легли в файл: следующий GetTemplateImage их и вернёт.
+        await Assert.That(harness.Macros.ReadTemplate(TemplateMacro, "classes", "Лучник"))
+            .IsEquivalentTo(OnePixelPng);
+    }
+
+    [Test]
+    public async Task AddMacroTemplate_ToAMacroThatDoesNotExist_Fails()
+    {
+        // В отличие от перечня, здесь молчаливый успех был бы прямым враньём: пользователь нажал
+        // «+ файл» и вправе считать, что файл лёг в макрос.
+        using var harness = new IpcDispatcherHarness();
+
+        var response = await harness.DispatchAsync(
+            IpcMessageTypes.AddMacroTemplate,
+            new AddMacroTemplateRequest("черновик", null, "A", OnePixelPng));
+
+        await Assert.That(response.Ok).IsFalse();
+    }
+
+    [Test]
+    public async Task AddMacroTemplate_RefusesAnythingOverTheCeiling()
+    {
+        using var harness = new IpcDispatcherHarness();
+        await harness.Macros.SaveAsync(SimpleMacro(TemplateMacro));
+
+        var response = await harness.DispatchAsync(
+            IpcMessageTypes.AddMacroTemplate,
+            new AddMacroTemplateRequest(TemplateMacro, null, "Огромный", new byte[TemplateLimits.MaxImageBytes + 1]));
+
+        await Assert.That(response.Ok).IsFalse();
+        await Assert.That(response.Error).Contains("потолк");
+    }
+
+    [Test]
+    public async Task DeleteMacroTemplate_RemovesIt_AndAnUnknownNameIsANoOp()
+    {
+        using var harness = new IpcDispatcherHarness();
+        await SeedTemplatesAsync(harness, ("classes", "Лучник", OnePixelPng));
+
+        var removed = await harness.DispatchAsync(
+            IpcMessageTypes.DeleteMacroTemplate,
+            new DeleteMacroTemplateRequest(TemplateMacro, "classes", "Лучник"));
+        var again = await harness.DispatchAsync(
+            IpcMessageTypes.DeleteMacroTemplate,
+            new DeleteMacroTemplateRequest(TemplateMacro, "classes", "Лучник"));
+
+        await Assert.That(removed.Ok).IsTrue();
+        await Assert.That(IpcJson.Read<TemplateDto[]>(removed.Payload)!).IsEmpty();
+        await Assert.That(again.Ok).IsTrue();
     }
 
     // ---------------------------------------------------------------------- диагностика

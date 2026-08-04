@@ -45,6 +45,7 @@ public class DebuggerProtocolTests
 
             Primitives = new RecordingPrimitives();
             Resolver = new DictionaryResolver();
+            Templates = new FakeTemplateSource();
             Executor = new MacroExecutor(
                 Primitives,
                 new WindowRegistry(NullLogger<WindowRegistry>.Instance),
@@ -59,6 +60,9 @@ public class DebuggerProtocolTests
         public RecordingPrimitives Primitives { get; }
 
         public DictionaryResolver Resolver { get; }
+
+        /// <summary>Порунный источник шаблонов (F2): в бою его ставит Orchestrator.RunAsync.</summary>
+        public FakeTemplateSource Templates { get; }
 
         public MacroExecutor Executor { get; }
 
@@ -79,6 +83,7 @@ public class DebuggerProtocolTests
                 {
                     ContextWindow = new IntPtr(0x140804),
                     Variables = MacroVariables.ForTrigger(new ScreenPoint(1804, 902)),
+                    Templates = Templates,
                     Observer = Engine.RunEvents,
                     Debugger = Engine.Debug,
                 },

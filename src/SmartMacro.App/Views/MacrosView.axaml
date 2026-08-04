@@ -1422,7 +1422,7 @@
                                    TextAlignment="Center"
                                    TextWrapping="Wrap"
                                    Foreground="{DynamicResource NocturneTextFaintBrush}"
-                                   Text="Создайте макрос кнопкой слева внизу. Готовый .json, положенный в эту папку, тоже подхватится сам — перезапускать ничего не надо." />
+                                   Text="Создайте макрос кнопкой слева внизу. Готовый .hsm, положенный в эту папку, тоже подхватится сам — перезапускать ничего не надо. Шаблоны едут внутри файла, так что чужой макрос работает как есть." />
                         <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                    Foreground="{DynamicResource NocturneTextGhostBrush}"
@@ -1881,6 +1881,163 @@
                                     <TextBlock Classes="hint"
                                                TextWrapping="Wrap"
                                                Text="Наведение подсвечивает на canvas ноду-источник и потребителей и рисует между ними пунктир." />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- ==== шаблоны макроса (F2) ====
+                                 Бывший режим рейки «Шаблоны». Он оттуда ушёл вместе с общим
+                                 деревом templates/: шаблон лежит внутри бандла .hsm ровно одного
+                                 макроса, то есть перестал быть самостоятельной сущностью, а рейка
+                                 — про сущности. Место ему здесь, рядом с триггерами и
+                                 переменными, среди остальных свойств макроса как целого.
+
+                                 Раздела «НЕТ ФАЙЛА» здесь нет и не будет: «нода называет шаблон,
+                                 которого в бандле нет» теперь ловит валидатор и кладёт в общий
+                                 список замечаний внизу. -->
+                            <Border Padding="12,9"
+                                    BorderThickness="0,1,0,0"
+                                    BorderBrush="{DynamicResource NocturnePanelDeepDividerBrush}"
+                                    IsVisible="{Binding HasOpenMacro}">
+                                <StackPanel Spacing="7" DataContext="{Binding Templates}">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <TextBlock Grid.Column="0" Classes="eyebrow" Text="ШАБЛОНЫ" />
+                                        <TextBlock Grid.Column="1"
+                                                   Margin="7,0,0,0"
+                                                   Classes="hint"
+                                                   Text="{Binding CountText}" />
+                                        <Button Grid.Column="2"
+                                                Content="+ файл…"
+                                                Classes="ghost"
+                                                IsEnabled="{Binding HasMacro}"
+                                                ToolTip.Tip="Положить PNG в бандл этого макроса"
+                                                Click="OnAddTemplateClicked" />
+                                    </Grid>
+
+                                    <!-- Набор указывается ПЕРЕД импортом, полем, а не диалогом:
+                                         это одна строка, и модальность ради неё была бы дороже
+                                         самой задачи. Имя шаблона не спрашивается вовсе — им
+                                         становится основа имени выбранного файла, ровно как было
+                                         в общем дереве. Padding + VerticalContentAlignment — та
+                                         же ловушка жёсткой высоты, что у поля имени макроса. -->
+                                    <Grid ColumnDefinitions="46,*" IsVisible="{Binding HasMacro}">
+                                        <TextBlock Grid.Column="0" Classes="label" Text="набор" />
+                                        <TextBox Grid.Column="1"
+                                                 Height="24"
+                                                 Padding="8,0"
+                                                 VerticalContentAlignment="Center"
+                                                 Classes="mono"
+                                                 Watermark="пусто — одиночный"
+                                                 Text="{Binding ImportSet, Mode=TwoWay}" />
+                                    </Grid>
+
+                                    <TextBlock Classes="hint"
+                                               TextWrapping="Wrap"
+                                               IsVisible="{Binding !HasMacro}"
+                                               Text="Черновик ещё не сохранён — бандла, в который класть шаблон, пока нет." />
+
+                                    <TextBlock TextWrapping="Wrap"
+                                               FontSize="10.5"
+                                               IsVisible="{Binding HasImportProblem}"
+                                               Foreground="{DynamicResource NocturneDangerBrush}"
+                                               Text="{Binding ImportProblem}" />
+
+                                    <TextBlock Classes="hint"
+                                               TextWrapping="Wrap"
+                                               IsVisible="{Binding IsEmpty}"
+                                               Text="Шаблонов в макросе нет. Ноды Find/Wait/Recognize без них всегда уходят по «не найдено»." />
+
+                                    <ItemsControl ItemsSource="{Binding Groups}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:TemplateGroupViewModel">
+                                                <StackPanel Margin="0,0,0,4">
+                                                    <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,3">
+                                                        <TextBlock Grid.Column="0"
+                                                                   Classes="hint"
+                                                                   Text="{Binding Title}" />
+                                                        <TextBlock Grid.Column="1"
+                                                                   Classes="hint"
+                                                                   Text="{Binding CountText}" />
+                                                    </Grid>
+                                                    <ItemsControl ItemsSource="{Binding Rows}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate x:DataType="vm:TemplateRowViewModel">
+                                                                <Border Classes="libRow"
+                                                                        Classes.current="{Binding IsSelected}"
+                                                                        ToolTip.Tip="{Binding UsageText}"
+                                                                        PointerPressed="OnTemplateRowPressed">
+                                                                    <Grid ColumnDefinitions="*,Auto,Auto">
+                                                                        <TextBlock Grid.Column="0"
+                                                                                   FontSize="11"
+                                                                                   VerticalAlignment="Center"
+                                                                                   TextTrimming="CharacterEllipsis"
+                                                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                                                   Foreground="{Binding IsUnused, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneTextMutedBrush|NocturneTextBrush}"
+                                                                                   Text="{Binding Name}" />
+                                                                        <TextBlock Grid.Column="1"
+                                                                                   Margin="6,0"
+                                                                                   VerticalAlignment="Center"
+                                                                                   Classes="hint"
+                                                                                   Text="{Binding SizeText}" />
+                                                                        <Button Grid.Column="2"
+                                                                                Content="×"
+                                                                                Classes="ghost"
+                                                                                Padding="4,0"
+                                                                                FontSize="11"
+                                                                                ToolTip.Tip="Убрать из бандла"
+                                                                                Click="OnDeleteTemplateClicked" />
+                                                                    </Grid>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- Превью выбранного. Байты приезжают по одному шаблону, за
+                                         выделением: список это метаданные, а труба общая с
+                                         потоком событий прогона. -->
+                                    <StackPanel Spacing="5.6" IsVisible="{Binding HasSelection}">
+                                        <Border Padding="8"
+                                                CornerRadius="{DynamicResource NocturneRadiusSm}"
+                                                Background="{DynamicResource NocturneCanvasBrush}"
+                                                BorderThickness="1"
+                                                BorderBrush="{DynamicResource NocturneDividerBrush}">
+                                            <StackPanel Spacing="5.6">
+                                                <TextBlock FontSize="11"
+                                                           FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Text="{Binding Selected.FullName}" />
+                                                <!-- Source ставит code-behind, а не привязка с
+                                                     конвертером: Bitmap держит неуправляемую
+                                                     память Skia, и конвертер, вызываемый на
+                                                     каждое обновление, оставлял бы каждую
+                                                     предыдущую картинку финализатору. Живая
+                                                     картинка здесь ровно одна. -->
+                                                <Image x:Name="TemplatePreviewImage"
+                                                       MaxHeight="160"
+                                                       HorizontalAlignment="Left"
+                                                       IsVisible="{Binding HasPreview}" />
+                                                <TextBlock Classes="hint"
+                                                           TextWrapping="Wrap"
+                                                           IsVisible="{Binding HasPreviewProblem}"
+                                                           Text="{Binding PreviewProblem}" />
+                                                <TextBlock Classes="eyebrow" Text="{Binding SelectedUsageHeader}" />
+                                                <ItemsControl ItemsSource="{Binding SelectedUsages}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="x:String">
+                                                            <TextBlock FontSize="10.5"
+                                                                       FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Foreground="{DynamicResource NocturneNeutral300Brush}"
+                                                                       Text="{Binding}" />
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </StackPanel>

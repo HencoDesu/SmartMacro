@@ -335,7 +335,13 @@ public sealed partial class MacroExecutor
             case FindElementNode n:
             {
                 var hwnd = RequireContext(n, context);
-                var found = await _primitives.FindElementAsync(hwnd, n.Template, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
+                if (ResolveTemplate(context, macro.Name, n, n.Template) is not { } template)
+                {
+                    return new NodeStep(n.NotFound, RunOutcomes.NotFound,
+                        DetailIfTracing(trace, () => $"{n.Template} · нет в макросе"));
+                }
+
+                var found = await _primitives.FindElementAsync(hwnd, template, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
                 if (found is { } point)
                 {
                     if (n.FoundPointVar is not null)
@@ -352,7 +358,13 @@ public sealed partial class MacroExecutor
             case WaitForElementNode n:
             {
                 var hwnd = RequireContext(n, context);
-                var found = await _primitives.WaitForElementAsync(hwnd, n.Template, n.Region, n.TimeoutMs, n.MatchThreshold, ct)
+                if (ResolveTemplate(context, macro.Name, n, n.Template) is not { } template)
+                {
+                    return new NodeStep(n.Timeout, RunOutcomes.Timeout,
+                        DetailIfTracing(trace, () => $"{n.Template} · нет в макросе"));
+                }
+
+                var found = await _primitives.WaitForElementAsync(hwnd, template, n.Region, n.TimeoutMs, n.MatchThreshold, ct)
                     .ConfigureAwait(false);
                 if (found is { } point)
                 {
@@ -371,7 +383,14 @@ public sealed partial class MacroExecutor
             case RecognizeTagNode n:
             {
                 var hwnd = RequireContext(n, context);
-                var tag = await _primitives.RecognizeAsync(hwnd, n.TemplateSet, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
+                var set = ResolveTemplateSet(context, macro.Name, n, n.TemplateSet);
+                if (set.Count == 0)
+                {
+                    return new NodeStep(n.NotMatched, RunOutcomes.NotMatched,
+                        DetailIfTracing(trace, () => $"{n.TemplateSet} · нет в макросе"));
+                }
+
+                var tag = await _primitives.RecognizeAsync(hwnd, set, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
                 if (tag is not null)
                 {
                     SetVariable(trace, context, n, n.ResultVar, tag);
@@ -391,6 +410,51 @@ public sealed partial class MacroExecutor
                     $"Макрос «{macro.Name}»: нода «{MacroNodeNames.Display(node)}» имеет неподдерживаемый тип {node.GetType().Name}.");
         }
     }
+
+    /// <summary>
+    /// Имя шаблона → байты, из бандла ЭТОГО прогона (волна F2).
+    ///
+    /// Разрешает обходчик, а не примитивы: с переездом шаблонов внутрь бандла имя без макроса
+    /// ничего не значит, а источник живёт в контексте прогона. Промах — не обрыв: нода уходит по
+    /// «не найдено», ровно как при отсутствующем файле в прежнем общем дереве, потому что ветка
+    /// на этот исход в графе уже нарисована. Валидатор говорит про это заранее и статически
+    /// (<c>MacroGraphValidator</c> + <c>MacroTemplateInventory</c>) — здесь остаётся только
+    /// строчка в журнале для того случая, когда предупреждение проигнорировали.
+    /// </summary>
+    private byte[]? ResolveTemplate(MacroRunContext context, string macroName, MacroNode node, string templateName)
+    {
+        if (string.IsNullOrWhiteSpace(templateName))
+        {
+            LogTemplateMissing(macroName, MacroNodeNames.Display(node), "(пусто)");
+            return null;
+        }
+
+        if (context.Templates?.TryGetTemplate(templateName) is { } bytes)
+        {
+            return bytes;
+        }
+
+        LogTemplateMissing(macroName, MacroNodeNames.Display(node), templateName);
+        return null;
+    }
+
+    /// <summary>То же для набора: пустой словарь означает «набора в бандле нет».</summary>
+    private IReadOnlyDictionary<string, byte[]> ResolveTemplateSet(MacroRunContext context, string macroName,
+        MacroNode node, string setName)
+    {
+        if (!string.IsNullOrWhiteSpace(setName)
+            && context.Templates?.GetSet(setName) is { Count: > 0 } templates)
+        {
+            return templates;
+        }
+
+        LogTemplateSetMissing(macroName, MacroNodeNames.Display(node),
+            string.IsNullOrWhiteSpace(setName) ? "(пусто)" : setName);
+        return EmptyTemplates;
+    }
+
+    private static readonly IReadOnlyDictionary<string, byte[]> EmptyTemplates =
+        new Dictionary<string, byte[]>(StringComparer.Ordinal);
 
     // Всего три места, где нода пишет переменную (§5.3 спеки). Проведены через одного
     // помощника, чтобы в каком-нибудь из них нельзя было забыть доложить наружу: панель
@@ -515,6 +579,11 @@ public sealed partial class MacroExecutor
             Depth = parent.Depth + 1,
             CallChain = callChain,
             RunId = parent.RunId,
+            // Наследуется, потому что прогон не покидает свой бандл: под-макросы в F4 будут лежать
+            // внутри него же, и шаблоны у них общие с родителем (§13.1). Пока RunMacroNode зовёт
+            // соседа по библиотеке, это означает, что под-макрос увидит шаблоны ВЫЗЫВАЮЩЕГО, —
+            // ровно то, что F4 и закрепит, убрав межмакросные вызовы вовсе.
+            Templates = parent.Templates,
             OnNodeEntered = parent.OnNodeEntered,
             // Наследуется, а не заводится на каждого ребёнка: наблюдатель — синглтон, а
             // собственная идентичность ДОЧЕРНЕГО ОБХОДА рождается в MacroWalkTrace.Begin внутри
@@ -600,6 +669,14 @@ public sealed partial class MacroExecutor
     [LoggerMessage(LogLevel.Debug,
         "Макрос '{MacroName}': селектор ноды '{NodeName}' не совпал ни с одним окном — ничего не делаем")]
     partial void LogNoTargets(string macroName, string nodeName);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Макрос '{MacroName}', нода '{NodeName}': шаблона '{Template}' в бандле нет — уходим по «не найдено»")]
+    partial void LogTemplateMissing(string macroName, string nodeName, string template);
+
+    [LoggerMessage(LogLevel.Warning,
+        "Макрос '{MacroName}', нода '{NodeName}': набора шаблонов '{TemplateSet}' в бандле нет — уходим по «не совпало»")]
+    partial void LogTemplateSetMissing(string macroName, string nodeName, string templateSet);
 
     [LoggerMessage(LogLevel.Warning, "Под-макрос без ожидания '{MacroName}' оборван: {Reason}")]
     partial void LogDetachedSubRunAborted(string macroName, string reason);

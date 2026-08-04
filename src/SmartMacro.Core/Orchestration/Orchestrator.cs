@@ -8,6 +8,7 @@ using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Storage;
 using SmartMacro.ProcessMonitoring;
+using SmartMacro.Vision;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Orchestration;
@@ -45,6 +46,7 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
     private readonly MacroExecutor _executor;
     private readonly MacroRunRegistry _runs;
     private readonly CursorPositionProvider _cursor;
+    private readonly MacroTemplateCache _templates;
     private readonly IMacroRunObserver? _observer;
     private readonly IMacroDebugger? _debugger;
 
@@ -57,6 +59,7 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         MacroExecutor executor,
         MacroRunRegistry runs,
         CursorPositionProvider cursor,
+        MacroTemplateCache templates,
         ILogger<Orchestrator> logger,
         IMacroRunObserver? observer = null,
         IMacroDebugger? debugger = null)
@@ -68,6 +71,7 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
         _executor = executor;
         _runs = runs;
         _cursor = cursor;
+        _templates = templates;
         // Необязателен: демон всегда подаёт его, и именно на нём живёт подсветка на канве в
         // панели. Хост без наблюдателя (или тест) работает без съёма показаний — ровно так же,
         // как по сути ведёт себя и демон, пока никто не подписан.
@@ -125,6 +129,11 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
             {
                 ContextWindow = contextWindow,
                 Variables = MacroVariables.ForTrigger(_cursor.Current()),
+                // Источник шаблонов ставится ЗДЕСЬ и ровно один раз на прогон (§13.1, F2): с
+                // переездом шаблонов внутрь бандла одно и то же имя у двух макросов означает два
+                // разных файла, так что глобального разрешения больше не существует. Дочерние
+                // обходы его наследуют — прогон не покидает свой бандл.
+                Templates = _templates.For(macroName),
                 RunId = handle.RunId,
                 OnNodeEntered = nodeName => handle.CurrentNodeName = nodeName,
                 Observer = _observer,

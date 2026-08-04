@@ -97,6 +97,16 @@ public sealed record MacroBundleReadResult(
     public bool IsOk => Metadata.IsOk && GraphFault == MacroBundleFault.None && Graph is not null;
 }
 
+/// <summary>
+/// Один шаблон бандла глазами браузера: где лежит, какого размера — и без единого пикселя.
+/// Возвращает <see cref="MacroBundleReader.ReadTemplateCatalog"/>; довод против байтов здесь тот
+/// же, что у <c>TemplateDto</c> в протоколе.
+/// </summary>
+/// <param name="Path">Путь относительно <see cref="MacroBundleFormat.TemplateFolder"/>, например <c>classes/Лучник.png</c>.</param>
+/// <param name="Size">Ширина и высота в пикселях; 0×0, если запись не разобралась как PNG.</param>
+/// <param name="Bytes">Размер записи. Он же размер файла: бандл не сжимается.</param>
+public sealed record MacroBundleTemplateInfo(string Path, (int Width, int Height) Size, long Bytes);
+
 /// <summary>Один файл внутри бандла: путь относительно своей папки и содержимое.</summary>
 /// <param name="Path">
 /// Относительный путь, разделитель — прямой слеш (<see cref="MacroBundleFormat.NormalizeEntryPath"/>
