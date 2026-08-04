@@ -1,9 +1,5 @@
 using System.Globalization;
 
-// Пространство имён намеренно не совпадает с путём файла — как и у всех соседей по Model:
-// имена SmartMacro.Macros.* достались модели ещё от жизни в Core, и стадия 1 сохранила их при
-// переезде, чтобы переезд не оказался заодно и переименованием половины usings в обоих процессах.
-// ReSharper disable once CheckNamespace
 namespace SmartMacro.Macros.Model;
 
 /// <summary>

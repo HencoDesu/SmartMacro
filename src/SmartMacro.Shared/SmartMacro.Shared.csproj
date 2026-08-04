@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Общий ДОМЕН демона и панели: модель графа макроса, её чистый валидатор, чистые анализы
+    (переменные, шаблоны) и чтение/запись бандла .hsm.
+
+    ПРАВИЛО ЭТОЙ СБОРКИ — НЕ ТО ЖЕ САМОЕ, ЧТО У Contracts, и путать их дорого. У Contracts
+    закон: ссылка только на Native и никакого файлового ввода-вывода. Shared его НЕ наследует —
+    читать и писать .hsm обязаны обе стороны, а это System.IO.Compression, то есть файлы.
+
+    Правило Shared формулируется так: общий домен; файлы можно, OpenCV и Tesseract нельзя.
+    Второй половине правила цена известна: ссылка App -> Core снята именно для того, чтобы
+    нативные блобы машинного зрения не приезжали в процесс, который пользователь открывает и
+    закрывает по десять раз на дню. Shared видят оба процесса, значит всё, что сюда затащат,
+    поедет и в панель. «Раз уж файлы можно, положим сюда и чтение шаблонов через OpenCV» — это
+    ровно то, чего здесь быть не должно; такому типу место в Core.
+
+    RootNamespace = SmartMacro (не SmartMacro.Shared) намеренно: пространства имён модели —
+    SmartMacro.Macros.* ещё с тех пор, когда она жила в Core, и переезд сюда их не меняет.
+    С таким корнем папка Macros\Model даёт ровно SmartMacro.Macros.Model, и ни один using в
+    дереве править не пришлось. Тот же приём, что и в SmartMacro.Core.csproj.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>SmartMacro</RootNamespace>
+    <AssemblyName>SmartMacro.Shared</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- ScreenPoint / ScreenRect и коды клавиш — модель нод описывает координаты и ввод ими. -->
+    <ProjectReference Include="..\SmartMacro.Native\SmartMacro.Native.csproj" />
+  </ItemGroup>
+
+</Project>

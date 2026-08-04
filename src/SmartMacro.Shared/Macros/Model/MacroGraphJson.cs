@@ -2,7 +2,6 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-// ReSharper disable once CheckNamespace — имена SmartMacro.Macros.* достались модели от жизни в Core.
 namespace SmartMacro.Macros.Model;
 
 /// <summary>

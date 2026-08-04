@@ -14,13 +14,13 @@ The refactoring plan that got us here was **deleted** once it was done — not o
 
 **`docs/spec.md` describes the system as built** and is the place to look first. Its most load-bearing part is **§14, the decision history** — tables of «было → стало → почему» covering both what was dropped before the refactor (FOLLOW/HOLD/COMBAT state machine, LLM integration, per-character roster, nameplate identification) and what the refactor itself changed. Read it before proposing anything that sounds like a fresh idea; a good share of "obvious improvements" are in there with a reason they were rejected.
 
-Gate: `dotnet run --project tests/SmartMacro.Tests` — **699 tests**, and they are expected green before anything is committed.
+Gate: `dotnet run --project tests/SmartMacro.Tests` — **719 tests**, and they are expected green before anything is committed.
 
 The sections below are the constraints that are load-bearing — the things that look arbitrary, are not, and will be "simplified" back into bugs by anyone who does not know why they are there. Wave tags (D4, D3b, …) survive only because commit messages reference them.
 
 ### Target selectors and hotkey conflicts (D4)
 
-**The badge needed no new IPC request**, despite what the plan's table said. The matching rule moved out of `SelectorEvaluator` into `TargetSelector.Matches` (Contracts) and now takes TAGS rather than a window, so both processes share one implementation: the daemon still calls `SelectorEvaluator` (kept as the typed wrapper — it is where `ManagedWindowInfo` is known, and Contracts must not know it), the panel calls `Matches` directly against its own `WindowDto` snapshot. **Do not reimplement those two loops anywhere.** A badge that disagrees with what the executor actually targets is the one defect that makes the widget worse than nothing.
+**The badge needed no new IPC request**, despite what the plan's table said. The matching rule moved out of `SelectorEvaluator` into `TargetSelector.Matches` (Shared since F1; Contracts before that) and now takes TAGS rather than a window, so both processes share one implementation: the daemon still calls `SelectorEvaluator` (kept as the typed wrapper — it is where `ManagedWindowInfo` is known, and Shared must not know it), the panel calls `Matches` directly against its own `WindowDto` snapshot. **Do not reimplement those two loops anywhere.** A badge that disagrees with what the executor actually targets is the one defect that makes the widget worse than nothing.
 
 `MacroEditorViewModel` keeps its own `WindowCatalog` — seeded by `GetWindows`, kept current by the window pushes — and hands it to every node's `TargetSelectorViewModel` the same way it hands out `NodeIdChoices`. It is deliberately NOT `WorkspaceViewModel`'s list: that one holds editable rows with focus state, and injecting it would tie two modes together.
 
@@ -57,13 +57,13 @@ A panel connecting mid-run gets the live walks with `FromStart = false` and says
 
 Four `RunEventKind` members were added rather than new message types, exactly as D3b laid out: `Paused`, `BreakpointHit`, `Resumed`, `VariableSet`. The first three **bypass the 50 ms coalescing window** — a step that pays a full dwell feels like a stuck button. The bypass is a signal, not a flag: a flag read once at the top of the pump loop never fired, because a breakpoint hit is always preceded by `WalkStarted`/`NodeEntered` in the same millisecond and the dwell had already begun (measured 63 ms; single digits after).
 
-**`MacroVariableAnalysis` (Contracts, next to the validator)** is the static half of the variables panel: who writes each variable, who reads it, and in which slot — including `{var}` interpolated inside strings, using the *same* `MacroVariableNames.Placeholder()` regex the executor substitutes with, because a panel claiming a read the executor never performs is the D4 targets-badge lie again. The live value is a separate concern and arrives as `VariableSet`; parsing it out of a `NodeExited` detail would mean the panel parsing a string whose format is the daemon's, and would still never see `cursor`, which no node writes.
+**`MacroVariableAnalysis` (Shared, next to the validator)** is the static half of the variables panel: who writes each variable, who reads it, and in which slot — including `{var}` interpolated inside strings, using the *same* `MacroVariableNames.Placeholder()` regex the executor substitutes with, because a panel claiming a read the executor never performs is the D4 targets-badge lie again. The live value is a separate concern and arrives as `VariableSet`; parsing it out of a `NodeExited` detail would mean the panel parsing a string whose format is the daemon's, and would still never see `cursor`, which no node writes.
 
 Stage 5 (translating comments to Russian) is deliberately last.
 
 ### The template browser (Шаблоны)
 
-Two requests, `GetTemplates` (metadata) and `GetTemplateImage` (bytes of one file), plus a `Contracts/Macros/Analysis/MacroTemplateAnalysis` that the panel runs locally. Four things constrain anything built on it:
+Two requests, `GetTemplates` (metadata) and `GetTemplateImage` (bytes of one file), plus a `Shared/Macros/Analysis/MacroTemplateAnalysis` that the panel runs locally. Four things constrain anything built on it:
 
 - **The list is metadata; pixels are not.** One `TemplateDto` is tens of bytes, so the whole tree arrives in one request on entering the mode. PNGs are kilobytes each and the pipe is shared with the run-event stream — `IpcConnection` serialises writes, so a batch of images sent "just in case" would queue ahead of a live macro's events. Bytes therefore travel one file at a time, on selection, cached for the life of the mode. **There are deliberately no thumbnails in the rows** — that is precisely the shape that would pull the whole tree at once.
 - **`TemplateLimits.MaxImageBytes` (1 MB) is checked on both ends.** The panel already knows the file size from the list, so it never asks for something that would be refused; the daemon refuses anyway, because the file can change between the listing and the request. `TemplateImageDto` echoes the request — not for correlation (that is the envelope `Id`) but against the *selection race*: the user clicks faster than the daemon answers, and without the echo the preview would keep the previous template's image.
@@ -137,14 +137,22 @@ Build warnings NU1903 (Tmds.DBus.Protocol) are known noise.
 
 ## Architecture
 
-Five projects, two executables:
+Six projects, two executables:
 
-- `Daemon` (WinExe, tray + hosted engine) → `Core` (all domain logic) → `Contracts` → `Native`
-- `App` (Avalonia panel) → `Contracts` → `Native` — **and nothing else.** No `SmartMacro.Core` reference: that is the load-bearing constraint of the split, and the reason the panel's output directory contains no OpenCV, no Tesseract and no native vision blobs. If a view-model needs something from Core, the answer is a new IPC message type, not a reference.
+- `Daemon` (WinExe, tray + hosted engine) → `Core` (all daemon-side domain logic) → `Contracts` → `Shared` → `Native`
+- `App` (Avalonia panel) → `Contracts` → `Shared` → `Native` — **and nothing else.** No `SmartMacro.Core` reference: that is the load-bearing constraint of the split, and the reason the panel's output directory contains no OpenCV, no Tesseract and no native vision blobs. If a view-model needs something from Core, the answer is a new IPC message type, not a reference.
 
 `Native` is Win32 P/Invoke via `LibraryImport`, no dependencies.
 
-**`SmartMacro.Contracts`** is what the two processes speak: the macro graph model (`SmartMacro.Macros.Model`) and its pure validator (`SmartMacro.Macros.Validation`) — namespaces deliberately kept as they were when these lived in Core — plus `SmartMacro.Contracts.Dto` (`WindowDto`, `RunningMacroDto`, `ValidationIssueDto`, `TemplateDto`, `LogEntryDto`) and `SmartMacro.Contracts.Ipc` (envelope, `IpcMessageTypes` catalog, `IpcJson`, `IpcPipe`, and the shared `IpcConnection` framing both ends use). **It references Native and nothing else.** Anything needing OpenCV/Tesseract/file IO belongs in Core; mappers from live Core types to DTOs therefore live in `Core/Ipc/DtoMappers.cs`, not in Contracts.
+**`SmartMacro.Shared` (F1) is the shared DOMAIN**: the macro graph model (`SmartMacro.Macros.Model`), its pure validator (`SmartMacro.Macros.Validation`), the pure analyses (`SmartMacro.Macros.Analysis` — `MacroVariableAnalysis`, `MacroTemplateAnalysis`) and the `.hsm` bundle reader/writer (`SmartMacro.Macros.Bundle`). Namespaces are `SmartMacro.Macros.*` — kept from when these lived in Core, and the reason the move out of Contracts needed **zero `using` edits**; `RootNamespace=SmartMacro` in the csproj is what keeps folder and namespace in step.
+
+**`SmartMacro.Contracts` is the PROTOCOL**: `SmartMacro.Contracts.Dto` (`WindowDto`, `RunningMacroDto`, `ValidationIssueDto`, `TemplateDto`, `LogEntryDto`, …), `SmartMacro.Contracts.Settings` (`AppSettings` + its validator), and `SmartMacro.Contracts.Ipc` (envelope, `IpcMessageTypes` catalog, `IpcJson`, `IpcPipe`, `IpcConnection`, `InstallationLayout`, `PeerExecutableLocator`).
+
+⚠️ **The two tiers have DIFFERENT rules — do not merge them in your head.** `Contracts`: references `Native` + `Shared`, **no file IO, no registry, no processes**. `Shared`: references `Native`, **file IO IS allowed** — reading and writing `.hsm` is needed on both sides and that means `System.IO.Compression`. The half that is common and load-bearing: **no OpenCV, no Tesseract, in either.** Everything in `Shared` ships inside the panel too, so "files are allowed here, let's also put template decoding via OpenCV here" is exactly the move that undoes the split. Both rules are written in the respective `.csproj` headers.
+
+**Direction is `Contracts → Shared`, and it follows from what was already written**: protocol payloads mention the domain (`SaveMacroRequest` carries a `MacroGraph`, `ValidationIssueDto` maps `ValidationIssue`, `IpcJson` is a copy of `MacroGraphJson.Options` so the file and wire dialects cannot drift). There is no mention the other way — the model, the validator and the bundle know nothing about the envelope or the pipe, and must not, because the domain has to be readable with no daemon running. F3, where macros stop travelling over the pipe entirely, thins that dependency but does not reverse it.
+
+Anything needing OpenCV/Tesseract belongs in Core; mappers from live Core types to DTOs therefore live in `Core/Ipc/DtoMappers.cs`, not in Contracts.
 
 ### IPC
 
@@ -174,13 +182,13 @@ hotkey / process-appeared / UI Run
 - **WindowLifetimeMonitor** (`Core/Windows`) is the whole of window-death handling: ONE `IHostedService` that sweeps the registry snapshot on the window-poll interval from `settings.json` (re-read per tick, so changing it applies live) and unregisters windows whose `IsAlive` went false; `StopAsync` clears the registry entirely. W0.4 replaced `CharacterAgent` + its factory + `AgentMessage`/`AgentStoppingMessage` + the orchestrator's inbox channel with it — four layers and ~270 lines for the fact "a window closed". **Do not fold it into `WindowRegistry`** (which is what the old TODO suggested): the registry is a pure synchronous state holder under one lock, and that is exactly why it is trivial to test.
 - **WindowRegistry** (`Core/Windows`) is the sole owner of window tags AND the `hwnd → IGameWindow` lookup. Tag selectors (`RequireTags`/`ExcludeTags`) route every fan-out; "identified" just means "has at least one tag".
 - **Orchestrator** (`Core/Orchestration`) turns triggers into runs. Hotkey runs have no context window (macros must route by selector) and are single-flight per macro NAME; process-appeared runs get the new window as context and are single-flight per (macro, window) so N clients launching at once each boot. Both seed the `cursor` variable via `CursorPositionProvider`. Its `OnProcessAppeared` is also the only place a window is *adopted*, and **`Register` and `StartProcessAppearedMacros` are deliberately adjacent, synchronous lines** — a node reaching an unregistered hwnd fails at execution, so nothing may go between them. Ordering at shutdown is the mirror image: `WindowLifetimeMonitor` is registered in the host BEFORE the orchestrator so it stops AFTER it, and windows leave the registry only once in-flight runs have been cancelled.
-- **Macros** — the model (polymorphic `$type` nodes + triggers) and its validator live in `Contracts/Macros`; `Core/Macros` keeps the daemon-side halves: `Execution` (`MacroExecutor` walker, `MacroPrimitives`, `MacroRunRegistry`, run variables) and `Storage`. The node catalogue and its semantics are in `docs/spec.md` §5.1; see «The node model» below for the two things about it that constrain callers.
+- **Macros** — the model (polymorphic `$type` nodes + triggers), its validator and the `.hsm` bundle live in `Shared/Macros`; `Core/Macros` keeps the daemon-side halves: `Execution` (`MacroExecutor` walker, `MacroPrimitives`, `MacroRunRegistry`, run variables) and `Storage`. The node catalogue and its semantics are in `docs/spec.md` §5.1; see «The node model» below for the two things about it that constrain callers.
 - **`MacroGraphStore`** (`Core/Macros/Storage`) is the library of record: one JSON file per graph under `macros/` in the installation root, filename stem = macro name. It resolves sub-macros for `RunMacroNode`, supplies `HotkeyListener`'s bindings (re-registered on every change), and tells the orchestrator which graphs a new process should boot. **Its constructor writes nothing**: it creates the folder if missing, reads it, and stops. That is an invariant written on the class, not an accident — until backwards compatibility was dropped the same constructor migrated a legacy `macros.json`, renamed it and `hotkeys.json` to `*.migrated`, seeded six `pw-*` examples and dropped a `.examples-seeded` marker, so *constructing the object* meant *changing state on disk*. `DefaultMacroGraphs` and `LegacyMacroMigration` are gone; do not hang start-up side effects back on the ctor.
 - **Identification** is no longer built in: it is an ordinary macro the user writes — `KeyPress(C)` → `Delay` → `RecognizeTagNode` (template set `"classes"` → `templates/classes/{tag}.png`) → `SetIconNode` → `KeyPress(C)`. Master/ignored characters are just tags in a selector (`ExcludeTags: ["Лучник", "Шаман"]`).
 
 ### The node model: `Guid` identity, `DisplayName` label
 
-A node's `Id` is a **`Guid`** and every edge (`Next`/`Found`/`NotFound`/`Timeout`/`Matched`/`NotMatched`) and `StartNodeId` holds one. What the user sees and types is `DisplayName`, generated as family prefix + a graph-wide running number — `click-1`, `delay-2`, `find-3` — so the number doubles as insertion order. `MacroNodeNames` (Contracts) owns the whole rule, including the fallback used when a hand-edited file carries no label: a blank row in the run log is worse than a generic one.
+A node's `Id` is a **`Guid`** and every edge (`Next`/`Found`/`NotFound`/`Timeout`/`Matched`/`NotMatched`) and `StartNodeId` holds one. What the user sees and types is `DisplayName`, generated as family prefix + a graph-wide running number — `click-1`, `delay-2`, `find-3` — so the number doubles as insertion order. `MacroNodeNames` (Shared) owns the whole rule, including the fallback used when a hand-edited file carries no label: a blank row in the run log is worse than a generic one.
 
 Two consequences worth knowing before touching this:
 
@@ -227,8 +235,10 @@ SmartMacro/
 
 `build/portable.proj` expresses it: `dotnet msbuild build\portable.proj` publishes the daemon into
 `dist\portable\SmartMacro\daemon\` and the panel into `dist\portable\SmartMacro\`, `-t:Package`
-adds the zip. Measured at `HEAD`: **88 files / 117.9 MB** — 1 file / 27.7 MB at the root, 73 /
-90.1 in `daemon/`, 14 template PNGs. The zip is 48.5 MB.
+adds the zip. Measured at `HEAD`: **90 files / 118.0 MB** — 1 file / 27.7 MB at the root, 75 /
+90.2 in `daemon/`, 14 template PNGs. The zip is 48.5 MB. F1 added exactly two files, both in
+`daemon/` (`SmartMacro.Shared.dll` + its `.pdb`); the root is unchanged because the panel's copy
+went inside the single-file bundle.
 
 - **The point is what the user sees, not bytes.** The previous iteration merged both exes into one
   folder for deduplication. It bought 26 files and 3.0 MB of 118 — 2.5%, because the weight is
@@ -308,8 +318,9 @@ pid; it cleans up after itself. **Failure is fatal — there is no read-only mod
 exists in order to write (macro library, log, capture dumps), and a live tray icon over an engine
 that cannot save a line is a promise it will not keep. The channel is a native message box
 (`Native/Dialogs/Win32MessageBox` — a WinExe has no console and the logger does not exist yet) and
-the exit code is `2`. The panel has no probe (no shared assembly would take it: Contracts forbids
-file IO, Native is P/Invoke only) but its logger construction is wrapped in a `try` with the same
+the exit code is `2`. The panel has no probe (no shared assembly will take it: Contracts forbids
+file IO, Native is P/Invoke only, and Shared — which may touch files — is the macro domain, not a
+place to hang a start-up probe) but its logger construction is wrapped in a `try` with the same
 box — before that it was the one place in the panel where a failure had nowhere to go and killed the
 process silently.
 

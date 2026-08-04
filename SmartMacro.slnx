@@ -12,6 +12,7 @@
     <Project Path="src/SmartMacro.Core/SmartMacro.Core.csproj" />
     <Project Path="src/SmartMacro.Daemon/SmartMacro.Daemon.csproj" />
     <Project Path="src/SmartMacro.Native/SmartMacro.Native.csproj" />
+    <Project Path="src/SmartMacro.Shared/SmartMacro.Shared.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SmartMacro.Tests/SmartMacro.Tests.csproj" />

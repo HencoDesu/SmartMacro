@@ -9,11 +9,12 @@ namespace SmartMacro.Macros.Execution;
 /// <c>WindowRegistry.Snapshot()</c> в момент выполнения ноды, так что селектор всегда видит
 /// текущее состояние тегов.
 ///
-/// <b>Само правило живёт в Contracts</b> (<see cref="TargetSelector.Matches"/>) с волны D4:
+/// <b>Само правило живёт в Shared</b> (<see cref="TargetSelector.Matches"/>) с волны D4 —
+/// в Contracts до F1, вместе со всей моделью:
 /// панель вычисляет те же селекторы по своему снимку окон, чтобы нарисовать бейдж целей, а две
 /// реализации ответа на вопрос «по каким окнам это попадёт» — это на одну реализацию больше,
 /// чем нужно. Здесь остаётся типизированная обёртка, которую зовёт исполнитель: этот класс —
-/// то место, где известен <see cref="ManagedWindowInfo"/>, а Contracts знать о нём не должен.
+/// то место, где известен <see cref="ManagedWindowInfo"/>, а Shared знать о нём не должен.
 /// </summary>
 public static class SelectorEvaluator
 {

@@ -1,5 +1,3 @@
-// ReSharper disable once CheckNamespace — имена SmartMacro.Macros.* достались валидатору от жизни в Core.
-
 namespace SmartMacro.Macros.Validation;
 
 /// <summary>Степень серьёзности <see cref="ValidationIssue"/>.</summary>

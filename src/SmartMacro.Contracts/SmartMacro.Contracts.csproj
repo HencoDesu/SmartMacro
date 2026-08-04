@@ -1,12 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Общий словарь демона (Core) и панели (App): модель графа макроса, её чистый валидатор,
-    DTO для провода и типы протокола IPC.
+    ПРОТОКОЛ, на котором говорят демон (Core) и панель (App): конверт, каталог типов сообщений,
+    DTO для провода, IpcJson/IpcPipe/IpcConnection, а также арифметика над путями
+    (InstallationLayout, PeerExecutableLocator).
 
-    ЖЁСТКОЕ ПРАВИЛО: единственная ссылка отсюда — SmartMacro.Native. Ничто в этой сборке не
-    вправе затащить в процесс панели OpenCV, Tesseract или работу с файлами и реестром; типу,
-    которому это нужно, место в Core.
+    ЖЁСТКОЕ ПРАВИЛО: ссылки отсюда — только SmartMacro.Native и SmartMacro.Shared, и НИКАКОГО
+    файлового ввода-вывода, реестра и процессов. Ничто в этой сборке не вправе затащить в
+    процесс панели OpenCV, Tesseract или работу с диском; типу, которому это нужно, место в
+    Core, а если он нужен обеим сторонам — в Shared.
+
+    Направление ссылки Contracts -> Shared, а не наоборот, и это не вкусовщина: нагрузки
+    протокола УЖЕ упоминают домен (SaveMacroRequest несёт MacroGraph, ValidationIssueDto
+    отображает ValidationIssue, а IpcJson собран копией MacroGraphJson.Options, чтобы файловый
+    и проводной диалекты не разъехались). Обратного упоминания нет ни одного: модель, валидатор
+    и бандл .hsm ничего не знают ни про конверт, ни про пайп — и знать не должны, потому что
+    домен обязан читаться и без запущенного демона. Волна F3, где макрос перестаёт ходить по
+    трубе вовсе, эту зависимость только истончит, но не развернёт: ValidationIssueDto останется.
+
+    ⚠️ Закон «файлового IO нет» — про ЭТУ сборку. На Shared он НЕ распространяется: см.
+    комментарий в SmartMacro.Shared.csproj, там правило своё.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -19,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SmartMacro.Native\SmartMacro.Native.csproj" />
+    <ProjectReference Include="..\SmartMacro.Shared\SmartMacro.Shared.csproj" />
   </ItemGroup>
 
 </Project>

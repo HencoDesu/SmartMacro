@@ -1,7 +1,6 @@
 using System.Globalization;
 using SmartMacro.Macros.Model;
 
-// ReSharper disable once CheckNamespace — имена SmartMacro.Macros.* достались валидатору от жизни в Core.
 namespace SmartMacro.Macros.Validation;
 
 /// <summary>
