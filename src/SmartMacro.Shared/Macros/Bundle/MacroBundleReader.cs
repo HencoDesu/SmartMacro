@@ -114,30 +114,100 @@ public static class MacroBundleReader
     /// файлы, а не как разобранные графы: тот, кто их не меняет, обязан вернуть на место в том
     /// числе запись, которую сегодняшний разбор под-макросом не считает.
     /// </summary>
-    /// <returns><c>null</c>, если бандл не читается настолько, что переписывать нечего.</returns>
-    public static MacroBundleContent? ReadContent(string path)
+    /// <returns>
+    /// Исход чтения, а НЕ <c>MacroBundleContent?</c>. Разница между «файла нет» и «файл есть, но
+    /// не прочитался» здесь несущая: на первом писать законно, на всех остальных запись обязана
+    /// отказаться, иначе она сотрёт вложения. Довод целиком — у
+    /// <see cref="MacroBundleContentResult"/>.
+    /// </returns>
+    public static MacroBundleContentResult ReadContent(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        return WithArchive<MacroBundleContent?>(
+        return WithArchive(
             path,
             archive =>
             {
                 var metadata = ReadMetadata(archive);
-                var (graph, _, _) = ReadGraph(archive);
-                if (metadata.Metadata is not { } passport || graph is null)
+                if (metadata.Metadata is not { } passport)
                 {
-                    return null;
+                    return MacroBundleContentResult.Failed(metadata.Fault, metadata.Message);
                 }
 
-                return new MacroBundleContent
+                var (graph, graphFault, graphMessage) = ReadGraph(archive);
+                if (graph is null)
+                {
+                    return MacroBundleContentResult.Failed(graphFault, graphMessage);
+                }
+
+                return MacroBundleContentResult.Ok(new MacroBundleContent
                 {
                     Metadata = passport,
                     Graph = graph,
                     Templates = ReadFolder(archive, MacroBundleFormat.TemplateFolder, templatesOnly: true),
                     Submacros = ReadFolder(archive, MacroBundleFormat.SubmacroFolder, templatesOnly: false),
-                };
+                    Extras = ReadExtras(archive),
+                });
             },
-            _ => null);
+            fault => MacroBundleContentResult.Failed(fault.Fault, fault.Message));
+    }
+
+    /// <summary>
+    /// Всё, что не опознано ни одной из трёх известных ролей: не паспорт, не граф, не шаблон по
+    /// правилу разбора и не запись <c>submacro/</c>. Пути — ОТ КОРНЯ бандла.
+    ///
+    /// Существует ради перезаписи: писатель собирает архив с нуля, и то, чего нет в
+    /// <see cref="MacroBundleContent"/>, исчезает молча. Довод — у
+    /// <see cref="MacroBundleContent.Extras"/>.
+    ///
+    /// <c>submacro/</c> сюда не попадает целиком: её содержимое уже едет сырыми байтами в
+    /// <see cref="MacroBundleContent.Submacros"/>, и второй экземпляр тех же записей писатель
+    /// отверг бы как дубликат.
+    /// </summary>
+    private static IReadOnlyList<MacroBundleFile> ReadExtras(ZipArchive archive)
+    {
+        var files = new List<MacroBundleFile>();
+
+        foreach (var entry in archive.Entries)
+        {
+            var path = MacroBundleFormat.NormalizeEntryPath(entry.FullName);
+            if (!MacroBundleFormat.IsSafeRelativePath(path) || IsKnownRole(path))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var source = entry.Open();
+                using var buffer = new MemoryStream();
+                source.CopyTo(buffer);
+                files.Add(new MacroBundleFile(path, buffer.ToArray()));
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException)
+            {
+                // Нечитаемая запись — единственное, что мы всё же теряем, и иначе никак: перенести
+                // байты, которых не удалось получить, нечем.
+            }
+        }
+
+        files.Sort(static (a, b) => string.CompareOrdinal(a.Path, b.Path));
+        return files;
+    }
+
+    private static bool IsKnownRole(string path)
+    {
+        if (path is MacroBundleFormat.MetadataEntry or MacroBundleFormat.GraphEntry)
+        {
+            return true;
+        }
+
+        if (path.StartsWith(MacroBundleFormat.SubmacroFolder, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return path.StartsWith(MacroBundleFormat.TemplateFolder, StringComparison.Ordinal)
+               && MacroBundleFormat.TryParseTemplatePath(
+                   path[MacroBundleFormat.TemplateFolder.Length..], out _, out _);
     }
 
     /// <summary>

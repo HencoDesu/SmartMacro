@@ -219,7 +219,9 @@ public partial class MacrosView : UserControl
             // сегодняшняя версия формата не знает.
             if (file.TryGetLocalPath() is { Length: > 0 } path)
             {
-                vm.ImportMacro(path);
+                // Последовательно, а не пачкой: на занятом имени импорт спрашивает, и два вопроса
+                // одновременно — это два модальных окна поверх друг друга.
+                await vm.ImportMacroAsync(path);
             }
             else
             {

@@ -180,7 +180,7 @@ public class MacroTemplateCacheTests
         using var harness = new Harness();
         harness.Save("макрос");
         var path = Path.Combine(harness.Root, "macros", "макрос" + MacroBundleFormat.Extension);
-        var content = MacroBundleReader.ReadContent(path)!;
+        var content = MacroBundleReader.ReadContent(path).Content!;
         MacroBundleWriter.Write(path, content with
         {
             Templates =

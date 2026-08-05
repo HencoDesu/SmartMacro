@@ -334,6 +334,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private readonly MacroLibrary _macros;
     private readonly IMacroLauncher? _launcher;
     private readonly IHotkeySuspension? _hotkeys;
+    private readonly IMacroNameConflictPrompt? _conflicts;
     private readonly IUiDispatcher _dispatcher;
 
     private IReadOnlyList<MacroBundleEntry> _library = [];
@@ -404,18 +405,24 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// <param name="launcher">Шов для ручного «Запустить»; <c>null</c> гасит кнопку.</param>
     /// <param name="hotkeys">Приостановка и возобновление вокруг ловушки сочетаний; <c>null</c> ничего не делает.</param>
     /// <param name="dispatcher">Перекладывание пушей демона и событий наблюдателя в поток UI.</param>
+    /// <param name="conflicts">
+    /// Вопрос пользователю о занятом имени. <c>null</c> означает «спросить не у кого», и тогда
+    /// ответом считается отмена: молча заменить чужой макрос — худший из возможных исходов.
+    /// </param>
     public MacroEditorViewModel(
         IIpcClient client,
         MacroLibrary macros,
         IMacroLauncher? launcher = null,
         IHotkeySuspension? hotkeys = null,
-        IUiDispatcher? dispatcher = null)
+        IUiDispatcher? dispatcher = null,
+        IMacroNameConflictPrompt? conflicts = null)
     {
         ArgumentNullException.ThrowIfNull(macros);
         _client = client;
         _macros = macros;
         _launcher = launcher;
         _hotkeys = hotkeys;
+        _conflicts = conflicts;
         _dispatcher = dispatcher ?? AvaloniaUiDispatcher.Instance;
         // Браузер шаблонов принадлежит РЕДАКТОРУ, а не оболочке (волна F2): с переездом шаблонов
         // внутрь бандла они перестали быть самостоятельной сущностью и стали свойством макроса —
@@ -1463,16 +1470,43 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// Это ВЕСЬ импорт целиком — процессы делят файловую систему, поэтому «положить макрос в
     /// библиотеку» и есть «положить файл в папку». Бандл копируется байт в байт: пропустив его
     /// через сегодняшнего писателя, мы бы потеряли всё, чего сегодняшняя версия формата не знает.
+    ///
+    /// <b>Занятое имя — вопрос к пользователю, тот же самый, что и при сохранении.</b> Раньше
+    /// импорт молча приписывал суффикс: файл ложился «pw-login-2», сообщение об этом уезжало в
+    /// строку статуса, и в библиотеке оказывались два похожих макроса, из которых работает не тот.
+    /// Вариант «взять свободное имя» остался — он просто перестал выбираться за человека.
     /// </summary>
     /// <param name="sourcePath">Путь к импортируемому файлу.</param>
     /// <returns>Имя, под которым макрос лёг в библиотеку, либо <c>null</c> при отказе.</returns>
-    public string? ImportMacro(string sourcePath)
+    public async Task<string?> ImportMacroAsync(string sourcePath)
     {
         ErrorMessage = null;
+
+        string? targetName = null;
+        var replace = false;
+        var stem = Path.GetFileNameWithoutExtension(sourcePath);
+        if (TryGet(stem) is { } occupant)
+        {
+            switch (await AskAboutTakenNameAsync(MacroNameConflictKind.Import, occupant).ConfigureAwait(true))
+            {
+                case MacroNameConflictChoice.Replace:
+                    replace = true;
+                    break;
+
+                case MacroNameConflictChoice.FreeName:
+                    targetName = _macros.FreeName(stem);
+                    break;
+
+                default:
+                    StatusMessage = $"Импорт отменён: имя «{stem}» занято.";
+                    return null;
+            }
+        }
+
         string name;
         try
         {
-            name = _macros.Import(sourcePath);
+            name = _macros.Import(sourcePath, targetName, replace);
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
         {
@@ -1981,7 +2015,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// <c>File.Move(overwrite: true)</c> не подлежит — это измерено, а не вычитано.
     /// </summary>
     /// <returns><c>false</c>, когда ничего не записано; почему — объясняет <see cref="Issues"/>.</returns>
-    public Task<bool> SaveAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> SaveAsync(CancellationToken cancellationToken = default)
     {
         ClearIssues();
         ErrorMessage = null;
@@ -1989,7 +2023,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         if (!HasOpenMacro)
         {
-            return Task.FromResult(false);
+            return false;
         }
 
         var inputErrors = Triggers.SelectMany(row => row.GetInputErrors())
@@ -2003,7 +2037,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         if (inputErrors.Count > 0)
         {
             ErrorMessage = "Сохранение отменено: исправьте ошибки.";
-            return Task.FromResult(false);
+            return false;
         }
 
         // Канва — это один граф бандла; перед записью её содержимое обязано оказаться в модели,
@@ -2020,7 +2054,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             AddIssue(new ValidationIssueViewModel(nameError, isError: true));
             ErrorMessage = "Сохранение отменено: исправьте ошибки.";
-            return Task.FromResult(false);
+            return false;
         }
 
         // Судится БАНДЛ ЦЕЛИКОМ — тем же вызовом, каким его судит демон при загрузке (волна F4).
@@ -2038,10 +2072,55 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             }
 
             ErrorMessage = "Сохранение отменено: исправьте ошибки.";
-            return Task.FromResult(false);
+            return false;
         }
 
         var previousName = _loadedName;
+
+        // ЗАНЯТОЕ ИМЯ — ВОПРОС К ПОЛЬЗОВАТЕЛЮ, и задать его может только здесь.
+        //
+        // Личность макроса — это имя его файла, поэтому «pw-buff, переименованный в pw-login» и
+        // «pw-login, сохранённый под своим именем» на уровне папки выглядят одинаково. Разница
+        // известна ровно одному объекту — этому: он знает, какой макрос открыт (_loadedName).
+        // Пока он молчал, переименование в занятое имя давало файл с графом одного макроса и
+        // шаблонами другого, после чего исходный файл удалялся: два макроса становились одним,
+        // и в статусе значилось «Сохранено».
+        var target = MacroSaveTarget.Own;
+        if (!string.Equals(previousName, name, StringComparison.Ordinal) && TryGet(name) is { } occupant)
+        {
+            switch (await AskAboutTakenNameAsync(MacroNameConflictKind.Save, occupant).ConfigureAwait(true))
+            {
+                case MacroNameConflictChoice.Replace:
+                    target = MacroSaveTarget.ForeignReplace;
+                    break;
+
+                case MacroNameConflictChoice.FreeName:
+                    // Имя меняем В РЕДАКТОРЕ, а не только на диске: пользователь согласился на
+                    // «pw-login-2», и увидеть он должен именно его — иначе поле говорило бы одно,
+                    // а библиотека другое. Граф правим копией, а не пересборкой с канвы: на
+                    // канве может быть открыт под-макрос, и тогда родитель приезжает из
+                    // _parkedParent, до которого новое значение поля не дошло бы.
+                    name = _macros.FreeName(name);
+                    MacroName = name;
+                    graph = new MacroGraph
+                    {
+                        Name = name,
+                        Triggers = graph.Triggers,
+                        StartNodeId = graph.StartNodeId,
+                        Nodes = graph.Nodes,
+                    };
+                    // Под свободным именем файла нет, так что чужого здесь уже не встретим, —
+                    // а если кто-то успел его занять между вопросом и записью, отказ придёт из
+                    // MacroBundleFolder, и это правильнее тихой перезаписи.
+                    target = MacroSaveTarget.Foreign;
+                    break;
+
+                default:
+                    StatusMessage = $"Сохранение отменено: имя «{name}» занято.";
+                    return false;
+            }
+        }
+
         var renamedFrom = previousName is null || string.Equals(previousName, name, StringComparison.Ordinal)
             ? null
             : previousName;
@@ -2062,16 +2141,20 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             // не от чего унаследовать шаблоны, под-макросы и паспорт переименованного макроса.
             // Под-макросы передаются СПИСКОМ, а не наследуются: редактор держит их все, и только
             // он знает, что среди них удалили.
-            _macros.Save(graph, submacros, renamedFrom);
+            _macros.Save(graph, submacros, renamedFrom, target);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
+            // Сюда же приходят оба отказа записи, заведённые ради сохранности вложений:
+            // «имя занято» (кто-то занял его между вопросом и записью) и «свой бандл не
+            // читается». Оба — IOException с готовым объяснением, и пересказывать их своими
+            // словами незачем: вердикт читателя точнее любого пересказа.
             _loadedName = previousName;
             _loadedJson = previousLoadedJson;
             _diskJson = previousDiskJson;
             ErrorMessage = $"Не удалось сохранить: {ex.Message}";
             Log.Warning(ex, "Запись макроса '{Macro}' не выполнена", name);
-            return Task.FromResult(false);
+            return false;
         }
 
         if (renamedFrom is not null)
@@ -2103,7 +2186,39 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         StatusMessage = Issues.Count > 0
             ? $"Сохранено с предупреждениями ({Issues.Count})."
             : "Сохранено.";
-        return Task.FromResult(true);
+        return true;
+    }
+
+    /// <summary>
+    /// Задаёт вопрос о занятом имени и отдаёт ответ человека.
+    ///
+    /// Цена замены называется числами — сколько шаблонов и под-макросов уйдёт вместе с
+    /// существующим макросом, — и берутся они из снимка библиотеки, который у панели уже есть.
+    /// У НЕЧИТАЕМОГО бандла (бандл будущей версии формата лежит в библиотеке намеренно) чисел
+    /// нет, и вместо них едет вердикт читателя: «неизвестно даже, что внутри» — тоже ответ, и
+    /// куда более честный, чем «0 шаблонов».
+    ///
+    /// Спрашивать некому — значит «Отмена»: молча заменить чужой макрос хуже, чем не сохранить.
+    /// </summary>
+    private async Task<MacroNameConflictChoice> AskAboutTakenNameAsync(
+        MacroNameConflictKind kind,
+        MacroBundleEntry occupant)
+    {
+        if (_conflicts is null)
+        {
+            Log.Warning("Имя «{Macro}» занято, а спросить не у кого — считаем отменой", occupant.Name);
+            return MacroNameConflictChoice.Cancel;
+        }
+
+        var conflict = new MacroNameConflict(
+            kind,
+            occupant.Name,
+            _macros.FreeName(occupant.Name),
+            occupant.TemplatePaths.Count,
+            occupant.Submacros.Count,
+            occupant.IsReadable ? null : occupant.FaultMessage);
+
+        return await _conflicts.AskAsync(conflict).ConfigureAwait(true);
     }
 
     /// <summary>Отбрасывает локальные правки и перечитывает открытый макрос из снимка библиотеки.</summary>

@@ -60,8 +60,24 @@ public class MacroEditorViewModelTests
     private static MacroEditorViewModel CreateEditor(
         Panel panel,
         IMacroLauncher? launcher = null,
-        IHotkeySuspension? hotkeys = null) =>
-        new(panel.Client, panel.Library.Library, launcher, hotkeys, ImmediateUiDispatcher.Instance);
+        IHotkeySuspension? hotkeys = null,
+        IMacroNameConflictPrompt? conflicts = null) =>
+        new(panel.Client, panel.Library.Library, launcher, hotkeys, ImmediateUiDispatcher.Instance, conflicts);
+
+    /// <summary>Пользователь, отвечающий на вопрос о занятом имени всегда одинаково.</summary>
+    private static IMacroNameConflictPrompt Answering(
+        MacroNameConflictChoice choice,
+        List<MacroNameConflict>? asked = null)
+    {
+        var prompt = A.Fake<IMacroNameConflictPrompt>();
+        A.CallTo(() => prompt.AskAsync(A<MacroNameConflict>._))
+            .ReturnsLazily((MacroNameConflict conflict) =>
+            {
+                asked?.Add(conflict);
+                return Task.FromResult(choice);
+            });
+        return prompt;
+    }
 
     /// <summary>a → b → c, все ноды Delay, триггеров нет (поэтому правило про контекст не действует).</summary>
     private static MacroGraph Chain(string name = "цепочка") => new()
@@ -308,6 +324,205 @@ public class MacroEditorViewModelTests
         await Assert.That(daemon.Find("старое-имя")).IsNull();
         await Assert.That(File.Exists(daemon.Library.PathFor("старое-имя"))).IsFalse();
         await Assert.That(vm.Macros.Select(m => m.Name)).IsEquivalentTo(new[] { "новое-имя" });
+    }
+
+    // ---- занятое имя ----------------------------------------------------------------------
+    //
+    // Дефект, ради которого вопрос и заведён: переименовать «pw-buff» в существующее «pw-login»
+    // значило получить файл с графом от одного макроса и шаблонами от другого, после чего
+    // исходный файл удалялся. Два макроса становились одним, а в статусе значилось «Сохранено».
+    //
+    // Различить «сохраняюсь под своим именем» и «затираю чужой макрос» может ТОЛЬКО эта VM: имя
+    // файла и есть личность, и папке оба случая выглядят одинаково.
+
+    [Test]
+    public async Task Rename_OntoATakenName_AsksAndOnCancelWritesNothing()
+    {
+        using var daemon = new Panel();
+        daemon.Library.WriteExternally(Chain("pw-login"), ("classes/Лучник.png", "вырезано руками"));
+        var asked = new List<MacroNameConflict>();
+        using var vm = CreateEditor(daemon, conflicts: Answering(MacroNameConflictChoice.Cancel, asked));
+
+        vm.LoadGraph(Chain("pw-buff"));
+        await vm.SaveAsync();
+        vm.MacroName = "pw-login";
+        var saved = await vm.SaveAsync();
+
+        await Assert.That(saved).IsFalse();
+        await Assert.That(asked.Select(conflict => conflict.Name)).IsEquivalentTo(new[] { "pw-login" });
+        // Чужой макрос цел — вместе с шаблоном, ради которого весь формат и заведён.
+        await Assert.That(daemon.Library.Library.TryGet("pw-login")!.TemplatePaths)
+            .IsEquivalentTo(new[] { "classes/Лучник.png" });
+        // И свой на месте: отказ не должен стоить пользователю его собственного файла.
+        await Assert.That(daemon.Find("pw-buff")).IsNotNull();
+        // Набранное имя не отбираем: пользователь передумает или поправит.
+        await Assert.That(vm.MacroName).IsEqualTo("pw-login");
+    }
+
+    [Test]
+    public async Task Rename_OntoATakenName_Replace_PutsOurBundleThere()
+    {
+        using var daemon = new Panel();
+        daemon.Library.WriteExternally(Chain("pw-login"), ("classes/Лучник.png", "вырезано руками"));
+        using var vm = CreateEditor(daemon, conflicts: Answering(MacroNameConflictChoice.Replace));
+
+        vm.LoadGraph(Chain("pw-buff"));
+        await vm.SaveAsync();
+        daemon.Library.Library.AddTemplate("pw-buff", null, "Бафф", "png"u8.ToArray());
+        vm.MacroName = "pw-login";
+        var saved = await vm.SaveAsync();
+
+        await Assert.That(saved).IsTrue();
+        // В файле теперь НАШ бандл целиком: и граф, и наши шаблоны — не смесь из двух макросов.
+        await Assert.That(daemon.Library.Library.TryGet("pw-login")!.TemplatePaths)
+            .IsEquivalentTo(new[] { "Бафф.png" });
+        await Assert.That(daemon.Find("pw-buff")).IsNull();
+        await Assert.That(vm.Macros.Select(m => m.Name)).IsEquivalentTo(new[] { "pw-login" });
+    }
+
+    [Test]
+    public async Task Rename_OntoATakenName_FreeName_RenamesInTheEditorToo()
+    {
+        using var daemon = new Panel();
+        daemon.Library.WriteExternally(Chain("pw-login"), ("classes/Лучник.png", "вырезано руками"));
+        using var vm = CreateEditor(daemon, conflicts: Answering(MacroNameConflictChoice.FreeName));
+
+        vm.LoadGraph(Chain("pw-buff"));
+        await vm.SaveAsync();
+        vm.MacroName = "pw-login";
+        var saved = await vm.SaveAsync();
+
+        await Assert.That(saved).IsTrue();
+        // Имя в редакторе обязано стать тем, что человеку предложили: иначе поле говорит одно, а
+        // библиотека другое.
+        await Assert.That(vm.MacroName).IsEqualTo("pw-login-2");
+        await Assert.That(daemon.Find("pw-login-2")).IsNotNull();
+        await Assert.That(daemon.Find("pw-buff")).IsNull();
+        await Assert.That(daemon.Library.Library.TryGet("pw-login")!.TemplatePaths)
+            .IsEquivalentTo(new[] { "classes/Лучник.png" });
+    }
+
+    // Обратная сторона: обычное пересохранение вопросов НЕ задаёт. Диалог на каждое «Сохранить»
+    // был бы хуже дефекта, который он лечит.
+    [Test]
+    public async Task Save_UnderItsOwnName_NeverAsks()
+    {
+        using var daemon = new Panel();
+        var prompt = Answering(MacroNameConflictChoice.Cancel);
+        using var vm = CreateEditor(daemon, conflicts: prompt);
+
+        vm.LoadGraph(Chain("обычный"));
+        await vm.SaveAsync();
+        var again = await vm.SaveAsync();
+
+        await Assert.That(again).IsTrue();
+        A.CallTo(() => prompt.AskAsync(A<MacroNameConflict>._)).MustNotHaveHappened();
+    }
+
+    // Спросить не у кого — значит отмена. Молча заменить чужой макрос хуже, чем не сохранить.
+    [Test]
+    public async Task Rename_OntoATakenName_WithNobodyToAsk_IsACancel()
+    {
+        using var daemon = new Panel();
+        daemon.Library.WriteExternally(Chain("pw-login"));
+        using var vm = CreateEditor(daemon);
+
+        vm.LoadGraph(Chain("pw-buff"));
+        await vm.SaveAsync();
+        vm.MacroName = "pw-login";
+
+        await Assert.That(await vm.SaveAsync()).IsFalse();
+        await Assert.That(daemon.Find("pw-buff")).IsNotNull();
+    }
+
+    // Цена замены называется ЧИСЛАМИ, а не словом «данные»: «Заменить?» без уточнения — вопрос,
+    // на который отвечают «да» не читая.
+    [Test]
+    public async Task TheQuestionNamesWhatWouldBeLost()
+    {
+        using var daemon = new Panel();
+        daemon.Library.WriteExternally(
+            Chain("pw-login"),
+            ("classes/Лучник.png", "а"),
+            ("classes/Жрец.png", "б"));
+        var asked = new List<MacroNameConflict>();
+        using var vm = CreateEditor(daemon, conflicts: Answering(MacroNameConflictChoice.Cancel, asked));
+
+        vm.LoadGraph(Chain("pw-buff"));
+        await vm.SaveAsync();
+        vm.MacroName = "pw-login";
+        await vm.SaveAsync();
+
+        var conflict = asked.Single();
+        await Assert.That(conflict.Templates).IsEqualTo(2);
+        await Assert.That(conflict.FreeName).IsEqualTo("pw-login-2");
+        await Assert.That(conflict.Loss).Contains("2 шаблона");
+    }
+
+    // Нечитаемый бандл в библиотеке — не выдумка: файл будущей версии формата лежит там
+    // намеренно. Сказать про него «0 шаблонов» было бы ложью, поэтому вместо чисел едет вердикт
+    // читателя.
+    [Test]
+    public async Task TheQuestionAdmitsWhenItCannotSeeInsideTheVictim()
+    {
+        using var daemon = new Panel();
+        daemon.Library.WriteJunk("pw-login");
+        var asked = new List<MacroNameConflict>();
+        using var vm = CreateEditor(daemon, conflicts: Answering(MacroNameConflictChoice.Cancel, asked));
+
+        vm.LoadGraph(Chain("pw-buff"));
+        await vm.SaveAsync();
+        vm.MacroName = "pw-login";
+        await vm.SaveAsync();
+
+        var conflict = asked.Single();
+        await Assert.That(conflict.Fault).IsNotNull();
+        await Assert.That(conflict.Loss).Contains("неизвестно даже, что в нём");
+    }
+
+    // ---- импорт под занятым именем ------------------------------------------------------------
+    //
+    // Раньше импорт молча приписывал суффикс: файл ложился рядом с тем, который пользователь,
+    // возможно, и собирался обновить. Вариант остался — выбирать его перестала программа.
+
+    [Test]
+    [Arguments(MacroNameConflictChoice.FreeName, "гость-2", 2)]
+    [Arguments(MacroNameConflictChoice.Replace, "гость", 1)]
+    public async Task Import_UnderATakenName_Asks(MacroNameConflictChoice choice, string expected, int count)
+    {
+        using var source = new TempLibrary();
+        using var daemon = new Panel();
+        source.WriteExternally(Chain("гость"), ("Кнопка.png", "png"));
+        daemon.Library.WriteExternally(Chain("гость"));
+        using var vm = CreateEditor(daemon, conflicts: Answering(choice));
+
+        var name = await vm.ImportMacroAsync(source.PathFor("гость"));
+
+        await Assert.That(name).IsEqualTo(expected);
+        await Assert.That(daemon.Count).IsEqualTo(count);
+        // Импортированный бандл приехал целиком, со своим шаблоном.
+        await Assert.That(daemon.Library.Library.TryGet(expected)!.TemplatePaths)
+            .IsEquivalentTo(new[] { "Кнопка.png" });
+    }
+
+    // Отмена — это ОТМЕНА, а не отказ ввода-вывода: пользователь сам так решил, и красная строка
+    // ошибки в ответ на собственное решение читается как поломка.
+    [Test]
+    public async Task Import_UnderATakenName_Cancel_LeavesTheLibraryAloneAndSaysSoCalmly()
+    {
+        using var source = new TempLibrary();
+        using var daemon = new Panel();
+        source.WriteExternally(Chain("гость"), ("Кнопка.png", "png"));
+        daemon.Library.WriteExternally(Chain("гость"));
+        using var vm = CreateEditor(daemon, conflicts: Answering(MacroNameConflictChoice.Cancel));
+
+        var name = await vm.ImportMacroAsync(source.PathFor("гость"));
+
+        await Assert.That(name).IsNull();
+        await Assert.That(daemon.Count).IsEqualTo(1);
+        await Assert.That(daemon.Library.Library.TryGet("гость")!.TemplatePaths).IsEmpty();
+        await Assert.That(vm.ErrorMessage).IsNull();
+        await Assert.That(vm.StatusMessage).Contains("Импорт отменён");
     }
 
     [Test]

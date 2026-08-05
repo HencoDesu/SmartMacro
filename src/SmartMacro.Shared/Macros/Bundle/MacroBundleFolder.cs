@@ -75,6 +75,92 @@ public sealed record MacroBundleEntry(
 }
 
 /// <summary>
+/// Чей файл лежит по целевому имени — ЕДИНСТВЕННОЕ, чего запись не может выяснить сама.
+///
+/// Личность макроса — это основа имени его файла (§5.7), поэтому «записать макрос «pw-login» в
+/// <c>pw-login.hsm</c>» и «уничтожить чужой макрос» с точки зрения папки выглядят совершенно
+/// одинаково. Различает их только тот, у кого открыт редактор: он один знает, что сейчас правят
+/// «pw-buff», а имя ему поменяли на «pw-login».
+///
+/// До появления этого перечисления запись не спрашивала ни у кого: переименование в занятое имя
+/// давало файл, где граф от одного макроса, а шаблоны и паспорт от другого, после чего исходный
+/// файл удалялся — два макроса становились одним, и в статусе значилось «Сохранено».
+/// </summary>
+public enum MacroSaveTarget
+{
+    /// <summary>
+    /// Файл под этим именем — ЭТОТ ЖЕ макрос: обычное пересохранение. Умолчание, и оно же
+    /// правило идентичности «имя файла и есть личность»: у вызывающего, который про открытые
+    /// редакторы ничего не знает (тесты, оснастка), другого разумного прочтения нет.
+    /// </summary>
+    Own,
+
+    /// <summary>
+    /// Файл под этим именем — ЧУЖОЙ макрос: отказаться, бросив
+    /// <see cref="MacroNameTakenException"/> и не тронув ни байта. Так обязан звать всякий, чей
+    /// макрос лежит под ДРУГИМ именем (переименование) или не лежит вовсе (черновик).
+    /// </summary>
+    Foreign,
+
+    /// <summary>
+    /// Файл под этим именем чужой, и пользователь СОГЛАСИЛСЯ его заменить. Целевой бандл
+    /// перезаписывается целиком: наследовать от него нечего — «заменить» и означает, что того
+    /// макроса больше нет. Вложения при этом переносятся из СВОЕГО бандла (см.
+    /// <c>renamedFrom</c>), а не из уничтожаемого.
+    /// </summary>
+    ForeignReplace,
+}
+
+/// <summary>
+/// Целевое имя занято чужим макросом, а разрешения его заменить не давали.
+///
+/// Наследуется от <see cref="IOException"/> намеренно: всякий, кто пишет в папку, ловит
+/// файловые отказы и без нас, так что забывший о занятом имени вызывающий получит внятное
+/// сообщение, а не необработанное исключение.
+/// </summary>
+public sealed class MacroNameTakenException : IOException
+{
+    public MacroNameTakenException(string name, string path)
+        : base($"Макрос «{name}» в библиотеке уже есть.")
+    {
+        Name = name;
+        Path = path;
+    }
+
+    /// <summary>Занятое имя.</summary>
+    public string Name { get; }
+
+    /// <summary>Путь к файлу, который стоит на пути.</summary>
+    public string Path { get; }
+}
+
+/// <summary>
+/// Бандл, который надо было прочитать перед перезаписью, не читается — и записать поверх него
+/// значило бы уничтожить его содержимое.
+///
+/// Возникает ровно там, где цикл «прочитать всё → поменять одно → записать всё» не может
+/// выполнить первый шаг: файл занят, <c>nodes.json</c> испорчен при целом паспорте, бандл сделан
+/// будущей версией формата. Раньше все три были неотличимы от «файла нет», и запись шла дальше с
+/// пустым набором шаблонов.
+/// </summary>
+public sealed class MacroBundleUnreadableException : IOException
+{
+    public MacroBundleUnreadableException(string path, MacroBundleFault fault, string? verdict)
+        : base($"Бандл «{path}» не читается, а перезапись уничтожила бы его содержимое. " +
+               (verdict ?? "Причина неизвестна."))
+    {
+        Path = path;
+        Fault = fault;
+    }
+
+    /// <summary>Путь к нечитаемому бандлу.</summary>
+    public string Path { get; }
+
+    /// <summary>Вердикт читателя — разные значения требуют от пользователя разных действий.</summary>
+    public MacroBundleFault Fault { get; }
+}
+
+/// <summary>
 /// Папка <c>macros/</c> как библиотека: перечислить, прочитать, записать, удалить, импортировать.
 ///
 /// <b>Живёт в <c>Shared</c>, потому что с волны F3 в эту папку смотрят ОБА процесса — и по-разному.</b>
@@ -249,11 +335,24 @@ public static class MacroBundleFolder
     }
 
     /// <summary>
-    /// Пишет граф в <c>{directory}/{graph.Name}.hsm</c> — атомарно и не теряя вложений.
+    /// Пишет граф в <c>{directory}/{graph.Name}.hsm</c> — атомарно, не теряя вложений и не
+    /// уничтожая чужого макроса.
     ///
     /// <b>Пишется бандл целиком, а меняется в нём только граф.</b> Шаблоны, под-макросы и паспорт
     /// (в том числе <see cref="MacroBundleMetadata.Id"/> и дату создания) читаем из существующего
     /// файла и кладём обратно; меняется лишь дата правки.
+    ///
+    /// <b>Вложения наследуются от СВОЕГО бандла, а не от того, что лежит по целевому пути.</b>
+    /// Раньше читалось наоборот — сперва цель, потом <paramref name="renamedFrom"/>, — и
+    /// переименование в занятое имя давало гибрид: граф от переименованного макроса, шаблоны и
+    /// паспорт от затираемого. Свой бандл — это <paramref name="renamedFrom"/>, если это
+    /// переименование, и целевой файл, если мы просто пересохраняемся под своим же именем; у
+    /// черновика своего бандла нет вовсе, и наследовать ему не от чего.
+    ///
+    /// <b>Два отказа, и оба — про потерю данных.</b> Занятое чужим макросом имя (см.
+    /// <see cref="MacroSaveTarget"/>) и нечитаемый СВОЙ бандл (см.
+    /// <see cref="MacroBundleContentResult"/>): «файла нет» — единственный отказ чтения, после
+    /// которого писать с пустыми вложениями законно.
     /// </summary>
     /// <param name="directory">Папка с макросами; создаётся, если её ещё нет.</param>
     /// <param name="graph">Сохраняемый граф; его имя становится основой имени файла.</param>
@@ -270,12 +369,19 @@ public static class MacroBundleFolder
     /// — сбой между шагами обязан оставить две копии, а не ноль), а под новым именем бандла ещё
     /// нет, и наследовать вложения не от чего.
     /// </param>
+    /// <param name="target">
+    /// Чей файл лежит по целевому имени. Умолчание — «наш же» (обычное пересохранение); всё
+    /// остальное обязан сказать тот, кто знает больше, — см. <see cref="MacroSaveTarget"/>.
+    /// </param>
     /// <exception cref="ArgumentException">Имя графа не годится в качестве имени файла.</exception>
+    /// <exception cref="MacroNameTakenException">Имя занято чужим макросом, заменять не разрешали.</exception>
+    /// <exception cref="MacroBundleUnreadableException">Свой бандл есть, но не читается.</exception>
     public static void Save(
         string directory,
         MacroGraph graph,
         IReadOnlyList<MacroSubmacro>? submacros = null,
-        string? renamedFrom = null)
+        string? renamedFrom = null,
+        MacroSaveTarget target = MacroSaveTarget.Own)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         ArgumentNullException.ThrowIfNull(graph);
@@ -286,8 +392,19 @@ public static class MacroBundleFolder
 
         Directory.CreateDirectory(directory);
         var path = PathFor(directory, graph.Name);
-        var previous = ReadContentOrNull(path)
-                       ?? (renamedFrom is null ? null : ReadContentOrNull(PathFor(directory, renamedFrom)));
+
+        if (target == MacroSaveTarget.Foreign && File.Exists(path))
+        {
+            throw new MacroNameTakenException(graph.Name, path);
+        }
+
+        // СВОЙ бандл: переименование несёт прежнее имя, обычное пересохранение — это целевой
+        // файл, а у черновика (и у согласованной замены чужого) своего бандла нет.
+        var ownPath = renamedFrom is not null
+            ? PathFor(directory, renamedFrom)
+            : target == MacroSaveTarget.Own ? path : null;
+
+        var previous = ownPath is null ? null : ReadOwnContent(ownPath);
 
         MacroBundleWriter.Write(path, new MacroBundleContent
         {
@@ -297,6 +414,7 @@ public static class MacroBundleFolder
             Submacros = submacros is null
                 ? previous?.Submacros ?? []
                 : MergeSubmacros(previous?.Submacros ?? [], submacros),
+            Extras = previous?.Extras ?? [],
         });
     }
 
@@ -360,7 +478,13 @@ public static class MacroBundleFolder
     /// Новый набор шаблонов по старому либо <c>null</c>, если менять нечего (тогда файл не
     /// переписывается вовсе).
     /// </param>
-    /// <returns><c>false</c>, если макроса нет, его бандл не читается или правка ничего не меняет.</returns>
+    /// <returns><c>false</c>, если макроса нет или правка ничего не меняет.</returns>
+    /// <exception cref="MacroBundleUnreadableException">
+    /// Бандл есть, но не читается. Здесь тот же довод, что и у записи графа: файл переписывается
+    /// ЦЕЛИКОМ, значит правка одного PNG в нечитаемом бандле уничтожила бы все остальные. Раньше
+    /// это возвращалось тем же <c>false</c>, что и «такого макроса нет», и в интерфейс попадало
+    /// одно и то же невнятное объяснение на два совершенно разных случая.
+    /// </exception>
     public static bool EditTemplates(
         string directory,
         string name,
@@ -374,7 +498,7 @@ public static class MacroBundleFolder
         }
 
         var path = PathFor(directory, name);
-        if (ReadContentOrNull(path) is not { } content)
+        if (ReadOwnContent(path) is not { } content)
         {
             return false;
         }
@@ -400,14 +524,31 @@ public static class MacroBundleFolder
     /// писателя, мы бы потеряли всё, чего сегодняшняя версия формата не знает, — то есть сделали
     /// бы ровно ту потерю, от которой формат защищает.
     ///
-    /// Имя занято — берём свободное с суффиксом; основа имени файла главнее поля <c>Name</c>
-    /// внутри, так что скопированный бандл честно назовётся новым именем.
+    /// <b>Занятое имя — вопрос к ЧЕЛОВЕКУ, а не к программе.</b> Раньше импорт молча брал
+    /// свободное имя с суффиксом. Вариант остался (<see cref="FreeName"/> никуда не делся, и
+    /// вызывающий передаёт его сюда как <paramref name="targetName"/>), но выбирать между «взять
+    /// свободное имя» и «заменить существующий макрос» программа за пользователя не должна: цена
+    /// второго — чужие шаблоны, а цена первого — библиотека, в которой лежат «pw-login» и
+    /// «pw-login-2», и никто уже не помнит, чем они отличаются.
+    ///
+    /// Основа имени файла главнее поля <c>Name</c> внутри, так что скопированный бандл честно
+    /// назовётся новым именем.
     /// </summary>
     /// <param name="directory">Папка с макросами; создаётся, если её ещё нет.</param>
     /// <param name="sourcePath">Путь к импортируемому файлу.</param>
+    /// <param name="targetName">
+    /// Имя, под которым положить, либо <c>null</c> — «под своим», то есть под основой имени
+    /// исходного файла.
+    /// </param>
+    /// <param name="replace">Заменить существующий макрос с таким именем. Только по согласию человека.</param>
     /// <returns>Имя, под которым макрос лёг в библиотеку.</returns>
     /// <exception cref="ArgumentException">Файл не похож на бандл либо его имя не годится для NTFS.</exception>
-    public static string Import(string directory, string sourcePath)
+    /// <exception cref="MacroNameTakenException">Имя занято, а заменять не разрешали.</exception>
+    public static string Import(
+        string directory,
+        string sourcePath,
+        string? targetName = null,
+        bool replace = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
@@ -424,21 +565,64 @@ public static class MacroBundleFolder
                 metadata.Message ?? $"«{sourcePath}» — не бандл SmartMacro.", nameof(sourcePath));
         }
 
-        var stem = System.IO.Path.GetFileNameWithoutExtension(sourcePath);
-        if (ValidateName(stem) is { } nameError)
+        var name = targetName ?? System.IO.Path.GetFileNameWithoutExtension(sourcePath);
+        if (ValidateName(name) is { } nameError)
         {
-            throw new ArgumentException(nameError, nameof(sourcePath));
+            throw new ArgumentException(
+                nameError,
+                targetName is null ? nameof(sourcePath) : nameof(targetName));
         }
 
         Directory.CreateDirectory(directory);
-        var name = FreeName(directory, stem);
-        File.Copy(sourcePath, PathFor(directory, name));
+        var path = PathFor(directory, name);
+        if (File.Exists(path))
+        {
+            if (!replace)
+            {
+                throw new MacroNameTakenException(name, path);
+            }
+
+            // Замена идёт тем же механизмом, что и сохранение: копия рядом, затем ReplaceFile.
+            // Прямой File.Copy(overwrite: true) отказал бы ровно тогда, когда бандл в этот момент
+            // читает демон, — читатель открывает файл с FileShare.Read|Delete, а перезапись
+            // просит доступ на запись.
+            var temp = path + MacroBundleWriter.TempSuffix;
+            try
+            {
+                File.Copy(sourcePath, temp, overwrite: true);
+                MacroBundleWriter.PlaceAtomically(temp, path);
+            }
+            catch
+            {
+                TryDelete(temp);
+                throw;
+            }
+
+            return name;
+        }
+
+        File.Copy(sourcePath, path);
         return name;
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Не вышло — и ладно: следующая запись этого макроса ляжет по тому же имени.
+        }
     }
 
     /// <summary>
     /// Свободное имя: <paramref name="stem"/>, а если занято — <c>stem-2</c>, <c>stem-3</c>, …
     /// Регистр не различаем: это NTFS.
+    ///
+    /// Правило суффикса осталось прежним, а вот применяет его теперь не программа: имя
+    /// предлагается человеку в вопросе о занятом имени, и он решает, брать ли его вместо замены.
     /// </summary>
     public static string FreeName(string directory, string stem)
     {
@@ -460,8 +644,28 @@ public static class MacroBundleFolder
         }
     }
 
-    private static MacroBundleContent? ReadContentOrNull(string path) =>
-        File.Exists(path) ? MacroBundleReader.ReadContent(path) : null;
+    /// <summary>
+    /// Читает СВОЙ бандл перед перезаписью. <c>null</c> — файла нет, и это ЕДИНСТВЕННЫЙ отказ, на
+    /// котором писать законно: наследовать не от чего, потому что наследовать неоткуда.
+    ///
+    /// Всякий другой отказ — это отказ записи целиком. Прежде здесь стояла проверка
+    /// <c>File.Exists</c>, и «файл есть, но не прочитался» было неотличимо от «файла нет»: занятый
+    /// на миг файл, испорченный <c>nodes.json</c> при целом паспорте и бандл БУДУЩЕЙ версии
+    /// формата все трое получали новый <c>Guid</c> и пустой набор шаблонов. Различать это умеет сам
+    /// читатель — он и различает.
+    /// </summary>
+    private static MacroBundleContent? ReadOwnContent(string path)
+    {
+        var read = MacroBundleReader.ReadContent(path);
+        if (read.Content is { } content)
+        {
+            return content;
+        }
+
+        return read.IsMissing
+            ? null
+            : throw new MacroBundleUnreadableException(path, read.Fault, read.Message);
+    }
 
     private static bool IsReservedDeviceName(string name)
     {
