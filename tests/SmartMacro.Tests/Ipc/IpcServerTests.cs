@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using FakeItEasy;
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
@@ -32,6 +33,7 @@ public class IpcServerTests
                 Engine.RunEvents,
                 Engine.Log,
                 Engine.Debug,
+                Engine.Hotkeys,
                 Engine.SettingsSnapshots,
                 NullLogger<IpcServer>.Instance);
             Server.SubscribeToEngine();
@@ -305,6 +307,67 @@ public class IpcServerTests
         await serveDying;
         survivor.CloseClient();
         await serveSurvivor;
+    }
+
+    // Приостановка хоткеев правит состояние ДЕМОНА, а снять её способна только панель — и уходит
+    // она не только ответным ResumeHotkeys. «Снять задачу», падение, и, что важнее всего, путь,
+    // описанный в этом же протоколе: демон САМ выбрасывает клиента, переставшего разбирать
+    // очередь событий (см. ClientThatDiesMidBroadcast_IsDropped ниже — там ровно тот же снос).
+    // Пережив разрыв, приостановка оставляла демон с нулём зарегистрированных аккордов навсегда:
+    // перерегистрация по изменению библиотеки под приостановкой намеренно ничего не делает, так
+    // что самолечения нет. Довод тот же, что у счёта отладчиков на фронте SubscribeRunEvents.
+    [Test]
+    public async Task HotkeySuspension_IsReleasedWhenTheClientDisconnects()
+    {
+        await using var fixture = new ServerFixture();
+        var (client, serve) = await fixture.ConnectAsync();
+
+        await client.SendAsync(new IpcRequest(1, IpcMessageTypes.SuspendHotkeys));
+        await Assert.That(Parse(await client.ReadLineAsync()).GetProperty("Ok").GetBoolean()).IsTrue();
+        A.CallTo(() => fixture.Engine.Hotkeys.SuspendAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
+        A.CallTo(() => fixture.Engine.Hotkeys.ResumeAsync(A<CancellationToken>._)).MustNotHaveHappened();
+
+        // Панель умирает, не сказав ни слова.
+        client.CloseClient();
+        await serve;
+
+        A.CallTo(() => fixture.Engine.Hotkeys.ResumeAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
+    }
+
+    // Обратная сторона того же: соединение, которое приостановку не брало, на разрыве её и не
+    // отдаёт. Иначе счётчик держателей у слушателя уехал бы в минус на каждой закрытой панели, и
+    // ушедший редактор чужой панели вернул бы аккорды посреди ловли аккорда.
+    [Test]
+    public async Task AClientThatNeverSuspended_ReleasesNothingOnDisconnect()
+    {
+        await using var fixture = new ServerFixture();
+        var (client, serve) = await fixture.ConnectAsync();
+
+        client.CloseClient();
+        await serve;
+
+        A.CallTo(() => fixture.Engine.Hotkeys.ResumeAsync(A<CancellationToken>._)).MustNotHaveHappened();
+    }
+
+    // Аренда идёмпотентна ПО СОЕДИНЕНИЮ: сколько бы раз клиент ни попросил, держит он одну, и
+    // отдаёт её ровно один раз. Без этого один болтливый клиент утёк бы второй арендой, которую
+    // на разрыве уже никто не вернёт, — то есть ровно тот дефект, только изнутри.
+    [Test]
+    public async Task RepeatedSuspendFromOneClient_IsOneLease()
+    {
+        await using var fixture = new ServerFixture();
+        var (client, serve) = await fixture.ConnectAsync();
+
+        await client.SendAsync(new IpcRequest(1, IpcMessageTypes.SuspendHotkeys));
+        await client.SendAsync(new IpcRequest(2, IpcMessageTypes.SuspendHotkeys));
+        await client.ReadLinesAsync(2);
+
+        A.CallTo(() => fixture.Engine.Hotkeys.SuspendAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
+
+        client.CloseClient();
+        await serve;
+
+        A.CallTo(() => fixture.Engine.Hotkeys.ResumeAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
     }
 
     [Test]

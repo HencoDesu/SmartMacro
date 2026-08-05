@@ -204,4 +204,73 @@ public class HotkeyListenerTests
             DeleteTempDir(dir);
         }
     }
+
+    // ---------------------------------------------------------------- приостановка как аренда
+
+    // Панелей протокол допускает несколько, и каждая держит приостановку всё то время, что у неё
+    // на экране «Макросы». Будь это флаг, уход ПЕРВОЙ вернул бы аккорды, пока у второй открыта
+    // ловушка, — и RegisterHotKey снова начал бы проглатывать ровно то сочетание, которое она
+    // ловит. Поэтому счётчик держателей: аккорды возвращает последний уходящий.
+    [Test]
+    public async Task Suspension_IsALease_SoASecondPanelKeepsTheChordsDown()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            Write(dir, WithTriggers("иммунка", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
+            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
+            using var listener = CreateListener(store);
+            await Assert.That(listener.IsSuspended).IsFalse();
+
+            await listener.SuspendAsync();
+            await listener.SuspendAsync();
+            await Assert.That(listener.IsSuspended).IsTrue();
+
+            // Первая панель ушла — вторая всё ещё ловит аккорд.
+            await listener.ResumeAsync();
+            await Assert.That(listener.IsSuspended).IsTrue();
+
+            await listener.ResumeAsync();
+            await Assert.That(listener.IsSuspended).IsFalse();
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+
+    // Отдать аренду, которой нет, обязано быть безопасно И БЕССЛЕДНО. Сюда приходят с двух дорог —
+    // по запросу ResumeHotkeys и с пути разрыва соединения, — и на каждой аккуратно закрытой
+    // панели вторая срабатывает после первой. Счётчик, ушедший в минус, отдаёт этот долг ЧУЖОЙ
+    // арендой: следующая пара панелей разойдётся на единицу, и уход первой вернёт аккорды, пока
+    // вторая ещё ловит сочетание. Поэтому проверяется не «не упало», а поведение ПОСЛЕ долга.
+    [Test]
+    public async Task ResumeWithoutSuspend_LeavesNoDebtForTheNextLease()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
+            using var listener = CreateListener(store);
+
+            await listener.ResumeAsync();
+            await listener.ResumeAsync();
+            await Assert.That(listener.IsSuspended).IsFalse();
+
+            // Дальше — обычная пара панелей, как если бы никакого лишнего Resume не было.
+            await listener.SuspendAsync();
+            await listener.SuspendAsync();
+            await Assert.That(listener.IsSuspended).IsTrue();
+
+            await listener.ResumeAsync();
+            await Assert.That(listener.IsSuspended).IsTrue();
+
+            await listener.ResumeAsync();
+            await Assert.That(listener.IsSuspended).IsFalse();
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
 }

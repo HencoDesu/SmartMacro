@@ -11,8 +11,9 @@ namespace SmartMacro.Native.Hotkey;
 // Хук общесистемный: колбэк срабатывает на КАЖДОЕ событие мыши раньше, чем его увидит хоть
 // одно окно. Отсюда два следствия:
 //   1. Колбэк обязан отрабатывать быстро — медленный колбэк придушивает ввод мышью во всей
-//      системе. Мы всего лишь проверяем таблицу привязок и поднимаем событие (само по себе
-//      это тоже быстро: подписчики пишут в каналы, а не блокируются).
+//      системе, а выйдя за LowLevelHooksTimeout (по умолчанию 300 мс), ХУК СНИМАЕТ САМА
+//      WINDOWS: молча, без строки в журнале, и все мышиные привязки мертвы до следующей
+//      перерегистрации. Поэтому подписчики зовутся НЕ ЗДЕСЬ — см. RaiseHotkeyPressed.
 //   2. Хук срабатывает только в потоке, который активно прокачивает сообщения. Поэтому мы
 //      владеем отдельным фоновым потоком, который ставит хук на себя и крутит GetMessage.
 //      Модель ровно та же, что у Win32HotkeyMonitor, — так эргономика завершения
@@ -40,9 +41,12 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
     private User32Native.HookProc? _hookDelegate;
 
     /// <summary>
-    /// Поднимается в потоке цикла сообщений хука, когда срабатывает зарегистрированная
-    /// мышиная привязка. Подписчики получают <c>Id</c> привязки и сами сопоставляют его со
-    /// своим смыслом.
+    /// Поднимается, когда срабатывает зарегистрированная мышиная привязка. Подписчики получают
+    /// <c>Id</c> привязки и сами сопоставляют его со своим смыслом.
+    ///
+    /// <b>Поднимается в потоке ПУЛА, а не в потоке хука</b> — см. <see cref="RaiseHotkeyPressed"/>.
+    /// Порядок между двумя быстрыми нажатиями поэтому не гарантирован; ждать его было и нечего —
+    /// прогон макроса всё равно асинхронный.
     /// </summary>
     public event Action<int>? HotkeyPressed;
 
@@ -168,6 +172,20 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
         }
     }
 
+    /// <summary>
+    /// Шов для тестов: подсовывает таблицу привязок и зовёт колбэк хука напрямую.
+    ///
+    /// Настоящий <c>WH_MOUSE_LL</c> в тесте не поставить (нужен сеанс рабочего стола, а промахнуться
+    /// таким тестом по чужому вводу проще, чем попасть), а проверять здесь есть что: колбэк обязан
+    /// возвращаться, НЕ дождавшись подписчика. Ниже шва боевой путь и тестовый — один и тот же
+    /// код; тот же приём, что и у <c>IpcServer.ServeConnectionAsync</c>.
+    /// </summary>
+    internal IntPtr InvokeHookForTests(IReadOnlyList<MouseHookBinding> bindings, uint message)
+    {
+        _activeBindings = [.. bindings];
+        return MouseProc(User32Native.HC_ACTION, (IntPtr)message, IntPtr.Zero);
+    }
+
     private IntPtr MouseProc(int nCode, IntPtr wParam, IntPtr lParam)
     {
         // nCode < 0 ⇒ документация требует ничего не обрабатывать и просто передать дальше
@@ -216,14 +234,7 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
                 if (binding.Button == button && binding.Modifiers == mods)
                 {
                     LogMousePressed(button, mods, binding.Id);
-                    try
-                    {
-                        HotkeyPressed?.Invoke(binding.Id);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogSubscriberFailed(ex, binding.Id);
-                    }
+                    RaiseHotkeyPressed(binding.Id);
                 }
             }
         }
@@ -235,6 +246,49 @@ public sealed partial class Win32MouseHookMonitor : IDisposable
         }
 
         return User32Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
+    }
+
+    /// <summary>
+    /// Отдаёт срабатывание подписчикам В ПУЛЕ ПОТОКОВ и немедленно возвращается.
+    ///
+    /// <b>Это не оптимизация, а условие того, что хук вообще продолжит существовать.</b> Дальше
+    /// по цепочке синхронно идёт весь запуск макроса: слушатель → оркестратор → веер по целевым
+    /// окнам, а внутри — блокирующие <c>SendMessage(WM_ACTIVATEAPP)</c> в замороженные клиенты
+    /// игры. На макросе с веером на десять окон это десять блокирующих отправок, и все они
+    /// оказались бы ВНУТРИ колбэка низкоуровневого хука. Пока колбэк не вернулся, ввод мышью
+    /// придушен во всей системе; а выйдя за <c>LowLevelHooksTimeout</c> (по умолчанию 300 мс),
+    /// хук снимает сама Windows — молча, и все мышиные привязки мертвы до перерегистрации.
+    /// Заметить это неоткуда: ни строки в журнале, ни отметки в интерфейсе, а
+    /// <c>RejectedBindings</c> сюда не смотрит вовсе — регистрация-то удалась.
+    ///
+    /// Образец взят у <c>TrayController.OnItemClicked</c>: там ровно тот же довод про модальный
+    /// цикл меню, и там передача в пул уже написана.
+    ///
+    /// <c>UnsafeQueueUserWorkItem</c>, а не <c>Task.Run</c>: возвращать отсюда некому, а без
+    /// протаскивания контекста исполнения это на одно выделение меньше на путь, который зовут
+    /// из системного колбэка. Ловим ЗДЕСЬ, внутри задания: исключение подписчика на потоке пула
+    /// иначе стало бы необработанным.
+    /// </summary>
+    private void RaiseHotkeyPressed(int id)
+    {
+        if (HotkeyPressed is not { } handler)
+        {
+            return;
+        }
+
+        ThreadPool.UnsafeQueueUserWorkItem(
+            _ =>
+            {
+                try
+                {
+                    handler(id);
+                }
+                catch (Exception ex)
+                {
+                    LogSubscriberFailed(ex, id);
+                }
+            },
+            state: null);
     }
 
     private static HotkeyModifiers ReadModifierState()

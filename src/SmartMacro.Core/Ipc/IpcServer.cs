@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Hotkeys;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Storage;
@@ -46,6 +47,17 @@ namespace SmartMacro.Ipc;
 /// это и дешевле, и правильнее, чем UI, догоняющий жизнь по накопленному хвосту. Альтернативой
 /// была одна общая очередь, и она хуже: один залипший клиент застопорил бы доставку событий
 /// всем остальным.
+///
+/// <b>Всё, что клиент включил, снимается на разрыве — и это ЗАКРЫТЫЙ список.</b> Соединение
+/// владеет тремя переключателями движка (события прогона вместе со счётом отладчиков, лента
+/// журнала, приостановка хоткеев), и у каждого один и тот же довод: состояние, снять которое
+/// способна только панель, не имеет права её пережить. Панель уходит не только закрытием окна —
+/// «Снять задачу», падение, и, что важнее всего, <see cref="Deliver"/> ВЫБРАСЫВАЕТ клиента,
+/// переставшего разбирать очередь. Приостановка хоткеев попала в этот список последней и стоила
+/// дороже всех: демон оставался работать с нулём зарегистрированных аккордов, а перерегистрация по
+/// изменению библиотеки под приостановкой намеренно ничего не делает, так что самолечения не было
+/// вовсе. Добавляешь переключатель — добавляй строку в <c>finally</c> у
+/// <see cref="ServeConnectionAsync(Stream, Stream, CancellationToken)"/>.
 /// </summary>
 public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBroadcaster
 {
@@ -76,6 +88,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     private readonly RunEventPublisher _runEvents;
     private readonly LogEventPublisher _log;
     private readonly MacroDebugSession _debug;
+    private readonly IHotkeyRegistration _hotkeys;
     private readonly SettingsSnapshotProvider _settings;
     private readonly ILogger<IpcServer> _logger;
 
@@ -95,6 +108,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         RunEventPublisher runEvents,
         LogEventPublisher log,
         MacroDebugSession debug,
+        IHotkeyRegistration hotkeys,
         SettingsSnapshotProvider settings,
         ILogger<IpcServer> logger)
     {
@@ -105,6 +119,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         _runEvents = runEvents;
         _log = log;
         _debug = debug;
+        _hotkeys = hotkeys;
         _settings = settings;
         _logger = logger;
 
@@ -344,7 +359,8 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             new IpcConnection(input, output, leaveOpen: true),
             _runEvents,
             _log,
-            _debug);
+            _debug,
+            _hotkeys);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             _stopping.Token,
@@ -368,6 +384,12 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             // касается ровно так же — она сериализуется в никуда.
             client.SetRunEventSubscription(false);
             client.SetLogSubscription(false);
+            // И ТО ЖЕ САМОЕ для приостановки хоткеев — она попала на этот фронт последней, а
+            // цена промаха у неё выше всех: клиент, умерший с открытым редактором, оставлял
+            // демон с нулём зарегистрированных аккордов, и каждая горячая клавиша молча
+            // ничего не делала до перезапуска. Обратим внимание, что «умер» — это в том числе
+            // «мы сами его выбросили за забитую очередь» несколькими строками ниже по стеку.
+            await ReleaseHotkeySuspensionAsync(client).ConfigureAwait(false);
             client.CompleteEvents();
             // Насос может стоять в записи в трубу, которую никто не читает; разблокирует его
             // именно отмена, а WhenAny страхует случай, когда даже она не помогла.
@@ -446,6 +468,27 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         {
             LogResponseWriteFailed(ex, request.Type, request.Id);
             client.Drop();
+        }
+    }
+
+    /// <summary>
+    /// Снимает аренду приостановки хоткеев, если это соединение её держало.
+    ///
+    /// Отдельным методом, а не строкой в <c>finally</c>, ради двух вещей, без которых путь сноса
+    /// стал бы хуже: <b>токен здесь принципиально <c>None</c></b> (к этому моменту токен
+    /// соединения, как правило, уже сработал — а отменённая отдача аренды и есть тот самый дефект,
+    /// который мы закрываем), и <b>исключение отсюда не имеет права наружу</b>: снос соединения
+    /// обязан доработать до конца, даже если Win32 отказался регистрировать аккорды обратно.
+    /// </summary>
+    private async Task ReleaseHotkeySuspensionAsync(ClientConnection client)
+    {
+        try
+        {
+            await client.SetHotkeySuspensionAsync(false, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogHotkeyResumeOnDisconnectFailed(ex);
         }
     }
 
@@ -658,20 +701,32 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         private readonly RunEventPublisher _runEvents;
         private readonly LogEventPublisher _log;
         private readonly MacroDebugSession _debug;
+        private readonly IHotkeyRegistration _hotkeys;
         private readonly Lock _subscriptionLock = new();
+
+        // Аренда хоткеев берётся и отдаётся АСИНХРОННО, поэтому её фронт нельзя защитить тем же
+        // Lock, что и две подписки: ждать под ним нечем. Семафор здесь не про гонку за флагом, а
+        // про ПОРЯДОК: запросы одного соединения обрабатываются параллельно (цикл чтения не ждёт
+        // обработчика), и «Suspend наперегонки с Resume», доехав до счётчика демона задом наперёд,
+        // оставил бы аккорды снятыми навсегда.
+        private readonly SemaphoreSlim _hotkeyGate = new(1, 1);
+
         private bool _wantsRunEvents;
         private bool _wantsLog;
+        private bool _suspendsHotkeys;
 
         public ClientConnection(
             IpcConnection connection,
             RunEventPublisher runEvents,
             LogEventPublisher log,
-            MacroDebugSession debug)
+            MacroDebugSession debug,
+            IHotkeyRegistration hotkeys)
         {
             Connection = connection;
             _runEvents = runEvents;
             _log = log;
             _debug = debug;
+            _hotkeys = hotkeys;
         }
 
         public IpcConnection Connection { get; }
@@ -771,6 +826,43 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             }
         }
 
+        /// <inheritdoc />
+        public async Task SetHotkeySuspensionAsync(bool enabled, CancellationToken cancellationToken = default)
+        {
+            await _hotkeyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (_suspendsHotkeys == enabled)
+                {
+                    return;
+                }
+
+                // ПРАВИЛО ПРИ СБОЕ ОДНО: пока обратное не доказано, аренда считается за нами.
+                // Отсюда и разный порядок в двух ветках. Ошибиться в эту сторону дёшево — лишнюю
+                // отдачу слушатель отбрасывает, — а ошибиться в другую значит оставить аренду,
+                // которую уже никто не вернёт, то есть ровно тот дефект, ради которого всё это и
+                // делается.
+                if (enabled)
+                {
+                    // Флаг ДО вызова: слушатель поднимает счётчик держателей первым делом, так
+                    // что упавшее снятие аккордов оставляет аренду взятой.
+                    _suspendsHotkeys = true;
+                    await _hotkeys.SuspendAsync(cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    // Флаг ПОСЛЕ: не удалось отдать — значит, всё ещё держим, и путь сноса
+                    // попробует ещё раз.
+                    await _hotkeys.ResumeAsync(cancellationToken).ConfigureAwait(false);
+                    _suspendsHotkeys = false;
+                }
+            }
+            finally
+            {
+                _hotkeyGate.Release();
+            }
+        }
+
         public bool TryEnqueue(IpcEvent evt) => _events.Writer.TryWrite(evt);
 
         public void CompleteEvents() => _events.Writer.TryComplete();
@@ -792,6 +884,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         {
             await Connection.DisposeAsync().ConfigureAwait(false);
             Cts.Dispose();
+            _hotkeyGate.Dispose();
         }
     }
 }

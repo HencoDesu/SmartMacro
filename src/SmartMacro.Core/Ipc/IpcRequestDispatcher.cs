@@ -33,6 +33,10 @@ public sealed partial class IpcRequestDispatcher
     // Отсрочка между ответом на Shutdown и просьбой к хосту остановиться; см. ShutdownAsync.
     private const int ShutdownGraceMs = 250;
 
+    // Насколько свежая запись бандла считается «наблюдатель хранилища мог ещё не успеть»;
+    // см. WrittenInsideTheWatcherWindow. С запасом к его 300 мс гашения дребезга.
+    private static readonly TimeSpan WatcherLagWindow = TimeSpan.FromSeconds(2);
+
     private readonly WindowRegistry _windows;
     private readonly MacroGraphStore _macros;
     private readonly MacroRunRegistry _runs;
@@ -94,8 +98,9 @@ public sealed partial class IpcRequestDispatcher
 
     /// <summary>
     /// Направляет один запрос его обработчику и порождает ответ — без соединения за спиной. Всё
-    /// в каталоге, кроме <c>SubscribeRunEvents</c> и <c>DebugCommand</c>, относится к движку, а
-    /// не к клиенту, и в таком виде работает прекрасно; эти двое вежливо отказывают.
+    /// в каталоге, кроме <c>SubscribeRunEvents</c>, <c>SubscribeLog</c>, <c>DebugCommand</c> и
+    /// пары <c>SuspendHotkeys</c>/<c>ResumeHotkeys</c>, относится к движку, а не к клиенту, и в
+    /// таком виде работает прекрасно; эти вежливо отказывают.
     /// </summary>
     /// <param name="request">Разобранный конверт.</param>
     /// <param name="cancellationToken">Срабатывает, когда соединение закрывается.</param>
@@ -178,13 +183,15 @@ public sealed partial class IpcRequestDispatcher
                 // сработавшей. Всё после этой точки — «отправил и забыл»: макрос может идти
                 // часами, поэтому ответ означает «начали», а не «закончили».
                 //
-                // ПРОМАХ = ПОВОД ЗАГЛЯНУТЬ НА ДИСК ЕЩЁ РАЗ, и это гонка, которую завела F3.
-                // Пишет теперь панель, а демон узнаёт о новом файле наблюдателем с гашением
-                // дребезга в 300 мс: «Сохранить», а сразу следом «Запустить» попадают в
-                // промежуток, где макроса в снимке ещё нет, и кнопка отвечала бы «не найден» про
-                // файл, который только что записали. Перечитываем только на промахе — обычный
-                // путь по-прежнему в файловую систему не ходит.
-                if (_macros.TryGet(payload.Name) is null)
+                // ГОНКА, КОТОРУЮ ЗАВЕЛА F3, И У НЕЁ ДВЕ СТОРОНЫ. Пишет теперь панель, а демон
+                // узнаёт о файле наблюдателем с гашением дребезга в 300 мс, так что «Сохранить»,
+                // а сразу следом «Запустить» попадают в промежуток, где снимок демона отстал.
+                // Промах («макроса ещё нет») закрывали сразу; вторую сторону — «макрос ЕСТЬ, но
+                // прошлой версии» — нет, а она хуже: неизвестное имя хотя бы отвечает ошибкой, а
+                // устаревший граф молча гоняет по живым клиентам предыдущую правку вместе со
+                // старыми шаблонами, и симптом у этого один — «моя правка не работает».
+                var entry = _macros.TryGetEntry(payload.Name);
+                if (entry is null || WrittenInsideTheWatcherWindow(entry))
                 {
                     _macros.Refresh();
                     if (_macros.TryGet(payload.Name) is null)
@@ -265,13 +272,29 @@ public sealed partial class IpcRequestDispatcher
 
             // --------------------------------------------------------- горячие клавиши
 
+            // Обе идут ЧЕРЕЗ СЕССИЮ, а не прямо в слушателя, и это не украшение. Приостановка —
+            // состояние движка, снять которое способна только панель; уходит же она не только
+            // ответным ResumeHotkeys, но и «Снять задачу», падением и тем, что демон сам
+            // выбрасывает клиента за забитую очередь. Владельцем поэтому назначено соединение —
+            // ровно так же, как счётом подключённых отладчиков владеет подписка на события
+            // прогона. См. IIpcSession.SetHotkeySuspensionAsync.
             case IpcMessageTypes.SuspendHotkeys:
-                await _hotkeys.SuspendAsync(cancellationToken).ConfigureAwait(false);
+            {
+                var connection = session
+                                 ?? throw new IpcRequestRejectedException(
+                                     "Приостановка хоткеев возможна только по соединению.");
+                await connection.SetHotkeySuspensionAsync(true, cancellationToken).ConfigureAwait(false);
                 return Ok(request);
+            }
 
             case IpcMessageTypes.ResumeHotkeys:
-                await _hotkeys.ResumeAsync(cancellationToken).ConfigureAwait(false);
+            {
+                var connection = session
+                                 ?? throw new IpcRequestRejectedException(
+                                     "Приостановка хоткеев возможна только по соединению.");
+                await connection.SetHotkeySuspensionAsync(false, cancellationToken).ConfigureAwait(false);
                 return Ok(request);
+            }
 
             case IpcMessageTypes.GetHotkeyFailures:
                 // Материализуем в массив, чтобы ответ был JSON-массивом даже тогда, когда
@@ -368,6 +391,47 @@ public sealed partial class IpcRequestDispatcher
             default:
                 LogUnknownType(request.Type, request.Id);
                 return Fail(request, $"unknown request type: {request.Type}");
+        }
+    }
+
+    /// <summary>
+    /// Мог ли бандл быть переписан уже ПОСЛЕ того, как хранилище сняло свой снимок.
+    ///
+    /// <b>Спрашиваем у файловой системы одну отметку времени, а не перечитываем папку.</b>
+    /// Безусловный <c>Refresh</c> был бы проще и честнее по результату, но он разбирает КАЖДЫЙ
+    /// бандл в <c>macros/</c> на каждое нажатие ▸ — то есть платит полным чтением библиотеки за
+    /// случай, который бывает раз в сеанс. Здесь же одна проверка атрибутов файла: ни открытия
+    /// архива, ни разбора JSON.
+    ///
+    /// <b>Почему «возраст файла», а не сверка версий.</b> Единственный способ отстать — попасть
+    /// внутрь окна гашения дребезга наблюдателя хранилища: тот стреляет НА ЗАПИСЬ, и весь вопрос
+    /// в том, успел ли он перечитать папку. Значит, подозрителен ровно тот файл, что записан
+    /// только что. Сравнивать дату правки из паспорта с датой файла было бы точнее на бумаге, но
+    /// эти две отметки ставятся в разные мгновения одной и той же записи (писатель штампует
+    /// паспорт до сериализации), и разошлись бы они на неизвестное «время записи» — то есть
+    /// сверке потребовался бы допуск, который сам по себе врал бы при двух сохранениях подряд.
+    ///
+    /// Окно намеренно с большим запасом к 300 мс дребезга: лишний <c>Refresh</c> стоит одного
+    /// чтения папки и <see cref="MacroGraphStore.Refresh"/> поднимает <c>MacrosChanged</c>, только
+    /// если снимок действительно изменился, — а пропущенная правка стоит прогона старого графа по
+    /// живым клиентам. По той же причине «дата в будущем» (файл принесли с машины со спешащими
+    /// часами) считается подозрительной, а не свежей: возраст выйдет отрицательным и попадёт в
+    /// окно.
+    /// </summary>
+    private static bool WrittenInsideTheWatcherWindow(MacroLibraryEntry entry)
+    {
+        try
+        {
+            // Файла нет — GetLastWriteTimeUtc отдаёт 1601 год, возраст выходит гигантским, и это
+            // верный ответ: «перечитывать незачем». Удалённый бандл снимку вернёт наблюдатель, а
+            // запустить только что удалённый макрос куда безобиднее, чем прогнать старый.
+            return DateTime.UtcNow - File.GetLastWriteTimeUtc(entry.Path) < WatcherLagWindow;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Не смогли посмотреть — считаем, что могли отстать. Ошибиться здесь в сторону
+            // лишнего чтения папки дёшево, в другую сторону — нет.
+            return true;
         }
     }
 

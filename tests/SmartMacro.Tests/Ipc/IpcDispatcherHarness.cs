@@ -63,6 +63,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
         SettingsSnapshots = new SettingsSnapshotProvider(SettingsFile, LogLevel);
         AutoStart = new AutoStartManager(NullLogger<AutoStartManager>.Instance);
         Diagnostics = new EnvironmentDiagnostics(Windows, Macros, Hotkeys, SettingsFile, AutoStart);
+        Session = new FakeSession(Hotkeys);
 
         Dispatcher = new IpcRequestDispatcher(
             Windows,
@@ -85,6 +86,33 @@ internal sealed class IpcDispatcherHarness : IDisposable
     internal sealed class FakeLogLevelSwitch : ILogLevelSwitch
     {
         public LogLevelDto Current { get; set; } = LogLevelDto.Information;
+    }
+
+    /// <summary>
+    /// Соединение, которого нет. Обработчикам, чьё состояние принадлежит клиенту, а не движку
+    /// (подписки и приостановка хоткеев), сессия нужна обязательно — а поднимать ради них
+    /// <see cref="IpcServer"/> с парой потоков в памяти стоит дороже, чем проверяется.
+    ///
+    /// Форвардит НАПРЯМУЮ, без учёта фронта: за фронт («одна аренда на соединение, снимается на
+    /// разрыве») отвечает <c>IpcServer.ClientConnection</c>, и проверяется он там же — в
+    /// <c>IpcServerTests</c>. Повторив здесь его логику, мы бы проверяли копию.
+    /// </summary>
+    internal sealed class FakeSession : IIpcSession
+    {
+        private readonly IHotkeyRegistration _hotkeys;
+
+        public FakeSession(IHotkeyRegistration hotkeys) => _hotkeys = hotkeys;
+
+        public bool WantsRunEvents { get; private set; }
+
+        public void SetRunEventSubscription(bool enabled) => WantsRunEvents = enabled;
+
+        public bool WantsLog { get; private set; }
+
+        public void SetLogSubscription(bool enabled) => WantsLog = enabled;
+
+        public Task SetHotkeySuspensionAsync(bool enabled, CancellationToken cancellationToken = default) =>
+            enabled ? _hotkeys.SuspendAsync(cancellationToken) : _hotkeys.ResumeAsync(cancellationToken);
     }
 
     /// <summary>
@@ -118,6 +146,9 @@ internal sealed class IpcDispatcherHarness : IDisposable
     public IMacroRunner Runner { get; }
 
     public IHotkeyRegistration Hotkeys { get; }
+
+    /// <summary>Сессия по умолчанию для обработчиков, которым соединение обязательно.</summary>
+    public FakeSession Session { get; }
 
     public IClassMatcher Matcher { get; }
 

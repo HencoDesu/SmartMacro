@@ -17,4 +17,11 @@
     <PackageReference Include="System.Drawing.Common" Version="10.0.8" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Швы для тестов у колбэков хуков: поставить настоящий WH_MOUSE_LL из теста нельзя (нужен
+         сеанс рабочего стола), а проверять там есть что — колбэк обязан возвращаться, не дождавшись
+         подписчика. Внутренними, а не публичными: это шов, а не поверхность сборки. -->
+    <InternalsVisibleTo Include="SmartMacro.Tests" />
+  </ItemGroup>
+
 </Project>
