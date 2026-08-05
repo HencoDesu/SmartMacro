@@ -199,6 +199,69 @@ public class IpcRequestDispatcherTests
         A.CallTo(() => harness.Runner.RunMacro("только-что")).MustHaveHappenedOnceExactly();
     }
 
+    // Вторая сторона той же гонки, и она хуже первой. «Макроса ещё нет» отвечает ошибкой; «макрос
+    // есть, но прошлой версии» не отвечает ничем — демон молча гоняет по живым клиентам
+    // предыдущую правку вместе со старыми шаблонами, и симптом у этого один: «моя правка не
+    // работает». Наблюдатель хранилища узнаёт о записи через 300 мс, поэтому смотрим сюда в
+    // момент, когда бегун РАЗРЕШАЕТ имя, — именно этот снимок он и получит.
+    [Test]
+    public async Task RunMacro_AMacroEditedAMomentAgo_IsRefreshedBeforeTheRunnerResolvesIt()
+    {
+        using var harness = new IpcDispatcherHarness();
+        harness.WriteMacro(SimpleMacro("правленый", VirtualKey.F1));
+
+        // Панель переписала бандл; демону об этом никто не сказал.
+        Overwrite(harness, SimpleMacro("правленый", VirtualKey.F9));
+
+        // Снимок держит прежнюю версию — вот она, гонка. (300 мс гашения дребезга против двух
+        // соседних строк: наблюдатель успеть не может.)
+        await Assert.That(KeyOf(harness.Macros.TryGet("правленый")!)).IsEqualTo(VirtualKey.F1);
+
+        MacroGraph? resolved = null;
+        A.CallTo(() => harness.Runner.RunMacro("правленый"))
+            .Invokes(() => resolved = harness.Macros.TryGet("правленый"));
+
+        var response = await harness.DispatchAsync(IpcMessageTypes.RunMacro, new RunMacroRequest("правленый"));
+
+        await Assert.That(response.Ok).IsTrue();
+        await Assert.That(KeyOf(resolved!)).IsEqualTo(VirtualKey.F9);
+    }
+
+    // Обратная сторона: обычный путь в файловую систему НЕ ходит. Проверка стоит одной отметки
+    // времени именно затем, чтобы не платить разбором каждого бандла в macros/ за каждое нажатие
+    // ▸; выродись она в безусловный Refresh — этот тест краснеет. Файлу здесь искусственно
+    // состарена дата записи: так выглядит любой макрос, которого сегодня не касались.
+    [Test]
+    public async Task RunMacro_AMacroUntouchedForAges_DoesNotRereadTheFolder()
+    {
+        using var harness = new IpcDispatcherHarness();
+        harness.WriteMacro(SimpleMacro("давнишний", VirtualKey.F1));
+
+        // На диске лежит другая версия, но дата записи старая — значит, наблюдатель о ней давно
+        // рассказал бы, и заглядывать на диск не за чем.
+        Overwrite(harness, SimpleMacro("давнишний", VirtualKey.F9));
+        File.SetLastWriteTimeUtc(harness.MacroFile("давнишний"), DateTime.UtcNow.AddHours(-1));
+
+        MacroGraph? resolved = null;
+        A.CallTo(() => harness.Runner.RunMacro("давнишний"))
+            .Invokes(() => resolved = harness.Macros.TryGet("давнишний"));
+
+        var response = await harness.DispatchAsync(IpcMessageTypes.RunMacro, new RunMacroRequest("давнишний"));
+
+        await Assert.That(response.Ok).IsTrue();
+        await Assert.That(KeyOf(resolved!)).IsEqualTo(VirtualKey.F1);
+    }
+
+    /// <summary>Кладёт бандл поверх существующего мимо хранилища — так пишет панель.</summary>
+    private static void Overwrite(IpcDispatcherHarness harness, MacroGraph graph) =>
+        MacroBundleWriter.Write(harness.MacroFile(graph.Name), new MacroBundleContent
+        {
+            Metadata = MacroBundleMetadata.CreateNew(graph.Name),
+            Graph = graph,
+        });
+
+    private static VirtualKey KeyOf(MacroGraph graph) => ((KeyPressNode)graph.Nodes[0]).Key;
+
     // ------------------------------------------------------------------------ хоткеи
 
     [Test]
@@ -206,11 +269,29 @@ public class IpcRequestDispatcherTests
     {
         using var harness = new IpcDispatcherHarness();
 
-        await Assert.That((await harness.DispatchAsync(IpcMessageTypes.SuspendHotkeys)).Ok).IsTrue();
-        await Assert.That((await harness.DispatchAsync(IpcMessageTypes.ResumeHotkeys)).Ok).IsTrue();
+        await Assert.That((await harness.DispatchAsync(
+            IpcMessageTypes.SuspendHotkeys, session: harness.Session)).Ok).IsTrue();
+        await Assert.That((await harness.DispatchAsync(
+            IpcMessageTypes.ResumeHotkeys, session: harness.Session)).Ok).IsTrue();
 
         A.CallTo(() => harness.Hotkeys.SuspendAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
         A.CallTo(() => harness.Hotkeys.ResumeAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
+    }
+
+    // Приостановка — состояние КЛИЕНТА, а не движка, и обработчик обязан это знать: снять её
+    // способна только панель, а уходит панель не всегда через ResumeHotkeys. Без соединения за
+    // спиной аренду некому было бы вернуть, поэтому запрос отклоняется — ровно как
+    // SubscribeRunEvents и SubscribeLog.
+    [Test]
+    public async Task SuspendHotkeys_WithoutAConnection_IsRefused()
+    {
+        using var harness = new IpcDispatcherHarness();
+
+        var response = await harness.DispatchAsync(IpcMessageTypes.SuspendHotkeys);
+
+        await Assert.That(response.Ok).IsFalse();
+        await Assert.That(response.Error).Contains("соединению");
+        A.CallTo(() => harness.Hotkeys.SuspendAsync(A<CancellationToken>._)).MustNotHaveHappened();
     }
 
     // D4: аккорды, которые демон привязал, а Windows ему не отдала. Без этого отказ остаётся
@@ -341,7 +422,8 @@ public class IpcRequestDispatcherTests
         A.CallTo(() => harness.Hotkeys.SuspendAsync(A<CancellationToken>._))
             .Throws(new InvalidOperationException("RegisterHotKey сломался"));
 
-        var response = await harness.DispatchAsync(IpcMessageTypes.SuspendHotkeys, id: 99);
+        var response = await harness.DispatchAsync(
+            IpcMessageTypes.SuspendHotkeys, id: 99, session: harness.Session);
 
         await Assert.That(response.Id).IsEqualTo(99);
         await Assert.That(response.Ok).IsFalse();

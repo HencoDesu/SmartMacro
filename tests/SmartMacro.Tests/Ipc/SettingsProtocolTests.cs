@@ -1,3 +1,4 @@
+using FakeItEasy;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Contracts.Settings;
@@ -150,6 +151,24 @@ public class SettingsProtocolTests
         // Временная папка теста заведомо пишется — иначе не было бы и самого теста.
         await Assert.That(results.Single(r => r.Id == DiagnosticIds.FolderWritable).Status)
             .IsEqualTo(DiagnosticStatus.Ok);
+    }
+
+    // Пока панель держит приостановку, зарегистрировано НОЛЬ аккордов — а карточка при пустом
+    // списке отказов и целых графах отвечала «занято N из N». Экран, существующий ради вопроса
+    // «почему макрос просто не работает», в этом состоянии активно врал. Предупреждение, а не
+    // отказ: сама приостановка — работающий механизм, но зелёной ей быть нельзя.
+    [Test]
+    public async Task RunDiagnostics_SaysSoWhenHotkeysAreSuspended()
+    {
+        using var harness = new IpcDispatcherHarness();
+        A.CallTo(() => harness.Hotkeys.IsSuspended).Returns(true);
+
+        var response = await harness.DispatchAsync(IpcMessageTypes.RunDiagnostics);
+        var hotkeys = IpcJson.Read<DiagnosticDto[]>(response.Payload)!
+            .Single(r => r.Id == DiagnosticIds.Hotkeys);
+
+        await Assert.That(hotkeys.Status).IsEqualTo(DiagnosticStatus.Warning);
+        await Assert.That(hotkeys.Title).Contains("приостановлены");
     }
 
     // Шаблон, которого нет на диске, обязан находиться ДО прогона, а не всплывать строкой в

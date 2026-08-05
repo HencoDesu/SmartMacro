@@ -42,7 +42,13 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
     private Dictionary<int, string> _idToMacro = [];
     private volatile IReadOnlyList<HotkeyFailureDto> _failures = [];
     private bool _started;
-    private bool _suspended;
+
+    // Сколько соединений держат приостановку. СЧЁТЧИК, а не флаг, — см. IHotkeyRegistration:
+    // панелей может быть несколько, и аккорды обязаны оставаться снятыми, пока их держит хоть
+    // одна. Правится только под _restartLock; _suspended — его зеркало для чтений без замка
+    // (RestartAsync читает под замком, диагностика — без).
+    private int _suspenders;
+    private volatile bool _suspended;
 
     /// <summary>Поднимается с ИМЕНЕМ макроса, чей хоткей-триггер только что сработал.</summary>
     public event Action<string>? MacroTriggered;
@@ -80,18 +86,23 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
     }
 
     /// <summary>
-    /// Снимает регистрацию со всех аккордов. Интерфейсу выбора хоткея без этого не обойтись:
-    /// Win32 RegisterHotKey проглатывает нажатия уже привязанных сочетаний, так что привязанную
+    /// Берёт аренду приостановки. Интерфейсу выбора хоткея без этого не обойтись: Win32
+    /// RegisterHotKey проглатывает нажатия уже привязанных сочетаний, так что привязанную
     /// клавишу иначе было бы невозможно переназначить. Вызывается из процесса UI по IPC
     /// (<c>SuspendHotkeys</c>).
+    ///
+    /// Аккорды снимаются на ПЕРВОЙ аренде; последующие только считаются. Почему счётчик, а не
+    /// флаг, — см. <see cref="IHotkeyRegistration"/>.
     /// </summary>
     public async Task SuspendAsync(CancellationToken cancellationToken = default)
     {
         await _restartLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_suspended)
+            _suspenders++;
+            if (_suspenders > 1)
             {
+                LogSuspendedAgain(_suspenders);
                 return;
             }
 
@@ -109,14 +120,28 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
         }
     }
 
-    /// <summary>Регистрирует заново по ТЕКУЩЕМУ состоянию библиотеки (пока висела приостановка, оно могло измениться).</summary>
+    /// <summary>
+    /// Отдаёт аренду. Последний уходящий регистрирует всё заново по ТЕКУЩЕМУ состоянию библиотеки
+    /// (пока висела приостановка, оно могло измениться).
+    ///
+    /// Лишний вызов (аренды нет) ничего не делает и НЕ уводит счётчик в минус: сюда приходят с
+    /// двух дорог — по запросу <c>ResumeHotkeys</c> и с пути разрыва соединения, — и обе обязаны
+    /// быть безопасны, когда первая уже отработала.
+    /// </summary>
     public async Task ResumeAsync(CancellationToken cancellationToken = default)
     {
         await _restartLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!_suspended)
+            if (_suspenders == 0)
             {
+                return;
+            }
+
+            _suspenders--;
+            if (_suspenders > 0)
+            {
+                LogStillSuspended(_suspenders);
                 return;
             }
 
@@ -135,6 +160,9 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
             _restartLock.Release();
         }
     }
+
+    /// <inheritdoc />
+    public bool IsSuspended => _suspended;
 
     /// <summary>
     /// Текущее отображение «id → имя макроса». Вместе с <see cref="KeyboardBindings"/> и
@@ -318,6 +346,14 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
     [LoggerMessage(LogLevel.Information,
         "Слушатель хоткеев возобновлён — заново зарегистрировано привязок: клавиатурных {KeyboardCount} + мышиных {MouseCount}")]
     partial void LogResumed(int keyboardCount, int mouseCount);
+
+    [LoggerMessage(LogLevel.Debug,
+        "Ещё одна приостановка хоткеев — держателей теперь {Holders}; аккорды и так сняты")]
+    partial void LogSuspendedAgain(int holders);
+
+    [LoggerMessage(LogLevel.Debug,
+        "Приостановка хоткеев отпущена, но держателей осталось {Holders} — аккорды остаются снятыми")]
+    partial void LogStillSuspended(int holders);
 
     [LoggerMessage(LogLevel.Warning,
         "У макроса '{Macro}' хоткей-триггер без Key и без MouseButton — пропускаем")]

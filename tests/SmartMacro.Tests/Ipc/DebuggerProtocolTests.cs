@@ -38,6 +38,7 @@ public class DebuggerProtocolTests
                 Engine.RunEvents,
                 Engine.Log,
                 Engine.Debug,
+                Engine.Hotkeys,
                 Engine.SettingsSnapshots,
                 NullLogger<IpcServer>.Instance);
             Server.SubscribeToEngine();

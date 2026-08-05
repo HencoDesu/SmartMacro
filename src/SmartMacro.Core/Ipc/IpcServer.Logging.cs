@@ -43,4 +43,8 @@ public sealed partial class IpcServer
 
     [LoggerMessage(LogLevel.Warning, "IPC: после слива всё ещё открыто соединений с клиентами: {Count}")]
     partial void LogClientsDidNotDrain(int count);
+
+    [LoggerMessage(LogLevel.Error,
+        "IPC: не удалось вернуть хоткеи после разрыва соединения — глобальные аккорды могли остаться снятыми")]
+    partial void LogHotkeyResumeOnDisconnectFailed(Exception ex);
 }
