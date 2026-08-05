@@ -48,7 +48,10 @@ namespace SmartMacro.Macros.Execution;
 /// безопасности: и обрамление <c>ActivateAsync</c>/<c>DeactivateAsync</c> у любой ноды ввода, и
 /// побудка с обратной заморозкой на каждом тике зрения целиком живут внутри
 /// <see cref="IMacroPrimitives"/>, так что к моменту возврата управления сюда ни одно игровое
-/// окно не остаётся разбуженным. Пауза здесь не может бросить клиент замороженным; пауза
+/// окно не остаётся разбуженным. Держится это не на порядке строк, а на <c>try/finally</c> в обеих
+/// скобках (<c>GameWindow</c> и <c>AgentInputDispatcher</c>): без него «к моменту возврата сюда»
+/// было бы верно только для успешного пути, а интересен здесь как раз неуспешный — отмена по
+/// «■ Стоп» посреди тика зрения. Пауза здесь не может бросить клиент замороженным; пауза
 /// где-нибудь глубже — может. Дисциплина затвора по <c>IsActive</c> та же, что у наблюдателя:
 /// обход, который никто не отлаживает, платит одно volatile-чтение на ноду и ничего не выделяет.
 /// </summary>
@@ -80,9 +83,9 @@ public sealed partial class MacroExecutor
         ArgumentNullException.ThrowIfNull(macro);
         ArgumentNullException.ThrowIfNull(context);
 
-        // Открывается до первой ноды и закрывается на каждом пути выхода ниже, чтобы список
-        // живых обходов у наблюдателя не мог протечь ни одной записью, — именно этот список
-        // показывают панели, подключившейся посреди прогона.
+        // Открывается до первой ноды и закрывается в finally — на ЛЮБОМ пути выхода, а не только
+        // на трёх известных, — чтобы список живых обходов у наблюдателя не мог протечь ни одной
+        // записью: именно этот список показывают панели, подключившейся посреди прогона.
         // Обход докладывает о себе МАКРОСОМ (бандлом) и, отдельно, под-макросом: у обхода функции
         // имя графа — это её подпись, а адресуются по макросу и точки останова, и переключатель
         // прогонов в панели.
@@ -95,32 +98,69 @@ public sealed partial class MacroExecutor
             context.ContextWindow,
             context.Depth);
 
-        MacroRunResult result;
+        // УЧЁТ ОБХОДА ЗАКРЫВАЕТСЯ В finally, А НЕ НА ПУТЯХ ВЫХОДА, и это не косметика. Пока две
+        // закрывающие строки стояли ниже catch'ей, они обслуживали ровно те три исключения,
+        // которые эти catch'и ловят. Любое ЧЕТВЁРТОЕ пролетало мимо них — и обход оставался
+        // «живым» НАВСЕГДА: RunEventPublisher снимает запись только по WalkFinished, так что
+        // каждая следующая подписка панели получала фантомный обход, переключатель показывал его
+        // идущим, WalkFinished по нему не приходил никогда, а список рос с каждым таким сбоем до
+        // перезапуска демона.
+        //
+        // Четвёртое исключение — не выдумка. Живой пример: нода «Добавить тег» с ПУСТЫМ тегом
+        // (панель заводит её именно такой) роняет WindowRegistry.AddTag, который начинается с
+        // ArgumentException.ThrowIfNullOrWhiteSpace. Собственный SaveAsync панели такой макрос не
+        // запишет (TagNodeRowViewModel.GetInputErrors), но правило это живёт ТОЛЬКО там: общий
+        // MacroGraphValidator пустого тега не проверяет вовсе, — значит, бандл, попавший в macros/
+        // импортом или правкой руками (а .hsm — store-only zip именно затем, чтобы его правили
+        // руками), демон прочтёт, вооружит и запустит.
+        MacroRunResult? result = null;
+        Exception? unexpected = null;
         try
         {
             result = await RunCoreAsync(macro, context, trace, ct).ConfigureAwait(false);
+            return result;
         }
         catch (OperationCanceledException)
         {
             LogCancelled(macro.Name);
             result = MacroRunResult.Cancelled;
+            return result;
         }
         catch (MacroVariableException ex)
         {
             LogAborted(macro.Name, ex.Message);
             result = MacroRunResult.Aborted(ex.Message);
+            return result;
         }
         catch (MacroRunAbortException ex)
         {
             LogAborted(macro.Name, ex.Message);
             result = MacroRunResult.Aborted(ex.Message);
+            return result;
         }
-
-        // До события о завершении, чтобы панель, которая на WalkFinished перечитывает отладчик,
-        // не могла увидеть обход, который одновременно и закончился, и всё ещё зарегистрирован.
-        context.Debugger?.WalkFinished(trace.WalkId);
-        trace.Finished(WalkOutcome(result.Status), result.Error);
-        return result;
+        catch (Exception ex)
+        {
+            // Неучтённое исключение — это БАГ, а не сбой уровня прогона, поэтому оно летит дальше:
+            // его ловит Orchestrator.RunAsync и пишет отдельной строкой «упал непредвиденно».
+            // Превратить его здесь в обычный Aborted значило бы стереть разницу между ошибкой
+            // автора графа и ошибкой в движке. Единственное, что делает этот catch, — запоминает
+            // причину, чтобы finally мог назвать её в событии конца обхода: обрыв без объяснения в
+            // полосе лога неотличим от «нода просто ничего не сделала».
+            unexpected = ex;
+            throw;
+        }
+        finally
+        {
+            // Порядок прежний: снятие с учёта у отладчика ДО события о завершении, чтобы панель,
+            // которая на WalkFinished перечитывает отладчик, не могла увидеть обход, который
+            // одновременно и закончился, и всё ещё зарегистрирован.
+            context.Debugger?.WalkFinished(trace.WalkId);
+            // У события конца обхода три законных исхода (см. IMacroRunObserver.WalkFinished), и
+            // для непойманного исключения верен единственный — Aborted: обход сломался.
+            trace.Finished(
+                result is { } done ? WalkOutcome(done.Status) : RunOutcomes.Aborted,
+                result is { } finished ? finished.Error : unexpected?.Message);
+        }
     }
 
     private static string WalkOutcome(MacroRunStatus status) => status switch

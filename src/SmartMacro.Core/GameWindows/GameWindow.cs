@@ -34,6 +34,7 @@ public sealed partial class GameWindow : IGameWindow
     private readonly int _deactivationDelayMs;
     private readonly ILogger<GameWindow> _logger;
 
+    /// <summary>Боевой конструктор: окно открывается по дескриптору главного окна процесса.</summary>
     public GameWindow(
         ProcessInfo info,
         ProcessProfileSettings profile,
@@ -41,21 +42,49 @@ public sealed partial class GameWindow : IGameWindow
         IMouseInput mouse,
         ISettingsSource settings,
         ILogger<GameWindow> logger)
+        : this(Open(info), info.ProcessName, profile, keyboard, mouse, settings, logger)
+    {
+    }
+
+    /// <summary>
+    /// Конструктор поверх УЖЕ ОТКРЫТОГО окна.
+    ///
+    /// Заведён ради одного свойства, которое иначе нечем проверить: пара «побудка → заморозка
+    /// обратно» наблюдаема только со стороны <see cref="INativeWindow"/>, а боевой конструктор
+    /// окно открывает сам и подменить ему нижний слой невозможно. Незакрытая пара оставляет
+    /// клиента PW размороженным до настоящей смены фокуса от ОС, а живой игры под рукой не бывает
+    /// — значит, шов нужен.
+    /// </summary>
+    public GameWindow(
+        INativeWindow nativeWindow,
+        string processName,
+        ProcessProfileSettings profile,
+        KeyboardInputResolver keyboard,
+        IMouseInput mouse,
+        ISettingsSource settings,
+        ILogger<GameWindow> logger)
+    {
+        _keyboard = keyboard;
+        _mouse = mouse;
+        _settings = settings;
+        _processName = processName;
+        _nativeWindow = nativeWindow;
+        _activationLParam = profile.ActivationLParam;
+        _settleDelayMs = profile.SettleDelayMs;
+        _deactivationDelayMs = profile.DeactivationDelayMs;
+        _logger = logger;
+    }
+
+    // Проверка дескриптора стоит здесь, до делегирования: ProcessMonitor придерживает pid'ы с
+    // hwnd=0 именно потому, что дальше этой строки с нулём проходить нельзя.
+    private static INativeWindow Open(ProcessInfo info)
     {
         if (info.MainWindowHandle == IntPtr.Zero)
         {
             throw new ArgumentException("Process must have a non-zero MainWindowHandle.", nameof(info));
         }
 
-        _keyboard = keyboard;
-        _mouse = mouse;
-        _settings = settings;
-        _processName = info.ProcessName;
-        _nativeWindow = Win32NativeWindowSystem.Open(info.MainWindowHandle);
-        _activationLParam = profile.ActivationLParam;
-        _settleDelayMs = profile.SettleDelayMs;
-        _deactivationDelayMs = profile.DeactivationDelayMs;
-        _logger = logger;
+        return Win32NativeWindowSystem.Open(info.MainWindowHandle);
     }
 
     // Пороги и темп опроса читаются В МОМЕНТ СОПОСТАВЛЕНИЯ, а не запоминаются в конструкторе:
@@ -86,20 +115,56 @@ public sealed partial class GameWindow : IGameWindow
         }
     }
 
+    // ПАРА «ПОБУДКА → ЗАМОРОЗКА ОБРАТНО» ЗАКРЫВАЕТСЯ ВСЕГДА, И ЭТО try/finally, А НЕ ПОРЯДОК
+    // СТРОК. На этом держатся два записанных в другом месте обоснования: затвор отладчика стоит
+    // между нодами потому, что «к моменту возврата управления в MacroExecutor ни одно игровое окно
+    // не остаётся разбуженным», и Orchestrator.StopAsync обещает, что «ни один прогон не бросают
+    // посреди активации, оставив клиент разбуженным». Структурно скобка и правда живёт целиком
+    // внутри примитивов — но пока её вторая половина стояла просто следующей строкой, её
+    // выполнение ничем не было гарантировано: между половинами бросают двое — Task.Delay паузы
+    // устаканивания (отмена: «■ Стоп», выключение демона) и CapturePng (нулевая клиентская
+    // область, отказ PrintWindow). Веер даёт до десяти тиков зрения разом, то есть до десяти
+    // клиентов PW, оставшихся рендерить в фоне; починить их некому — обход-то отменён, — и само
+    // это проходит только от настоящей смены фокуса пользователем. Образец лежит рядом и в этом же
+    // проекте: AgentInputDispatcher держит свою пару в try/finally.
+    //
+    // ТОКЕН В ЗАМОРОЗКУ НЕ ПРОБРАСЫВАЕТСЯ — ни здесь, ни у вызывающих, и это не упущение.
+    // Заморозка есть уборка за побудкой, а отменять уборку по тому же токену, который её и
+    // вызвал, значит не делать её ровно в том случае, ради которого она и нужна. Поэтому
+    // AgentInputDispatcher зовёт DeactivateAsync() без аргумента, а здесь правило поддержано
+    // устройством: SendDeactivationSignal синхронен и токена не принимает вовсе, а единственное
+    // ожидание на этом пути — пауза на слив — вынесено в try, так что даже отменённый слив
+    // заканчивается заморозкой.
+
     // PW замораживает неактивные клиенты (встают и ввод, и отрисовка). Activate отправляет
     // будящий сигнал WM_ACTIVATEAPP, чтобы последующий ввод был обработан; пауза на
     // устаканивание даёт движку действительно вернуться в строй до того, как мы начнём слать
     // ввод. Процессы с простым вводом (без ActivationLParam в профиле) сигнал не шлют вовсе.
     public async Task ActivateAsync(CancellationToken cancellationToken = default)
     {
-        if (_activationLParam is { } lParam)
+        if (_activationLParam is not { } lParam)
         {
-            _nativeWindow.SendActivationSignal(lParam);
+            return;
         }
 
-        if (_settleDelayMs > 0)
+        _nativeWindow.SendActivationSignal(lParam);
+        if (_settleDelayMs <= 0)
+        {
+            return;
+        }
+
+        try
         {
             await Task.Delay(_settleDelayMs, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Асимметрия намеренная: на успешном пути заморозка — дело вызывающего (он держит
+            // сессию ввода и закроет её своим finally), а на неуспешном закрыть скобку некому.
+            // Вызов ActivateAsync у него стоит ПЕРЕД try — иначе в finally нечего было бы
+            // деактивировать, — так что бросок отсюда уносит управление мимо этого finally.
+            Refreeze();
+            throw;
         }
     }
 
@@ -119,11 +184,28 @@ public sealed partial class GameWindow : IGameWindow
             return;
         }
 
-        if (_deactivationDelayMs > 0)
+        try
         {
-            await Task.Delay(_deactivationDelayMs, cancellationToken).ConfigureAwait(false);
+            if (_deactivationDelayMs > 0)
+            {
+                await Task.Delay(_deactivationDelayMs, cancellationToken).ConfigureAwait(false);
+            }
         }
+        finally
+        {
+            // Отменённый слив — это потерянный ввод, неприятность; отменённая заморозка — это
+            // клиент, оставшийся рендерить в фоне до конца сеанса. Поэтому пауза отменяема, а
+            // заморозка после неё — нет.
+            Refreeze();
+        }
+    }
 
+    // Заморозка обратно — ОДНО место на все три пути (ввод и оба захвата). Правило «окно, с
+    // которым сейчас работает пользователь, не трогаем» иначе размножается копиями и расходится:
+    // разбудить уже активное окно безвредно, а вот усыпить его — значит вырвать у пользователя
+    // фокус посреди игры.
+    private void Refreeze()
+    {
         if (Win32NativeWindowSystem.GetForeground().Handle != Handle)
         {
             _nativeWindow.SendDeactivationSignal();
@@ -149,19 +231,29 @@ public sealed partial class GameWindow : IGameWindow
     // краткая блокировка вызывающего потока была незаметной.
     public byte[] CaptureScreenshot()
     {
-        if (_activationLParam is { } lParam)
+        if (_activationLParam is not { } lParam)
         {
-            _nativeWindow.SendActivationSignal(lParam);
-            Thread.Sleep(_settleDelayMs);
+            // Окно с простым вводом: будить нечего, а значит, и замораживать потом нечего.
+            return _nativeWindow.CapturePng();
         }
 
-        var png = _nativeWindow.CapturePng();
-        if (_activationLParam is not null && Win32NativeWindowSystem.GetForeground().Handle != Handle)
+        _nativeWindow.SendActivationSignal(lParam);
+        try
         {
-            _nativeWindow.SendDeactivationSignal();
-        }
+            if (_settleDelayMs > 0)
+            {
+                Thread.Sleep(_settleDelayMs);
+            }
 
-        return png;
+            return _nativeWindow.CapturePng();
+        }
+        finally
+        {
+            // CapturePng бросает на нулевой клиентской области и на отказе PrintWindow, а зовут
+            // этот метод в том числе одноразовые пути UI («Дамп захватов» проходит по всем
+            // клиентам разом) — без finally один свёрнутый клиент оставался бы разбуженным.
+            Refreeze();
+        }
     }
 
     public bool SetIconFromFile(string imagePath) => _nativeWindow.SetIconFromFile(imagePath);
@@ -253,22 +345,30 @@ public sealed partial class GameWindow : IGameWindow
     // сопоставлением и циклом опроса.
     private async Task<byte[]> CaptureFreshAsync(CancellationToken cancellationToken)
     {
-        if (_activationLParam is { } lParam)
+        if (_activationLParam is not { } lParam)
         {
-            _nativeWindow.SendActivationSignal(lParam);
+            // Окно с простым вводом: будить нечего, а значит, и замораживать потом нечего.
+            return _nativeWindow.CapturePng();
+        }
+
+        _nativeWindow.SendActivationSignal(lParam);
+        try
+        {
             if (_settleDelayMs > 0)
             {
                 await Task.Delay(_settleDelayMs, cancellationToken).ConfigureAwait(false);
             }
-        }
 
-        var png = _nativeWindow.CapturePng();
-        if (_activationLParam is not null && Win32NativeWindowSystem.GetForeground().Handle != Handle)
+            return _nativeWindow.CapturePng();
+        }
+        finally
         {
-            _nativeWindow.SendDeactivationSignal();
+            // Самый дорогой из трёх путей: тик зрения, и тиков этих в веере до десяти разом.
+            // Отмена приходит сюда прямо в паузу устаканивания («■ Стоп» или выключение демона),
+            // а CapturePng бросает сам по себе, — без finally оба случая оставляли бы клиента
+            // размороженным, причём чинить его было бы уже некому: обход отменён.
+            Refreeze();
         }
-
-        return png;
     }
 
     // Один проход сопоставления. `center` — центр лучшего совпадения в КЛИЕНТСКИХ координатах:

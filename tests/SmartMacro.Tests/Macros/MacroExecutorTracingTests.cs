@@ -331,4 +331,67 @@ public class MacroExecutorTracingTests
         await Assert.That(entered).IsEquivalentTo(new[] { "a", "b" });
         await Assert.That(observer.NodeIdsOf(Enter)).IsEquivalentTo(new[] { "a", "b" });
     }
+
+    // ---- учёт обхода переживает ЛЮБОЕ исключение -------------------------------------------
+
+    /// <summary>
+    /// Граф с ПУСТЫМ тегом — живой пример четвёртого исключения: <c>WindowRegistry.AddTag</c>
+    /// начинается с <c>ArgumentException.ThrowIfNullOrWhiteSpace</c>, а исполнитель ловит ровно три
+    /// исключения, и <see cref="ArgumentException"/> среди них нет.
+    ///
+    /// Панель заводит ноду «Добавить тег» именно с пустым тегом и своим <c>SaveAsync</c> такой
+    /// макрос не запишет — но правило живёт только у неё в view-model'и: общий
+    /// <c>MacroGraphValidator</c> пустого тега не проверяет вовсе, так что бандл, попавший в
+    /// <c>macros/</c> импортом или правкой руками, демон вооружит и запустит.
+    /// </summary>
+    private static MacroGraph EmptyTagGraph() => ExecutorHarness.Graph(
+        "пустой-тег",
+        Ids.Of("a"),
+        new AddTagNode { Id = Ids.Of("a"), DisplayName = "a", Tag = string.Empty });
+
+    [Test]
+    public async Task AnUnexpectedExceptionStillClosesTheWalk()
+    {
+        var harness = new ExecutorHarness();
+        var observer = new RecordingObserver();
+
+        // Исключение по-прежнему летит наружу: его ловит Orchestrator.RunAsync и пишет как БАГ.
+        // Превращать его в обычный «обрыв» значило бы стереть разницу между ошибкой автора графа и
+        // ошибкой в движке.
+        await Assert.That(async () => await harness.Executor.RunAsync(
+                EmptyTagGraph(),
+                harness.Context(ExecutorHarness.Window, observer: observer),
+                CancellationToken.None))
+            .Throws<ArgumentException>();
+
+        // А вот это — сам дефект: RunEventPublisher снимает запись о живом обходе только по
+        // WalkFinished, поэтому обход, потерянный на непойманном исключении, оставался «живым» до
+        // перезапуска демона. Каждая следующая подписка панели получала фантом, переключатель
+        // показывал его идущим, конца по нему не приходило никогда, а список рос с каждым сбоем.
+        await Assert.That(observer.OfKind(WalkStart)).Count().IsEqualTo(1);
+        await Assert.That(observer.OfKind(WalkEnd)).Count().IsEqualTo(1);
+        await Assert.That(observer.OutcomesOf(WalkEnd)).IsEquivalentTo(new[] { RunOutcomes.Aborted });
+        // Причина названа: обрыв без объяснения в полосе лога неотличим от «нода ничего не сделала».
+        await Assert.That(observer.OfKind(WalkEnd)[0].Detail ?? string.Empty).IsNotEmpty();
+    }
+
+    [Test]
+    public async Task AnUnexpectedExceptionAlsoDeregistersTheWalkWithTheDebugger()
+    {
+        var harness = new ExecutorHarness();
+        var observer = new RecordingObserver();
+        var debugger = new RecordingDebugger();
+
+        await Assert.That(async () => await harness.Executor.RunAsync(
+                EmptyTagGraph(),
+                harness.Context(ExecutorHarness.Window, observer: observer, debugger: debugger),
+                CancellationToken.None))
+            .Throws<ArgumentException>();
+
+        // Вторая половина той же бухгалтерии: сессия отладчика держит состояние по обходу и
+        // забывает его исключительно здесь. Обход, о конце которого не сказали, остался бы в её
+        // словарях навсегда — у демона, который живёт неделями.
+        await Assert.That(debugger.Finished).Count().IsEqualTo(1);
+        await Assert.That(debugger.Finished[0]).IsEqualTo(observer.Walks[0].WalkId);
+    }
 }

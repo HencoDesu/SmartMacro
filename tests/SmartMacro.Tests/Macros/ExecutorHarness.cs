@@ -348,3 +348,48 @@ internal sealed class RecordingObserver : IMacroRunObserver
         }
     }
 }
+
+/// <summary>
+/// Отладчик, который никого не тормозит, но записывает снятия обходов с учёта.
+///
+/// Существует ради одной проверки: <see cref="IMacroDebugger.WalkFinished"/> зовётся ровно один
+/// раз на обход и с ЛЮБОГО пути выхода из исполнителя. Настоящая <c>MacroDebugSession</c> для
+/// этого не подходит — её список живых обходов приватен, а именно «запись осталась навсегда» и
+/// есть симптом.
+///
+/// <see cref="IsActive"/> здесь <c>true</c>, но <see cref="Arm"/> всегда пропускает: затвор
+/// проверяют тесты D5, а тут важно только снятие с учёта.
+/// </summary>
+internal sealed class RecordingDebugger : IMacroDebugger
+{
+    private readonly Lock _lock = new();
+    private readonly List<Guid> _finished = [];
+
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>Обходы, о конце которых доложили, по порядку.</summary>
+    public IReadOnlyList<Guid> Finished
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return [.. _finished];
+            }
+        }
+    }
+
+    public MacroDebugGate? Arm(Guid walkId, string macroName, Guid? submacroId, Guid nodeId, string nodeName) => null;
+
+    public void Disarm(MacroDebugGate gate)
+    {
+    }
+
+    public void WalkFinished(Guid walkId)
+    {
+        lock (_lock)
+        {
+            _finished.Add(walkId);
+        }
+    }
+}
