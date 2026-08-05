@@ -357,11 +357,12 @@ public sealed class KeyBindingPicker : Button
         var caps = new List<KeycapItem>(5);
         if (CaptureModifiers)
         {
-            var mods = Modifiers;
-            if (mods.HasFlag(HotkeyModifiers.Control)) caps.Add(new KeycapItem("Ctrl", false, caps.Count > 0));
-            if (mods.HasFlag(HotkeyModifiers.Shift)) caps.Add(new KeycapItem("Shift", false, caps.Count > 0));
-            if (mods.HasFlag(HotkeyModifiers.Alt)) caps.Add(new KeycapItem("Alt", false, caps.Count > 0));
-            if (mods.HasFlag(HotkeyModifiers.Win)) caps.Add(new KeycapItem("Win", false, caps.Count > 0));
+            // Имена и порядок — из HotkeyNames: их же печатает бейдж строки библиотеки, и две
+            // записи одного аккорда в одном окне уже случались.
+            foreach (var name in HotkeyNames.Modifiers(Modifiers))
+            {
+                caps.Add(new KeycapItem(name, false, caps.Count > 0));
+            }
         }
 
         var main = CaptureModifiers && MouseButton != MouseButton.None

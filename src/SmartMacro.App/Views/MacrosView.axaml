@@ -1322,24 +1322,51 @@
                                                             <StackPanel Grid.Column="0"
                                                                         VerticalAlignment="Center"
                                                                         Spacing="1">
-                                                                <StackPanel Orientation="Horizontal"
-                                                                            Spacing="7"
-                                                                            VerticalAlignment="Center">
+                                                                <!-- СЕТКА, а не горизонтальный StackPanel, и это не
+                                                                     вкусовщина. StackPanel меряет детей неограниченной
+                                                                     шириной, поэтому имя с бейджем и ▲ спокойно
+                                                                     выезжали за колонку и печатались ПОД кнопками
+                                                                     ▸ ■ ⤓ × (библиотека — 228px). Найдено обходом
+                                                                     раскладки. Звёздочку получает ИМЯ: у него
+                                                                     единственного здесь есть TextTrimming, то есть оно и
+                                                                     есть та часть, которой разрешено укоротиться, — а
+                                                                     аккорд соперничать за ширину перестал, см. ниже. -->
+                                                                <Grid ColumnDefinitions="Auto,*,Auto"
+                                                                      VerticalAlignment="Center">
                                                                     <!-- Бандл не читается. Строка ОСТАЁТСЯ в списке:
                                                                          файл существует, и пользователь обязан это
                                                                          видеть — иначе единственный способ узнать о
                                                                          нём — открыть папку проводником. -->
-                                                                    <TextBlock FontSize="10"
+                                                                    <TextBlock Grid.Column="0"
+                                                                               FontSize="10"
+                                                                               Margin="0,0,7,0"
                                                                                VerticalAlignment="Center"
                                                                                Foreground="{DynamicResource NocturneDangerBrush}"
                                                                                IsVisible="{Binding IsBroken}"
                                                                                ToolTip.Tip="{Binding Problem}"
                                                                                Text="!" />
-                                                                    <TextBlock FontSize="11.5"
+                                                                    <TextBlock Grid.Column="1"
+                                                                               FontSize="11.5"
                                                                                VerticalAlignment="Center"
                                                                                TextTrimming="CharacterEllipsis"
                                                                                Foreground="{Binding IsCurrent, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneTextBrush|NocturneTextSecondaryBrush}"
                                                                                Text="{Binding Name}" />
+                                                                </Grid>
+                                                                <!-- ⚠️ Аккорд ВТОРОЙ СТРОКОЙ, и это не оформление.
+                                                                     Библиотеке 228px, а имя и аккорд на одной строке в
+                                                                     них не помещаются НИКОГДА — проверено запуском обоих
+                                                                     разменов: отдай звёздочку имени, и «Ctrl+Shift+Alt+F12»
+                                                                     съедает строку целиком (имя получает 0px и пропадает
+                                                                     насовсем); ограничь бейдж, и имя вырождается в «p…»,
+                                                                     по которому pw-immunity от pw-identify не отличить.
+                                                                     Обрезка просто переезжала с одного на другое, потому
+                                                                     что места нет в принципе. Вторая строка убирает саму
+                                                                     конкуренцию, и она у строки уже была — под описание
+                                                                     нечитаемого бандла. Имя первое, потому что оно и есть
+                                                                     идентичность макроса (оно же имя файла). -->
+                                                                <StackPanel Orientation="Horizontal"
+                                                                            Spacing="6"
+                                                                            HorizontalAlignment="Left">
                                                                     <Border Padding="5,1"
                                                                             CornerRadius="3"
                                                                             VerticalAlignment="Center"
@@ -1357,7 +1384,9 @@
                                                                          панель считает сама, тем же валидатором).
                                                                          Показано на СТРОКЕ, потому что это единственное
                                                                          место, где такое можно заметить, не открывая
-                                                                         макрос. -->
+                                                                         макрос, — и РЯДОМ С АККОРДОМ, потому что речь о
+                                                                         нём: на строке имени он был выровнен по имени, а
+                                                                         сообщает про то, что этажом ниже. -->
                                                                     <TextBlock FontSize="9"
                                                                                VerticalAlignment="Center"
                                                                                Foreground="{DynamicResource NocturneDangerBrush}"

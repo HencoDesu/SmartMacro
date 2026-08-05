@@ -29,6 +29,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Обход интерфейса (tests/Ui): настоящее окно панели без экрана. Платформа собирается с
+         UseHeadlessDrawing=false плюс UseSkia, то есть кадр рисуется по-настоящему — иначе
+         замеры чернил глифов были бы невозможны. Официального переходника к TUnit у пакета нет
+         (есть к NUnit и xUnit), поэтому вход в поток UI — свой помощник Ui.RunAsync; довод
+         записан у него. -->
+    <PackageReference Include="Avalonia.Headless" Version="11.2.3" />
     <PackageReference Include="FakeItEasy" Version="9.0.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.8" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.8" />

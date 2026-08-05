@@ -16,7 +16,7 @@ The refactoring plan that got us here was **deleted** once it was done — not o
 
 ⚠️ **§13.1 is gone, and that is the point.** It was the `.hsm` decision written up as something not yet built, and it survived three waves as a to-do. With F4 the format is finished, so its contents moved into the sections that describe what exists — the bundle layout and the library in §5.7, templates inside the macro in §8, submacros in §5.1, the panel's authorship in §5.7 and §6.1 — and the reasoning became rows in §14. Do not recreate a "planned format" section.
 
-Gate: `dotnet run --project tests/SmartMacro.Tests` — **769 tests**, and they are expected green before anything is committed.
+Gate: `dotnet run --project tests/SmartMacro.Tests` — **788 tests**, and they are expected green before anything is committed.
 
 The sections below are the constraints that are load-bearing — the things that look arbitrary, are not, and will be "simplified" back into bugs by anyone who does not know why they are there. Wave tags (D4, D3b, …) survive only because commit messages reference them.
 
@@ -233,6 +233,27 @@ stale count after extracting, and stole width from the status line, which then t
 `SubmacroChoices` was only rebuilt in `RebuildLibrary`, which runs *before* the bundle is loaded.
 Each now has a test, but note what the tests could not have found first: three of the four were
 about a notification or a pixel, not a value.
+
+### Headless layout sweeps (`tests/SmartMacro.Tests/Ui/`)
+
+Avalonia.Headless with **real Skia rendering** (`UseHeadlessDrawing = false` + `CaptureRenderedFrame()`), taking back the part of "run it and look" that a machine can measure. Eight rules, run over all five modes at 1520×840 and 1920×1040, with the **real view-models against `FakeIpcClient`** and a real `macros/` folder — not stub DataContexts, because the empty state only ever proves the empty state.
+
+⚠️ **A sweep is only as good as its scene, and this was learned the expensive way.** The rule «a name allowed to shorten must still fit one «…»» was written, correct, and silent — because `UiScene` had no long chord in it. On the live panel `Ctrl+Shift+Alt+F12` ate the library row whole and the macro's name vanished *entirely*. Adding one macro to the scene turns the sweep red at both sizes («зазор −24 px между «Ctrl+Shift+Alt+F12» и «▸»»). **When you add a rule, add the content that violates it** — a green rule over content that cannot break it is decoration.
+
+Four mechanics that are not obvious and will be "simplified" back into false greens:
+
+- **Ink rects, not control bounds.** A `TextBlock` is stretched to its whole cell by default, so a bounds-based overlap rule flags every pair of adjacent grid columns. Rules intersect ink (alignment + natural size) with ancestor clips — what scrolled out of view collides with nothing.
+- **`DesiredSize` is clamped to the constraint by `MeasureCore`**, so "narrower than it wants" is unmeasurable from a live control. Every width rule measures an off-tree probe `TextBlock`.
+- **Skia does subpixel AA by default**, which turns a grey glyph into `#1E4285` pixels and breaks the Foreground rule outright. The render tests force `TextRenderingMode.Antialias`.
+- **`VirtualizingStackPanel` recycles containers** across a `DataContext` round-trip, so the missed-`PropertyChanged` detector compares multisets per path, not indexed positions.
+
+**Font resolution is the load-bearing precondition.** `NocturneFontFamily` resolves to Inter (`DesignEmHeight` 2816 — Segoe UI and Cascadia Mono are 2048), same file and same shaper as the panel; a pinned test says so. If that ever stops holding, every width and ink measurement is measuring the wrong thing and the whole directory becomes decoration that drifts silently.
+
+**The TUnit adapter is `Ui.RunAsync`, deliberately not a `TestExecutorAttribute`.** The attribute would put TUnit's own await machinery on the Avalonia dispatcher, and that failure mode is a hang, not a message.
+
+**Reported, not enforced: the panel does not fit its own documented minimum.** At 1280×760 the editor toolbar overflows by 100 px and the status line collapses to zero; at 1100×620 the canvas legend collides with the zoom chip and settings fields overlap by 55–173 px. The remedy is a decision about what the toolbar sacrifices, so it is written into `UiLayoutTests`' class doc rather than fixed — adding an `[Arguments]` line enforces it the day that is decided. **Also not covered: any scaling but 100%** — headless always renders at `RenderScaling = 1`, and the author's screen is 3840×2160.
+
+Glyph substitution is the one place headless is weaker than the real thing: `⏸` is caught, `▶`/`⚠` are not, because both live in Inter and the swap to Segoe UI Emoji happens below Avalonia's font chain in DirectWrite. **The code-point table in `Sources/AxamlGlyphTests` stays the primary guard for that**; the render rule is a second net, not a replacement.
 
 ### The log feed (Лог)
 
@@ -502,6 +523,6 @@ The panel writes `logs/smartmacro-ui-*.log` into the root as well, at an absolut
 - "Dump captures" in the «Окна» mode header sends `DumpCaptures` (with a generous timeout — it screenshots every client) and opens the folder the daemon replies with: per-agent `debug/*-full.png` and `*-class-bin.png` for tuning vision regions.
 - View-models take `IIpcClient` + `IUiDispatcher` and nothing Avalonia-shaped, so every one of them is exercised headlessly against `FakeIpcClient` (`tests/SmartMacro.Tests/Ipc/`), whose canned answers go through the real `IpcJson` round trip.
 - **Comments and xmldoc are in Russian** — the whole tree was translated once, deliberately as the last step of the refactor so the next wave would not re-import English. New code follows: comments, xmldoc, `[LoggerMessage]` templates, validator and abort messages, everything a human reads. **Not** translated: identifiers, test names, and technical names inside a Russian sentence (`SendMessage`, `WM_ACTIVATEAPP`, `hwnd`, `single-flight`).
-- **The gate is build + tests, and it is not enough.** Around two dozen defects in this codebase were invisible to both and found only by running the app and looking: a focus ring clipped to nothing, glyphs rendering as colour emoji and ignoring `Foreground`, a window that silently unmapped itself, a panel that would not start at all, text with its descenders sheared off. If a change touches the UI, run it and look at it — and if you could not, say so instead of implying you did.
+- **The gate is build + tests, and it is not enough** — even now that `tests/SmartMacro.Tests/Ui/` takes back the measurable half (see «Headless layout sweeps» below). Around two dozen defects in this codebase were invisible to build and tests and found only by running the app and looking: a focus ring clipped to nothing, glyphs rendering as colour emoji and ignoring `Foreground`, a window that silently unmapped itself, a panel that would not start at all, text with its descenders sheared off. If a change touches the UI, run it and look at it — and if you could not, say so instead of implying you did. **Both exes are `requireAdministrator`, but the manifest binds to the apphost, so `dotnet SmartMacro.Daemon.dll` / `dotnet SmartMacro.dll` from an unelevated shell runs them both** (the panel's assembly is `SmartMacro.dll`, not `SmartMacro.App.dll` — its `AssemblyName` is `SmartMacro`). Screenshot with `PrintWindow`, click with `mouse_event`; "I could not start it" is almost never true.
 
 `docs/spec.md` (Russian) describes the system as built and is the first place to look; §14 is its decision history and the reason not to re-propose what was already rejected.

@@ -174,23 +174,25 @@ public sealed class MacroListItemViewModel : ObservableObject
         0 => null,
         _ => macro.Triggers[0] switch
         {
-            HotkeyTrigger { IsMouse: true } hotkey => Chord(hotkey.Modifiers.ToString(), hotkey.MouseButton.ToString()),
-            HotkeyTrigger hotkey => Chord(hotkey.Modifiers.ToString(), hotkey.Key.ToString()),
+            HotkeyTrigger { IsMouse: true } hotkey => HotkeyNames.Chord(hotkey.Modifiers, hotkey.MouseButton.ToString()),
+            HotkeyTrigger hotkey => HotkeyNames.Chord(hotkey.Modifiers, hotkey.Key.ToString()),
             ProcessAppearedTrigger => "процесс",
             var other => other.GetType().Name,
         },
     };
 
+    // ⚠️ Не Modifiers.ToString(): у флагового перечисления он даёт «Alt, Control+F9» — с
+    // запятой и словом, которого Windows не пишет, — тогда как ловушка клавиш в двух сантиметрах
+    // отсюда рисует тот же аккорд кейкапами «Ctrl Shift F1». Найдено обходом раскладки: длинная
+    // запись переполняла строку библиотеки и заезжала под кнопки ▸ ■ ⤓ ×. Правило имён теперь
+    // одно, в HotkeyNames.
     private static string DescribeTrigger(MacroTrigger trigger) => trigger switch
     {
-        HotkeyTrigger { IsMouse: true } hotkey => Chord(hotkey.Modifiers.ToString(), hotkey.MouseButton.ToString()),
-        HotkeyTrigger hotkey => Chord(hotkey.Modifiers.ToString(), hotkey.Key.ToString()),
+        HotkeyTrigger { IsMouse: true } hotkey => HotkeyNames.Chord(hotkey.Modifiers, hotkey.MouseButton.ToString()),
+        HotkeyTrigger hotkey => HotkeyNames.Chord(hotkey.Modifiers, hotkey.Key.ToString()),
         ProcessAppearedTrigger process => $"процесс {process.ProcessName}",
         _ => trigger.GetType().Name,
     };
-
-    private static string Chord(string modifiers, string key) =>
-        string.Equals(modifiers, "None", StringComparison.Ordinal) ? key : $"{modifiers}+{key}";
 }
 
 /// <summary>
