@@ -36,6 +36,9 @@
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <!-- Иконка самого exe: вшивается в apphost, отдельным файлом в корне поставки НЕ становится
+         (что важно — там ровно один файл). Тот же .ico, что у демона; см. ItemGroup ниже. -->
+    <ApplicationIcon>..\..\assets\logo\icon.ico</ApplicationIcon>
 
     <!-- ОДИН ФАЙЛ В КОРНЕ ПОСТАВКИ. Свойство влияет только на publish, сборка в bin\ остаётся
          обычной россыпью, так что дереву разработки это ничего не стоит.
@@ -110,9 +113,16 @@
   <ItemGroup>
     <!-- Единственный актив, оставшийся в этом проекте: иконка окна, встроенная и загружаемая
          через avares://SmartMacro/Assets/icon.png. Шаблоны vision, иконки панели задач по
-         тегам, .ico для трея и языковой пакет Tesseract уехали в SmartMacro.Daemon на стадии
-         3 — их читает в рантайме код, который здесь больше не работает. -->
-    <AvaloniaResource Include="Assets\icon.png" />
+         тегам и языковой пакет Tesseract уехали в SmartMacro.Daemon на стадии 3 — их читает в
+         рантайме код, который здесь больше не работает.
+
+         ФАЙЛ ЛЕЖИТ НЕ ЗДЕСЬ, а в assets/logo/ в корне репозитория, и приезжает по Link. Причина
+         та же, по которой один .ico на оба исполняемых: знак один, а мест, где он нужен, три
+         (окно панели, иконка SmartMacro.exe, иконка демона с треем). Копия в каждом проекте —
+         это копии, обязанные совпадать, а они не совпадают ровно с того дня, когда знак
+         перерисуют и обновят не все. Растр собирает tools/IconForge из SVG; сами SVG отданы
+         Claude Design дословно. -->
+    <AvaloniaResource Include="..\..\assets\logo\icon-256.png" Link="Assets\icon.png" />
   </ItemGroup>
 
 </Project>

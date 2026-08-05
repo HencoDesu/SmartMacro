@@ -12,6 +12,9 @@
     <RootNamespace>SmartMacro.Daemon</RootNamespace>
     <AssemblyName>SmartMacro.Daemon</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Иконка exe демона. Тот же файл, что вшивает панель и что копируется в Assets\icon.ico
+         для трея, — знак один, и трёх его копий в дереве быть не должно. -->
+    <ApplicationIcon>..\..\assets\logo\icon.ico</ApplicationIcon>
     <!-- Инструмент только под Windows и только x64 (инъекция сообщений Win32,
          requireAdministrator, PrintWindow), так что везти каждый RID, который пакет решил
          положить, незачем. Без этого один только OpenCvSharp4.runtime.win клал
@@ -74,8 +77,16 @@
          Рядом с ними лежал tessdata\; стадия 4B его удалила. Читал его единственный
          TesseractCoordinateReader, которого демон не поднимает, — языковой пакет теперь живёт
          только при tools/VisionSampleRunner. -->
-    <!-- Иконка трея, читается с диска в Win32TrayIcon (LoadImage + LR_LOADFROMFILE). -->
-    <None Include="Assets\icon.ico">
+    <!-- Иконка трея, читается с диска в Win32TrayIcon (LoadImage + LR_LOADFROMFILE).
+
+         Источник — assets/logo/ в корне репозитория, сюда приезжает по Link: путь в выхлопе
+         (Assets\icon.ico) обязан остаться прежним, потому что его знает TrayController, а вот
+         второй копии файла в дереве быть не должно. Растр собирает tools/IconForge из SVG.
+
+         ⚠️ Кадры до 256 px внутри .ico — классический DIB, не PNG, и это ровно ради этой
+         строки: LoadImage с LR_LOADFROMFILE понимает PNG-кадры не на всех сборках Windows, а
+         отказ выглядел бы как пустое место в трее, без единой строки в журнале. -->
+    <None Include="..\..\assets\logo\icon.ico" Link="Assets\icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- Иконки панели задач по тегам. Файл называет нода SetIcon (обычно

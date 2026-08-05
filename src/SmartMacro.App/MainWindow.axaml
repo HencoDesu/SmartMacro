@@ -134,9 +134,26 @@
                 DoubleTapped="OnTitleBarDoubleTapped">
             <Grid ColumnDefinitions="Auto,*,Auto" Margin="10,0,0,0">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Border Width="9" Height="9"
-                            CornerRadius="2"
-                            Background="{DynamicResource NocturneAccent700Brush}" />
+                    <!-- Знак приложения, вариант 1a «Цикл»: дуга повтора и треугольник запуска.
+                         Тот же контур, что у иконки в трее и у обоих exe; ниже 32 px хвост
+                         стрелки убран и штрих поднят до 3 — на этом размере три отдельных
+                         штриха в верхнем углу сливаются в пятно.
+
+                         ВЕКТОРОМ, а не тем же PNG, что уходит в WindowIcon. Заголовок — часть
+                         темы: так знак берёт её кисти (сменится акцент — сменится и он) и
+                         остаётся резким на любом масштабе экрана, тогда как растр на 18 px
+                         пришлось бы или мылить, или заводить отдельным кадром.
+                         Пути — дословно из assets/logo/icon-small.svg. -->
+                    <Viewbox Width="18" Height="18" VerticalAlignment="Center">
+                        <Canvas Width="32" Height="32">
+                            <Path Data="M16 4.6 A11.4 11.4 0 1 1 5.6 20.2"
+                                  Stroke="{DynamicResource NocturneNeutral400Brush}"
+                                  StrokeThickness="3"
+                                  StrokeLineCap="Round" />
+                            <Path Data="M13.4 10.8 L22.6 16 L13.4 21.2 Z"
+                                  Fill="{DynamicResource NocturneAccentBrush}" />
+                        </Canvas>
+                    </Viewbox>
                     <TextBlock Text="SmartMacro"
                                FontSize="11.5"
                                FontWeight="Medium"

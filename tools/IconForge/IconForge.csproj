@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Собирает растровые иконки из assets/logo/*.svg. Запускается руками, когда меняется знак:
+       dotnet run с ключом project на эту папку. (Ключ описан словами: двойной дефис внутри
+       XML-комментария запрещён.)
+
+       Инструмент, а не шаг сборки, и это намеренно. Иконки меняются раз в год, а платить
+       рендерингом Skia за каждую сборку решения (и тащить SkiaSharp в граф зависимостей демона,
+       которому он не нужен) — цена не за что. Выхлоп лежит под git рядом с исходниками, так что
+       собранное дерево от наличия этого проекта не зависит вовсе; он даже не в SmartMacro.slnx.
+
+       Skia, а не System.Drawing: у неё есть ParseSvgPathData, то есть путь из макета попадает в
+       растр ДОСЛОВНО. Пересчитывать дугу «A11.4 11.4 0 1 1» в углы для GDI+ значило бы завести
+       вторую копию геометрии, которая молча разойдётся с SVG при первой же правке знака. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>SmartMacro.IconForge</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
+  </ItemGroup>
+
+</Project>
