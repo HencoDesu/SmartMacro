@@ -2444,9 +2444,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         var byMacro = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var failure in _hotkeyFailures)
         {
-            var chord = failure.Modifiers == HotkeyModifiers.None
-                ? failure.Key.ToString()
-                : $"{failure.Modifiers}+{failure.Key}";
+            // Через HotkeyNames, а не интерполяцией: у флагового перечисления ToString() даёт
+            // «Control, Shift+F1» — с запятой и словом, которого Windows не пишет. Ровно эта
+            // подсказка объясняет пользователю, почему хоткей не работает, и печатать в ней
+            // аккорд иначе, чем его печатает бейдж на той же строке, — значит объяснять поломку
+            // записью, которой он нигде больше не видел.
+            var chord = HotkeyNames.Chord(failure.Modifiers, failure.Key.ToString());
             byMacro[failure.MacroName] = $"{chord} не зарегистрирован — сочетание занято другим приложением";
         }
 
@@ -3462,7 +3465,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             var parts = new List<string> { MacroGraphJson.Serialize(BuildParentGraph()) };
             parts.AddRange(BuildSubmacros().Select(submacro =>
                 submacro.Id.ToString("D") + MacroGraphJson.Serialize(submacro.Graph)));
-            return string.Join(" ", parts);
+            return string.Join("\0", parts);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {

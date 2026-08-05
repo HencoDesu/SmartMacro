@@ -4,7 +4,6 @@
   </Folder>
   <Folder Name="/docs/">
     <File Path="docs/spec.md" />
-    <File Path="docs/refactoring-plan-split.md" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/SmartMacro.App/SmartMacro.App.csproj" />
