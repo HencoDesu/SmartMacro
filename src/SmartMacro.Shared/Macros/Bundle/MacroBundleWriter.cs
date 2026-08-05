@@ -79,6 +79,30 @@ public static class MacroBundleWriter
                 stream.Flush(flushToDisk: true);
             }
 
+            PlaceAtomically(temp, path);
+        }
+        catch
+        {
+            // Недописанный временный файл не оставляем: под фильтр наблюдателя он не попадает, но
+            // мусор рядом с макросами пользователь увидит и будет гадать, что это.
+            TryDelete(temp);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Ставит готовый временный файл на место боевого — вторая половина атомарной записи.
+    ///
+    /// Вынесено из <see cref="Write(string,MacroBundleContent)"/> ради ВТОРОГО вызывающего:
+    /// импорт кладёт в библиотеку чужой <c>.hsm</c> копированием, и «заменить существующий файл»
+    /// у него ровно та же задача с теми же граблями (<c>ReplaceFile</c>, а не <c>MoveFileEx</c>;
+    /// см. доводы в шапке класса). Два экземпляра этой логики разъехались бы молча, а отказ
+    /// проявлялся бы изредка и невоспроизводимо — только когда бандл в этот момент читают.
+    /// </summary>
+    internal static void PlaceAtomically(string temp, string path)
+    {
+        try
+        {
             if (File.Exists(path))
             {
                 // ignoreMetadataErrors: замена не должна падать из-за того, что не удалось
@@ -97,13 +121,6 @@ public static class MacroBundleWriter
             // Гонка: между проверкой и заменой файл успели удалить. Тогда это просто первая
             // запись, и переименования достаточно.
             File.Move(temp, path, overwrite: true);
-        }
-        catch
-        {
-            // Недописанный временный файл не оставляем: под фильтр наблюдателя он не попадает, но
-            // мусор рядом с макросами пользователь увидит и будет гадать, что это.
-            TryDelete(temp);
-            throw;
         }
     }
 
@@ -138,24 +155,34 @@ public static class MacroBundleWriter
         var metadata = content.Metadata with { FormatVersion = MacroBundleFormat.CurrentVersion };
         var stamp = ZipStamp(metadata.Modified);
 
-        WriteText(archive, MacroBundleFormat.MetadataEntry, MacroBundleMetadataJson.Serialize(metadata), stamp);
-        WriteText(archive, MacroBundleFormat.GraphEntry, MacroGraphJson.Serialize(content.Graph), stamp);
+        // Одно множество занятых имён на ВЕСЬ архив, а не по одному на папку: с появлением
+        // Extras пути приезжают из четырёх источников, и столкнуться они могут между собой, а не
+        // только внутри своей папки. NTFS регистр не различает, так что «Лучник.png» и
+        // «лучник.png» в одном бандле — это не два файла, а бандл, который у получателя
+        // распакуется в один.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        WriteFolder(archive, MacroBundleFormat.TemplateFolder, content.Templates, stamp);
-        WriteFolder(archive, MacroBundleFormat.SubmacroFolder, content.Submacros, stamp);
+        WriteText(archive, MacroBundleFormat.MetadataEntry, MacroBundleMetadataJson.Serialize(metadata), stamp, seen);
+        WriteText(archive, MacroBundleFormat.GraphEntry, MacroGraphJson.Serialize(content.Graph), stamp, seen);
+
+        WriteFolder(archive, MacroBundleFormat.TemplateFolder, content.Templates, stamp, seen);
+        WriteFolder(archive, MacroBundleFormat.SubmacroFolder, content.Submacros, stamp, seen);
+        // Неопознанное — последним и с путями ОТ КОРНЯ: это ровно то, что писатель не понимает,
+        // и трогать его нельзя ничем, кроме переноса байт в байт (см. MacroBundleContent.Extras).
+        WriteFolder(archive, folder: string.Empty, content.Extras, stamp, seen);
     }
 
     private static void WriteFolder(
         ZipArchive archive,
         string folder,
         IReadOnlyList<MacroBundleFile> files,
-        DateTimeOffset stamp)
+        DateTimeOffset stamp,
+        HashSet<string> seen)
     {
         // Порядок записей — по возрастанию пути, а не в порядке, в каком их дал вызывающий.
         // Тот же довод, что и у отказа от сжатия: два сохранения одного и того же макроса
         // обязаны давать одинаковый файл, иначе git нечего дельтить, а diff показывает
         // перестановку там, где ничего не менялось.
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var ordered = files
             .Select(file => (File: file, Path: MacroBundleFormat.NormalizeEntryPath(file.Path)))
             .OrderBy(entry => entry.Path, StringComparer.Ordinal);
@@ -169,22 +196,27 @@ public static class MacroBundleWriter
                     nameof(files));
             }
 
-            // NTFS регистр не различает, так что «Лучник.png» и «лучник.png» в одном бандле —
-            // это не два шаблона, а бандл, который у получателя распакуется в один файл.
-            if (!seen.Add(relativePath))
+            var entryName = folder + relativePath;
+            if (!seen.Add(entryName))
             {
-                throw new ArgumentException($"Путь «{relativePath}» встречается в бандле дважды.", nameof(files));
+                throw new ArgumentException($"Путь «{entryName}» встречается в бандле дважды.", nameof(files));
             }
 
-            var entry = archive.CreateEntry(folder + relativePath, CompressionLevel.NoCompression);
+            var entry = archive.CreateEntry(entryName, CompressionLevel.NoCompression);
             entry.LastWriteTime = stamp;
             using var target = entry.Open();
             target.Write(file.Bytes);
         }
     }
 
-    private static void WriteText(ZipArchive archive, string entryName, string text, DateTimeOffset stamp)
+    private static void WriteText(
+        ZipArchive archive,
+        string entryName,
+        string text,
+        DateTimeOffset stamp,
+        HashSet<string> seen)
     {
+        seen.Add(entryName);
         var entry = archive.CreateEntry(entryName, CompressionLevel.NoCompression);
         entry.LastWriteTime = stamp;
         using var target = entry.Open();

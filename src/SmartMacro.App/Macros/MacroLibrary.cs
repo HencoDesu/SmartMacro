@@ -139,12 +139,26 @@ public sealed class MacroLibrary : IDisposable
     /// передаёт список ВСЕГДА: он держит их все, и только он знает, что среди них удалили.
     /// </param>
     /// <param name="renamedFrom">Прежнее имя, если это переименование, — иначе шаблоны не переедут.</param>
+    /// <param name="target">
+    /// Чей файл лежит по целевому имени. Умолчание — «наш же»; редактор, у которого открыт ДРУГОЙ
+    /// макрос, обязан сказать иначе, иначе запись склеит два макроса в один (см.
+    /// <see cref="MacroSaveTarget"/>).
+    /// </param>
     /// <exception cref="ArgumentException">Имя графа не годится в качестве имени файла.</exception>
-    public void Save(MacroGraph graph, IReadOnlyList<MacroSubmacro>? submacros = null, string? renamedFrom = null)
+    /// <exception cref="MacroNameTakenException">Имя занято чужим макросом, заменять не разрешали.</exception>
+    /// <exception cref="MacroBundleUnreadableException">Свой бандл есть, но не читается.</exception>
+    public void Save(
+        MacroGraph graph,
+        IReadOnlyList<MacroSubmacro>? submacros = null,
+        string? renamedFrom = null,
+        MacroSaveTarget target = MacroSaveTarget.Own)
     {
-        MacroBundleFolder.Save(FolderPath, graph, submacros, renamedFrom);
+        MacroBundleFolder.Save(FolderPath, graph, submacros, renamedFrom, target);
         RaiseReload();
     }
+
+    /// <summary>Свободное имя рядом с занятым: <c>{имя}-2</c>, <c>{имя}-3</c>, …</summary>
+    public string FreeName(string name) => MacroBundleFolder.FreeName(FolderPath, name);
 
     /// <summary>Удаляет бандл макроса. <c>false</c> — такого файла нет (это не ошибка).</summary>
     public bool Delete(string name)
@@ -161,10 +175,14 @@ public sealed class MacroLibrary : IDisposable
     /// <summary>
     /// Кладёт чужой <c>.hsm</c> в библиотеку и отдаёт имя, под которым он лёг.
     /// </summary>
+    /// <param name="sourcePath">Путь к импортируемому файлу.</param>
+    /// <param name="targetName">Имя, под которым положить, либо <c>null</c> — под своим.</param>
+    /// <param name="replace">Заменить существующий макрос с таким именем. Только по согласию человека.</param>
     /// <exception cref="ArgumentException">Файл не похож на бандл либо его имя не годится для NTFS.</exception>
-    public string Import(string sourcePath)
+    /// <exception cref="MacroNameTakenException">Имя занято, а заменять не разрешали.</exception>
+    public string Import(string sourcePath, string? targetName = null, bool replace = false)
     {
-        var name = MacroBundleFolder.Import(FolderPath, sourcePath);
+        var name = MacroBundleFolder.Import(FolderPath, sourcePath, targetName, replace);
         RaiseReload();
         return name;
     }

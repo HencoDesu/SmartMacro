@@ -35,6 +35,7 @@ internal sealed class AppServices : IAsyncDisposable
         Library = new MacroLibrary(root);
         MacroLauncher = new IpcMacroLauncher(client);
         HotkeySuspension = new IpcHotkeySuspension(client);
+        NameConflicts = new DialogMacroNameConflictPrompt();
     }
 
     /// <summary>Папка <c>macros/</c>: панель — её единственный автор, демон только читает (F3).</summary>
@@ -51,6 +52,13 @@ internal sealed class AppServices : IAsyncDisposable
 
     /// <summary>Приостановка и возобновление глобальных хоткеев демона вокруг ловушки сочетания.</summary>
     public IHotkeySuspension HotkeySuspension { get; }
+
+    /// <summary>
+    /// Вопрос «имя занято» — единственное модальное окно панели. Здесь он потому же, почему здесь
+    /// две соседки выше: редактор обязан оставаться проверяемым headless, а вопрос человеку —
+    /// это шов, а не деталь view-model.
+    /// </summary>
+    public IMacroNameConflictPrompt NameConflicts { get; }
 
     /// <summary>
     /// Собирает оболочку целиком — рейку режимов и обе режимные view-models. Намеренно фабрика, а
@@ -78,7 +86,7 @@ internal sealed class AppServices : IAsyncDisposable
     /// отдельной фабрики у них здесь больше нет.
     /// </summary>
     public MacroEditorViewModel CreateMacroEditorViewModel() =>
-        new(Client, Library, MacroLauncher, HotkeySuspension, Dispatcher);
+        new(Client, Library, MacroLauncher, HotkeySuspension, Dispatcher, NameConflicts);
 
     /// <summary>
     /// Собирает view-model ленты журнала, стоящую за режимом «Лог». Своего пути к файлам она,

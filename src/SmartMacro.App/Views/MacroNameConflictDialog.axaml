@@ -1,0 +1,109 @@
+<!--
+  Вопрос «имя занято» — единственное модальное окно в панели.
+
+  Оно появилось не потому, что диалогов не хватало, а потому, что решение здесь принимает
+  человек: и «заменить», и «взять свободное имя» — законные исходы, и цена ошибки у первого
+  такая, что выбирать за пользователя нельзя (шаблоны чужого макроса без живого клиента игры не
+  восстановить). До этого окна сохранение под занятым именем молча склеивало два макроса в один,
+  а импорт так же молча приписывал суффикс.
+
+  Скромно намеренно: это не заготовка системы диалогов. Своя строка заголовка в 30px — по той же
+  причине, что и у главного окна (штатный заголовок Windows рисуется светлым и потемнеть не
+  может), поэтому SystemDecorations="None" плюс перетаскивание и крестик руками. Скруглений нет:
+  у окна с отключёнными украшениями углы всё равно квадратные, и радиус на внутренней рамке дал
+  бы четыре светлых уголка.
+
+  Умолчание — ОТМЕНА, и это записано трижды: IsCancel (Esc), IsDefault (Enter) и фокус при
+  открытии. Закрытие крестиком и системой — тоже отмена, её ставит код рядом.
+
+  Цвета и отступы — только токены Themes/Tokens.axaml.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:services="using:SmartMacro.App.Services"
+        x:Class="SmartMacro.App.Views.MacroNameConflictDialog"
+        x:DataType="services:MacroNameConflict"
+        Width="440"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource NocturneSurfaceOverlayBrush}"
+        Title="Имя занято">
+
+    <Border BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+            BorderThickness="1">
+        <Grid RowDefinitions="30,*">
+
+            <Border Grid.Row="0"
+                    Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                    BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                    BorderThickness="0,0,0,1"
+                    PointerPressed="OnTitleBarPointerPressed">
+                <Grid ColumnDefinitions="*,Auto" Margin="11.2,0,0,0">
+                    <TextBlock Grid.Column="0"
+                               Text="Имя занято"
+                               FontSize="11.5"
+                               FontWeight="Medium"
+                               Foreground="{DynamicResource NocturneNeutral300Brush}"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="1"
+                            Classes="ghost"
+                            Content="✕"
+                            Width="38"
+                            Height="30"
+                            MinWidth="0"
+                            Padding="0"
+                            CornerRadius="0"
+                            ToolTip.Tip="Отмена"
+                            Click="OnCancelClicked" />
+                </Grid>
+            </Border>
+
+            <StackPanel Grid.Row="1" Margin="16.8" Spacing="8.4">
+                <TextBlock Text="{Binding Heading}"
+                           FontSize="{DynamicResource NocturneFontSizeHeading}"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource NocturneTextBrush}" />
+                <TextBlock Text="{Binding Action}"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource NocturneTextMutedBrush}" />
+
+                <!-- Цена замены. Тревожная плашка, а не строка в общем потоке: это единственное,
+                     ради чего окно вообще существует, и прочитать её должны раньше кнопок. -->
+                <Border Background="{DynamicResource NocturneDangerSurfaceBrush}"
+                        BorderBrush="{DynamicResource NocturneDangerBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{DynamicResource NocturneRadiusSm}"
+                        Padding="11.2,8.4">
+                    <TextBlock Text="{Binding Loss}"
+                               FontSize="{DynamicResource NocturneFontSizeSmall}"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource NocturneNeutral200Brush}" />
+                </Border>
+
+                <StackPanel Orientation="Horizontal"
+                            Spacing="5.6"
+                            Margin="0,5.6,0,0"
+                            HorizontalAlignment="Right">
+                    <!-- НЕ .ghost, хотя по иерархии это третья кнопка. Класс без оправы заведён
+                         для «значка или строчки текста, которая просто оказалась кликабельной»;
+                         увиденное на живой панели: «Отмена» без рамки читается как подпись рядом
+                         с двумя кнопками, а она здесь действие по умолчанию. -->
+                    <Button x:Name="CancelButton"
+                            Content="Отмена"
+                            IsCancel="True"
+                            IsDefault="True"
+                            Click="OnCancelClicked" />
+                    <Button Content="{Binding FreeNameLabel}"
+                            Click="OnFreeNameClicked" />
+                    <Button Classes="danger"
+                            Content="Заменить"
+                            Click="OnReplaceClicked" />
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

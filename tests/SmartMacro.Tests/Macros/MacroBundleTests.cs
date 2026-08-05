@@ -158,7 +158,7 @@ public class MacroBundleTests
             await Assert.That(read.SubmacroFaults).IsEmpty();
 
             // А писатель обязан вернуть её на место.
-            var content = MacroBundleReader.ReadContent(path);
+            var content = MacroBundleReader.ReadContent(path).Content;
             await Assert.That(content!.Submacros.Select(file => file.Path))
                 .IsEquivalentTo(new[] { "заметка.txt" });
         }
