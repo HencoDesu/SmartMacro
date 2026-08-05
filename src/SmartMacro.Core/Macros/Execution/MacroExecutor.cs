@@ -11,8 +11,8 @@ namespace SmartMacro.Macros.Execution;
 /// Обходит <see cref="MacroGraph"/>: выполнить текущую ноду, пойти по её ребру (у условных —
 /// по ребру нужного исхода), чисто остановиться на ребре со значением <c>null</c>. Побочные
 /// эффекты идут через <see cref="IMacroPrimitives"/> (ввод/зрение/иконка) и
-/// <see cref="WindowRegistry"/> (теги); под-макросы разрешаются через
-/// <see cref="IMacroGraphResolver"/>.
+/// <see cref="WindowRegistry"/> (теги); под-макросы берутся из
+/// <see cref="MacroRunContext.Submacros"/> — то есть из бандла ЭТОГО прогона.
 ///
 /// Семантика:
 ///   * Нода действия с селектором Target — снимок реестра снимается в этот самый момент, и ТО
@@ -21,11 +21,15 @@ namespace SmartMacro.Macros.Execution;
 ///     обрыв.
 ///   * Условным нодам контекст-окно обязательно; исход выбирает ребро и записывает
 ///     <c>FoundPointVar</c>/<c>ResultVar</c> до того, как по ребру пойдут.
-///   * <see cref="RunMacroNode"/> — под-прогоны с копией переменных, глубина ≤
-///     <see cref="MaxDepth"/>, цикл по именам обрывает прогон. <c>Await=false</c> — «отправил и
-///     забыл» (сбои только пишутся в лог).
+///   * <see cref="RunSubmacroNode"/> — под-прогоны с копией переменных, ровно один уровень
+///     вложенности. <c>Await=false</c> — «отправил и забыл» (сбои только пишутся в лог).
 ///   * Отмена уважается между нодами и внутри примитивов; отменённый прогон молча заканчивается
 ///     со статусом <see cref="MacroRunStatus.Cancelled"/>.
+///
+/// <b>Волна F4 сняла отсюда два механизма разом.</b> Раньше <c>RunMacroNode</c> звал любой макрос
+/// библиотеки по имени, и это требовало предела вложенности (<c>MaxDepth = 4</c>) и детекта
+/// циклов по цепочке имён. Под-макросы плоские, так что и то и другое заменено одной проверкой
+/// «мы уже внутри под-макроса»: цикл стал невозможен по построению, а не пойман на бегу.
 ///
 /// Без состояния и без знания о реестре — синглтоном безопасен; учёт прогонов живёт в
 /// <see cref="MacroRunRegistry"/>, и подводит его вызывающий через
@@ -33,7 +37,7 @@ namespace SmartMacro.Macros.Execution;
 ///
 /// <b>Съём показаний (волна D3b).</b> Каждый вызов <see cref="RunAsync"/> — это один ОБХОД со
 /// своим id и своими часами, о котором докладывают в <see cref="MacroRunContext.Observer"/>.
-/// Единица здесь обход, а не прогон: разветвление <see cref="RunMacroNode"/> порождает по
+/// Единица здесь обход, а не прогон: разветвление <see cref="RunSubmacroNode"/> порождает по
 /// обходу на окно, и различить их дальше по течению можно только потому, что каждый получил
 /// собственный id вот здесь. Понодовые события — и строки подробностей вместе с ними —
 /// производятся ТОЛЬКО пока наблюдатель говорит, что кто-то слушает, так что демон, за которым
@@ -50,23 +54,17 @@ namespace SmartMacro.Macros.Execution;
 /// </summary>
 public sealed partial class MacroExecutor
 {
-    /// <summary>Предельная глубина вложенности <see cref="RunMacroNode"/> (корневой прогон = 0).</summary>
-    public const int MaxDepth = 4;
-
     private readonly IMacroPrimitives _primitives;
     private readonly WindowRegistry _windows;
-    private readonly IMacroGraphResolver _resolver;
     private readonly ILogger<MacroExecutor> _logger;
 
     public MacroExecutor(
         IMacroPrimitives primitives,
         WindowRegistry windows,
-        IMacroGraphResolver resolver,
         ILogger<MacroExecutor> logger)
     {
         _primitives = primitives;
         _windows = windows;
-        _resolver = resolver;
         _logger = logger;
     }
 
@@ -85,10 +83,15 @@ public sealed partial class MacroExecutor
         // Открывается до первой ноды и закрывается на каждом пути выхода ниже, чтобы список
         // живых обходов у наблюдателя не мог протечь ни одной записью, — именно этот список
         // показывают панели, подключившейся посреди прогона.
+        // Обход докладывает о себе МАКРОСОМ (бандлом) и, отдельно, под-макросом: у обхода функции
+        // имя графа — это её подпись, а адресуются по макросу и точки останова, и переключатель
+        // прогонов в панели.
         var trace = MacroWalkTrace.Begin(
             context.Observer,
             context.RunId,
-            macro.Name,
+            context.MacroName ?? macro.Name,
+            context.SubmacroId,
+            context.SubmacroId is null ? null : macro.Name,
             context.ContextWindow,
             context.Depth);
 
@@ -140,12 +143,6 @@ public sealed partial class MacroExecutor
             }
         }
 
-        // Цепочка, включающая ЭТОТ макрос, — на ней строятся и проверка на циклы, и дочерние
-        // контексты.
-        var callChain = new List<string>(context.CallChain.Count + 1);
-        callChain.AddRange(context.CallChain);
-        callChain.Add(macro.Name);
-
         // Переменные, с которыми обход стартует, — на практике сид `cursor` от триггера плюс
         // всё, что спустил родительский обход. Докладываются один раз, чтобы у панели
         // переменных было живое значение той единственной переменной, которую не пишет ни одна
@@ -175,14 +172,14 @@ public sealed partial class MacroExecutor
             // пауза не стоила припаркованной ноде ни миллисекунды замеренного времени и чтобы,
             // как сказано в комментарии к классу, пока мы ждём, ни одно игровое окно не сидело
             // разбуженным.
-            await GateAsync(context, trace, macro.Name, node, ct).ConfigureAwait(false);
+            await GateAsync(context, trace, context.MacroName ?? macro.Name, node, ct).ConfigureAwait(false);
 
             var nodeStart = MacroWalkTrace.Now;
 
             NodeStep step;
             try
             {
-                step = await ExecuteNodeAsync(macro, node, context, callChain, trace, ct).ConfigureAwait(false);
+                step = await ExecuteNodeAsync(macro, node, context, trace, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (trace.IsTracing)
             {
@@ -224,9 +221,11 @@ public sealed partial class MacroExecutor
             return Task.CompletedTask;
         }
 
-        // Точки останова ключуются парой (макрос, нода) — той же самой, которой их ставит
-        // редактор.
-        if (debugger.Arm(trace.WalkId, macroName, node.Id, MacroNodeNames.Display(node)) is not { } gate)
+        // Точки останова ключуются тройкой (макрос, под-макрос, нода) — той же самой, которой их
+        // ставит редактор. Третья координата появилась в F4: пары перестало хватать, потому что
+        // ноды под-макроса живут в том же макросе, но в другом графе.
+        if (debugger.Arm(trace.WalkId, macroName, context.SubmacroId, node.Id, MacroNodeNames.Display(node))
+            is not { } gate)
         {
             return Task.CompletedTask;
         }
@@ -268,7 +267,6 @@ public sealed partial class MacroExecutor
         MacroGraph macro,
         MacroNode node,
         MacroRunContext context,
-        IReadOnlyList<string> callChain,
         MacroWalkTrace trace,
         CancellationToken ct)
     {
@@ -330,8 +328,8 @@ public sealed partial class MacroExecutor
                     .ConfigureAwait(false);
                 return NodeStep.Done(n.Next, DetailIfTracing(trace, () => Fanout(FileNameOf(iconPath), targets.Count)));
             }
-            case RunMacroNode n:
-                return await ExecuteRunMacroAsync(macro, n, context, callChain, trace, ct).ConfigureAwait(false);
+            case RunSubmacroNode n:
+                return await ExecuteSubmacroAsync(macro, n, context, trace, ct).ConfigureAwait(false);
             case FindElementNode n:
             {
                 var hwnd = RequireContext(n, context);
@@ -496,51 +494,53 @@ public sealed partial class MacroExecutor
         }
     }
 
-    private async Task<NodeStep> ExecuteRunMacroAsync(
+    /// <summary>
+    /// Вызов под-макроса (волна F4).
+    ///
+    /// <b>Плоскость проверяется здесь, и это ЕДИНСТВЕННАЯ страховка от циклов.</b> Раньше их было
+    /// две — предел вложенности и детект цикла по цепочке имён, — и обе ловили беду на бегу.
+    /// Теперь беды нет: под-макрос не имеет права звать под-макрос, валидатор такой граф
+    /// отвергает, а эта строка ловит файл, правленный руками мимо валидатора.
+    /// </summary>
+    private async Task<NodeStep> ExecuteSubmacroAsync(
         MacroGraph macro,
-        RunMacroNode node,
+        RunSubmacroNode node,
         MacroRunContext context,
-        IReadOnlyList<string> callChain,
         MacroWalkTrace trace,
         CancellationToken ct)
     {
-        var name = context.Variables.Interpolate(node.MacroName);
+        var macroName = context.MacroName ?? macro.Name;
 
-        if (context.Depth + 1 > MaxDepth)
+        if (context.SubmacroId is not null)
         {
             throw new MacroRunAbortException(
-                $"Макрос «{macro.Name}»: запуск «{name}» вышел бы за предел вложенности под-макросов ({MaxDepth}).");
+                $"Макрос «{macroName}»: под-макрос «{macro.Name}» пытается позвать под-макрос, а вложенность плоская.");
         }
 
-        if (callChain.Contains(name, StringComparer.Ordinal))
-        {
-            throw new MacroRunAbortException(
-                $"Макрос «{macro.Name}»: цикл вызовов макросов {string.Join(" → ", callChain)} → {name}.");
-        }
-
-        var subMacro = _resolver.TryGet(name)
+        var subMacro = context.Submacros?.GetValueOrDefault(node.SubmacroId)
                        ?? throw new MacroRunAbortException(
-                           $"Макрос «{macro.Name}»: нода «{MacroNodeNames.Display(node)}» ссылается на несуществующий макрос «{name}».");
+                           $"Макрос «{macroName}»: нода «{MacroNodeNames.Display(node)}» ссылается на под-макрос, которого в этом макросе нет.");
 
         List<MacroRunContext> childContexts = [];
         if (node.Target is { } selector)
         {
             foreach (var window in SelectorEvaluator.Select(_windows.Snapshot(), selector))
             {
-                childContexts.Add(BuildChildContext(context, callChain, window.Hwnd));
+                childContexts.Add(BuildChildContext(context, macroName, node.SubmacroId, window.Hwnd));
             }
 
             if (childContexts.Count == 0)
             {
-                LogNoTargets(macro.Name, MacroNodeNames.Display(node));
+                LogNoTargets(macroName, MacroNodeNames.Display(node));
             }
         }
         else
         {
             var hwnd = RequireContext(node, context);
-            childContexts.Add(BuildChildContext(context, callChain, hwnd));
+            childContexts.Add(BuildChildContext(context, macroName, node.SubmacroId, hwnd));
         }
 
+        var name = subMacro.Name;
         var subRuns = childContexts.Select(child => RunAsync(subMacro, child, ct)).ToList();
         if (node.Await)
         {
@@ -555,7 +555,7 @@ public sealed partial class MacroExecutor
                 if (result.Status == MacroRunStatus.Aborted)
                 {
                     throw new MacroRunAbortException(
-                        $"Макрос «{macro.Name}»: под-макрос «{name}» оборван: {result.Error}");
+                        $"Макрос «{macroName}»: под-макрос «{name}» оборван: {result.Error}");
                 }
             }
         }
@@ -569,7 +569,10 @@ public sealed partial class MacroExecutor
             childContexts.Count)));
     }
 
-    private static MacroRunContext BuildChildContext(MacroRunContext parent, IReadOnlyList<string> callChain,
+    private static MacroRunContext BuildChildContext(
+        MacroRunContext parent,
+        string macroName,
+        Guid submacroId,
         IntPtr contextWindow)
     {
         return new MacroRunContext
@@ -577,13 +580,18 @@ public sealed partial class MacroExecutor
             ContextWindow = contextWindow,
             Variables = parent.Variables.Clone(),
             Depth = parent.Depth + 1,
-            CallChain = callChain,
             RunId = parent.RunId,
-            // Наследуется, потому что прогон не покидает свой бандл: под-макросы в F4 будут лежать
-            // внутри него же, и шаблоны у них общие с родителем (§13.1). Пока RunMacroNode зовёт
-            // соседа по библиотеке, это означает, что под-макрос увидит шаблоны ВЫЗЫВАЮЩЕГО, —
-            // ровно то, что F4 и закрепит, убрав межмакросные вызовы вовсе.
+            // Обход функции по-прежнему принадлежит СВОЕМУ МАКРОСУ: по нему ключуются точки
+            // останова и по нему же панель отбирает обходы открытого макроса.
+            MacroName = macroName,
+            SubmacroId = submacroId,
+            // Наследуется, потому что прогон не покидает свой бандл: под-макросы лежат внутри
+            // него же, и шаблоны у них ОБЩИЕ с родителем (§5.7) — второго уровня разрешения
+            // имён здесь нет и не нужно.
             Templates = parent.Templates,
+            // Наследуется ради единообразия, а не ради вложенности: звать отсюда всё равно
+            // некого — проверка плоскости выше это и обеспечивает.
+            Submacros = parent.Submacros,
             OnNodeEntered = parent.OnNodeEntered,
             // Наследуется, а не заводится на каждого ребёнка: наблюдатель — синглтон, а
             // собственная идентичность ДОЧЕРНЕГО ОБХОДА рождается в MacroWalkTrace.Begin внутри

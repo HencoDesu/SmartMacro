@@ -56,9 +56,14 @@ public sealed partial class MacroDebugSession : IMacroDebugger
 {
     private readonly Lock _lock = new();
 
-    // Имя макроса → id нод. Имена макросов сравниваются порядково (ordinal), как и во всей
-    // остальной системе; ноды адресуются guid'ом, поэтому у них вопроса регистра нет вовсе.
-    private readonly Dictionary<string, HashSet<Guid>> _breakpoints = new(StringComparer.Ordinal);
+    // (макрос, под-макрос) → id нод. Имена макросов сравниваются порядково (ordinal), как и во
+    // всей остальной системе; ноды и под-макросы адресуются guid'ом, поэтому у них вопроса
+    // регистра нет вовсе.
+    //
+    // ТРЕТЬЯ КООРДИНАТА добавлена в F4. Пары «макрос + нода» хватало ровно до тех пор, пока в
+    // макросе был один граф; теперь их несколько, и ключ обязан различать «нода родителя» и
+    // «нода его функции». Тем же ключом ходит SetBreakpoints по проводу.
+    private readonly Dictionary<(string Macro, Guid? Submacro), HashSet<Guid>> _breakpoints = [];
 
     private readonly Dictionary<Guid, WalkState> _walks = [];
 
@@ -139,10 +144,14 @@ public sealed partial class MacroDebugSession : IMacroDebugger
     // ------------------------------------------------------------------ точки останова
 
     /// <summary>
-    /// Заменяет точки останова одного макроса. Пустой список убирает макрос из отображения
-    /// целиком, поэтому <see cref="Breakpoints"/> никогда не сообщает о пустом наборе.
+    /// Заменяет точки останова ОДНОГО ГРАФА — макроса верхнего уровня либо одного его
+    /// под-макроса. Пустой список убирает запись целиком, поэтому <see cref="Breakpoints"/>
+    /// никогда не сообщает о пустом наборе.
     /// </summary>
-    public void SetBreakpoints(string macroName, IReadOnlyList<Guid> nodeIds)
+    /// <param name="macroName">Макрос (бандл).</param>
+    /// <param name="submacroId">Его под-макрос либо <c>null</c> — граф верхнего уровня.</param>
+    /// <param name="nodeIds">Ноды этого графа.</param>
+    public void SetBreakpoints(string macroName, Guid? submacroId, IReadOnlyList<Guid> nodeIds)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(macroName);
         ArgumentNullException.ThrowIfNull(nodeIds);
@@ -155,18 +164,18 @@ public sealed partial class MacroDebugSession : IMacroDebugger
         {
             if (wanted.Count == 0)
             {
-                _breakpoints.Remove(macroName);
+                _breakpoints.Remove((macroName, submacroId));
             }
             else
             {
-                _breakpoints[macroName] = wanted;
+                _breakpoints[(macroName, submacroId)] = wanted;
             }
         }
 
         LogBreakpointsSet(macroName, wanted.Count);
     }
 
-    /// <summary>Все макросы, у которых есть точки останова, по алфавиту. Ответ на <c>GetBreakpoints</c>.</summary>
+    /// <summary>Все графы, у которых есть точки останова, по алфавиту. Ответ на <c>GetBreakpoints</c>.</summary>
     public IReadOnlyList<BreakpointSetDto> Breakpoints()
     {
         lock (_lock)
@@ -174,8 +183,9 @@ public sealed partial class MacroDebugSession : IMacroDebugger
             return
             [
                 .. _breakpoints
-                    .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                    .Select(pair => new BreakpointSetDto(pair.Key, [.. pair.Value.Order()]))
+                    .OrderBy(pair => pair.Key.Macro, StringComparer.Ordinal)
+                    .ThenBy(pair => pair.Key.Submacro)
+                    .Select(pair => new BreakpointSetDto(pair.Key.Macro, [.. pair.Value.Order()], pair.Key.Submacro))
             ];
         }
     }
@@ -273,7 +283,7 @@ public sealed partial class MacroDebugSession : IMacroDebugger
     // ------------------------------------------------------------------- IMacroDebugger
 
     /// <inheritdoc />
-    public MacroDebugGate? Arm(Guid walkId, string macroName, Guid nodeId, string nodeName)
+    public MacroDebugGate? Arm(Guid walkId, string macroName, Guid? submacroId, Guid nodeId, string nodeName)
     {
         // Перепроверять внутри блокировки незачем: отключение, бегущее с нами наперегонки,
         // отпустит затвор в ту же секунду, как его увидит, — Release() выгребает _walks.
@@ -291,7 +301,7 @@ public sealed partial class MacroDebugSession : IMacroDebugger
             // Точка останова первой: явная красная точка старше шага, который случайно сюда
             // приземлился, да и панель рисует её иначе.
             DebugPauseReason? reason =
-                HasBreakpoint(macroName, nodeId)
+                HasBreakpoint(macroName, submacroId, nodeId)
                     ? DebugPauseReason.Breakpoint
                     : state?.Pending is { } pending
                         ? pending
@@ -340,8 +350,8 @@ public sealed partial class MacroDebugSession : IMacroDebugger
         }
     }
 
-    private bool HasBreakpoint(string macroName, Guid nodeId) =>
-        _breakpoints.TryGetValue(macroName, out var nodes) && nodes.Contains(nodeId);
+    private bool HasBreakpoint(string macroName, Guid? submacroId, Guid nodeId) =>
+        _breakpoints.TryGetValue((macroName, submacroId), out var nodes) && nodes.Contains(nodeId);
 
     private static MacroDebugGate? Take(WalkState state)
     {

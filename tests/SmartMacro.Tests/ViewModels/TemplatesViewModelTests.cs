@@ -49,7 +49,7 @@ public class TemplatesViewModelTests
     private static TemplatesViewModel Create(TempLibrary library, MacroGraph? graph = null)
     {
         var vm = new TemplatesViewModel(library.Library, ImmediateUiDispatcher.Instance);
-        vm.ShowMacro(graph?.Name ?? Macro1, graph ?? Macro(Macro1));
+        vm.ShowMacro(graph?.Name ?? Macro1, [graph ?? Macro(Macro1)]);
         return vm;
     }
 
@@ -163,9 +163,9 @@ public class TemplatesViewModelTests
         using var vm = Create(library);
         await Assert.That(vm.Templates[0].IsUnused).IsTrue();
 
-        vm.ShowMacro(Macro1, Macro(
+        vm.ShowMacro(Macro1, [Macro(
             Macro1,
-            new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "Кнопка" }));
+            new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "Кнопка" })]);
 
         await Assert.That(vm.Templates[0].IsUnused).IsFalse();
         await Assert.That(vm.Templates[0].UsageText).IsEqualTo("1 нода");
@@ -179,7 +179,7 @@ public class TemplatesViewModelTests
         library.Library.AddTemplate("другой", null, "B", Png());
         using var vm = Create(library);
 
-        vm.ShowMacro("другой", Macro("другой"));
+        vm.ShowMacro("другой", [Macro("другой")]);
 
         await Assert.That(vm.Templates.Select(t => t.Name)).IsEquivalentTo(new[] { "B" });
     }

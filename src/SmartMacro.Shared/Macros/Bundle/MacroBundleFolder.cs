@@ -1,4 +1,6 @@
+using System.Text;
 using SmartMacro.Macros.Model;
+using SmartMacro.Macros.Validation;
 
 namespace SmartMacro.Macros.Bundle;
 
@@ -9,15 +11,15 @@ namespace SmartMacro.Macros.Bundle;
 /// демона молча пропускало такой файл, а панель узнавала о библиотеке через <c>GetMacros</c>, то
 /// есть видела только уцелевшие макросы: файл существовал, но в интерфейсе его не было вовсе.
 /// Теперь папку читает панель, и «файл лежит, но с ним беда» — это состояние строки, а не повод
-/// её не показать (§13.1).
+/// её не показать (§5.7).
 ///
-/// <b>Два независимых вердикта, и это тоже требование §13.1.</b> <see cref="Metadata"/> может
+/// <b>Два независимых вердикта, и это тоже требование §5.7.</b> <see cref="Metadata"/> может
 /// прочитаться, когда <see cref="Graph"/> — <c>null</c>: <c>metadata.json</c> и <c>nodes.json</c>
 /// потому и разнесены. Тогда в библиотеке видно НАСТОЯЩЕЕ имя и описание с восклицательным знаком,
 /// а не «файл X — ошибка», из которой не понять даже, какой это был макрос.
 /// </summary>
 /// <param name="Name">
-/// Имя макроса = ОСНОВА ИМЕНИ ФАЙЛА, и она же идентичность (§13.1). Главенствует над полем
+/// Имя макроса = ОСНОВА ИМЕНИ ФАЙЛА, и она же идентичность (§5.7). Главенствует над полем
 /// <c>Name</c> внутри бандла: переименовали файл проводником — значит переименовали макрос.
 /// </param>
 /// <param name="Path">Абсолютный путь к <c>.hsm</c>.</param>
@@ -27,6 +29,8 @@ namespace SmartMacro.Macros.Bundle;
 /// Пути шаблонов ОТНОСИТЕЛЬНО <see cref="MacroBundleFormat.TemplateFolder"/> — <c>classes/Лучник.png</c>,
 /// а не <c>templates/classes/Лучник.png</c>. Без байтов.
 /// </param>
+/// <param name="Submacros">Под-макросы бандла, разобранные (волна F4). Пусто у макроса без них.</param>
+/// <param name="SubmacroFaults">Записи <c>submacro/</c>, которые не разобрались, — по строке на каждую.</param>
 /// <param name="Fault">Что помешало прочитать; <see cref="MacroBundleFault.None"/> — всё прочлось.</param>
 /// <param name="FaultMessage">Вердикт читателя целиком, для показа и для журнала.</param>
 /// <param name="NameOverridden">
@@ -40,6 +44,8 @@ public sealed record MacroBundleEntry(
     MacroGraph? Graph,
     MacroBundleMetadata? Metadata,
     IReadOnlyList<string> TemplatePaths,
+    IReadOnlyList<MacroSubmacro> Submacros,
+    IReadOnlyList<string> SubmacroFaults,
     MacroBundleFault Fault,
     string? FaultMessage,
     bool NameOverridden = false)
@@ -53,6 +59,19 @@ public sealed record MacroBundleEntry(
     /// каждую проверку среды.
     /// </summary>
     public MacroTemplateInventory Templates { get; } = MacroTemplateInventory.FromPaths(TemplatePaths);
+
+    /// <summary>
+    /// Вердикт валидатора обо ВСЁМ бандле — граф, его под-макросы и всё, что между ними.
+    ///
+    /// Метод живёт здесь, а не у каждого вызывающего, ровно по правилу бейджа целей из D4: демон
+    /// судит бандл при загрузке, панель — при показе строки библиотеки, и два прогона одного
+    /// правила не имеют права разойтись. До F4 обе стороны писали
+    /// <c>Validate(entry.Graph, entry.Templates)</c> буква в букву; с появлением второго и
+    /// третьего аргумента такое совпадение перестало быть надёжным.
+    /// </summary>
+    /// <returns>Пусто у нечитаемого бандла: судить там не о чем.</returns>
+    public IReadOnlyList<ValidationIssue> Validate() =>
+        Graph is null ? [] : MacroGraphValidator.ValidateBundle(Graph, Submacros, Templates, SubmacroFaults);
 }
 
 /// <summary>
@@ -222,6 +241,8 @@ public static class MacroBundleFolder
             graph,
             read.Metadata.Metadata,
             read.TemplatePaths,
+            read.Submacros,
+            read.SubmacroFaults,
             fault,
             message,
             overridden);
@@ -236,6 +257,13 @@ public static class MacroBundleFolder
     /// </summary>
     /// <param name="directory">Папка с макросами; создаётся, если её ещё нет.</param>
     /// <param name="graph">Сохраняемый граф; его имя становится основой имени файла.</param>
+    /// <param name="submacros">
+    /// Новый набор под-макросов (волна F4) либо <c>null</c> — «оставить те, что в файле».
+    ///
+    /// Различие несущее. <c>null</c> нужен всякому, кто про под-макросы не знает и знать не должен
+    /// (правка шаблона, скажем); список — редактору, который держит их все и пишет бандл целиком.
+    /// Пустой список означает ровно «под-макросов больше нет» и стирает их, а <c>null</c> — нет.
+    /// </param>
     /// <param name="renamedFrom">
     /// Прежнее имя, если это переименование. Без него переименование теряло бы шаблоны: редактор
     /// переименовывает записью под новым именем и удалением старого файла (именно в таком порядке
@@ -243,7 +271,11 @@ public static class MacroBundleFolder
     /// нет, и наследовать вложения не от чего.
     /// </param>
     /// <exception cref="ArgumentException">Имя графа не годится в качестве имени файла.</exception>
-    public static void Save(string directory, MacroGraph graph, string? renamedFrom = null)
+    public static void Save(
+        string directory,
+        MacroGraph graph,
+        IReadOnlyList<MacroSubmacro>? submacros = null,
+        string? renamedFrom = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
         ArgumentNullException.ThrowIfNull(graph);
@@ -262,8 +294,38 @@ public static class MacroBundleFolder
             Metadata = previous?.Metadata.Touch() ?? MacroBundleMetadata.CreateNew(graph.Name),
             Graph = graph,
             Templates = previous?.Templates ?? [],
-            Submacros = previous?.Submacros ?? [],
+            Submacros = submacros is null
+                ? previous?.Submacros ?? []
+                : MergeSubmacros(previous?.Submacros ?? [], submacros),
         });
+    }
+
+    /// <summary>
+    /// Кладёт новый набор под-макросов поверх содержимого папки <c>submacro/</c>, СОХРАНЯЯ всё,
+    /// что под-макросом не является.
+    ///
+    /// Замена подчищает только те записи, чьё имя разбирается по правилу
+    /// <see cref="MacroBundleFormat.TryParseSubmacroPath"/>. Остальное — заметка автора рядом,
+    /// файл будущей версии формата — переносится как было: потерять его значило бы сделать ровно
+    /// ту потерю, ради недопущения которой бандл и заведён.
+    /// </summary>
+    private static IReadOnlyList<MacroBundleFile> MergeSubmacros(
+        IReadOnlyList<MacroBundleFile> existing,
+        IReadOnlyList<MacroSubmacro> submacros)
+    {
+        var files = existing
+            .Where(file => !MacroBundleFormat.TryParseSubmacroPath(file.Path, out _))
+            .ToList();
+
+        foreach (var submacro in submacros)
+        {
+            files.Add(new MacroBundleFile(
+                MacroBundleFormat.SubmacroPath(submacro.Id),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)
+                    .GetBytes(MacroGraphJson.Serialize(submacro.Graph))));
+        }
+
+        return files;
     }
 
     /// <summary>Удаляет бандл макроса. <c>false</c> — такого файла нет (это не ошибка).</summary>

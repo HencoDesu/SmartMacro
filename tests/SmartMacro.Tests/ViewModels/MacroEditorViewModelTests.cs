@@ -316,7 +316,9 @@ public class MacroEditorViewModelTests
         using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
         var original = NodeRowRoundTripTests.EveryNodeType();
-        vm.LoadGraph(original);
+        // Под-макрос едет вместе с графом: ссылка в никуда с волны F4 — ошибка валидации, и
+        // сохранение её не пропустит.
+        vm.LoadGraph(original, [NodeRowRoundTripTests.TheSubmacro()]);
 
         await Assert.That(await vm.SaveAsync()).IsTrue();
 

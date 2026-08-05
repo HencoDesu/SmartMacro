@@ -4,27 +4,31 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2a: семантика RunMacroNode — дождаться или запустить и забыть, предел глубины,
-// обнаружение цикла по именам, под-прогоны на каждое окно с подошедшим окном в контексте и
-// изоляция переменных копированием, а не разделением.
-public class RunMacroNodeTests
+// Семантика RunSubmacroNode: дождаться или запустить и забыть, под-прогоны на каждое подошедшее
+// окно с этим окном в контексте, изоляция переменных копированием, а не разделением.
+//
+// Волна F4 сняла отсюда два теста разом — предел вложенности и обнаружение цикла по именам, —
+// потому что оба ловили беду, которой больше нет: под-макросы плоские, звать соседа по библиотеке
+// нельзя, и цикл стал невозможен ПО ПОСТРОЕНИЮ. На их месте один тест, проверяющий, что вложенный
+// вызов (его способна оставить только правка файла руками) обрывает прогон.
+public class RunSubmacroNodeTests
 {
     /// <summary>Под-макрос, нажимающий F9 в своём контекстном окне.</summary>
     private static MacroGraph SubPressingF9(string name = "суб") =>
         ExecutorHarness.Graph(name, Ids.Of("k"), new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F9, Next = null });
 
-    private static MacroGraph ParentRunning(string subName, bool await_ = true, TargetSelector? target = null) =>
+    private static MacroGraph ParentRunning(Guid submacroId, bool await_ = true, TargetSelector? target = null) =>
         ExecutorHarness.Graph("родитель", Ids.Of("r"),
-            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = subName, Await = await_, Target = target, Next = Ids.Of("after") },
+            new RunSubmacroNode { Id = Ids.Of("r"), DisplayName = "r", SubmacroId = submacroId, Await = await_, Target = target, Next = Ids.Of("after") },
             new KeyPressNode { Id = Ids.Of("after"), DisplayName = "after", Key = VirtualKey.F1, Next = null });
 
     [Test]
     public async Task AwaitTrue_RunsSubMacroThenContinues()
     {
         var h = new ExecutorHarness();
-        h.Resolver.Add(SubPressingF9());
+        var sub = h.AddSubmacro(SubPressingF9());
 
-        var result = await h.Executor.RunAsync(ParentRunning("суб"), h.Context(ExecutorHarness.Window),
+        var result = await h.Executor.RunAsync(ParentRunning(sub), h.Context(ExecutorHarness.Window),
             CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
@@ -39,7 +43,7 @@ public class RunMacroNodeTests
     public async Task AwaitTrue_BlocksUntilSubMacroFinishes()
     {
         var h = new ExecutorHarness();
-        h.Resolver.Add(SubPressingF9());
+        var sub = h.AddSubmacro(SubPressingF9());
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Primitives.PressKeyGate = () =>
@@ -48,7 +52,7 @@ public class RunMacroNodeTests
             return gate.Task;
         };
 
-        var runTask = h.Executor.RunAsync(ParentRunning("суб"), h.Context(ExecutorHarness.Window),
+        var runTask = h.Executor.RunAsync(ParentRunning(sub), h.Context(ExecutorHarness.Window),
             CancellationToken.None);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -63,7 +67,7 @@ public class RunMacroNodeTests
     public async Task AwaitFalse_ProceedsWhileSubMacroStillRuns()
     {
         var h = new ExecutorHarness();
-        h.Resolver.Add(SubPressingF9());
+        var sub = h.AddSubmacro(SubPressingF9());
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Primitives.PressKeyGate = () => gate.Task;
 
@@ -71,7 +75,7 @@ public class RunMacroNodeTests
         // поэтому ставим затвор ДО запуска и смотрим на состояние завершения: при Await=false
         // родитель обязан дойти до своей ноды Next (и записать её), даже если потомок висит.
         var runTask = h.Executor.RunAsync(
-            ParentRunning("суб", await_: false), h.Context(ExecutorHarness.Window), CancellationToken.None);
+            ParentRunning(sub, await_: false), h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         // Родитель завершится, только если он НЕ ждал потомка за затвором… но и его собственное
         // нажатие F1 тоже за затвором. Открываем затвор и проверяем, что оба нажатия дошли, а
@@ -89,14 +93,14 @@ public class RunMacroNodeTests
     public async Task AwaitFalse_ParentCompletesEvenIfChildNeverDoes()
     {
         var h = new ExecutorHarness();
-        h.Resolver.Add(SubPressingF9());
+        var sub = h.AddSubmacro(SubPressingF9());
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Primitives.PressKeyGate = () => gate.Task;
 
         // Родитель БЕЗ ноды-действия «после»: его обход вообще не трогает примитив с затвором,
         // так что завершение доказывает именно «запустил и забыл», и ничего кроме.
         var parent = ExecutorHarness.Graph("родитель", Ids.Of("r"),
-            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = "суб", Await = false, Next = null });
+            new RunSubmacroNode { Id = Ids.Of("r"), DisplayName = "r", SubmacroId = sub, Await = false, Next = null });
 
         var result = await h.Executor
             .RunAsync(parent, h.Context(ExecutorHarness.Window), CancellationToken.None)
@@ -107,77 +111,28 @@ public class RunMacroNodeTests
         gate.TrySetResult(); // release the detached child before the test ends
     }
 
+    /// <summary>
+    /// Плоскость — это ЕДИНСТВЕННАЯ страховка от циклов, оставшаяся после F4, и вот она.
+    ///
+    /// Валидатор такой граф отвергает ошибкой, так что дойти сюда может только файл, правленный
+    /// руками; обрыв прогона — правильный ответ, потому что «функция зовёт функцию» ниоткуда
+    /// больше не следует.
+    /// </summary>
     [Test]
-    public async Task DepthBeyondLimit_AbortsRun()
+    public async Task SubmacroCallingSubmacro_AbortsRun()
     {
         var h = new ExecutorHarness();
-        // м0 → м1 → м2 → м3 → м4 → м5: запуск м5 требует глубины 5 > MaxDepth(4).
-        for (var i = 0; i < 5; i++)
-        {
-            h.Resolver.Add(ExecutorHarness.Graph($"м{i}", Ids.Of("r"),
-                new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = $"м{i + 1}", Next = null }));
-        }
-
-        h.Resolver.Add(SubPressingF9("м5"));
+        var inner = h.AddSubmacro(SubPressingF9("внутренний"));
+        var outer = h.AddSubmacro(ExecutorHarness.Graph("внешний", Ids.Of("r2"),
+            new RunSubmacroNode { Id = Ids.Of("r2"), DisplayName = "r2", SubmacroId = inner, Next = null }));
 
         var result = await h.Executor.RunAsync(
-            h.Resolver.TryGet("м0")!, h.Context(ExecutorHarness.Window), CancellationToken.None);
+            ParentRunning(outer), h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("предел вложенности");
-        // Нажатия клавиши в м5 не случилось.
+        await Assert.That(result.Error!).Contains("вложенность плоская");
+        // До нажатия клавиши во внутреннем не дошло.
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
-    }
-
-    [Test]
-    public async Task DepthWithinLimit_Runs()
-    {
-        var h = new ExecutorHarness();
-        // м0 → м1 → м2 → м3 → м4(действие): у самого глубокого под-прогона глубина 4 = MaxDepth,
-        // это законно.
-        for (var i = 0; i < 4; i++)
-        {
-            h.Resolver.Add(ExecutorHarness.Graph($"м{i}", Ids.Of("r"),
-                new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = $"м{i + 1}", Next = null }));
-        }
-
-        h.Resolver.Add(SubPressingF9("м4"));
-
-        var result = await h.Executor.RunAsync(
-            h.Resolver.TryGet("м0")!, h.Context(ExecutorHarness.Window), CancellationToken.None);
-
-        await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
-        await Assert.That(h.Primitives.Calls).Count().IsEqualTo(1);
-    }
-
-    [Test]
-    public async Task NameCycle_AbortsRun()
-    {
-        var h = new ExecutorHarness();
-        h.Resolver.Add(ExecutorHarness.Graph("а", Ids.Of("r"),
-            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = "б", Next = null }));
-        h.Resolver.Add(ExecutorHarness.Graph("б", Ids.Of("r"),
-            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = "а", Next = null }));
-
-        var result = await h.Executor.RunAsync(
-            h.Resolver.TryGet("а")!, h.Context(ExecutorHarness.Window), CancellationToken.None);
-
-        await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("цикл вызовов");
-    }
-
-    [Test]
-    public async Task SelfCycle_AbortsRun()
-    {
-        var h = new ExecutorHarness();
-        h.Resolver.Add(ExecutorHarness.Graph("а", Ids.Of("r"),
-            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = "а", Next = null }));
-
-        var result = await h.Executor.RunAsync(
-            h.Resolver.TryGet("а")!, h.Context(ExecutorHarness.Window), CancellationToken.None);
-
-        await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("цикл вызовов");
     }
 
     [Test]
@@ -187,7 +142,7 @@ public class RunMacroNodeTests
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         h.Primitives.RecognizeHandler = (_, _, _) => "жрец";
         // Потомок ЧИТАЕТ переменную родителя (в тег) и ПИШЕТ свою собственную (ResultVar).
-        h.Resolver.Add(ExecutorHarness.Graph("суб", Ids.Of("t"),
+        var sub = h.AddSubmacro(ExecutorHarness.Graph("суб", Ids.Of("t"),
             new AddTagNode { Id = Ids.Of("t"), DisplayName = "t", Tag = "из-родителя-{п}", Next = Ids.Of("r") },
             new RecognizeTagNode
             {
@@ -198,7 +153,7 @@ public class RunMacroNodeTests
         variables.Set("п", "снаружи");
         var context = h.Context(ExecutorHarness.Window, variables);
 
-        var result = await h.Executor.RunAsync(ParentRunning("суб"), context, CancellationToken.None);
+        var result = await h.Executor.RunAsync(ParentRunning(sub), context, CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
         // Чтение унаследовано: потомок увидел п="снаружи".
@@ -217,13 +172,13 @@ public class RunMacroNodeTests
         h.Registry.Register(w2, "elementclient");
         h.Registry.AddTag(w2, "перс");
         h.Registry.Register(w3, "elementclient"); // no tag — must not get a sub-run
-        h.Resolver.Add(SubPressingF9());
+        var sub = h.AddSubmacro(SubPressingF9());
         // Ноды-продолжения без цели здесь нет: родитель идёт без контекстного окна, так что всё
         // после веера обязано нести селектор тоже (или завершать прогон).
         var parent = ExecutorHarness.Graph("родитель", Ids.Of("r"),
-            new RunMacroNode
+            new RunSubmacroNode
             {
-                Id = Ids.Of("r"), DisplayName = "r", MacroName = "суб",
+                Id = Ids.Of("r"), DisplayName = "r", SubmacroId = sub,
                 Target = new TargetSelector { RequireTags = ["перс"] }, Next = null,
             });
 
@@ -241,34 +196,20 @@ public class RunMacroNodeTests
         await Assert.That(subKeyHwnds[1]).IsEqualTo(w2);
     }
 
+    /// <summary>
+    /// Ссылка на под-макрос, которого в бандле нет, ОБРЫВАЕТ прогон, а не уходит куда-то ещё: у
+    /// вызова нет ветки «не найдено», и притвориться, что функция отработала, было бы враньём.
+    /// </summary>
     [Test]
-    public async Task MacroName_SupportsVariableInterpolation()
-    {
-        var h = new ExecutorHarness();
-        h.Resolver.Add(SubPressingF9("суб-жрец"));
-        var variables = new MacroVariables();
-        variables.Set("tag", "жрец");
-        var parent = ExecutorHarness.Graph("родитель", Ids.Of("r"),
-            new RunMacroNode { Id = Ids.Of("r"), DisplayName = "r", MacroName = "суб-{tag}", Next = null });
-
-        var result = await h.Executor.RunAsync(parent, h.Context(ExecutorHarness.Window, variables),
-            CancellationToken.None);
-
-        await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
-        await Assert.That(h.Primitives.Calls).Count().IsEqualTo(1);
-        await Assert.That(h.Primitives.Calls[0].A).IsEqualTo(VirtualKey.F9);
-    }
-
-    [Test]
-    public async Task UnknownMacroName_AbortsRun()
+    public async Task UnknownSubmacro_AbortsRun()
     {
         var h = new ExecutorHarness();
 
         var result = await h.Executor.RunAsync(
-            ParentRunning("нет-такого"), h.Context(ExecutorHarness.Window), CancellationToken.None);
+            ParentRunning(Guid.NewGuid()), h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("нет-такого");
+        await Assert.That(result.Error!).Contains("под-макрос, которого в этом макросе нет");
     }
 
     [Test]
@@ -277,11 +218,11 @@ public class RunMacroNodeTests
         var h = new ExecutorHarness();
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         // Потомок прерывается: подстановка неопределённой переменной.
-        h.Resolver.Add(ExecutorHarness.Graph("суб", Ids.Of("t"),
+        var sub = h.AddSubmacro(ExecutorHarness.Graph("суб", Ids.Of("t"),
             new AddTagNode { Id = Ids.Of("t"), DisplayName = "t", Tag = "{нет}", Next = null }));
 
         var result = await h.Executor.RunAsync(
-            ParentRunning("суб"), h.Context(ExecutorHarness.Window), CancellationToken.None);
+            ParentRunning(sub), h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
         await Assert.That(result.Error!).Contains("суб");

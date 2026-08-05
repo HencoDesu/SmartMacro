@@ -123,6 +123,16 @@
             <Setter Property="Opacity" Value="1" />
         </Style>
 
+        <!-- Отмечена для выделения в под-макрос (Ctrl+клик, F4). Толстая акцентная рамка, а не
+             заливка: отметка обязана читаться поверх «пройдено» и «идёт» — набирают её как раз по
+             свежему прогону, глядя, какой кусок графа стоит вынести. Стоит ПОСЛЕДНЕЙ среди
+             .node-селекторов той же специфичности: в Avalonia побеждает последний. -->
+        <Style Selector="Border.node.marked">
+            <Setter Property="BorderBrush" Value="{DynamicResource NocturneAccentBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+
         <!-- Отметка точки останова.
              Макет рисует её точкой, свисающей наполовину с левого верхнего угла коробки. Здесь
              это не выживает: что-то выше контейнера элемента режет по границам коробки —
@@ -612,6 +622,7 @@
                     Classes.paused="{Binding IsPaused}"
                     Classes.varSource="{Binding IsVariableSource}"
                     Classes.varConsumer="{Binding IsVariableConsumer}"
+                    Classes.marked="{Binding IsMarked}"
                     Width="{Binding BoxWidth}"
                     Height="{Binding BoxHeight}"
                     PointerPressed="OnNodePressed"
@@ -856,16 +867,24 @@
             </Grid>
         </DataTemplate>
 
-        <DataTemplate DataType="{x:Type nodes:RunMacroNodeRowViewModel}" x:DataType="nodes:RunMacroNodeRowViewModel">
+        <DataTemplate DataType="{x:Type nodes:RunSubmacroNodeRowViewModel}" x:DataType="nodes:RunSubmacroNodeRowViewModel">
             <StackPanel Spacing="5.6">
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="макрос" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="функция" />
                     <ComboBox Grid.Column="1"
                               HorizontalAlignment="Stretch"
-                              ItemsSource="{Binding MacroChoices}"
-                              SelectedItem="{Binding MacroName, Mode=TwoWay}" />
+                              ItemsSource="{Binding SubmacroChoices}"
+                              SelectedItem="{Binding Submacro, Mode=TwoWay}" />
                 </Grid>
                 <CheckBox Content="ждать завершения" IsChecked="{Binding Await, Mode=TwoWay}" Margin="64,0,0,0" />
+                <!-- Переменные подпрогону достаются КОПИЕЙ, и обратно ничего не возвращается.
+                     Сказано здесь, а не только предупреждением валидатора: предупреждение
+                     появляется, когда ловушка уже сработала, а эта строка стоит там, где
+                     пользователь выбирает функцию. -->
+                <TextBlock Classes="hint"
+                           Margin="64,0,0,0"
+                           TextWrapping="Wrap"
+                           Text="под-макрос получает копию переменных — то, что он в них запишет, наружу не вернётся" />
             </StackPanel>
         </DataTemplate>
 
@@ -1036,16 +1055,45 @@
                      темы TextBox в Themes/Controls.axaml: без них отступ темы оставлял под
                      строку меньше, чем она занимает, и хвосты «р»/«у»/«д» в имени макроса
                      срезались по базовой линии. -->
-                <TextBox Grid.Column="0"
-                         Width="170"
-                         Height="26"
-                         Padding="8,0"
-                         VerticalContentAlignment="Center"
-                         FontWeight="Medium"
-                         FontSize="{DynamicResource NocturneFontSizeBody}"
-                         IsEnabled="{Binding HasOpenMacro}"
-                         ToolTip.Tip="Имя макроса = имя файла"
-                         Text="{Binding MacroName, Mode=TwoWay}" />
+                <!-- Хлебные крошки «макрос ▸ функция» (F4). Когда на канве под-макрос, имя
+                     МАКРОСА становится кнопкой возврата, а правится подпись функции: имя макроса
+                     — это имя файла, и позволить переписать его жестом, который выглядит как
+                     переименование функции, нельзя. -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <TextBox Width="170"
+                             Height="26"
+                             Padding="8,0"
+                             VerticalContentAlignment="Center"
+                             FontWeight="Medium"
+                             FontSize="{DynamicResource NocturneFontSizeBody}"
+                             IsVisible="{Binding !IsSubmacroOpen}"
+                             IsEnabled="{Binding HasOpenMacro}"
+                             ToolTip.Tip="Имя макроса = имя файла"
+                             Text="{Binding MacroName, Mode=TwoWay}" />
+
+                    <Button Classes="ghost"
+                            Height="26"
+                            Padding="6,0"
+                            FontSize="{DynamicResource NocturneFontSizeSmall}"
+                            IsVisible="{Binding IsSubmacroOpen}"
+                            ToolTip.Tip="Вернуться к макросу"
+                            Content="{Binding MacroName}"
+                            Click="OnOpenParentGraphClicked" />
+                    <TextBlock VerticalAlignment="Center"
+                               FontSize="10"
+                               Foreground="{DynamicResource NocturneTextMutedBrush}"
+                               IsVisible="{Binding IsSubmacroOpen}"
+                               Text="&#x25B8;" />
+                    <TextBox Width="140"
+                             Height="26"
+                             Padding="8,0"
+                             VerticalContentAlignment="Center"
+                             FontWeight="Medium"
+                             FontSize="{DynamicResource NocturneFontSizeBody}"
+                             IsVisible="{Binding IsSubmacroOpen}"
+                             ToolTip.Tip="Подпись под-макроса. На него ссылаются по Guid, так что переименование ничего не ломает."
+                             Text="{Binding SubmacroName, Mode=TwoWay}" />
+                </StackPanel>
 
                 <Border Grid.Column="1" Width="1" Height="18" Margin="10,0"
                         Background="{DynamicResource NocturneDividerStrongBrush}" />
@@ -1063,30 +1111,49 @@
                     </ComboBox.ItemTemplate>
                 </ComboBox>
 
-                <Button Grid.Column="4"
-                        x:Name="AddNodeButton"
-                        Content="+ Нода"
-                        Height="26"
-                        Margin="10,0,0,0"
-                        IsEnabled="{Binding HasOpenMacro}">
-                    <Button.Flyout>
-                        <Flyout Placement="Bottom">
-                            <ItemsControl ItemsSource="{Binding NodeKinds}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="nodes:MacroNodeKindOption">
-                                        <Button Content="{Binding Label}"
-                                                Classes="ghost"
-                                                Padding="{DynamicResource NocturneInsetField}"
-                                                MinWidth="180"
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Left"
-                                                Click="OnAddNodeClicked" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" Margin="10,0,0,0">
+                    <Button x:Name="AddNodeButton"
+                            Content="+ Нода"
+                            Height="26"
+                            IsEnabled="{Binding HasOpenMacro}">
+                        <Button.Flyout>
+                            <Flyout Placement="Bottom">
+                                <ItemsControl ItemsSource="{Binding NodeKinds}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="nodes:MacroNodeKindOption">
+                                            <Button Content="{Binding Label}"
+                                                    Classes="ghost"
+                                                    Padding="{DynamicResource NocturneInsetField}"
+                                                    MinWidth="180"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left"
+                                                    Click="OnAddNodeClicked" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <!-- Функция заводится ЗДЕСЬ, а не в подвале библиотеки: там кнопки отвечают
+                         на вопрос «откуда в библиотеке берётся МАКРОС», а под-макрос берётся из
+                         того макроса, который открыт. Гаснет внутри функции — под-макросы
+                         плоские. -->
+                    <Button Content="+ Под-макрос"
+                            Height="26"
+                            IsEnabled="{Binding ShowsTriggers}"
+                            ToolTip.Tip="Завести пустую функцию внутри этого макроса"
+                            Click="OnAddSubmacroClicked" />
+
+                    <!-- Появляется только когда есть что извлекать: кнопка, которая почти всегда
+                         мертва, отучает читать панель инструментов. -->
+                    <Button Content="{Binding ExtractLabel}"
+                            Classes="accent"
+                            Height="26"
+                            IsVisible="{Binding CanExtractSubmacro}"
+                            ToolTip.Tip="Вынести отмеченные ноды (Ctrl+клик) в новый под-макрос"
+                            Click="OnExtractSubmacroClicked" />
+                </StackPanel>
 
                 <!-- ==== отладчик (D5) ====
                      Появляется, только когда обход этого графа уже зафиксирован: четыре
@@ -1239,13 +1306,13 @@
                     <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
                         <ItemsControl ItemsSource="{Binding MacroGroups}">
                             <ItemsControl.ItemTemplate>
+                                <!-- Группа — это МАКРОС: его строка сама и есть заголовок, а
+                                     вложенный список под ней — его под-макросы (F4). Группировка
+                                     по префиксу имени убрана; довод — в MacroLibraryGroupViewModel. -->
                                 <DataTemplate x:DataType="canvas:MacroLibraryGroupViewModel">
                                     <StackPanel>
-                                        <TextBlock Classes="eyebrow"
-                                                   Margin="10,8,10,4"
-                                                   Text="{Binding Header}" />
-                                        <ItemsControl ItemsSource="{Binding Items}">
-                                            <ItemsControl.ItemTemplate>
+                                        <ContentControl Content="{Binding Macro}">
+                                            <ContentControl.ContentTemplate>
                                                 <DataTemplate x:DataType="vm:MacroListItemViewModel">
                                                     <Border Classes="libRow"
                                                             Classes.current="{Binding IsCurrent}"
@@ -1338,6 +1405,60 @@
                                                                         ToolTip.Tip="Удалить"
                                                                         Click="OnDeleteMacroClicked" />
                                                             </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ContentControl.ContentTemplate>
+                                        </ContentControl>
+
+                                        <!-- Под-макросы: строка проще родительской ровно на то,
+                                             чего у функции нет. Ни ▸, ни ⤓ — запустить её саму по
+                                             себе нельзя (она не макрос), а отдать отдельным файлом
+                                             тем более: она живёт внутри бандла родителя. -->
+                                        <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasItems}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:SubmacroListItemViewModel">
+                                                    <Border Classes="libRow"
+                                                            Classes.current="{Binding IsCurrent}"
+                                                            Margin="14,0,0,0"
+                                                            ToolTip.Tip="{Binding Summary}"
+                                                            PointerPressed="OnSubmacroRowPressed">
+                                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                                            <!-- Направляющая дерева — ЛИНИЯ, а не
+                                                                 глиф: любой символ псевдографики
+                                                                 пришлось бы сперва посмотреть
+                                                                 глазами и внести в список
+                                                                 проверенных (AxamlGlyphTests), а
+                                                                 борозда в один пиксель говорит
+                                                                 «вложено» ничуть не хуже. -->
+                                                            <Border Grid.Column="0"
+                                                                    Width="1"
+                                                                    Margin="2,2,8,2"
+                                                                    Background="{DynamicResource NocturneDividerStrongBrush}" />
+                                                            <StackPanel Grid.Column="1"
+                                                                        Orientation="Horizontal"
+                                                                        Spacing="7"
+                                                                        VerticalAlignment="Center">
+                                                                <TextBlock FontSize="11"
+                                                                           VerticalAlignment="Center"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{Binding IsCurrent, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneTextBrush|NocturneTextSecondaryBrush}"
+                                                                           Text="{Binding Name}" />
+                                                                <TextBlock FontSize="10"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{DynamicResource NocturneDangerBrush}"
+                                                                           IsVisible="{Binding HasErrors}"
+                                                                           ToolTip.Tip="В графе под-макроса есть ошибка — макрос не вооружён"
+                                                                           Text="!" />
+                                                            </StackPanel>
+                                                            <Button Grid.Column="2"
+                                                                    Content="×"
+                                                                    Classes="ghost"
+                                                                    Padding="4,0"
+                                                                    FontSize="11"
+                                                                    VerticalAlignment="Center"
+                                                                    ToolTip.Tip="Удалить под-макрос"
+                                                                    Click="OnDeleteSubmacroClicked" />
                                                         </Grid>
                                                     </Border>
                                                 </DataTemplate>
@@ -1805,10 +1926,13 @@
                                            Text="Макрос не открыт." />
                             </StackPanel>
 
+                            <!-- Раздел целиком прячется, когда на канве под-макрос: триггеров у
+                                 функции не бывает по определению (см. MacroSubmacro), и «+ хоткей»
+                                 здесь предлагал бы ошибку валидации. -->
                             <Border Padding="12,9"
                                     BorderThickness="0,1,0,0"
                                     BorderBrush="{DynamicResource NocturnePanelDeepDividerBrush}"
-                                    IsVisible="{Binding HasOpenMacro}">
+                                    IsVisible="{Binding ShowsTriggers}">
                                 <StackPanel Spacing="5.6">
                                     <Grid ColumnDefinitions="*,Auto,Auto">
                                         <TextBlock Grid.Column="0" Classes="eyebrow" Text="ТРИГГЕРЫ" />

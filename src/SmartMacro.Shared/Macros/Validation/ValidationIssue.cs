@@ -22,4 +22,21 @@ public enum ValidationSeverity
 /// <param name="NodeId">Провинившаяся нода или <c>null</c> для проблем уровня графа (нет стартовой ноды).</param>
 /// <param name="NodeName">Её подпись на момент проверки или <c>null</c> вместе с <paramref name="NodeId"/>.</param>
 /// <param name="Message">Человекочитаемое описание.</param>
-public sealed record ValidationIssue(ValidationSeverity Severity, Guid? NodeId, string? NodeName, string Message);
+/// <param name="SubmacroId">
+/// ТРЕТЬЯ КООРДИНАТА (волна F4): под-макрос, которому принадлежит нода, либо <c>null</c> — граф
+/// верхнего уровня.
+///
+/// Понадобилась ровно затем же, зачем точкам останова: с появлением под-макросов пара
+/// «макрос + нода» перестала однозначно указывать на коробку, а клик по замечанию обязан её
+/// НАЙТИ. Без этого поля редактор, открытый на родителе, искал бы ноду под-макроса среди своих и
+/// молча не подсвечивал ничего.
+///
+/// Добавлено ПОСЛЕДНИМ и со значением по умолчанию, чтобы позиционные конструкции, написанные до
+/// F4, продолжали означать ровно то же, что раньше.
+/// </param>
+public sealed record ValidationIssue(
+    ValidationSeverity Severity,
+    Guid? NodeId,
+    string? NodeName,
+    string Message,
+    Guid? SubmacroId = null);

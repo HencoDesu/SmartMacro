@@ -103,8 +103,8 @@ public class RunEventStreamTests
     private static Guid Walk(RunEventPublisher publisher, string macroName, long hwnd, params string[] nodes)
     {
         var walkId = Guid.NewGuid();
-        publisher.WalkStarted(new MacroWalkStart(walkId, Guid.NewGuid(), macroName, hwnd == 0 ? null : new IntPtr(hwnd),
-            0));
+        publisher.WalkStarted(new MacroWalkStart(walkId, Guid.NewGuid(), macroName, null, null,
+            hwnd == 0 ? null : new IntPtr(hwnd), 0));
         foreach (var node in nodes)
         {
             publisher.NodeEntered(walkId, 0, Ids.Of(node), node);
@@ -346,7 +346,7 @@ public class RunEventStreamTests
         // выбрасывается, а счёт уезжает со следующей пачкой, чтобы панель могла признаться в
         // дыре.
         var walkId = Guid.NewGuid();
-        fixture.Publisher.WalkStarted(new MacroWalkStart(walkId, Guid.NewGuid(), "шторм", new IntPtr(0x1), 0));
+        fixture.Publisher.WalkStarted(new MacroWalkStart(walkId, Guid.NewGuid(), "шторм", null, null, new IntPtr(0x1), 0));
         for (var i = 0; i < 20_000; i++)
         {
             fixture.Publisher.NodeEntered(walkId, i, Ids.Of("n"), "n");

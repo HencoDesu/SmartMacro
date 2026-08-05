@@ -33,7 +33,7 @@ public static class MacroNodeNames
             AddTagNode => "addtag",
             RemoveTagNode => "removetag",
             SetIconNode => "icon",
-            RunMacroNode => "run",
+            RunSubmacroNode => "sub",
             FindElementNode => "find",
             WaitForElementNode => "wait",
             RecognizeTagNode => "recognize",

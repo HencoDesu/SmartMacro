@@ -109,8 +109,8 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(macroName);
 
-        var graph = _macros.TryGet(macroName);
-        if (graph is null)
+        var entry = _macros.TryGetEntry(macroName);
+        if (entry is null)
         {
             LogMacroNotFound(macroName);
             return;
@@ -129,17 +129,22 @@ public sealed partial class Orchestrator : IHostedService, IMacroRunner, IDispos
             {
                 ContextWindow = contextWindow,
                 Variables = MacroVariables.ForTrigger(_cursor.Current()),
-                // Источник шаблонов ставится ЗДЕСЬ и ровно один раз на прогон (§13.1, F2): с
+                // Источник шаблонов ставится ЗДЕСЬ и ровно один раз на прогон (§5.7, F2): с
                 // переездом шаблонов внутрь бандла одно и то же имя у двух макросов означает два
                 // разных файла, так что глобального разрешения больше не существует. Дочерние
                 // обходы его наследуют — прогон не покидает свой бандл.
                 Templates = _templates.For(macroName),
+                // Под-макросы ставятся ЗДЕСЬ и ровно один раз на прогон, рядом с шаблонами и по
+                // тому же доводу (волна F4): они лежат внутри бандла, прогон его не покидает, и
+                // разрешать ссылку глобально попросту негде. Берутся из ТОЙ ЖЕ записи
+                // библиотеки, что и граф, — то есть из одного файла и одного чтения.
+                Submacros = entry.SubmacrosById,
                 RunId = handle.RunId,
                 OnNodeEntered = nodeName => handle.CurrentNodeName = nodeName,
                 Observer = _observer,
                 Debugger = _debugger,
             };
-            var result = await _executor.RunAsync(graph, context, handle.Token).ConfigureAwait(false);
+            var result = await _executor.RunAsync(entry.Graph, context, handle.Token).ConfigureAwait(false);
             if (result.Status == MacroRunStatus.Aborted)
             {
                 LogMacroAborted(macroName, result.Error ?? "(без подробностей)");

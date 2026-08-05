@@ -26,6 +26,21 @@ public class NodeRowRoundTripTests
     }
 
     /// <summary>Граф, задействующий каждый тип ноды, обе формы селектора и координаты на канве.</summary>
+    /// <summary>Личность под-макроса, которого зовёт <see cref="EveryNodeType"/>.</summary>
+    public static Guid SubmacroId { get; } = Ids.Of("pw-identify-one");
+
+    /// <summary>
+    /// Тот самый под-макрос — чтобы граф был не просто разбираемым, а ВАЛИДНЫМ: ссылка в никуда
+    /// с волны F4 ошибка, и сохранить такой бандл нельзя.
+    /// </summary>
+    public static MacroSubmacro TheSubmacro()
+    {
+        var only = new KeyPressNode { Id = Ids.Of("sub-key"), DisplayName = "sub-key", Key = VirtualKey.C };
+        return new MacroSubmacro(
+            SubmacroId,
+            new MacroGraph { Name = "pw-identify-one", StartNodeId = only.Id, Nodes = [only] });
+    }
+
     public static MacroGraph EveryNodeType() => new()
     {
         Name = "полный-граф",
@@ -74,10 +89,10 @@ public class NodeRowRoundTripTests
                 Target = new TargetSelector { RequireTags = ["Жрец"] },
                 Next = Ids.Of("run"),
             },
-            new RunMacroNode
+            new RunSubmacroNode
             {
                 Id = Ids.Of("run"), DisplayName = "run",
-                MacroName = "pw-identify-one",
+                SubmacroId = SubmacroId,
                 Await = false,
                 Target = new TargetSelector { ExcludeTags = ["Шаман"] },
                 Next = Ids.Of("find"),

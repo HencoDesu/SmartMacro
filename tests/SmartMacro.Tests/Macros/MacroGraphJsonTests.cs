@@ -50,7 +50,7 @@ public class MacroGraphJsonTests
         await Assert.That(clickVar.Point).IsNull();
         await Assert.That(clickVar.PointVar).IsEqualTo("cursor");
 
-        var run = (RunMacroNode)reloaded.Nodes[7];
+        var run = (RunSubmacroNode)reloaded.Nodes[7];
         await Assert.That(run.Await).IsFalse();
 
         var find = (FindElementNode)reloaded.Nodes[8];
@@ -70,7 +70,7 @@ public class MacroGraphJsonTests
         foreach (var discriminator in new[]
                  {
                      "keyPress", "click", "delay", "addTag", "removeTag", "setIcon",
-                     "runMacro", "findElement", "waitForElement", "recognizeTag",
+                     "submacro", "findElement", "waitForElement", "recognizeTag",
                      "hotkey", "process",
                  })
         {
@@ -93,7 +93,7 @@ public class MacroGraphJsonTests
               "Name": "м",
               "StartNodeId": "11111111-1111-1111-1111-111111111111",
               "Nodes": [
-                { "$type": "runMacro", "Id": "11111111-1111-1111-1111-111111111111", "MacroName": "x" },
+                { "$type": "submacro", "Id": "11111111-1111-1111-1111-111111111111", "SubmacroId": "22222222-2222-2222-2222-222222222222" },
                 { "$type": "recognizeTag", "Id": "22222222-2222-2222-2222-222222222222", "TemplateSet": "классы",
                   "Region": { "X": 0, "Y": 0, "Width": 10, "Height": 10 } }
               ]
@@ -103,7 +103,7 @@ public class MacroGraphJsonTests
         var graph = MacroGraphJson.Deserialize(json);
 
         await Assert.That(graph.Triggers).Count().IsEqualTo(0);
-        var run = (RunMacroNode)graph.Nodes[0];
+        var run = (RunSubmacroNode)graph.Nodes[0];
         await Assert.That(run.Await).IsTrue();
         await Assert.That(run.Next).IsNull();
         await Assert.That(run.Target).IsNull();

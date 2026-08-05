@@ -143,34 +143,36 @@ internal sealed class FakeTemplateSource : IMacroTemplateSource
         templates.Count == 1 ? templates.Keys.First() : string.Join('+', templates.Keys);
 }
 
-/// <summary>Разрешатель <see cref="IMacroGraphResolver"/> поверх словаря — для тестов с под-макросами.</summary>
-internal sealed class DictionaryResolver : IMacroGraphResolver
-{
-    private readonly Dictionary<string, MacroGraph> _graphs = new(StringComparer.Ordinal);
-
-    public void Add(MacroGraph graph) => _graphs[graph.Name] = graph;
-
-    public MacroGraph? TryGet(string name) => _graphs.GetValueOrDefault(name);
-}
-
 /// <summary>
-/// Один исполнитель, собранный с настоящим WindowRegistry, записывающей подделкой примитивов и
-/// разрешателем поверх словаря.
+/// Один исполнитель, собранный с настоящим WindowRegistry и записывающей подделкой примитивов.
+///
+/// Разрешателя макросов по имени здесь больше нет: с волны F4 под-макросы едут в самом контексте
+/// прогона (<see cref="MacroRunContext.Submacros"/>), так что тесту достаточно
+/// <see cref="AddSubmacro"/>.
 /// </summary>
 internal sealed class ExecutorHarness
 {
     /// <summary>Контекстное окно по умолчанию, которым пользуются тесты.</summary>
     public static readonly IntPtr Window = new(0xA);
 
+    private readonly Dictionary<Guid, MacroGraph> _submacros = [];
+
     public WindowRegistry Registry { get; } = new(NullLogger<WindowRegistry>.Instance);
     public RecordingPrimitives Primitives { get; } = new();
-    public DictionaryResolver Resolver { get; } = new();
     public FakeTemplateSource Templates { get; } = new();
     public MacroExecutor Executor { get; }
 
     public ExecutorHarness()
     {
-        Executor = new MacroExecutor(Primitives, Registry, Resolver, NullLogger<MacroExecutor>.Instance);
+        Executor = new MacroExecutor(Primitives, Registry, NullLogger<MacroExecutor>.Instance);
+    }
+
+    /// <summary>Кладёт под-макрос в «бандл» прогона и отдаёт его id — то, что несёт нода вызова.</summary>
+    public Guid AddSubmacro(MacroGraph graph, Guid? id = null)
+    {
+        var key = id ?? Guid.NewGuid();
+        _submacros[key] = graph;
+        return key;
     }
 
     public MacroRunContext Context(
@@ -186,8 +188,9 @@ internal sealed class ExecutorHarness
             ContextWindow = window,
             Variables = variables ?? new MacroVariables(),
             // Источник шаблонов в контексте — это и есть порунное разрешение из F2; в бою его
-            // ставит Orchestrator.RunAsync.
+            // ставит Orchestrator.RunAsync. Под-макросы приезжают тем же путём и с волны F4.
             Templates = Templates,
+            Submacros = _submacros,
             OnNodeEntered = onNodeEntered,
             Observer = observer,
             RunId = runId,

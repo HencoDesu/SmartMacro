@@ -193,19 +193,76 @@ public sealed class MacroListItemViewModel : ObservableObject
         string.Equals(modifiers, "None", StringComparison.Ordinal) ? key : $"{modifiers}+{key}";
 }
 
+/// <summary>
+/// Один ПОД-МАКРОС в дереве библиотеки — вложенная строка под своим макросом (волна F4).
+///
+/// Проще строки макроса намеренно, и это не экономия. У функции нет ни триггера, ни отдельного
+/// файла, ни собственных шаблонов, значит нечего показывать бейджем, нечего экспортировать и
+/// нечего запускать самой по себе: ▸ на ней означало бы запуск, которого протокол не умеет и
+/// который был бы неправдой про «функцию». Остаётся то, что у неё есть на самом деле, — подпись,
+/// число нод и × (удалить).
+/// </summary>
+public sealed class SubmacroListItemViewModel : ObservableObject
+{
+    private bool _isCurrent;
+
+    internal SubmacroListItemViewModel(string macroName, MacroSubmacro submacro, int errorCount)
+    {
+        ArgumentNullException.ThrowIfNull(submacro);
+        MacroName = macroName;
+        Id = submacro.Id;
+        Name = submacro.Name;
+        ErrorCount = errorCount;
+        Summary = string.Create(CultureInfo.CurrentCulture, $"под-макрос · нод: {submacro.Graph.Nodes.Count}");
+    }
+
+    /// <summary>Макрос, которому под-макрос принадлежит, — то есть файл, в котором он лежит.</summary>
+    public string MacroName { get; }
+
+    /// <summary>Личность под-макроса; по ней на него ссылается нода вызова.</summary>
+    public Guid Id { get; }
+
+    /// <summary>Подпись — то, что видно в дереве и в списке ноды вызова.</summary>
+    public string Name { get; }
+
+    /// <summary>Текст подсказки.</summary>
+    public string Summary { get; }
+
+    /// <summary>Сколько ошибок валидатор нашёл ИМЕННО В ЭТОМ графе. Больше нуля — макрос не вооружён.</summary>
+    public int ErrorCount { get; }
+
+    /// <summary><c>true</c>, когда в графе этой функции есть ошибка.</summary>
+    public bool HasErrors => ErrorCount > 0;
+
+    /// <summary>Именно этот граф сейчас на канве.</summary>
+    public bool IsCurrent
+    {
+        get => _isCurrent;
+        internal set => SetField(ref _isCurrent, value);
+    }
+}
+
 /// <summary>Одна строка панели валидации.</summary>
 public sealed class ValidationIssueViewModel
 {
-    public ValidationIssueViewModel(ValidationIssue issue)
+    public ValidationIssueViewModel(ValidationIssue issue, string? submacroName = null)
     {
         ArgumentNullException.ThrowIfNull(issue);
         IsError = issue.Severity == ValidationSeverity.Error;
         NodeId = issue.NodeId;
+        SubmacroId = issue.SubmacroId;
         // Адресуемся по id, печатаем имя: guid читателю ничего не говорит, а имя может
         // повторяться (это всего лишь предупреждение), так что одного из двух не хватает.
-        Display = issue.NodeName is null
-            ? issue.Message
-            : $"[{issue.NodeName}] {issue.Message}";
+        // Под-макрос называется ПЕРВЫМ: без него «[find-3] ребро ведёт в ноду, которой нет»
+        // отправляет читателя искать find-3 в открытом графе, где её нет вовсе.
+        var where = (submacroName, issue.NodeName) switch
+        {
+            ({ } sub, { } node) => $"[{sub} ▸ {node}] ",
+            ({ } sub, null) => $"[{sub}] ",
+            (null, { } node) => $"[{node}] ",
+            _ => string.Empty,
+        };
+        Display = where + issue.Message;
     }
 
     /// <summary>Произвольное сообщение (для ошибок ввода, которых валидатор не видит никогда).</summary>
@@ -220,6 +277,12 @@ public sealed class ValidationIssueViewModel
 
     /// <summary>Нода, к которой относится замечание, если валидатор её назвал.</summary>
     public Guid? NodeId { get; }
+
+    /// <summary>
+    /// Граф, которому нода принадлежит: под-макрос либо <c>null</c> — верхний уровень. Клик по
+    /// замечанию переключает канву именно по нему.
+    /// </summary>
+    public Guid? SubmacroId { get; }
 
     /// <summary>Нарисованный текст.</summary>
     public string Display { get; }
@@ -294,6 +357,23 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private string _diskJson = string.Empty;
 
     private string _macroName = string.Empty;
+
+    // ---- бандл на канве (волна F4) ----------------------------------------------------
+    //
+    // Канва показывает ОДИН граф за раз, а бандл их содержит несколько. Разложено так:
+    //   * Nodes / _startNodeId / Triggers — граф, который сейчас на канве;
+    //   * _submacros — ВСЕ под-макросы бандла (у открытого запись устаревшая, её подменяет
+    //     BuildSubmacros);
+    //   * _parkedParent — родитель, отложенный на время, пока на канве функция.
+    //
+    // Второй набор строк для второго графа не заводится намеренно: строка ноды тянет за собой
+    // подписку на каталог окон, кэш выбора и точки останова, и держать это для графа, на который
+    // никто не смотрит, значило бы завести вторую живую копию редактора.
+    private readonly List<MacroSubmacro> _submacros = [];
+    private Guid? _openSubmacroId;
+    private MacroGraph? _parkedParent;
+    private string _submacroName = string.Empty;
+
     private Guid _startNodeId;
     private bool _hasOpenMacro;
     private bool _changedOnDisk;
@@ -391,10 +471,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 return;
             }
 
-            if (TryGet(value.Name) is { } graph)
+            if (TryGet(value.Name) is { Graph: { } graph } entry)
             {
                 var discarded = _hasOpenMacro && IsDirty() ? _loadedName ?? _macroName : null;
-                LoadGraph(graph);
+                LoadGraph(graph, entry.Submacros);
                 ErrorMessage = discarded is null
                     ? null
                     : $"Несохранённые изменения в «{discarded}» отброшены.";
@@ -409,9 +489,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Библиотека в том виде, в каком её рисует панель: разделы с заголовками <c>pw · 6</c> и
-    /// <c>прочее · 11</c>. Выводится из <see cref="Macros"/> и <see cref="LibrarySearch"/>; само
-    /// правило живёт в <see cref="MacroLibraryGrouping"/>.
+    /// Библиотека в том виде, в каком её рисует панель: ДЕРЕВО, где заголовок группы — сам
+    /// макрос, а вложенные строки — его под-макросы (волна F4). Выводится из <see cref="Macros"/>
+    /// и <see cref="LibrarySearch"/>; довод против прежней группировки по префиксу имени записан
+    /// в <see cref="MacroLibraryGroupViewModel"/>.
     /// </summary>
     public ObservableCollection<MacroLibraryGroupViewModel> MacroGroups { get; } = [];
 
@@ -476,6 +557,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(ShowPickMacroHint));
                 OnPropertyChanged(nameof(ShowEmptyLibraryHint));
+                // ⚠️ Найдено глазами на живой панели: раздел «Триггеры» и кнопка «+ Под-макрос»
+                // после создания макроса оставались пустыми и погашенными. LoadCanvasGraph
+                // поднимает ShowsTriggers, но ДО того, как здесь встанет true, — а больше это
+                // свойство никто не поднимает. Ни сборка, ни тесты этого не видят: значение
+                // считается верно, просто привязка о нём не узнаёт.
+                OnPropertyChanged(nameof(ShowsTriggers));
+                OnPropertyChanged(nameof(CanExtractSubmacro));
             }
         }
     }
@@ -492,7 +580,31 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         set => SetField(ref _macroName, value ?? string.Empty);
     }
 
-    /// <summary>Строки триггеров открытого графа.</summary>
+    /// <summary>
+    /// Подпись открытого ПОД-макроса. Пусто, когда на канве родитель.
+    ///
+    /// Отдельное поле от <see cref="MacroName"/>, а не переиспользование его: имя макроса — это
+    /// имя файла, и позволить переписать его, пока правишь функцию, значило бы переименовать
+    /// макрос жестом, который выглядит как переименование функции.
+    /// </summary>
+    [AllowNull]
+    public string SubmacroName
+    {
+        get => _submacroName;
+        set => SetField(ref _submacroName, value ?? string.Empty);
+    }
+
+    /// <summary>На канве под-макрос, а не сам макрос.</summary>
+    public bool IsSubmacroOpen => _openSubmacroId is not null;
+
+    /// <summary>
+    /// Триггеры показываются только у графа верхнего уровня. У функции их не бывает по
+    /// определению (<see cref="MacroSubmacro"/>), и предложить «добавить хоткей» здесь значило бы
+    /// предложить ошибку валидации.
+    /// </summary>
+    public bool ShowsTriggers => HasOpenMacro && _openSubmacroId is null;
+
+    /// <summary>Строки триггеров открытого графа. У под-макроса всегда пусто.</summary>
     public ObservableCollection<TriggerRowViewModel> Triggers { get; } = [];
 
     /// <summary>Строки нод открытого графа, в том порядке, в каком они сохранены в списке.</summary>
@@ -508,8 +620,14 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// <summary>Ноды для выбора стартовой. Тот же список без записи «конец» — стартовая нода обязательна.</summary>
     public ObservableCollection<NodeChoiceViewModel> StartNodeChoices { get; } = [];
 
-    /// <summary>Имена из библиотеки, которые предлагают выпадающие списки <c>RunMacroNode</c>.</summary>
-    public ObservableCollection<string> MacroChoices { get; } = [];
+    /// <summary>
+    /// Под-макросы ЭТОГО бандла, которые предлагает выпадающий список ноды вызова (волна F4).
+    ///
+    /// До неё здесь были имена макросов ВСЕЙ библиотеки. Список сузился до одного файла — и это
+    /// не ограничение интерфейса, а то, чем формат чинит свою главную беду: назвать можно только
+    /// то, что уедет вместе с макросом получателю.
+    /// </summary>
+    public ObservableCollection<SubmacroChoiceViewModel> SubmacroChoices { get; } = [];
 
     /// <summary>С чего начинается исполнение. Должна указывать на одну из <see cref="Nodes"/>.</summary>
     public Guid StartNodeId
@@ -572,6 +690,17 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(CanRunToCursor));
         }
     }
+
+    /// <summary>
+    /// «pw-загрузка ▸ опознать класс» — что именно сейчас на канве.
+    ///
+    /// Хлебные крошки, а не заголовок с одним именем: без родителя слева пользователь, глядя на
+    /// граф функции, видел бы просто другой макрос. Стрелка — U+25B8, тот же символ, что у ▸
+    /// «Запустить» в библиотеке, и без варианта представления эмодзи (ловушка U+25B6 из D1).
+    /// </summary>
+    public string OpenGraphPath => _openSubmacroId is null
+        ? _macroName
+        : $"{_macroName} ▸ {_submacroName}";
 
     /// <summary>Управляет двумя состояниями инспектора: нода либо сам макрос.</summary>
     public bool HasSelectedNode => _selectedNode is not null;
@@ -1247,7 +1376,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 _breakpoints.Clear();
                 foreach (var set in breakpoints ?? [])
                 {
-                    _breakpoints[set.MacroName] = set.NodeIds;
+                    _breakpoints[BreakpointKey(set.MacroName, set.SubmacroId)] = set.NodeIds;
                 }
 
                 RefreshRunState();
@@ -1351,9 +1480,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
 
         ApplyLibrary(_macros.Entries);
-        if (TryGet(name) is { } graph)
+        if (TryGet(name) is { Graph: { } graph } entry)
         {
-            LoadGraph(graph);
+            LoadGraph(graph, entry.Submacros);
             SelectByName(name);
         }
 
@@ -1496,28 +1625,335 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         SyncTemplateUsage();
     }
 
-    /// <summary>Подсвечивает ноду, о которой говорит замечание.</summary>
+    /// <summary>
+    /// Подсвечивает ноду, о которой говорит замечание, — при необходимости переключив канву на
+    /// тот граф, где эта нода живёт.
+    ///
+    /// Переключение обязательно, а не любезность: замечание о ноде под-макроса, оставленное без
+    /// перехода, искало бы её среди нод родителя и молча не подсвечивало ничего — то есть клик по
+    /// строке выглядел бы сломанным.
+    /// </summary>
     public void SelectIssue(ValidationIssueViewModel issue)
     {
         ArgumentNullException.ThrowIfNull(issue);
-        if (issue.NodeId is null)
+
+        if (issue.SubmacroId != _openSubmacroId)
+        {
+            if (issue.SubmacroId is { } id)
+            {
+                OpenSubmacro(id);
+            }
+            else
+            {
+                OpenParentGraph();
+            }
+        }
+
+        if (issue.NodeId is not null)
+        {
+            SelectedNode = Nodes.FirstOrDefault(node => node.Id == issue.NodeId);
+        }
+    }
+
+    // ---- под-макросы (волна F4) -----------------------------------------------------------
+
+    /// <summary>Открытые сейчас под-макросы бандла, по подписи. Пусто у макроса без функций.</summary>
+    public IReadOnlyList<MacroSubmacro> Submacros => BuildSubmacros();
+
+    /// <summary>
+    /// Переключает канву на под-макрос бандла. Правки текущего графа не теряются: они уезжают в
+    /// модель бандла, откуда их возьмёт «Сохранить».
+    /// </summary>
+    /// <returns><c>false</c>, если такого под-макроса в бандле нет.</returns>
+    public bool OpenSubmacro(Guid id)
+    {
+        if (!HasOpenMacro || _openSubmacroId == id)
+        {
+            return _openSubmacroId == id;
+        }
+
+        CommitCanvasGraph();
+        if (_submacros.FirstOrDefault(submacro => submacro.Id == id) is not { } target)
+        {
+            return false;
+        }
+
+        _openSubmacroId = id;
+        LoadCanvasGraph(target.Graph);
+        return true;
+    }
+
+    /// <summary>Возвращает канву к самому макросу.</summary>
+    public void OpenParentGraph()
+    {
+        if (!HasOpenMacro || _openSubmacroId is null)
         {
             return;
         }
 
-        SelectedNode = Nodes.FirstOrDefault(node => node.Id == issue.NodeId);
+        CommitCanvasGraph();
+        var parent = _parkedParent ?? BuildParentGraph();
+        _openSubmacroId = null;
+        _parkedParent = null;
+        LoadCanvasGraph(parent);
+    }
+
+    /// <summary>
+    /// Заводит пустой под-макрос и открывает его.
+    ///
+    /// Одна нода <c>Delay</c> внутри — по тому же доводу, что и у нового макроса: граф без
+    /// стартовой ноды не проходит валидацию, и встречать пользователя ошибкой сразу после
+    /// нажатия кнопки незачем.
+    /// </summary>
+    /// <returns>Личность заведённой функции.</returns>
+    public Guid AddSubmacro(string? name = null)
+    {
+        if (!HasOpenMacro)
+        {
+            return Guid.Empty;
+        }
+
+        CommitCanvasGraph();
+
+        var first = new DelayNode { Ms = 500, DisplayName = "delay-1" };
+        var submacro = new MacroSubmacro(
+            Guid.NewGuid(),
+            new MacroGraph
+            {
+                Name = string.IsNullOrWhiteSpace(name)
+                    ? MacroExtraction.FreeName(_submacros.Select(existing => existing.Name))
+                    : name.Trim(),
+                Triggers = [],
+                StartNodeId = first.Id,
+                Nodes = [first],
+            });
+
+        _submacros.Add(submacro);
+        _openSubmacroId = submacro.Id;
+        LoadCanvasGraph(submacro.Graph);
+        RebuildLibrary(_library);
+        StatusMessage = $"Под-макрос «{submacro.Name}» создан — не забудьте сохранить макрос.";
+        return submacro.Id;
+    }
+
+    /// <summary>
+    /// Убирает под-макрос из бандла.
+    ///
+    /// <b>Отказ, пока на него ссылаются.</b> Удалить и оставить валидатору сказать «под-макроса
+    /// нет» было бы дешевле в коде и дороже для пользователя: он получил бы макрос, который
+    /// нельзя сохранить, и вторую задачу («найти ноды вызова») вместо ответа. Отказ называет
+    /// ноды, и это ровно то, что надо сделать дальше.
+    /// </summary>
+    /// <returns><c>false</c>, если удалять нечего или удаление отклонено.</returns>
+    public bool DeleteSubmacro(Guid id)
+    {
+        if (!HasOpenMacro || _submacros.All(submacro => submacro.Id != id))
+        {
+            return false;
+        }
+
+        CommitCanvasGraph();
+
+        var callers = BuildParentGraph().Nodes
+            .OfType<RunSubmacroNode>()
+            .Where(node => node.SubmacroId == id)
+            .Select(MacroNodeNames.Display)
+            .ToList();
+        if (callers.Count > 0)
+        {
+            ErrorMessage = $"Под-макрос вызывают: {string.Join(", ", callers.Select(name => $"«{name}»"))}. " +
+                           "Уберите эти ноды или перенацельте их, а потом удаляйте.";
+            return false;
+        }
+
+        var removed = _submacros.First(submacro => submacro.Id == id);
+        _submacros.Remove(removed);
+        _breakpoints.Remove(BreakpointKey(_loadedName, id));
+
+        if (_openSubmacroId == id)
+        {
+            var parent = _parkedParent ?? BuildParentGraph();
+            _openSubmacroId = null;
+            _parkedParent = null;
+            LoadCanvasGraph(parent);
+        }
+        else
+        {
+            RebuildSubmacroChoices();
+            RebuildLibrary(_library);
+        }
+
+        ErrorMessage = null;
+        StatusMessage = $"Под-макрос «{removed.Name}» удалён — не забудьте сохранить макрос.";
+        return true;
+    }
+
+    // ---- выделение куска графа в под-макрос -----------------------------------------------
+
+    /// <summary>Отмеченные для извлечения ноды, в порядке строк.</summary>
+    public IReadOnlyList<NodeRowViewModel> MarkedNodes => [.. Nodes.Where(node => node.IsMarked)];
+
+    /// <summary>Сколько нод отмечено — то, что печатает кнопка извлечения.</summary>
+    public int MarkedCount => Nodes.Count(node => node.IsMarked);
+
+    /// <summary>
+    /// Извлекать есть что и есть откуда: отмечено хоть что-то, и мы не внутри функции (плоскость).
+    /// </summary>
+    public bool CanExtractSubmacro => HasOpenMacro && _openSubmacroId is null && MarkedCount > 0;
+
+    /// <summary>«Выделить в под-макрос (3)» либо «Выделить в под-макрос».</summary>
+    public string ExtractLabel => MarkedCount > 0
+        ? string.Create(CultureInfo.InvariantCulture, $"Выделить в под-макрос ({MarkedCount})")
+        : "Выделить в под-макрос";
+
+    /// <summary>Ctrl+клик по коробке: добавить её в набор для извлечения или убрать из него.</summary>
+    public void ToggleMark(NodeRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        row.IsMarked = !row.IsMarked;
+        RefreshMarkState();
+    }
+
+    /// <summary>Снимает все отметки (клик по пустому месту канвы, Esc, смена графа).</summary>
+    public void ClearMarks()
+    {
+        foreach (var node in Nodes)
+        {
+            node.IsMarked = false;
+        }
+
+        RefreshMarkState();
+    }
+
+    /// <summary>
+    /// Выносит отмеченные ноды в новый под-макрос и ставит на их место ноду вызова.
+    ///
+    /// Вся арифметика — в <see cref="MacroExtraction"/> (<c>Shared</c>), включая ОТКАЗ: там же
+    /// записано, почему выделение с двумя входами или с расходящимися выходами отвергается, а не
+    /// достраивается догадкой. Здесь остаётся применить результат к строкам редактора.
+    /// </summary>
+    /// <returns><c>false</c>, когда извлечение отклонено; причина уходит в <see cref="ErrorMessage"/>.</returns>
+    public bool ExtractSubmacro(string? name = null)
+    {
+        ErrorMessage = null;
+        if (!HasOpenMacro)
+        {
+            return false;
+        }
+
+        if (_openSubmacroId is not null)
+        {
+            ErrorMessage = "Под-макросы плоские: выделять кусок можно только в самом макросе, не внутри функции.";
+            return false;
+        }
+
+        var marked = Nodes.Where(node => node.IsMarked).Select(node => node.Id).ToList();
+        var result = MacroExtraction.Extract(
+            BuildGraph(),
+            marked,
+            string.IsNullOrWhiteSpace(name)
+                ? MacroExtraction.FreeName(_submacros.Select(submacro => submacro.Name))
+                : name.Trim());
+
+        if (!result.IsOk)
+        {
+            ErrorMessage = result.Refusal;
+            return false;
+        }
+
+        _submacros.Add(result.Submacro!);
+        // Точки останова уехавших нод переезжают вместе с ними: id тот же, сменился только граф,
+        // и потерять красную точку на ноде, которую пользователь только что рассматривал, было бы
+        // неприятной мелочью с очевидной причиной.
+        MoveBreakpoints(result.Submacro!);
+        LoadCanvasGraph(result.Parent!);
+        RebuildLibrary(_library);
+        SelectedNode = Nodes.FirstOrDefault(node => node.Id == result.CallNodeId);
+        StatusMessage = $"Выделено в под-макрос «{result.Submacro!.Name}» — не забудьте сохранить макрос.";
+        return true;
+    }
+
+    // Отмеченные ноды уехали в функцию: их точки останова обязаны уехать туда же, иначе они
+    // молча растворятся (набор родителя пересобирается из СТРОК, а строк этих больше нет).
+    private void MoveBreakpoints(MacroSubmacro submacro)
+    {
+        if (_loadedName is null)
+        {
+            return;
+        }
+
+        var moved = submacro.Graph.Nodes
+            .Select(node => node.Id)
+            .Where(id => Nodes.FirstOrDefault(row => row.Id == id)?.HasBreakpoint == true)
+            .ToList();
+        if (moved.Count == 0)
+        {
+            return;
+        }
+
+        _breakpoints[BreakpointKey(_loadedName, submacro.Id)] = moved;
+        _ = SendBreakpointsAsync(_loadedName, submacro.Id, moved);
+    }
+
+    private void RefreshMarkState()
+    {
+        OnPropertyChanged(nameof(MarkedCount));
+        OnPropertyChanged(nameof(CanExtractSubmacro));
+        OnPropertyChanged(nameof(ExtractLabel));
     }
 
     // ---- сохранение ---------------------------------------------------------------------
 
-    /// <summary>Собирает граф модели из текущего состояния редактора. Снисходителен — на плохом вводе не бросает никогда.</summary>
+    /// <summary>
+    /// Собирает граф, который сейчас НА КАНВЕ, из текущего состояния редактора. Снисходителен —
+    /// на плохом вводе не бросает никогда.
+    ///
+    /// У под-макроса имя берётся из <see cref="SubmacroName"/>, а триггеры пусты: и то и другое —
+    /// не поведение редактора, а свойство самого понятия (<see cref="MacroSubmacro"/>).
+    /// </summary>
     public MacroGraph BuildGraph() => new()
     {
-        Name = _macroName.Trim(),
-        Triggers = [.. Triggers.Select(row => row.ToTrigger())],
+        Name = (_openSubmacroId is null ? _macroName : _submacroName).Trim(),
+        Triggers = _openSubmacroId is null ? [.. Triggers.Select(row => row.ToTrigger())] : [],
         StartNodeId = _startNodeId,
         Nodes = [.. Nodes.Select(row => row.ToNode())],
     };
+
+    /// <summary>Граф ВЕРХНЕГО УРОВНЯ бандла — с канвы, если открыт он, иначе отложенный.</summary>
+    private MacroGraph BuildParentGraph() => _openSubmacroId is null ? BuildGraph() : _parkedParent!;
+
+    /// <summary>
+    /// Под-макросы бандла с подставленным вместо открытого тем, что сейчас на канве.
+    ///
+    /// Подмена, а не запись в <c>_submacros</c> на каждое нажатие клавиши: список — это модель, и
+    /// перекладывать в неё содержимое канвы имеет смысл ровно в двух точках, где канва
+    /// переключается или бандл записывается (<see cref="CommitCanvasGraph"/>).
+    /// </summary>
+    private List<MacroSubmacro> BuildSubmacros() =>
+        _openSubmacroId is not { } open
+            ? [.. _submacros]
+            : [.. _submacros.Select(submacro => submacro.Id == open
+                ? submacro with { Graph = BuildGraph() }
+                : submacro)];
+
+    /// <summary>
+    /// Перекладывает то, что на канве, в модель бандла. Зовётся перед сменой открытого графа и
+    /// перед записью — то есть везде, где содержимое канвы вот-вот перестанет быть на виду.
+    /// </summary>
+    private void CommitCanvasGraph()
+    {
+        if (_openSubmacroId is not { } open)
+        {
+            _parkedParent = BuildGraph();
+            return;
+        }
+
+        var index = _submacros.FindIndex(submacro => submacro.Id == open);
+        if (index >= 0)
+        {
+            _submacros[index] = _submacros[index] with { Graph = BuildGraph() };
+        }
+    }
 
     /// <summary><c>true</c>, когда состояние редактора отличается от последнего загруженного или сохранённого.</summary>
     public bool IsDirty() =>
@@ -1568,7 +2004,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             return Task.FromResult(false);
         }
 
-        var graph = BuildGraph();
+        // Канва — это один граф бандла; перед записью её содержимое обязано оказаться в модели,
+        // иначе правка функции, сделанная последней, не попала бы в файл.
+        CommitCanvasGraph();
+        var graph = BuildParentGraph();
+        var submacros = BuildSubmacros();
         var name = graph.Name;
 
         // Имя проверяется отдельно от графа и ПЕРВЫМ: это правило NTFS, а не правило модели, и
@@ -1581,18 +2021,18 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             return Task.FromResult(false);
         }
 
-        // Опись подаётся ТА ЖЕ, что увидит демон (волна F2): перечень бандла у панели уже есть —
-        // его держит браузер шаблонов. Без него проверка «нода называет шаблон, которого нет»
-        // здесь молча не сработала бы, хотя у демона сработала, а расхождение двух прогонов
-        // одного валидатора — ровно та ложь, которой этот проект избегает у бейджа целей.
-        var issues = MacroGraphValidator.Validate(graph, Templates.Inventory).ToList();
+        // Судится БАНДЛ ЦЕЛИКОМ — тем же вызовом, каким его судит демон при загрузке (волна F4).
+        // Опись шаблонов подаётся ТА ЖЕ, что увидит он: перечень бандла у панели уже есть, его
+        // держит браузер шаблонов. Расхождение двух прогонов одного валидатора — ровно та ложь,
+        // которой этот проект избегает у бейджа целей.
+        var issues = MacroGraphValidator.ValidateBundle(graph, submacros, Templates.Inventory).ToList();
         if (issues.Any(issue => issue.Severity == ValidationSeverity.Error))
         {
             // Предупреждения едут вместе с ошибками — пусть пользователь сразу увидит всё, что
             // всё равно попросят исправить.
             foreach (var issue in issues)
             {
-                AddIssue(new ValidationIssueViewModel(issue));
+                AddIssue(IssueRow(issue, submacros));
             }
 
             ErrorMessage = "Сохранение отменено: исправьте ошибки.";
@@ -1610,16 +2050,17 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         // на мгновение зажёг «изменён на диске».
         var previousLoadedJson = _loadedJson;
         var previousDiskJson = _diskJson;
-        var json = MacroGraphJson.Serialize(graph);
         _loadedName = name;
-        _loadedJson = json;
-        _diskJson = json;
+        _loadedJson = SerializeCurrent();
+        _diskJson = MacroGraphJson.Serialize(graph);
 
         try
         {
             // renamedFrom едет вместе с графом: под НОВЫМ именем бандла ещё нет, и без подсказки
             // не от чего унаследовать шаблоны, под-макросы и паспорт переименованного макроса.
-            _macros.Save(graph, renamedFrom);
+            // Под-макросы передаются СПИСКОМ, а не наследуются: редактор держит их все, и только
+            // он знает, что среди них удалили.
+            _macros.Save(graph, submacros, renamedFrom);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -1648,7 +2089,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         foreach (var issue in issues)
         {
-            AddIssue(new ValidationIssueViewModel(issue));
+            AddIssue(IssueRow(issue, submacros));
         }
 
         ApplyLibrary(_macros.Entries);
@@ -1666,20 +2107,40 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// <summary>Отбрасывает локальные правки и перечитывает открытый макрос из снимка библиотеки.</summary>
     public void ReloadFromDisk()
     {
-        if (_loadedName is null || TryGet(_loadedName) is not { } graph)
+        if (_loadedName is null || TryGet(_loadedName) is not { Graph: { } graph } entry)
         {
             return;
         }
 
-        LoadGraph(graph);
+        LoadGraph(graph, entry.Submacros);
         StatusMessage = "Перезагружено с диска.";
     }
 
-    /// <summary>Загружает граф в правую панель.</summary>
-    public void LoadGraph(MacroGraph graph)
+    /// <summary>
+    /// Загружает БАНДЛ в правую панель: граф верхнего уровня на канву, его под-макросы — в
+    /// модель. Точка входа для всего, что открывает макрос.
+    /// </summary>
+    /// <param name="graph">Граф верхнего уровня; его имя становится именем открытого макроса.</param>
+    /// <param name="submacros">Под-макросы бандла; <c>null</c> — их нет (черновик).</param>
+    public void LoadGraph(MacroGraph graph, IReadOnlyList<MacroSubmacro>? submacros = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
 
+        _submacros.Clear();
+        _submacros.AddRange(submacros ?? []);
+        _openSubmacroId = null;
+        _parkedParent = null;
+        _loadedName = graph.Name;
+        MacroName = graph.Name;
+        LoadCanvasGraph(graph);
+    }
+
+    /// <summary>
+    /// Кладёт ОДИН граф бандла на канву. Не трогает ни <c>_loadedName</c>, ни модель бандла: этим
+    /// же путём ходит переключение между макросом и его функциями.
+    /// </summary>
+    private void LoadCanvasGraph(MacroGraph graph)
+    {
         foreach (var row in Nodes)
         {
             DetachNode(row);
@@ -1689,8 +2150,29 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         Triggers.Clear();
         ClearIssues();
 
-        _loadedName = graph.Name;
-        MacroName = graph.Name;
+        if (_openSubmacroId is null)
+        {
+            MacroName = graph.Name;
+            _submacroName = string.Empty;
+        }
+        else
+        {
+            // Родителя сюда уже отложил CommitCanvasGraph у вызывающего — это и есть причина,
+            // по которой переключение графа обязано идти через него, а не через прямой вызов
+            // этого метода.
+            _submacroName = graph.Name;
+        }
+
+        OnPropertyChanged(nameof(SubmacroName));
+        OnPropertyChanged(nameof(IsSubmacroOpen));
+        OnPropertyChanged(nameof(ShowsTriggers));
+        OnPropertyChanged(nameof(OpenGraphPath));
+        // ⚠️ Найдено глазами: после извлечения кнопка «Выделить в под-макрос (2)» оставалась на
+        // панели инструментов со СТАРЫМ числом — отмеченных нод на канве уже не было, но об этом
+        // никто не сообщал. Заодно она отъедала место у строки состояния, и та обрезалась
+        // посередине слова.
+        RefreshMarkState();
+
         foreach (var trigger in graph.Triggers)
         {
             Triggers.Add(TriggerRowViewModel.FromTrigger(trigger));
@@ -1708,6 +2190,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             _startNodeId = graph.StartNodeId;
             HasOpenMacro = true;
             RebuildChoices();
+            // ⚠️ Найдено глазами: у ноды вызова был ПУСТОЙ выпадающий список, а коробка на канве
+            // теряла подпись функции — при первом же открытии макроса из библиотеки. Ссылка была
+            // цела; терялся список, который строкам раздаёт редактор. Собирался он только в
+            // RebuildLibrary, а тот отрабатывает ДО загрузки бандла, когда под-макросов ещё нет.
+            RebuildSubmacroChoices();
 
             // Графы, написанные до появления canvas, координат не несут. Раскладывая их ЗДЕСЬ,
             // а не при первой отрисовке, мы берём опорное значение ниже уже вместе с
@@ -1974,8 +2461,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     // ---- внутренности --------------------------------------------------------------------
 
-    private MacroGraph? TryGet(string name) =>
-        _library.FirstOrDefault(entry => string.Equals(entry.Name, name, StringComparison.Ordinal))?.Graph;
+    private MacroBundleEntry? TryGet(string name) =>
+        _library.FirstOrDefault(entry => string.Equals(entry.Name, name, StringComparison.Ordinal));
 
     // Папка изменилась: своей записью, чужим редактором или файлом, положенным в неё проводником.
     // Наблюдатель стреляет с пула потоков, поэтому перекладываем в поток UI.
@@ -2264,7 +2751,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// откажет.
     /// </remarks>
     private void SyncTemplateUsage() =>
-        Templates.ShowMacro(HasOpenMacro ? _loadedName : null, HasOpenMacro ? BuildGraph() : null);
+        // ВСЕ графы бандла, а не только тот, что на канве: папка шаблонов у бандла одна, и
+        // шаблон, названный только из функции, обязан перестать быть «не используется».
+        Templates.ShowMacro(
+            HasOpenMacro ? _loadedName : null,
+            HasOpenMacro ? [BuildParentGraph(), .. BuildSubmacros().Select(submacro => submacro.Graph)] : null);
 
     private void RebuildVariables()
     {
@@ -2302,9 +2793,16 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     // ---- точки останова ------------------------------------------------------------------
 
-    // Что держит у себя демон, по макросам. Хранится, чтобы открытие графа возвращало его точки
+    // Что держит у себя демон, по ГРАФАМ. Хранится, чтобы открытие графа возвращало его точки
     // без round trip и чтобы переименование не теряло наборы остальных макросов.
-    private readonly Dictionary<string, IReadOnlyList<Guid>> _breakpoints = new(StringComparer.Ordinal);
+    //
+    // Ключ — пара (макрос, под-макрос), ТРЕТЬЯ КООРДИНАТА из F4: точка, поставленная в функции,
+    // не имеет права сняться, когда панель присылает точки её родителя, — а «заменить целиком»
+    // без этой пары делало бы ровно это.
+    private readonly Dictionary<(string Macro, Guid? Submacro), IReadOnlyList<Guid>> _breakpoints = [];
+
+    private static (string Macro, Guid? Submacro) BreakpointKey(string? macroName, Guid? submacroId) =>
+        (macroName ?? string.Empty, submacroId);
 
     // Поднят, пока ответ демона переносится на строки, — чтобы его применение не отскочило тут
     // же обратно в виде SetBreakpoints.
@@ -2317,7 +2815,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     // GetBreakpoints вместе с остальным снимком.
     private void ApplyBreakpointsToRows()
     {
-        var wanted = _loadedName is not null && _breakpoints.TryGetValue(_loadedName, out var ids)
+        var wanted = _loadedName is not null
+                     && _breakpoints.TryGetValue(BreakpointKey(_loadedName, _openSubmacroId), out var ids)
             ? ids.ToHashSet()
             : [];
 
@@ -2347,17 +2846,19 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
 
         var ids = BreakpointNodeIds;
-        _breakpoints[_loadedName] = ids;
+        _breakpoints[BreakpointKey(_loadedName, _openSubmacroId)] = ids;
         OnPropertyChanged(nameof(HasBreakpoints));
-        _ = SendBreakpointsAsync(_loadedName, ids);
+        _ = SendBreakpointsAsync(_loadedName, _openSubmacroId, ids);
     }
 
-    private async Task SendBreakpointsAsync(string macroName, IReadOnlyList<Guid> nodeIds)
+    private async Task SendBreakpointsAsync(string macroName, Guid? submacroId, IReadOnlyList<Guid> nodeIds)
     {
         try
         {
             await _client
-                .RequestAsync(IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest(macroName, nodeIds))
+                .RequestAsync(
+                    IpcMessageTypes.SetBreakpoints,
+                    new SetBreakpointsRequest(macroName, nodeIds, submacroId))
                 .ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
@@ -2456,7 +2957,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             return;
         }
 
-        LoadGraph(onDisk);
+        LoadGraph(onDisk, entry.Submacros);
         StatusMessage = "Макрос обновлён на диске — перечитан.";
     }
 
@@ -2481,16 +2982,36 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         try
         {
             Macros.Clear();
+            _submacroRows.Clear();
             foreach (var entry in entries)
             {
-                // Вердикт выносится ЗДЕСЬ и тем же валидатором, каким его выносит демон при
-                // загрузке: только так строка может честно сказать «хоткей не вооружён, потому
-                // что в графе ошибка» — без единого запроса и без второй копии правила.
-                Macros.Add(new MacroListItemViewModel(
-                    entry,
-                    entry.Graph is null ? null : MacroGraphValidator.Validate(entry.Graph, entry.Templates)));
+                // Вердикт выносится ЗДЕСЬ и тем же вызовом, каким его выносит демон при загрузке:
+                // только так строка может честно сказать «хоткей не вооружён, потому что в графе
+                // ошибка» — без единого запроса и без второй копии правила.
+                var issues = entry.Validate();
+                Macros.Add(new MacroListItemViewModel(entry, entry.Graph is null ? null : issues));
+
+                // Под-макросы ОТКРЫТОГО макроса берём из редактора, а не с диска: только что
+                // выделенная функция обязана появиться в дереве до сохранения, иначе кнопка
+                // выглядит несработавшей.
+                var submacros = HasOpenMacro && string.Equals(entry.Name, _loadedName, StringComparison.Ordinal)
+                    ? BuildSubmacros()
+                    : entry.Submacros;
+                _submacroRows[entry.Name] =
+                [
+                    .. submacros
+                        .OrderBy(submacro => submacro.Name, StringComparer.CurrentCulture)
+                        .Select(submacro => new SubmacroListItemViewModel(
+                            entry.Name,
+                            submacro,
+                            issues.Count(issue => issue.SubmacroId == submacro.Id
+                                                  && issue.Severity == ValidationSeverity.Error)))
+                ];
             }
 
+            // Черновика, которого в папке ещё нет, в дереве нет и подавно: дерево показывает
+            // ПАПКУ. Его функции видны в инспекторе и в списке ноды вызова, а строкой библиотеки
+            // станут вместе с файлом.
             SelectedMacro = previous is null
                 ? null
                 : Macros.FirstOrDefault(item => string.Equals(item.Name, previous, StringComparison.Ordinal));
@@ -2502,25 +3023,61 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         SyncCurrentFlags();
         RebuildGroups();
-        RebuildMacroChoices(entries);
+        RebuildSubmacroChoices();
     }
 
-    private void RebuildMacroChoices(IReadOnlyList<MacroBundleEntry> entries)
+    /// <summary>
+    /// Наполняет выпадающий список ноды вызова под-макросами ОТКРЫТОГО бандла (волна F4).
+    ///
+    /// До неё здесь были имена всей библиотеки. Теперь множество и мельче, и честнее: назвать
+    /// можно ровно то, что уедет вместе с файлом.
+    /// </summary>
+    private void RebuildSubmacroChoices()
     {
-        // Нечитаемый бандл в список предлагаемых имён не попадает: назвать его из RunMacroNode
-        // можно, но выполнить нельзя, и предлагать такое имя значило бы советовать поломку.
-        var names = entries.Where(entry => entry.IsReadable).Select(entry => entry.Name).ToList();
-        // Ссылку на несуществующий больше макрос оставляем выбираемой, чтобы открытие графа,
-        // чей вложенный макрос удалили, не обнуляло эту ссылку молча.
-        foreach (var row in Nodes.OfType<RunMacroNodeRowViewModel>())
+        var choices = BuildSubmacros()
+            .OrderBy(submacro => submacro.Name, StringComparer.CurrentCulture)
+            .Select(submacro => Choice(submacro.Id, submacro.Name))
+            .ToList();
+
+        // Ссылку на несуществующий больше под-макрос оставляем ВЫБИРАЕМОЙ — тот же довод, что у
+        // повисшего ребра: редактор обязан показывать правду, чтобы валидатор мог на неё
+        // пожаловаться, а не обнулять ссылку молча.
+        foreach (var row in Nodes.OfType<RunSubmacroNodeRowViewModel>())
         {
-            if (row.MacroName.Length > 0 && !names.Contains(row.MacroName, StringComparer.Ordinal))
+            if (row.SubmacroId != Guid.Empty && choices.All(choice => choice.Id != row.SubmacroId))
             {
-                names.Add(row.MacroName);
+                choices.Add(Missing(row.SubmacroId));
             }
         }
 
-        Replace(MacroChoices, names);
+        Replace(SubmacroChoices, choices);
+        foreach (var row in Nodes.OfType<RunSubmacroNodeRowViewModel>())
+        {
+            row.SubmacroChoices = SubmacroChoices;
+        }
+
+        SubmacroChoiceViewModel Choice(Guid id, string display)
+        {
+            if (!_submacroChoiceCache.TryGetValue(id, out var choice))
+            {
+                choice = SubmacroChoiceViewModel.For(id, display);
+                _submacroChoiceCache[id] = choice;
+            }
+
+            choice.Display = display;
+            return choice;
+        }
+
+        SubmacroChoiceViewModel Missing(Guid id)
+        {
+            if (!_submacroChoiceCache.TryGetValue(id, out var choice))
+            {
+                choice = SubmacroChoiceViewModel.Missing(id);
+                _submacroChoiceCache[id] = choice;
+            }
+
+            return choice;
+        }
     }
 
     private void RefreshRunState()
@@ -2562,6 +3119,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _loadedJson = string.Empty;
         _diskJson = string.Empty;
         MacroName = string.Empty;
+        _submacros.Clear();
+        _submacroRows.Clear();
+        _openSubmacroId = null;
+        _parkedParent = null;
+        SubmacroName = string.Empty;
+        OnPropertyChanged(nameof(IsSubmacroOpen));
+        OnPropertyChanged(nameof(ShowsTriggers));
+        OnPropertyChanged(nameof(OpenGraphPath));
+        RefreshMarkState();
         _startNodeId = Guid.Empty;
         OnPropertyChanged(nameof(StartNodeId));
         OnPropertyChanged(nameof(StartNode));
@@ -2569,7 +3135,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         ChangedOnDisk = false;
         SelectedNode = null;
         RebuildChoices();
+        RebuildSubmacroChoices();
         SyncCurrentFlags();
+        RebuildGroups();
         RebuildVariables();
         SyncTemplateUsage();
         // Граф не открыт ⇒ следовать не за чем. Сами обходы остаются отслеживаемыми, так что
@@ -2588,9 +3156,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             edge.PropertyChanged += OnEdgeChanged;
         }
 
-        if (row is RunMacroNodeRowViewModel runMacro)
+        if (row is RunSubmacroNodeRowViewModel call)
         {
-            runMacro.MacroChoices = MacroChoices;
+            call.SubmacroChoices = SubmacroChoices;
         }
 
         // Тот же приём с общим экземпляром, что и у списков выбора: каталог один, и каждый бейдж
@@ -2716,19 +3284,58 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             item.IsCurrent = current is not null
                              && string.Equals(item.Name, current, StringComparison.Ordinal);
         }
+
+        // Подсвечена ровно одна строка на всё дерево: либо макрос, либо одна из его функций, —
+        // потому что на канве ровно один граф. Две подсветки читались бы как «открыто два».
+        foreach (var rows in _submacroRows.Values)
+        {
+            foreach (var row in rows)
+            {
+                row.IsCurrent = _openSubmacroId == row.Id
+                                && current is not null
+                                && string.Equals(row.MacroName, current, StringComparison.Ordinal);
+            }
+        }
+
+        foreach (var item in Macros)
+        {
+            item.IsCurrent = item.IsCurrent && _openSubmacroId is null;
+        }
     }
 
+    /// <summary>
+    /// Пересобирает дерево библиотеки: макрос — заголовок группы, его под-макросы — вложенные
+    /// строки (волна F4, вместо группировки по префиксу имени; довод — в
+    /// <see cref="MacroLibraryGroupViewModel"/>).
+    ///
+    /// Поиск смотрит и на имя функции: макрос показывается, когда совпало его собственное имя
+    /// ИЛИ имя любой его функции, — иначе набранное «опознать» не находило бы ничего, хотя
+    /// функция с таким именем в библиотеке есть.
+    /// </summary>
     private void RebuildGroups()
     {
-        var visible = _librarySearch.Trim().Length == 0
-            ? Macros.AsEnumerable()
-            : Macros.Where(item =>
-                item.Name.Contains(_librarySearch.Trim(), StringComparison.CurrentCultureIgnoreCase));
-
+        var needle = _librarySearch.Trim();
         MacroGroups.Clear();
-        foreach (var group in MacroLibraryGrouping.Build(visible))
+
+        foreach (var macro in Macros)
         {
-            MacroGroups.Add(group);
+            var submacros = _submacroRows.GetValueOrDefault(macro.Name) ?? [];
+            if (needle.Length > 0)
+            {
+                var hitsMacro = macro.Name.Contains(needle, StringComparison.CurrentCultureIgnoreCase);
+                var matched = submacros
+                    .Where(item => hitsMacro || item.Name.Contains(needle, StringComparison.CurrentCultureIgnoreCase))
+                    .ToList();
+                if (!hitsMacro && matched.Count == 0)
+                {
+                    continue;
+                }
+
+                MacroGroups.Add(new MacroLibraryGroupViewModel(macro, matched));
+                continue;
+            }
+
+            MacroGroups.Add(new MacroLibraryGroupViewModel(macro, submacros));
         }
 
         OnPropertyChanged(nameof(IsLibraryEmpty));
@@ -2742,6 +3349,13 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     // выбросить снимок-и-восстановление значений вокруг RebuildChoices: подмена элементов
     // выбивала SelectedItem из ItemsSource, а ComboBox отвечал на это null'ом.
     private readonly Dictionary<Guid, NodeChoiceViewModel> _choiceCache = [];
+
+    // То же самое для под-макросов и по той же причине.
+    private readonly Dictionary<Guid, SubmacroChoiceViewModel> _submacroChoiceCache = [];
+
+    // Строки функций по имени макроса — из них дерево библиотеки собирает свои вложенные списки.
+    private readonly Dictionary<string, List<SubmacroListItemViewModel>> _submacroRows =
+        new(StringComparer.Ordinal);
 
     private void RebuildChoices()
     {
@@ -2832,11 +3446,21 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Слепок ВСЕГО БАНДЛА одной строкой — опора для «есть ли несохранённые правки».
+    ///
+    /// Бандла, а не открытого графа: с волны F4 правка функции — это правка того же файла, и
+    /// сравнение по одному графу считало бы её отсутствующей ровно до тех пор, пока пользователь
+    /// не вернётся на родителя. Порядок под-макросов берётся из модели и потому устойчив.
+    /// </summary>
     private string SerializeCurrent()
     {
         try
         {
-            return MacroGraphJson.Serialize(BuildGraph());
+            var parts = new List<string> { MacroGraphJson.Serialize(BuildParentGraph()) };
+            parts.AddRange(BuildSubmacros().Select(submacro =>
+                submacro.Id.ToString("D") + MacroGraphJson.Serialize(submacro.Graph)));
+            return string.Join(" ", parts);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
@@ -2846,6 +3470,14 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             return Guid.NewGuid().ToString();
         }
     }
+
+    // Замечание валидатора в строку панели — вместе с ПОДПИСЬЮ под-макроса, если оно про его
+    // ноду. Валидатор носит только id (имена он не резолвит принципиально), а печатать guid
+    // человеку незачем.
+    private static ValidationIssueViewModel IssueRow(ValidationIssue issue, IReadOnlyList<MacroSubmacro> submacros) =>
+        new(issue, issue.SubmacroId is { } id
+            ? submacros.FirstOrDefault(submacro => submacro.Id == id)?.Name
+            : null);
 
     private void AddIssue(ValidationIssueViewModel issue)
     {

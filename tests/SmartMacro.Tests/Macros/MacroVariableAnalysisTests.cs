@@ -117,12 +117,14 @@ public class MacroVariableAnalysisTests
             new AddTagNode { Id = Ids.Of("add"), DisplayName = "add", Tag = "{a}", Next = Ids.Of("remove") },
             new RemoveTagNode { Id = Ids.Of("remove"), DisplayName = "remove", Tag = "{b}", Next = Ids.Of("icon") },
             new SetIconNode { Id = Ids.Of("icon"), DisplayName = "icon", IconPath = "x/{c}.png", Next = Ids.Of("sub") },
-            new RunMacroNode { Id = Ids.Of("sub"), DisplayName = "sub", MacroName = "pw-{d}" });
+            // Нода вызова переменных не читает вовсе (F4): адресат — Guid, а собрать guid из
+            // подстановки невозможно. Оставлена в графе именно затем, чтобы это было ВИДНО.
+            new RunSubmacroNode { Id = Ids.Of("sub"), DisplayName = "sub", SubmacroId = Guid.NewGuid() });
 
         await Assert.That(Var(graph, "a").Reads[0].Slot).IsEqualTo(VariableSlot.Tag);
         await Assert.That(Var(graph, "b").Reads[0].Slot).IsEqualTo(VariableSlot.Tag);
         await Assert.That(Var(graph, "c").Reads[0].Slot).IsEqualTo(VariableSlot.IconPath);
-        await Assert.That(Var(graph, "d").Reads[0].Slot).IsEqualTo(VariableSlot.MacroName);
+        await Assert.That(MacroVariableAnalysis.Analyze(graph).Any(v => v.Name == "d")).IsFalse();
     }
 
     [Test]

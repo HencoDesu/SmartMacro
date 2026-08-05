@@ -64,10 +64,10 @@ public static class FullMacroGraphFixture
                 Next = Ids.Of("icon"),
             },
             new SetIconNode { Id = Ids.Of("icon"), DisplayName = "icon", IconPath = "icons/{tag}.png", Next = Ids.Of("run") },
-            new RunMacroNode
+            new RunSubmacroNode
             {
                 Id = Ids.Of("run"), DisplayName = "run",
-                MacroName = "под-макрос",
+                SubmacroId = Ids.Of("под-макрос"),
                 Target = new TargetSelector { ExcludeTags = ["МАСТЕР"] },
                 Await = false,
                 Next = Ids.Of("find"),

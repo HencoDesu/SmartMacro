@@ -7,13 +7,21 @@ namespace SmartMacro.Macros.Execution;
 /// <summary>Идентичность обхода, передаваемая в <see cref="IMacroRunObserver.WalkStarted"/>.</summary>
 /// <param name="WalkId">Свой на каждый вызов <see cref="MacroExecutor.RunAsync"/> — включая каждую ветку разветвления под-макроса.</param>
 /// <param name="RunId">Отслеживаемый прогон, которому принадлежит обход; <see cref="Guid.Empty"/>, когда вызывающий работает мимо реестра (тесты).</param>
-/// <param name="MacroName">Обходимый граф.</param>
+/// <param name="MacroName">
+/// МАКРОС (бандл), которому принадлежит обход, — не имя обходимого графа. У обхода под-макроса
+/// это по-прежнему имя родителя: по нему панель отбирает обходы открытого макроса, а сессия
+/// отладчика ключует точки останова.
+/// </param>
+/// <param name="SubmacroId">Под-макрос, который обходят, либо <c>null</c> — граф верхнего уровня.</param>
+/// <param name="SubmacroName">Его подпись либо <c>null</c> вместе с <paramref name="SubmacroId"/>.</param>
 /// <param name="ContextWindow">Окно, по которому работают ноды без цели, либо <c>null</c>.</param>
-/// <param name="Depth">Уровень вложенности под-макросов у этого обхода.</param>
+/// <param name="Depth">Уровень вложенности: 0 у обхода макроса, 1 у обхода его под-макроса.</param>
 public readonly record struct MacroWalkStart(
     Guid WalkId,
     Guid RunId,
     string MacroName,
+    Guid? SubmacroId,
+    string? SubmacroName,
     IntPtr? ContextWindow,
     int Depth);
 
@@ -34,7 +42,7 @@ public readonly record struct MacroWalkStart(
 /// прогон макроса, а не два на ноду.
 ///
 /// <b>Вызывается с потоков движка, возможно, сразу со многих</b> (разветвление
-/// <c>RunMacroNode</c> обходит N графов параллельно). Реализации обязаны быть
+/// <c>RunSubmacroNode</c> обходит N графов параллельно). Реализации обязаны быть
 /// потокобезопасными и не имеют права блокировать: вызывающий находится между двумя вводами в
 /// игру.
 /// </summary>
@@ -142,11 +150,18 @@ internal readonly struct MacroWalkTrace
     public static long Now => Stopwatch.GetTimestamp();
 
     /// <summary>Открывает обход и объявляет о нём. Id выделяется всегда — списку живых обходов он нужен и без съёма показаний.</summary>
-    public static MacroWalkTrace Begin(IMacroRunObserver? observer, Guid runId, string macroName, IntPtr? contextWindow,
+    public static MacroWalkTrace Begin(
+        IMacroRunObserver? observer,
+        Guid runId,
+        string macroName,
+        Guid? submacroId,
+        string? submacroName,
+        IntPtr? contextWindow,
         int depth)
     {
         var trace = new MacroWalkTrace(observer, Guid.NewGuid(), Stopwatch.GetTimestamp());
-        observer?.WalkStarted(new MacroWalkStart(trace.WalkId, runId, macroName, contextWindow, depth));
+        observer?.WalkStarted(
+            new MacroWalkStart(trace.WalkId, runId, macroName, submacroId, submacroName, contextWindow, depth));
         return trace;
     }
 

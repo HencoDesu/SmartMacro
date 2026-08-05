@@ -26,23 +26,36 @@ namespace SmartMacro.Macros.Storage;
 /// <see cref="MacroGraphStore.All"/> по-прежнему отдаёт голые графы: так на неё смотрит всё, что
 /// про бандлы знать не обязано (оркестратор, разрешение под-макросов).
 /// </summary>
-/// <param name="Name">Имя макроса = основа имени файла. Оно же идентичность (§13.1).</param>
+/// <param name="Name">Имя макроса = основа имени файла. Оно же идентичность (§5.7).</param>
 /// <param name="Graph">Граф из <c>nodes.json</c>.</param>
 /// <param name="Metadata">Паспорт из <c>metadata.json</c>.</param>
 /// <param name="TemplatePaths">
 /// Пути шаблонов относительно <see cref="MacroBundleFormat.TemplateFolder"/> — <c>classes/Лучник.png</c>,
 /// а не <c>templates/classes/Лучник.png</c>. БЕЗ БАЙТОВ: их читает кэш исполнителя, по требованию.
 /// </param>
+/// <param name="Submacros">
+/// Под-макросы бандла (волна F4) — то, из чего оркестратор собирает
+/// <c>MacroRunContext.Submacros</c>. Приезжают вместе с графом и из того же файла, поэтому
+/// «граф свежий, а функции старые» невозможно: у них одна запись библиотеки на всех.
+/// </param>
 /// <param name="Path">Абсолютный путь к <c>.hsm</c>. По нему читает кэш шаблонов.</param>
-/// <param name="Issues">Что сказал валидатор об этом графе при загрузке, вместе с предупреждениями.</param>
+/// <param name="Issues">Что сказал валидатор обо ВСЁМ бандле при загрузке, вместе с предупреждениями.</param>
 public sealed record MacroLibraryEntry(
     string Name,
     MacroGraph Graph,
     MacroBundleMetadata Metadata,
     IReadOnlyList<string> TemplatePaths,
+    IReadOnlyList<MacroSubmacro> Submacros,
     string Path,
     IReadOnlyList<ValidationIssue> Issues)
 {
+    /// <summary>
+    /// Под-макросы по их <c>Guid</c> — ровно то, что кладут в <c>MacroRunContext</c>. Считается
+    /// один раз: запись неизменяемая, а спрашивают карту на каждый прогон.
+    /// </summary>
+    public IReadOnlyDictionary<Guid, MacroGraph> SubmacrosById { get; } =
+        Submacros.ToDictionary(submacro => submacro.Id, submacro => submacro.Graph);
+
     /// <summary>
     /// Опись шаблонов бандла — то, чем валидатор сверяет имена из нод. Считается один раз при
     /// загрузке: запись неизменяемая, а спрашивают её на каждую диагностику.

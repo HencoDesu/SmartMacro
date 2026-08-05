@@ -14,6 +14,11 @@ namespace SmartMacro.App.ViewModels.Canvas;
 /// десять обходов с одним id прогона и десятью хэндлами. Обход без контекстного окна (корневой
 /// обход прогона по хоткею, который маршрутизируется исключительно селектором) подписывается
 /// вместо этого своим макросом.
+///
+/// <b>С волны F4 к подписи добавляется ПОД-МАКРОС, и без него переключатель врал бы.</b> Обход
+/// функции и обход её родителя идут по одному и тому же окну, то есть подписывались бы
+/// одинаково — «0x140804» и «0x140804», — а это ровно те две записи, между которыми и надо
+/// выбирать: одна светит ноды родителя, другая ноды функции.
 /// </summary>
 public sealed class MacroRunViewModel : ObservableObject
 {
@@ -29,9 +34,12 @@ public sealed class MacroRunViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(walk);
         Walk = walk;
-        Label = walk.Hwnd != 0
+        var subject = walk.Hwnd != 0
             ? string.Create(CultureInfo.InvariantCulture, $"0x{walk.Hwnd:X}")
             : walk.MacroName;
+        Label = walk.SubmacroName is { Length: > 0 } submacro
+            ? $"{subject} ▸ {submacro}"
+            : subject;
     }
 
     /// <summary>Обход, за которым следит эта строка.</summary>

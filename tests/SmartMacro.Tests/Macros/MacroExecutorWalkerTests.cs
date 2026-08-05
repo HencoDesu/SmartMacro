@@ -245,7 +245,7 @@ public class MacroExecutorWalkerTests
         // Подделка FakeItEasy: самый чистый способ проверить, что не звали вообще ничего.
         var primitives = A.Fake<IMacroPrimitives>();
         var h = new ExecutorHarness();
-        var executor = new MacroExecutor(primitives, h.Registry, h.Resolver, NullLogger<MacroExecutor>.Instance);
+        var executor = new MacroExecutor(primitives, h.Registry, NullLogger<MacroExecutor>.Instance);
         var graph = ExecutorHarness.Graph("м", Ids.Of("k"),
             new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8, Next = null });
 
@@ -338,17 +338,18 @@ public class MacroExecutorWalkerTests
         await Assert.That(h.Primitives.Calls.Select(c => c.Op)).IsEquivalentTo(new[] { "PressKey" });
     }
 
-    // Прогон никогда не покидает свой бандл, поэтому дочерний обход берёт шаблоны РОДИТЕЛЯ —
-    // в F4 под-макросы переедут внутрь бандла, и это станет единственно возможным.
+    // Прогон никогда не покидает свой бандл, поэтому дочерний обход берёт шаблоны РОДИТЕЛЯ.
+    // С волны F4 иначе и не бывает: под-макрос лежит внутри того же бандла, и папка шаблонов у
+    // них одна на двоих — второго уровня разрешения имён здесь нет.
     [Test]
     public async Task ASubRun_InheritsTheTemplateSourceOfItsParent()
     {
         var h = new ExecutorHarness();
         h.Primitives.FindHandler = (_, _, _) => new ScreenPoint(5, 6);
-        h.Resolver.Add(ExecutorHarness.Graph("под", Ids.Of("f"),
+        var sub = h.AddSubmacro(ExecutorHarness.Graph("под", Ids.Of("f"),
             new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка" }));
         var graph = ExecutorHarness.Graph("м", Ids.Of("run"),
-            new RunMacroNode { Id = Ids.Of("run"), DisplayName = "run", MacroName = "под", Await = true });
+            new RunSubmacroNode { Id = Ids.Of("run"), DisplayName = "run", SubmacroId = sub, Await = true });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 

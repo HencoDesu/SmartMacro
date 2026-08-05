@@ -80,7 +80,7 @@ public class MacroNodeNamesTests
             new AddTagNode { Tag = "т" },
             new RemoveTagNode { Tag = "т" },
             new SetIconNode { IconPath = "и" },
-            new RunMacroNode { MacroName = "м" },
+            new RunSubmacroNode { SubmacroId = Guid.NewGuid() },
             new FindElementNode { Template = "т" },
             new WaitForElementNode { Template = "т", TimeoutMs = 1 },
             new RecognizeTagNode { TemplateSet = "с", Region = default },

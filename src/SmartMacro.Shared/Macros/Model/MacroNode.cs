@@ -36,7 +36,7 @@ public sealed record NodeEditorInfo(double X, double Y);
 [JsonDerivedType(typeof(AddTagNode), typeDiscriminator: "addTag")]
 [JsonDerivedType(typeof(RemoveTagNode), typeDiscriminator: "removeTag")]
 [JsonDerivedType(typeof(SetIconNode), typeDiscriminator: "setIcon")]
-[JsonDerivedType(typeof(RunMacroNode), typeDiscriminator: "runMacro")]
+[JsonDerivedType(typeof(RunSubmacroNode), typeDiscriminator: "submacro")]
 [JsonDerivedType(typeof(FindElementNode), typeDiscriminator: "findElement")]
 [JsonDerivedType(typeof(WaitForElementNode), typeDiscriminator: "waitForElement")]
 [JsonDerivedType(typeof(RecognizeTagNode), typeDiscriminator: "recognizeTag")]

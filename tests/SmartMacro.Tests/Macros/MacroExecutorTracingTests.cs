@@ -219,17 +219,17 @@ public class MacroExecutorTracingTests
             harness.Registry.AddTag(hwnd, "клиент");
         }
 
-        harness.Resolver.Add(ExecutorHarness.Graph(
+        var one = harness.AddSubmacro(ExecutorHarness.Graph(
             "pw-identify-one",
             Ids.Of("press"),
             new KeyPressNode { Id = Ids.Of("press"), DisplayName = "press", Key = VirtualKey.C }));
         var parent = ExecutorHarness.Graph(
             "pw-identify",
             Ids.Of("fan"),
-            new RunMacroNode
+            new RunSubmacroNode
             {
                 Id = Ids.Of("fan"), DisplayName = "fan",
-                MacroName = "pw-identify-one",
+                SubmacroId = one,
                 Target = new TargetSelector { RequireTags = ["клиент"] },
             });
 
@@ -248,7 +248,12 @@ public class MacroExecutorTracingTests
         await Assert.That(walks[0].ContextWindow).IsNull();
 
         var children = walks.Skip(1).ToList();
-        await Assert.That(children.All(w => w.MacroName == "pw-identify-one")).IsTrue();
+        // Обход функции докладывает о себе МАКРОСОМ, а подпись функции едет отдельным полем
+        // (F4): по имени макроса панель отбирает обходы открытого макроса, а по подписи их
+        // различает в переключателе.
+        await Assert.That(children.All(w => w.MacroName == "pw-identify")).IsTrue();
+        await Assert.That(children.All(w => w.SubmacroName == "pw-identify-one")).IsTrue();
+        await Assert.That(children.All(w => w.SubmacroId == one)).IsTrue();
         await Assert.That(children.All(w => w.Depth == 1)).IsTrue();
         await Assert.That(children.Select(w => w.ContextWindow!.Value.ToInt64()).OrderBy(h => h))
             .IsEquivalentTo(new long[] { 0x11, 0x12, 0x13 });
@@ -268,15 +273,15 @@ public class MacroExecutorTracingTests
         harness.Registry.AddTag(0x21, "клиент");
         harness.Registry.AddTag(0x22, "клиент");
 
-        harness.Resolver.Add(ExecutorHarness.Graph(
+        var sub = harness.AddSubmacro(ExecutorHarness.Graph(
             "sub",
             Ids.Of("press"),
             new KeyPressNode { Id = Ids.Of("press"), DisplayName = "press", Key = VirtualKey.C }));
         var parent = ExecutorHarness.Graph(
             "parent",
             Ids.Of("fan"),
-            new RunMacroNode
-                { Id = Ids.Of("fan"), DisplayName = "fan", MacroName = "sub", Target = new TargetSelector { RequireTags = ["клиент"] } });
+            new RunSubmacroNode
+                { Id = Ids.Of("fan"), DisplayName = "fan", SubmacroId = sub, Target = new TargetSelector { RequireTags = ["клиент"] } });
 
         await harness.Executor.RunAsync(parent, harness.Context(observer: observer), CancellationToken.None);
 
@@ -292,9 +297,9 @@ public class MacroExecutorTracingTests
     {
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver { IsEnabled = false };
-        harness.Resolver.Add(ExecutorHarness.Graph("sub", Ids.Of("press"),
+        var sub = harness.AddSubmacro(ExecutorHarness.Graph("sub", Ids.Of("press"),
             new KeyPressNode { Id = Ids.Of("press"), DisplayName = "press", Key = VirtualKey.C }));
-        var parent = ExecutorHarness.Graph("parent", Ids.Of("call"), new RunMacroNode { Id = Ids.Of("call"), DisplayName = "call", MacroName = "sub" });
+        var parent = ExecutorHarness.Graph("parent", Ids.Of("call"), new RunSubmacroNode { Id = Ids.Of("call"), DisplayName = "call", SubmacroId = sub });
 
         await harness.Executor.RunAsync(parent, harness.Context(ExecutorHarness.Window, observer: observer),
             CancellationToken.None);

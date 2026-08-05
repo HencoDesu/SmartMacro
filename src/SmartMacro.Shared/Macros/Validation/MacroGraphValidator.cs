@@ -17,11 +17,11 @@ namespace SmartMacro.Macros.Validation;
 /// по §0.2 плана; подпрогоны RunMacro с Target, которые контекст всё же дали бы, намеренно не
 /// моделируются).
 ///
-/// Макрос СОВСЕМ без триггеров от правила контекста освобождён: он библиотечный, попасть в
-/// него можно только через <see cref="RunMacroNode"/> или ручной запуск из интерфейса против
-/// конкретного окна, а значит контекст всегда приходит от вызывающего. Ноды без селектора для
-/// такого макроса — как раз ПРАВИЛЬНАЯ форма: именно она и делает его переиспользуемым для
-/// каждого окна.
+/// Макрос СОВСЕМ без триггеров от правила контекста освобождён: он библиотечный, запустить его
+/// можно только вручную из интерфейса против конкретного окна, а значит контекст всегда приходит
+/// от вызывающего. Ноды без селектора для такого макроса — как раз ПРАВИЛЬНАЯ форма: именно она
+/// и делает его переиспользуемым для каждого окна. Под-макросы (у которых триггеров не бывает по
+/// определению) от того же правила освобождены по той же причине.
 ///
 /// Предупреждения: недостижимые ноды; циклы, внутри которых нет ни <see cref="DelayNode"/>,
 /// ни <see cref="WaitForElementNode"/> (крутятся вхолостую — ищутся по сильно связным
@@ -49,6 +49,105 @@ public static class MacroGraphValidator
     /// по несохранённому черновику, и тесты модели.
     /// </summary>
     public static IReadOnlyList<ValidationIssue> Validate(MacroGraph macro) => Validate(macro, templates: null);
+
+    /// <summary>
+    /// Проверяет БАНДЛ ЦЕЛИКОМ: граф верхнего уровня, каждый его под-макрос и то, что лежит между
+    /// ними (волна F4).
+    ///
+    /// <b>Точка входа для обеих сторон.</b> Демон судит бандл при загрузке и по этому вердикту
+    /// решает, вооружать ли триггеры; панель судит его при показе строки библиотеки и при
+    /// сохранении. Разъехаться им негде — код один; ради этого же <see cref="MacroBundleEntry"/>
+    /// зовёт этот метод сам, а не повторяет его аргументы у каждого вызывающего.
+    ///
+    /// Проверки, которых нет у одиночного графа, и все они про правила из
+    /// <see cref="MacroSubmacro"/>:
+    /// <list type="bullet">
+    ///   <item><b>Адресат существует.</b> <see cref="RunSubmacroNode"/>, чей <c>SubmacroId</c> не
+    ///     разрешается, — ОШИБКА: прогон на этой ноде оборвётся, и лучше сказать заранее. Тем же
+    ///     сообщением ловится и невыбранный адресат.</item>
+    ///   <item><b>Триггер внутри под-макроса</b> — ошибка: под-макрос это функция, и хоткей на ней
+    ///     превратил бы её в макрос верхнего уровня, которого <c>HotkeyListener</c> всё равно не
+    ///     увидит (он смотрит только на верхний уровень). Молчаливо не работающий хоткей — тот
+    ///     самый дефект, который закрывали в D4.</item>
+    ///   <item><b>Вложенный вызов</b> — ошибка: под-макросы плоские, и это то, чем невозможность
+    ///     циклов держится по построению.</item>
+    ///   <item><b>Переменная не возвращается наружу</b> — предупреждение, см.
+    ///     <see cref="AddEscapedVariableWarnings"/>.</item>
+    /// </list>
+    /// </summary>
+    /// <param name="macro">Граф верхнего уровня.</param>
+    /// <param name="submacros">Под-макросы бандла; пусто — их нет.</param>
+    /// <param name="templates">Опись шаблонов бандла или <c>null</c>; см. <see cref="Validate(MacroGraph, MacroTemplateInventory?)"/>.</param>
+    /// <param name="submacroFaults">
+    /// Вердикты читателя о записях <c>submacro/</c>, которые не разобрались. Каждый становится
+    /// ошибкой уровня бандла: исполнять такой макрос нечем, а строка библиотеки обязана сказать,
+    /// что именно в нём сломано.
+    /// </param>
+    public static IReadOnlyList<ValidationIssue> ValidateBundle(
+        MacroGraph macro,
+        IReadOnlyList<MacroSubmacro>? submacros,
+        MacroTemplateInventory? templates = null,
+        IReadOnlyList<string>? submacroFaults = null)
+    {
+        ArgumentNullException.ThrowIfNull(macro);
+        var all = submacros ?? [];
+
+        var issues = new List<ValidationIssue>(Validate(macro, templates));
+
+        foreach (var fault in submacroFaults ?? [])
+        {
+            issues.Add(new ValidationIssue(ValidationSeverity.Error, null, null, fault));
+        }
+
+        // Адресаты вызовов. Пустой id — это «под-макрос не выбран», и говорить о нём надо иначе:
+        // «ссылается на несуществующий» про пустое поле читалось бы как поломка файла, а это
+        // недоделанная нода.
+        var known = all.Select(submacro => submacro.Id).ToHashSet();
+        foreach (var node in macro.Nodes.OfType<RunSubmacroNode>())
+        {
+            if (node.SubmacroId == Guid.Empty)
+            {
+                issues.Add(Error(node, "Под-макрос не выбран."));
+            }
+            else if (!known.Contains(node.SubmacroId))
+            {
+                issues.Add(Error(node, "Под-макроса, на который ссылается нода, в этом макросе нет."));
+            }
+        }
+
+        foreach (var submacro in all)
+        {
+            // Тот же самый проход, что и по родителю: под-макрос — обычный граф, и «ребро в
+            // никуда» ломает его ровно так же.
+            foreach (var issue in Validate(submacro.Graph, templates))
+            {
+                issues.Add(issue with { SubmacroId = submacro.Id });
+            }
+
+            if (submacro.Graph.Triggers.Count > 0)
+            {
+                issues.Add(new ValidationIssue(
+                    ValidationSeverity.Error,
+                    null,
+                    null,
+                    $"У под-макроса «{submacro.Name}» есть триггер. Под-макрос — это функция: хоткей превращает её в макрос верхнего уровня, а демон такой триггер не вооружает.",
+                    submacro.Id));
+            }
+
+            foreach (var node in submacro.Graph.Nodes.OfType<RunSubmacroNode>())
+            {
+                issues.Add(new ValidationIssue(
+                    ValidationSeverity.Error,
+                    node.Id,
+                    MacroNodeNames.Display(node),
+                    "Под-макрос не может звать под-макрос: вложенность плоская, и именно этим исключены циклы.",
+                    submacro.Id));
+            }
+        }
+
+        AddEscapedVariableWarnings(macro, all, issues);
+        return issues;
+    }
 
     /// <summary>
     /// Проверяет граф вместе с описью шаблонов его бандла.
@@ -180,7 +279,7 @@ public static class MacroGraphValidator
                         break;
                     case KeyPressNode { Target: null } or ClickNode { Target: null } or AddTagNode { Target: null }
                         or RemoveTagNode { Target: null } or SetIconNode { Target: null }
-                        or RunMacroNode { Target: null }:
+                        or RunSubmacroNode { Target: null }:
                         issues.Add(Error(byId[id],
                             "Ноде действия без селектора Target нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса)."));
                         break;
@@ -218,6 +317,74 @@ public static class MacroGraphValidator
         return issues;
     }
 
+    /// <summary>
+    /// «Под-макрос это записал, а снаружи не видно» — предупреждение на ноде вызова (волна F4).
+    ///
+    /// <b>Зачем оно вообще.</b> Подпрогон получает КОПИЮ переменных родителя, и обратной записи
+    /// нет (§5.3). Решение сохранено — оно уже было и оно безопаснее, — но обязано перестать быть
+    /// молчаливым. Живой пример из спеки: <c>RecognizeTag</c> пишет <c>tag</c>, <c>SetIcon</c>
+    /// читает <c>{tag}</c>. Пока обе ноды внутри одного под-макроса — работает; разнеси их, и
+    /// прогон оборвётся на чтении неопределённой переменной, а связать этот отказ с причиной
+    /// пользователь не сможет никак.
+    ///
+    /// <b>Условие сужено до случая, который И ЕСТЬ эта беда:</b> под-макрос переменную пишет,
+    /// родитель её ЧИТАЕТ, а сам НЕ пишет нигде. Под-макрос, пишущий что-то для себя, ничего не
+    /// нарушает; родитель, у которого есть свой писатель, получит своё значение. Предупреждать в
+    /// этих случаях значило бы приучить не читать предупреждения — та же логика, по которой ноль
+    /// совпадений у селектора красит ноду, а «окон нет вообще» — нет (D4).
+    ///
+    /// Предупреждение, а не ошибка, — как и «в макросе нет такого шаблона»: «вынес кусок в
+    /// функцию, сейчас допишу» нормальный порядок действий, а запрет на сохранение посреди него
+    /// стоил бы дороже.
+    /// </summary>
+    private static void AddEscapedVariableWarnings(
+        MacroGraph macro,
+        IReadOnlyList<MacroSubmacro> submacros,
+        List<ValidationIssue> issues)
+    {
+        var calls = macro.Nodes.OfType<RunSubmacroNode>().ToList();
+        if (calls.Count == 0 || submacros.Count == 0)
+        {
+            return;
+        }
+
+        var outside = MacroVariableAnalysis.Analyze(macro);
+        var readOutside = outside
+            .Where(variable => variable.IsRead && !variable.IsDefined)
+            .Select(variable => variable.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        if (readOutside.Count == 0)
+        {
+            return;
+        }
+
+        var written = submacros.ToDictionary(
+            submacro => submacro.Id,
+            submacro => MacroVariableAnalysis.Analyze(submacro.Graph)
+                .Where(variable => variable.Writes.Count > 0)
+                .Select(variable => variable.Name)
+                .ToList());
+
+        foreach (var call in calls)
+        {
+            if (!written.TryGetValue(call.SubmacroId, out var names))
+            {
+                continue;
+            }
+
+            var lost = names.Where(readOutside.Contains).ToList();
+            if (lost.Count == 0)
+            {
+                continue;
+            }
+
+            var name = submacros.First(submacro => submacro.Id == call.SubmacroId).Name;
+            issues.Add(Warning(call, lost.Count == 1
+                ? $"Под-макрос «{name}» пишет переменную «{lost[0]}», но подпрогон работает с КОПИЕЙ переменных — наружу значение не вернётся, и читающая его нода оборвёт прогон."
+                : $"Под-макрос «{name}» пишет переменные {string.Join(", ", lost.Select(variable => $"«{variable}»"))}, но подпрогон работает с КОПИЕЙ переменных — наружу значения не вернутся, и читающие их ноды оборвут прогон."));
+        }
+    }
+
     private static ValidationIssue Error(MacroNode node, string message) =>
         new(ValidationSeverity.Error, node.Id, MacroNodeNames.Display(node), message);
 
@@ -232,20 +399,11 @@ public static class MacroGraphValidator
         _ => null,
     };
 
-    private static IEnumerable<(string EdgeName, Guid? TargetId)> OutgoingEdges(MacroNode node) => node switch
-    {
-        KeyPressNode n => [("Next", n.Next)],
-        ClickNode n => [("Next", n.Next)],
-        DelayNode n => [("Next", n.Next)],
-        AddTagNode n => [("Next", n.Next)],
-        RemoveTagNode n => [("Next", n.Next)],
-        SetIconNode n => [("Next", n.Next)],
-        RunMacroNode n => [("Next", n.Next)],
-        FindElementNode n => [("Found", n.Found), ("NotFound", n.NotFound)],
-        WaitForElementNode n => [("Found", n.Found), ("Timeout", n.Timeout)],
-        RecognizeTagNode n => [("Matched", n.Matched), ("NotMatched", n.NotMatched)],
-        _ => [],
-    };
+    // Состав исходов каждого типа ноды живёт в MacroNodeEdges — там же, где перенацеливание,
+    // которым пользуется извлечение в под-макрос. Второй список полей разошёлся бы с первым на
+    // первом же новом типе ноды, и разошёлся бы молча.
+    private static IEnumerable<(string EdgeName, Guid? TargetId)> OutgoingEdges(MacroNode node) =>
+        MacroNodeEdges.Outgoing(node);
 
     private static HashSet<Guid> ComputeReachable(MacroGraph macro, Dictionary<Guid, MacroNode> byId, bool startIsValid)
     {

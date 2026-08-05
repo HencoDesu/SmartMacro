@@ -292,59 +292,55 @@ public class MacroCanvasTests
         await Assert.That(timeout.Y).IsLessThan(row.LayoutHeight);
     }
 
-    // ---- группировка библиотеки ------------------------------------------------------------------
+    // ---- дерево библиотеки (F4) ------------------------------------------------------------------
+    //
+    // Группировка по ПРЕФИКСУ ИМЕНИ («pw · 3», «прочее · 2») убрана вместе с тремя своими тестами:
+    // она выводила структуру из того, как автор назвал файлы, потому что другой структуры не
+    // было. С под-макросами структура настоящая — под-макрос лежит внутри файла своего макроса, —
+    // и держать рядом вторую, придуманную, значило бы рисовать дерево с одним ненастоящим уровнем.
 
     [Test]
-    public async Task Grouping_ReproducesTheMockupsOwnSections()
-    {
-        // Прямо из opt-1d.html, включая тот случай, на котором очевидное правило ошибается:
-        // в «Баг госта» дефиса нет, а место ему всё равно рядом с «Баг госта-Лучник».
-        var items = Items(
-            "pw-boot", "pw-immunity", "pw-assist",
-            "Баг госта", "Баг госта-Лучник", "Баг госта-Жрец",
-            "Портал в столицу", "Сбор наград");
-
-        var groups = MacroLibraryGrouping.Build(items);
-
-        await Assert.That(groups.Select(g => g.Header))
-            .IsEquivalentTo(new[] { "pw · 3", "баг госта · 3", "прочее · 2" });
-    }
-
-    [Test]
-    public async Task Grouping_PutsOtherLast_EvenWhenItWouldSortEarlier()
-    {
-        var groups = MacroLibraryGrouping.Build(Items("я-раз", "я-два", "Абсолютно один"));
-
-        await Assert.That(groups[^1].Prefix).IsEqualTo(MacroLibraryGrouping.OtherGroup);
-        await Assert.That(groups[^1].Items.Single().Name).IsEqualTo("Абсолютно один");
-    }
-
-    [Test]
-    public async Task Grouping_SplitsOnTheFirstDashOnly()
-    {
-        await Assert.That(MacroLibraryGrouping.PrefixOf("pw-cursor-click")).IsEqualTo("pw");
-        await Assert.That(MacroLibraryGrouping.PrefixOf("Сбор наград")).IsEqualTo("Сбор наград");
-        // Дефис в начале границей префикса не считается — иначе получился бы пустой заголовок.
-        await Assert.That(MacroLibraryGrouping.PrefixOf("-странное")).IsEqualTo("-странное");
-    }
-
-    [Test]
-    public async Task Library_IsGroupedAndFilterable()
+    public async Task Library_IsATreeOfMacrosWithTheirSubmacros()
     {
         // Здесь библиотека важна по содержанию, так что папка своя.
         using var library = new TempLibrary();
-        library.WriteExternally(Graph("pw-boot"));
-        library.WriteExternally(Graph("pw-assist"));
+        library.WriteExternally(Graph("pw-boot"), [Submacro("опознать"), Submacro("войти")]);
         library.WriteExternally(Graph("Сбор наград"));
         using var vm = new MacroEditorViewModel(
             new FakeIpcClient(), library.Library, null, null, ImmediateUiDispatcher.Instance);
 
-        await Assert.That(vm.MacroGroups.Select(g => g.Header))
-            .IsEquivalentTo(new[] { "pw · 2", "прочее · 1" });
+        // Заголовок группы — САМ макрос, а не выдуманный префикс.
+        await Assert.That(vm.MacroGroups.Select(g => g.Name))
+            .IsEquivalentTo(new[] { "pw-boot", "Сбор наград" });
 
-        vm.LibrarySearch = "сбор";
+        var boot = vm.MacroGroups.Single(g => g.Name == "pw-boot");
+        await Assert.That(boot.Items.Select(i => i.Name)).IsEquivalentTo(new[] { "войти", "опознать" });
+        // Макрос без функций — просто строка: группа с нулём элементов ничего не рисует сверх неё.
+        await Assert.That(vm.MacroGroups.Single(g => g.Name == "Сбор наград").HasItems).IsFalse();
+    }
 
-        await Assert.That(vm.MacroGroups.Select(g => g.Header)).IsEquivalentTo(new[] { "прочее · 1" });
+    /// <summary>
+    /// Поиск смотрит и на подпись функции: набранное «опознать» обязано находить макрос, внутри
+    /// которого такая функция есть, — иначе имя, которое пользователь видит в дереве, ищется хуже,
+    /// чем имя файла.
+    /// </summary>
+    [Test]
+    public async Task LibrarySearch_FindsAMacroByTheNameOfItsSubmacro()
+    {
+        using var library = new TempLibrary();
+        library.WriteExternally(Graph("pw-boot"), [Submacro("опознать")]);
+        library.WriteExternally(Graph("Сбор наград"));
+        using var vm = new MacroEditorViewModel(
+            new FakeIpcClient(), library.Library, null, null, ImmediateUiDispatcher.Instance);
+
+        vm.LibrarySearch = "опозна";
+
+        await Assert.That(vm.MacroGroups.Select(g => g.Name)).IsEquivalentTo(new[] { "pw-boot" });
+        await Assert.That(vm.MacroGroups[0].Items.Single().Name).IsEqualTo("опознать");
+
+        // А совпадение по имени МАКРОСА показывает его целиком, со всеми функциями.
+        vm.LibrarySearch = "boot";
+        await Assert.That(vm.MacroGroups[0].Items).Count().IsEqualTo(1);
     }
 
     // ---- редактор поверх канвы ---------------------------------------------------------------------
@@ -896,8 +892,14 @@ public class MacroCanvasTests
         await Assert.That(seen).IsTrue();
     }
 
-    private static List<MacroListItemViewModel> Items(params string[] names) =>
-        [.. names.Select(name => new MacroListItemViewModel(Entry(Graph(name))))];
+    /// <summary>Под-макрос из одной ноды — столько, сколько нужно, чтобы он был валиден.</summary>
+    private static MacroSubmacro Submacro(string name)
+    {
+        var only = new DelayNode { Ms = 1, DisplayName = "delay-1" };
+        return new MacroSubmacro(
+            Guid.NewGuid(),
+            new MacroGraph { Name = name, StartNodeId = only.Id, Nodes = [only] });
+    }
 
     /// <summary>Строка папки без самой папки: группировка смотрит только на имя.</summary>
     private static MacroBundleEntry Entry(MacroGraph graph) => new(
@@ -905,6 +907,8 @@ public class MacroCanvasTests
         graph.Name + ".hsm",
         graph,
         MacroBundleMetadata.CreateNew(graph.Name),
+        [],
+        [],
         [],
         MacroBundleFault.None,
         null);

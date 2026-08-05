@@ -61,7 +61,7 @@ public sealed record MacroBundleMetadataResult(
 
 /// <summary>
 /// Исход полного чтения бандла. <b>Два независимых вердикта в одном объекте</b>, и это и есть
-/// требование §13.1 в виде типа: <see cref="Metadata"/> может быть успешным, когда
+/// требование §5.7 в виде типа: <see cref="Metadata"/> может быть успешным, когда
 /// <see cref="Graph"/> — <c>null</c>. Тогда библиотека показывает нормальное имя с
 /// восклицательным знаком вместо строки «файл X — ошибка», из которой пользователю не понять
 /// даже, какой это был макрос.
@@ -81,9 +81,25 @@ public sealed record MacroBundleMetadataResult(
 /// (<see cref="MacroBundleReader.ReadTemplate(string,string)"/>), ровно тот же довод, что у
 /// <c>TemplateDto</c> в протоколе.
 /// </param>
-/// <param name="SubmacroPaths">
-/// То же для <see cref="MacroBundleFormat.SubmacroFolder"/>. В F1 их всегда ноль; перечисление
-/// существует, чтобы бандл будущей версии не терял их, пройдя через сегодняшний код.
+/// <param name="Submacros">
+/// Под-макросы из <see cref="MacroBundleFormat.SubmacroFolder"/>, РАЗОБРАННЫЕ, по возрастанию
+/// подписи (волна F4).
+///
+/// В отличие от шаблонов, читаются целиком и сразу, а не по требованию, и довод здесь обратный:
+/// под-макрос — это JSON размером с <c>nodes.json</c>, он нужен И демону (исполнять), И панели
+/// (показать дерево библиотеки и открыть на канве), и оба спрашивают его сразу же. «Список
+/// метаданных плюс содержимое по требованию» окупается на килобайтах PNG, а здесь стоило бы
+/// второго открытия архива ради тех же байтов.
+/// </param>
+/// <param name="SubmacroFaults">
+/// Записи <c>submacro/</c>, которые под-макросом назвались, но не разобрались, — по строке
+/// объяснения на каждую.
+///
+/// <b>Не сливаются с <see cref="GraphFault"/> намеренно.</b> Испорченный под-макрос не имеет
+/// права спрятать родительский граф: строка библиотеки должна показать настоящее имя макроса и
+/// сказать, ЧТО именно в нём сломано, — а не «файл X — ошибка», из которой не понять даже, какой
+/// это был макрос. Вердикт превращается в ошибку валидации у
+/// <c>MacroGraphValidator.ValidateBundle</c>, так что триггеры такого макроса демон не вооружает.
 /// </param>
 public sealed record MacroBundleReadResult(
     MacroBundleMetadataResult Metadata,
@@ -91,7 +107,8 @@ public sealed record MacroBundleReadResult(
     MacroBundleFault GraphFault,
     string? GraphMessage,
     IReadOnlyList<string> TemplatePaths,
-    IReadOnlyList<string> SubmacroPaths)
+    IReadOnlyList<MacroSubmacro> Submacros,
+    IReadOnlyList<string> SubmacroFaults)
 {
     /// <summary>Прочитано всё: и паспорт, и граф.</summary>
     public bool IsOk => Metadata.IsOk && GraphFault == MacroBundleFault.None && Graph is not null;
@@ -128,8 +145,14 @@ public sealed record MacroBundleContent
     public IReadOnlyList<MacroBundleFile> Templates { get; init; } = [];
 
     /// <summary>
-    /// Под-макросы; пути относительно <see cref="MacroBundleFormat.SubmacroFolder"/>. В F1 сюда
-    /// кладут разве что то, что прочитали из чужого бандла: смысл им придаст волна F4.
+    /// Содержимое <see cref="MacroBundleFormat.SubmacroFolder"/> СЫРЫМИ БАЙТАМИ; пути
+    /// относительно неё.
+    ///
+    /// Байтами, а не <see cref="MacroSubmacro"/>, и это несущее свойство цикла «прочитать всё →
+    /// поменять одно → записать всё»: запись, которую сегодняшний разбор под-макросом не считает
+    /// (заметка автора, файл будущей версии формата), обязана пережить перезапись бандла байт в
+    /// байт. Разбор её потерял бы — то есть сделал бы ровно ту потерю, от которой формат и
+    /// защищает.
     /// </summary>
     public IReadOnlyList<MacroBundleFile> Submacros { get; init; } = [];
 }

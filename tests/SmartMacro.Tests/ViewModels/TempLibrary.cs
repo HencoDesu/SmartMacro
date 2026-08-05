@@ -83,6 +83,17 @@ internal sealed class TempLibrary : IDisposable
         Library.Refresh();
     }
 
+    /// <summary>
+    /// То же самое, но с под-макросами внутри бандла (волна F4). Пишется мимо библиотеки — так
+    /// выглядит файл, пришедший от другого человека.
+    /// </summary>
+    public void WriteExternally(MacroGraph graph, IReadOnlyList<MacroSubmacro> submacros)
+    {
+        Directory.CreateDirectory(FolderPath);
+        MacroBundleFolder.Save(FolderPath, graph, submacros);
+        Library.Refresh();
+    }
+
     /// <summary>Кладёт в папку файл с расширением <c>.hsm</c>, бандлом не являющийся.</summary>
     public void WriteJunk(string stem, string content = "это вообще не zip")
     {

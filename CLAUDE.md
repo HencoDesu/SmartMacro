@@ -8,13 +8,15 @@ Windows-only desktop automation tool (C# / .NET 10 / Avalonia). Generic in desig
 
 ## Where it stands
 
-**Nothing is in flight.** The rename to SmartMacro, the node-graph macro model, tags replacing the character roster, the daemon/panel split, the whole UI, the debugger, the settings store, the shipped layout and the `.hsm` format through wave F3 are all built and green. Only F4 (submacros) is left of the format plan — see `docs/spec.md` §13.1.
+**Nothing is in flight.** The rename to SmartMacro, the node-graph macro model, tags replacing the character roster, the daemon/panel split, the whole UI, the debugger, the settings store, the shipped layout and the `.hsm` format **through wave F4** are all built and green. The format plan is finished; there is no remaining wave.
 
 The refactoring plan that got us here was **deleted** once it was done — not out of tidiness: a plan file sitting in `docs/` reads as a to-do no matter what disclaimer you put on it, and that one had gone further than stale. Its node catalogue still described the string `Id` the model no longer has, and its IPC catalogue listed 21 requests against today's 27. It is in git history if you want it. `docs/design/implementation-plan.md` survives because the mockups next to it are still the visual reference — but it is history too, and several of its claims were disproved on contact (the targets badge needed no new IPC; the breakpoint dot could not live on the box corner). Read it for context, never as a to-do.
 
-**`docs/spec.md` describes the system as built** and is the place to look first. Its most load-bearing part is **§14, the decision history** — tables of «было → стало → почему» covering what was dropped before the refactor (FOLLOW/HOLD/COMBAT state machine, LLM integration, per-character roster, nameplate identification), what the refactor itself changed, and the `.hsm` waves. **§13.1 is the `.hsm` decision in full**, with a table saying which wave is done — F1, F2 and F3 are, F4 (submacros) is not. Read it before proposing anything that sounds like a fresh idea; a good share of "obvious improvements" are in there with a reason they were rejected.
+**`docs/spec.md` describes the system as built** and is the place to look first. Its most load-bearing part is **§14, the decision history** — tables of «было → стало → почему» covering what was dropped before the refactor (FOLLOW/HOLD/COMBAT state machine, LLM integration, per-character roster, nameplate identification), what the refactor itself changed, and the `.hsm` waves F1–F4. Read it before proposing anything that sounds like a fresh idea; a good share of "obvious improvements" are in there with a reason they were rejected.
 
-Gate: `dotnet run --project tests/SmartMacro.Tests` — **741 tests**, and they are expected green before anything is committed.
+⚠️ **§13.1 is gone, and that is the point.** It was the `.hsm` decision written up as something not yet built, and it survived three waves as a to-do. With F4 the format is finished, so its contents moved into the sections that describe what exists — the bundle layout and the library in §5.7, templates inside the macro in §8, submacros in §5.1, the panel's authorship in §5.7 and §6.1 — and the reasoning became rows in §14. Do not recreate a "planned format" section.
+
+Gate: `dotnet run --project tests/SmartMacro.Tests` — **769 tests**, and they are expected green before anything is committed.
 
 The sections below are the constraints that are load-bearing — the things that look arbitrary, are not, and will be "simplified" back into bugs by anyone who does not know why they are there. Wave tags (D4, D3b, …) survive only because commit messages reference them.
 
@@ -36,7 +38,7 @@ Two departures from the mockup, both from looking at it running:
 
 `MacroExecutor` reports progress through `IMacroRunObserver`; `Core/Ipc/RunEventPublisher` turns that into the `RunEvents` push. Four facts that constrain anything built on top:
 
-- **The unit is a WALK, not a run.** `RunMacroNode` with a selector forks one executor walk per window and they all share one `RunId` — a run id cannot tell them apart. Each walk gets its own id at `MacroWalkTrace.Begin`, and that walk id is the correlation key on every event. The canvas therefore has a walk picker and lights the node of the *selected* walk; otherwise a ten-window fan-out would light ten boxes on one graph.
+- **The unit is a WALK, not a run.** `RunSubmacroNode` with a selector forks one executor walk per window and they all share one `RunId` — a run id cannot tell them apart. Each walk gets its own id at `MacroWalkTrace.Begin`, and that walk id is the correlation key on every event. The canvas therefore has a walk picker and lights the node of the *selected* walk; otherwise a ten-window fan-out would light ten boxes on one graph.
 - **Nothing is produced unless someone subscribed** (`SubscribeRunEvents`). `IsEnabled` is one volatile read per node, checked in the walker before it times anything or formats a detail string — not merely documented there. The daemon is resident and the panel is not, so unsubscribed is the normal state and must cost nothing.
 - **Events are coalesced into batches, at most one envelope per 50 ms.** This is not an optimisation. `IpcServer` gives each connection a 256-deep queue and **drops a client that stops draining**; a ten-window fan-out is several hundred events in a few hundred milliseconds, so unbatched the panel would be dropped exactly when the user is watching. Measured: 344 events, one envelope, zero loss.
 - **Overflow is counted and reported, never silent.** The queue is bounded and `TryWrite` failures ride out as `RunEventBatch.Dropped` so the panel can say the log has a hole. The engine must never block — a walk runs between two Win32 messages to a live game.
@@ -148,6 +150,90 @@ multi-megabyte base64 string would not queue ahead of a running macro's events. 
 *preview* only, for a local reason: the preview pane is palm-sized and decoding an arbitrary blob
 holds Skia memory.
 
+### Submacros — the calls come home (F4)
+
+**There are no cross-macro calls left.** `RunMacroNode` called any macro in the library BY NAME, and
+that was the last hole the `.hsm` format existed to close: hand the file over and it silently does
+nothing, because the callee is not in the recipient's library. Its replacement is
+`RunSubmacroNode`, which calls a submacro of its OWN bundle by `Guid` — `submacro/{Guid}.json`
+inside the `.hsm`, next to `templates/`. The old node type, its `$type` discriminator (`runMacro`),
+`{var}` interpolation of the callee, `IMacroGraphResolver` and `VariableSlot.MacroName` are all
+deleted, not deprecated.
+
+**Three rules, and all three hold by construction rather than by convention:**
+
+- **Flat.** A parent calls a function, a function calls nobody. This is what makes cycles
+  *impossible*, and it replaced two mechanisms that used to catch them at speed: `MaxDepth = 4` and
+  cycle detection over a chain of macro names. Both are gone; one check ("we are already inside a
+  function") stands in for them. Recursion in a macro editor is a gun that goes off, and nobody
+  asked for it.
+- **No triggers.** A hotkey on a function turns it into a top-level macro — and `HotkeyListener`
+  only ever looks at the top level, so the key would silently do nothing. That is the D4 defect
+  exactly, so the validator makes it an Error and the whole macro goes unarmed.
+- **No templates of its own.** `templates/` is one folder, at bundle level; the run's template
+  source is set once in `Orchestrator.RunAsync` and inherited by the child walk. F2 already built
+  it that way "for later" — this is the later.
+
+**The reference is a `Guid`, not a name**, for the same reason node edges are: by name, renaming
+breaks the parent, and you would have to either forbid renaming or bring back the graph walk that
+repoints everything — the machinery the `Guid` node ids deleted. The one identity exception stays
+where it was, on the bundle: **a macro's identity is its file name**, because a file is handed over
+and renamed in Explorer; a function is not. The file *stem inside* `submacro/` IS the guid, so
+there is no second "file → id" map to drift.
+
+**Extraction refuses rather than guesses, and that is the wave's real decision.** A function has one
+entry and returns to its caller, so a selection with two entries, or with exits going to different
+places, is not extractable in any defined way. `MacroExtraction` (Shared, next to the validator)
+refuses and **names the offending nodes** — «У выделения 2 входа: снаружи ведут рёбра в «x», «y»» is
+actionable, «выделение не извлекается» is not. The mixed case is refused too: if some exits end the
+run and one leaves the selection, after extraction both would be the same single return, i.e. a
+branch the author drew specifically to END the run would start continuing it. Silently rewriting
+that is exactly the kind of change the user would discover on a live game with ten clients.
+`MacroNodeEdges` (Shared) exists because extraction needs to REWRITE edges and the validator needs
+to READ them — two copies of "Find has Found and NotFound" would drift silently.
+
+**Variables still travel as a copy, but the copy stopped being silent.** Sub-runs get a clone and
+nothing comes back — the safer behaviour, and it was already there. What F4 added is the honesty:
+`ValidateBundle` warns on the call node when the submacro WRITES a variable the parent READS and
+never writes itself (the spec's own example: `RecognizeTag` inside, `SetIcon` outside), and the
+inspector says so under the function picker. The condition is narrowed to exactly that trap on
+purpose — warning about a function that writes something for itself would teach people to stop
+reading warnings, which is the D4 targets-badge argument again.
+
+**The breakpoint key grew a third coordinate**: `(macro, submacro, node)`. Node ids of a function
+live in the same macro but a different graph, and `SetBreakpoints` replaces one graph's set
+wholesale — without the third coordinate, pushing a function's breakpoints would clear the parent's.
+`ValidationIssue` and `RunWalkDto` grew the same coordinate, for the same reason and with the same
+shape: an issue about a function's node has to switch the canvas before it can highlight anything,
+and **a walk of a function and a walk of its parent share one window handle**, so without
+`SubmacroName` the run picker would label both «0x140804».
+
+**The library is a TREE now, and prefix grouping is gone.** «pw · 6» / «прочее · 11» derived
+structure from how the author had named the files, and it was honest only because no other structure
+existed. Now one does — a function is inside its macro's file — so the group header IS the macro row
+and the nested rows are its functions. Keeping both would draw a tree with one real level and one
+invented one. A function's row is deliberately poorer: no ▸ (it is not a macro, you cannot run it
+alone) and no ⤓ (it has no file of its own), just the name, a red `!` if its graph has an error,
+and ×.
+
+**The editor holds one bundle and shows one graph of it.** `Nodes`/`Triggers` are whatever is on the
+canvas; `_submacros` is the model; `_parkedParent` holds the top-level graph while a function is
+open. `CommitCanvasGraph` is the only place canvas content goes back into the model, and every graph
+switch must go through it. Dirty-tracking (`SerializeCurrent`) covers the WHOLE bundle — comparing
+one graph would call an edit to a function "no changes" until you walked back to the parent.
+Multi-selection for extraction is `IsMarked`, deliberately separate from `IsSelected`: the latter
+drives the inspector (one node), the former is a set that must survive clicking a validation issue.
+
+⚠️ **Four defects here were invisible to build and tests and were found by running it:**
+`ShowsTriggers` was computed correctly but never announced when `HasOpenMacro` flipped (so the
+Triggers section and «+ Под-макрос» stayed dead after creating a macro); the extract button kept a
+stale count after extracting, and stole width from the status line, which then truncated mid-word;
+`TypeLabel = "Запустить под-макрос"` collided pixel-for-pixel with the inspector's «двойной клик —
+правка на месте» hint; and the call node's dropdown was EMPTY on first open of a macro, because
+`SubmacroChoices` was only rebuilt in `RebuildLibrary`, which runs *before* the bundle is loaded.
+Each now has a test, but note what the tests could not have found first: three of the four were
+about a notification or a pixel, not a value.
+
 ### The log feed (Лог)
 
 One request (`SubscribeLog`) and one push (`LogEntries`) — the **second subscription on D3b's channel**, deliberately reusing its batch shape rather than inventing a mechanism. `Core/Ipc/LogEventPublisher` is the engine half (ring + queue + pump + broadcast); `Daemon/Logging/IpcLogSink` is the Serilog adapter, and it lives in the daemon because **Core has no Serilog reference** and must not grow one. Four things constrain anything built on it:
@@ -220,7 +306,7 @@ Six projects, two executables:
 
 `Native` is Win32 P/Invoke via `LibraryImport`, no dependencies.
 
-**`SmartMacro.Shared` (F1) is the shared DOMAIN**: the macro graph model (`SmartMacro.Macros.Model`), its pure validator (`SmartMacro.Macros.Validation`), the pure analyses (`SmartMacro.Macros.Analysis` — `MacroVariableAnalysis`, `MacroTemplateAnalysis`, the latter narrowed to one graph in F2) and the `.hsm` bundle reader/writer/inventory (`SmartMacro.Macros.Bundle`). Namespaces are `SmartMacro.Macros.*` — kept from when these lived in Core, and the reason the move out of Contracts needed **zero `using` edits**; `RootNamespace=SmartMacro` in the csproj is what keeps folder and namespace in step.
+**`SmartMacro.Shared` (F1) is the shared DOMAIN**: the macro graph model (`SmartMacro.Macros.Model`), its pure validator (`SmartMacro.Macros.Validation`), the pure analyses (`SmartMacro.Macros.Analysis` — `MacroVariableAnalysis`, `MacroTemplateAnalysis` narrowed to one graph in F2, and `MacroExtraction` added by F4) and the `.hsm` bundle reader/writer/inventory (`SmartMacro.Macros.Bundle`). Namespaces are `SmartMacro.Macros.*` — kept from when these lived in Core, and the reason the move out of Contracts needed **zero `using` edits**; `RootNamespace=SmartMacro` in the csproj is what keeps folder and namespace in step.
 
 **`SmartMacro.Contracts` is the PROTOCOL**: `SmartMacro.Contracts.Dto` (`WindowDto`, `RunningMacroDto`, `ValidationIssueDto`, `HotkeyFailureDto`, `LogEntryDto`, …), `SmartMacro.Contracts.Settings` (`AppSettings` + its validator), and `SmartMacro.Contracts.Ipc` (envelope, `IpcMessageTypes` catalog, `IpcJson`, `IpcPipe`, `IpcConnection`, `InstallationLayout`, `PeerExecutableLocator`).
 
@@ -259,7 +345,7 @@ hotkey / process-appeared / UI Run
 - **WindowRegistry** (`Core/Windows`) is the sole owner of window tags AND the `hwnd → IGameWindow` lookup. Tag selectors (`RequireTags`/`ExcludeTags`) route every fan-out; "identified" just means "has at least one tag".
 - **Orchestrator** (`Core/Orchestration`) turns triggers into runs. Hotkey runs have no context window (macros must route by selector) and are single-flight per macro NAME; process-appeared runs get the new window as context and are single-flight per (macro, window) so N clients launching at once each boot. Both seed the `cursor` variable via `CursorPositionProvider`. Its `OnProcessAppeared` is also the only place a window is *adopted*, and **`Register` and `StartProcessAppearedMacros` are deliberately adjacent, synchronous lines** — a node reaching an unregistered hwnd fails at execution, so nothing may go between them. Ordering at shutdown is the mirror image: `WindowLifetimeMonitor` is registered in the host BEFORE the orchestrator so it stops AFTER it, and windows leave the registry only once in-flight runs have been cancelled.
 - **Macros** — the model (polymorphic `$type` nodes + triggers), its validator and the `.hsm` bundle live in `Shared/Macros`; `Core/Macros` keeps the daemon-side halves: `Execution` (`MacroExecutor` walker, `MacroPrimitives`, `MacroRunRegistry`, run variables) and `Storage`. The node catalogue and its semantics are in `docs/spec.md` §5.1; see «The node model» below for the two things about it that constrain callers.
-- **`MacroGraphStore`** (`Core/Macros/Storage`) is the daemon's READ-ONLY view of the library: one `.hsm` BUNDLE per macro under `macros/` in the installation root, filename stem = macro name. Its snapshot is a list of `MacroLibraryEntry` (graph + passport + template inventory + the validator's verdict); `All` still hands out bare graphs, `Armed` hands out only the ones without errors, and that second list is what `HotkeyListener` reads. It resolves sub-macros for `RunMacroNode`, supplies `HotkeyListener`'s bindings (re-registered on every change), and tells the orchestrator which graphs a new process should boot. **It writes nothing at all** (F3 grew this from «the constructor writes nothing»): the constructor creates the folder if missing, reads it, and stops. That is an invariant written on the class, not an accident — until backwards compatibility was dropped the same constructor migrated a legacy `macros.json`, renamed it and `hotkeys.json` to `*.migrated`, seeded six `pw-*` examples and dropped a `.examples-seeded` marker, so *constructing the object* meant *changing state on disk*. `DefaultMacroGraphs` and `LegacyMacroMigration` are gone; do not hang start-up side effects back on the ctor.
+- **`MacroGraphStore`** (`Core/Macros/Storage`) is the daemon's READ-ONLY view of the library: one `.hsm` BUNDLE per macro under `macros/` in the installation root, filename stem = macro name. Its snapshot is a list of `MacroLibraryEntry` (graph + passport + template inventory + the validator's verdict); `All` still hands out bare graphs, `Armed` hands out only the ones without errors, and that second list is what `HotkeyListener` reads. `MacroLibraryEntry` also carries the bundle's SUBMACROS, which is what the orchestrator turns into `MacroRunContext.Submacros` (F4) — the name resolver `IMacroGraphResolver` is gone with cross-macro calls. It supplies `HotkeyListener`'s bindings (re-registered on every change) and tells the orchestrator which graphs a new process should boot. **It writes nothing at all** (F3 grew this from «the constructor writes nothing»): the constructor creates the folder if missing, reads it, and stops. That is an invariant written on the class, not an accident — until backwards compatibility was dropped the same constructor migrated a legacy `macros.json`, renamed it and `hotkeys.json` to `*.migrated`, seeded six `pw-*` examples and dropped a `.examples-seeded` marker, so *constructing the object* meant *changing state on disk*. `DefaultMacroGraphs` and `LegacyMacroMigration` are gone; do not hang start-up side effects back on the ctor.
 - **Identification** is no longer built in: it is an ordinary macro the user writes — `KeyPress(C)` → `Delay` → `RecognizeTagNode` (template set `"classes"` → `templates/classes/{tag}.png`) → `SetIconNode` → `KeyPress(C)`. Master/ignored characters are just tags in a selector (`ExcludeTags: ["Лучник", "Шаман"]`).
 
 ### The node model: `Guid` identity, `DisplayName` label
@@ -269,7 +355,7 @@ A node's `Id` is a **`Guid`** and every edge (`Next`/`Found`/`NotFound`/`Timeout
 Two consequences worth knowing before touching this:
 
 - **Renaming is not a graph operation.** It raises `PropertyChanged` and nothing else. The machinery that used to repoint every inbound edge, move the start node and re-push breakpoints on rename is **deleted, not idle** — do not reintroduce a "rename" path that walks the graph.
-- **A duplicate `DisplayName` is a WARNING on both nodes**, not an error and not on one. Clicking an issue highlights a node, so blaming one of the pair picks arbitrarily; and `ValidationIssue` carries `NodeId` (to find) *and* `NodeName` (to print) because either alone is insufficient.
+- **A duplicate `DisplayName` is a WARNING on both nodes**, not an error and not on one. Clicking an issue highlights a node, so blaming one of the pair picks arbitrarily; and `ValidationIssue` carries `NodeId` (to find) *and* `NodeName` (to print) because either alone is insufficient — plus, since F4, `SubmacroId`, because finding a node also means opening the right graph.
 
 Vision nodes carry `MatchThreshold?`; `null` means "the default from settings". The inspector shows the word «из настроек» rather than a number — the default lives in the daemon's settings and printing the shipped value would name a threshold the node will not actually run with. Same rule as the targets badge: the panel must not state as fact something it cannot know.
 

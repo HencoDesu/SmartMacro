@@ -120,7 +120,6 @@ public sealed class MacroVariableRowViewModel : ObservableObject
         VariableSlot.PointVar => "в точке клика",
         VariableSlot.Tag => "в теге",
         VariableSlot.IconPath => "в пути к иконке",
-        VariableSlot.MacroName => "в имени макроса",
         _ => string.Empty,
     };
 }

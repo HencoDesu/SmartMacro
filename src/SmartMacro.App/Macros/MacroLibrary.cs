@@ -134,11 +134,15 @@ public sealed class MacroLibrary : IDisposable
     /// Пишет граф в <c>macros/{имя}.hsm</c> атомарно, переносит вложения и перечитывает снимок.
     /// </summary>
     /// <param name="graph">Сохраняемый граф; его имя становится основой имени файла.</param>
+    /// <param name="submacros">
+    /// Под-макросы бандла (волна F4) либо <c>null</c> — «оставить те, что в файле». Редактор
+    /// передаёт список ВСЕГДА: он держит их все, и только он знает, что среди них удалили.
+    /// </param>
     /// <param name="renamedFrom">Прежнее имя, если это переименование, — иначе шаблоны не переедут.</param>
     /// <exception cref="ArgumentException">Имя графа не годится в качестве имени файла.</exception>
-    public void Save(MacroGraph graph, string? renamedFrom = null)
+    public void Save(MacroGraph graph, IReadOnlyList<MacroSubmacro>? submacros = null, string? renamedFrom = null)
     {
-        MacroBundleFolder.Save(FolderPath, graph, renamedFrom);
+        MacroBundleFolder.Save(FolderPath, graph, submacros, renamedFrom);
         RaiseReload();
     }
 

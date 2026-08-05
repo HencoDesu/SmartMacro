@@ -22,7 +22,7 @@ namespace SmartMacro.Macros.Bundle;
 ///
 /// <see cref="MetadataEntry"/> и <see cref="GraphEntry"/> разнесены НЕ ради аккуратности:
 /// метаданные обязаны прочитаться в тот момент, когда граф не читается, — тогда в библиотеке
-/// видно нормальное имя с восклицательным знаком, а не «файл X — ошибка» (см. §13.1 спеки и
+/// видно нормальное имя с восклицательным знаком, а не «файл X — ошибка» (см. §5.7 спеки и
 /// <see cref="MacroBundleReadResult"/>).
 /// </summary>
 public static class MacroBundleFormat
@@ -49,7 +49,7 @@ public static class MacroBundleFormat
     /// <summary>
     /// Папка с шаблонами машинного зрения ЭТОГО макроса, со слешем на конце.
     /// Общего дерева <c>templates/</c> с волны F2 нет: каждый макрос верхнего уровня —
-    /// остров, и цена этого (поправил шаблон — обойди все макросы) названа в §13.1.
+    /// остров, и цена этого (поправил шаблон — обойди все макросы) названа в §5.7.
     /// </summary>
     public const string TemplateFolder = "templates/";
 
@@ -57,14 +57,20 @@ public static class MacroBundleFormat
     public const string TemplateExtension = ".png";
 
     /// <summary>
-    /// Папка с под-макросами, со слешем на конце.
+    /// Папка с под-макросами, со слешем на конце. Один под-макрос — одна запись
+    /// <c>{Guid}.json</c> в её КОРНЕ; вложенности нет, потому что под-макросы плоские (см.
+    /// <see cref="Model.MacroSubmacro"/>).
     ///
-    /// Наполняет её волна F4; здесь имя папки существует затем, чтобы формат её ПРЕДУСМАТРИВАЛ
-    /// уже сейчас — читатель перечисляет такие записи, писатель кладёт их обратно байт в байт,
-    /// и бандл, собранный будущей версией, не теряет своих под-макросов, пройдя через
-    /// сегодняшний код.
+    /// Имя папки формат предусматривал с F1, задолго до того, как её наполнила F4: читатель
+    /// перечислял такие записи, писатель клал их обратно байт в байт, и бандл, собранный будущей
+    /// версией, не терял своих под-макросов, пройдя через тогдашний код. Это же свойство
+    /// сохранено и сейчас — запись, которая под правило имени не подходит, при перезаписи
+    /// переносится как есть.
     /// </summary>
     public const string SubmacroFolder = "submacro/";
+
+    /// <summary>Расширение файла под-макроса. Внутри него — обычный граф, тем же диалектом JSON, что <see cref="GraphEntry"/>.</summary>
+    public const string SubmacroExtension = ".json";
 
     /// <summary><c>true</c>, если имя файла похоже на бандл по расширению.</summary>
     public static bool HasBundleExtension(string fileName)
@@ -181,5 +187,59 @@ public static class MacroBundleFormat
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         return set is null ? name + TemplateExtension : $"{set}/{name}{TemplateExtension}";
+    }
+
+    /// <summary>
+    /// Разбирает путь внутри <see cref="SubmacroFolder"/> в личность под-макроса.
+    ///
+    /// <b>Основа имени файла и ЕСТЬ <c>Guid</c> под-макроса</b> — то самое, чем на него ссылается
+    /// <see cref="Model.RunSubmacroNode"/>. Второй карты «файл → id» в бандле нет и быть не
+    /// должно: она разошлась бы с содержимым файла ровно так же, как разошёлся бы бейдж целей со
+    /// вторым экземпляром правила отбора.
+    ///
+    /// Правило живёт здесь по той же причине, что и разбор шаблонов: его читают трое — читатель
+    /// бандла, писатель и редактор.
+    /// <code>
+    ///   3f2b…-….json   → под-макрос 3f2b…
+    ///   куски/а.json   → не под-макрос: вложенности нет
+    ///   заметка.txt    → не под-макрос
+    ///   readme.json    → не под-макрос: основа имени не guid
+    /// </code>
+    /// </summary>
+    /// <param name="relativePath">Путь ОТНОСИТЕЛЬНО <see cref="SubmacroFolder"/>.</param>
+    /// <param name="id">Личность под-макроса.</param>
+    /// <returns><c>false</c>, если запись под-макросом не является.</returns>
+    public static bool TryParseSubmacroPath(string relativePath, out Guid id)
+    {
+        id = Guid.Empty;
+
+        if (string.IsNullOrWhiteSpace(relativePath) || !IsSafeRelativePath(relativePath))
+        {
+            return false;
+        }
+
+        var normalized = NormalizeEntryPath(relativePath);
+        if (normalized.Contains('/', StringComparison.Ordinal)
+            || !normalized.EndsWith(SubmacroExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var stem = normalized[..^SubmacroExtension.Length];
+        // Строгий формат «D» (32 шестнадцатеричные цифры и четыре дефиса): Guid.TryParse глотает
+        // и фигурные скобки, и круглые, а такие имена писатель никогда не производит — принять их
+        // значило бы завести второе написание одной и той же личности.
+        return Guid.TryParseExact(stem, "D", out id) && id != Guid.Empty;
+    }
+
+    /// <summary>Обратное к <see cref="TryParseSubmacroPath"/>. Рядом с разбором, чтобы их нельзя было поправить порознь.</summary>
+    public static string SubmacroPath(Guid id)
+    {
+        if (id == Guid.Empty)
+        {
+            throw new ArgumentException("У под-макроса не может быть пустого id.", nameof(id));
+        }
+
+        return id.ToString("D") + SubmacroExtension;
     }
 }

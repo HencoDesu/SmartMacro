@@ -45,13 +45,16 @@ namespace SmartMacro.Macros.Storage;
 /// остаётся на месте, а причина уходит в журнал целиком — и, с волны F3, ещё и в библиотеку панели
 /// отдельной строкой с восклицательным знаком.
 ///
-/// Реализует <see cref="IMacroGraphResolver"/>, так что <c>RunMacroNode</c> разрешает под-макросы
-/// прямо из живой библиотеки.
+/// <b>Разрешателя имён макросов здесь больше нет (F4).</b> Хранилище реализовывало
+/// <c>IMacroGraphResolver</c>, потому что <c>RunMacroNode</c> звал соседа по библиотеке ПО ИМЕНИ.
+/// Межмакросных вызовов не осталось: под-макрос лежит внутри бандла своего родителя, и
+/// оркестратор берёт его из <see cref="MacroLibraryEntry.Submacros"/> той же записи, из которой
+/// взял граф. Интерфейс удалён вместе с последним вызывающим.
 ///
 /// Параллелизм: чтения идут через неизменяемый снимок и обходятся без блокировок; перезагрузку
 /// выстраивает в очередь семафор.
 /// </summary>
-public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
+public sealed partial class MacroGraphStore : IDisposable
 {
     private const int ReloadDebounceMs = 300;
 
@@ -144,7 +147,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     /// </summary>
     public IReadOnlyList<MacroGraph> Armed => _armed;
 
-    /// <inheritdoc />
+    /// <summary>Граф макроса по имени или <c>null</c>.</summary>
     public MacroGraph? TryGet(string name) => TryGetEntry(name)?.Graph;
 
     /// <summary>Запись библиотеки по имени или <c>null</c>.</summary>
@@ -239,15 +242,16 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
 
             // Валидация ЗДЕСЬ, а не на первом прогоне: гарантия «оно в библиотеке ⇒ демон его
             // принял» ушла вместе с SaveMacro, и её место заняло «демон прочитал и вынес
-            // вердикт». Опись подаётся из ЭТОГО бандла — та же, что увидит панель.
-            var issues = MacroGraphValidator.Validate(bundle.Graph, bundle.Templates).ToList();
+            // вердикт». Судится БАНДЛ ЦЕЛИКОМ — граф вместе с под-макросами, — и делает это метод
+            // самой записи, чтобы у панели не оказалось второй копии списка аргументов.
             var entry = new MacroLibraryEntry(
                 bundle.Name,
                 bundle.Graph,
                 bundle.Metadata,
                 bundle.TemplatePaths,
+                bundle.Submacros,
                 bundle.Path,
-                issues);
+                bundle.Validate());
 
             if (entry.HasErrors)
             {

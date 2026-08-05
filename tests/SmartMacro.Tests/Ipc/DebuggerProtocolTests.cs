@@ -44,12 +44,10 @@ public class DebuggerProtocolTests
             Engine.RunEvents.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
 
             Primitives = new RecordingPrimitives();
-            Resolver = new DictionaryResolver();
             Templates = new FakeTemplateSource();
             Executor = new MacroExecutor(
                 Primitives,
                 new WindowRegistry(NullLogger<WindowRegistry>.Instance),
-                Resolver,
                 NullLogger<MacroExecutor>.Instance);
         }
 
@@ -58,8 +56,6 @@ public class DebuggerProtocolTests
         public IpcServer Server { get; }
 
         public RecordingPrimitives Primitives { get; }
-
-        public DictionaryResolver Resolver { get; }
 
         /// <summary>Порунный источник шаблонов (F2): в бою его ставит Orchestrator.RunAsync.</summary>
         public FakeTemplateSource Templates { get; }

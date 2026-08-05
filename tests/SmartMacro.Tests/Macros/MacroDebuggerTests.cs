@@ -62,7 +62,7 @@ public class MacroDebuggerTests
     {
         var harness = new ExecutorHarness();
         var session = Session(attached: false);
-        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("b")]);
 
         // Демон резидентен: точка останова, застопорившая обход, за которым никто не смотрит,
         // заклинила бы хоткей макроса до самого перезапуска. Хранение переживает уход панели,
@@ -109,7 +109,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("b")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -141,8 +141,8 @@ public class MacroDebuggerTests
     {
         var harness = new ExecutorHarness();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
-        session.SetBreakpoints("цепочка", []);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("b")]);
+        session.SetBreakpoints("цепочка", null, []);
 
         var result = await harness.Executor
             .RunAsync(Chain(), harness.Context(ExecutorHarness.Window, debugger: session), CancellationToken.None)
@@ -158,7 +158,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         // 'b' есть в обоих графах; точка останова принадлежит другому.
         var session = Session();
-        session.SetBreakpoints("другой", [Ids.Of("b")]);
+        session.SetBreakpoints("другой", null, [Ids.Of("b")]);
 
         var result = await harness.Executor
             .RunAsync(Chain(), harness.Context(ExecutorHarness.Window, debugger: session), CancellationToken.None)
@@ -174,7 +174,7 @@ public class MacroDebuggerTests
         // уходить, прогоны тоже, — а красная точка стоит на месте, пока её кто-нибудь не снимет.
         var harness = new ExecutorHarness();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("c")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("c")]);
 
         for (var attempt = 0; attempt < 2; attempt++)
         {
@@ -201,7 +201,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("a")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("a")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -232,7 +232,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("a")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("a")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -259,7 +259,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("a")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("a")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -280,7 +280,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("a")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("a")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -369,7 +369,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("b")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -398,7 +398,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("b")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -425,7 +425,7 @@ public class MacroDebuggerTests
         var observer = new RecordingObserver();
         var session = Session();
         session.Acquire(); // two panels attached
-        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("b")]);
 
         var run = harness.Executor.RunAsync(
             Chain(),
@@ -448,7 +448,7 @@ public class MacroDebuggerTests
     {
         var harness = new ExecutorHarness();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("b")]);
         session.Release();
 
         var result = await harness.Executor
@@ -469,7 +469,7 @@ public class MacroDebuggerTests
         var harness = new ExecutorHarness();
         var observer = new RecordingObserver();
         var session = Session();
-        session.SetBreakpoints("цепочка", [Ids.Of("b")]);
+        session.SetBreakpoints("цепочка", null, [Ids.Of("b")]);
         using var cts = new CancellationTokenSource();
 
         var run = harness.Executor.RunAsync(
@@ -502,19 +502,21 @@ public class MacroDebuggerTests
         harness.Registry.AddTag(0x31, "клиент");
         harness.Registry.AddTag(0x32, "клиент");
 
-        harness.Resolver.Add(ExecutorHarness.Graph(
+        var sub = harness.AddSubmacro(ExecutorHarness.Graph(
             "sub",
             Ids.Of("press"),
             new KeyPressNode { Id = Ids.Of("press"), DisplayName = "press", Key = VirtualKey.C }));
         var parent = ExecutorHarness.Graph(
             "parent",
             Ids.Of("fan"),
-            new RunMacroNode
+            new RunSubmacroNode
             {
-                Id = Ids.Of("fan"), DisplayName = "fan", MacroName = "sub",
+                Id = Ids.Of("fan"), DisplayName = "fan", SubmacroId = sub,
                 Target = new TargetSelector { RequireTags = ["клиент"] }
             });
-        session.SetBreakpoints("sub", [Ids.Of("press")]);
+        // ТРЕТЬЯ КООРДИНАТА (F4): точка стоит в ПОД-макросе, значит ключ — (макрос, под-макрос).
+        // Обход функции докладывает о себе именем родителя, а не своей подписью.
+        session.SetBreakpoints("parent", sub, [Ids.Of("press")]);
 
         var run = harness.Executor.RunAsync(
             parent,
@@ -654,7 +656,7 @@ public class MacroDebuggerTests
 
         public int ArmCalls { get; private set; }
 
-        public MacroDebugGate? Arm(Guid walkId, string macroName, Guid nodeId, string nodeName)
+        public MacroDebugGate? Arm(Guid walkId, string macroName, Guid? submacroId, Guid nodeId, string nodeName)
         {
             ArmCalls++;
             return null;

@@ -79,7 +79,7 @@ public class MacroBundleTests
 
             await Assert.That(read.TemplatePaths).IsEquivalentTo(
                 new[] { "CharacterSelectButton.png", "classes/Жрец.png", "classes/Лучник.png" });
-            await Assert.That(read.SubmacroPaths).IsEmpty();
+            await Assert.That(read.Submacros).IsEmpty();
 
             foreach (var template in original.Templates)
             {
@@ -131,8 +131,16 @@ public class MacroBundleTests
         }
     }
 
+    /// <summary>
+    /// Записи <c>submacro/</c>, которые под правило имени не подходят (заметка автора, файл
+    /// будущей версии формата), переживают перезапись бандла байт в байт и НЕ становятся
+    /// вердиктом о поломке.
+    ///
+    /// Это то же свойство, ради которого папка была предусмотрена ещё в F1: сегодняшний код не
+    /// имеет права терять то, чего он не понимает.
+    /// </summary>
     [Test]
-    public async Task SubmacroFolder_SurvivesARoundTripEvenThoughNothingFillsItYet()
+    public async Task SubmacroFolder_CarriesUnknownEntriesThroughByteForByte()
     {
         var dir = CreateTempDir();
         try
@@ -140,13 +148,19 @@ public class MacroBundleTests
             var path = Path.Combine(dir, "f4.hsm");
             MacroBundleWriter.Write(path, Content() with
             {
-                Submacros = [new MacroBundleFile("подпрограмма.json", Encoding.UTF8.GetBytes("{\"Name\":\"x\"}"))],
+                Submacros = [new MacroBundleFile("заметка.txt", Encoding.UTF8.GetBytes("не под-макрос"))],
             });
 
             var read = MacroBundleReader.Read(path);
 
-            await Assert.That(read.SubmacroPaths).IsEquivalentTo(new[] { "подпрограмма.json" });
-            await Assert.That(MacroBundleReader.ReadSubmacro(path, "подпрограмма.json")).IsNotNull();
+            // Разбор её под-макросом не считает — и молча, без обвинений автора.
+            await Assert.That(read.Submacros).IsEmpty();
+            await Assert.That(read.SubmacroFaults).IsEmpty();
+
+            // А писатель обязан вернуть её на место.
+            var content = MacroBundleReader.ReadContent(path);
+            await Assert.That(content!.Submacros.Select(file => file.Path))
+                .IsEquivalentTo(new[] { "заметка.txt" });
         }
         finally
         {

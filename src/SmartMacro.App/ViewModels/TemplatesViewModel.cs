@@ -157,7 +157,12 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     private readonly Dictionary<(string Macro, string? Set, string Name), byte[]> _previews = [];
 
     private string? _macroName;
-    private MacroGraph? _graph;
+
+    // ВСЕ графы бандла: сам макрос и каждый его под-макрос (волна F4). Список, а не один граф,
+    // потому что папка templates/ у бандла одна на всех, и шаблон, названный только из функции,
+    // обязан перестать быть «не используется» — иначе браузер утверждал бы про файл ровно
+    // обратное тому, что сделает исполнитель.
+    private IReadOnlyList<MacroGraph> _graphs = [];
     private IReadOnlyList<(string? Set, string Name, MacroBundleTemplateInfo File)> _files = [];
 
     private TemplateRowViewModel? _selected;
@@ -324,15 +329,16 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     /// Наводит браузер на макрос, открытый в редакторе. <c>null</c> — редактор закрыт; тогда
     /// список пуст и на диск никто не ходит.
     ///
-    /// Граф передаётся вместе с именем, потому что «какие ноды называют этот шаблон» считается по
-    /// НЕМУ, а не по тому, что лежит на диске: набрал имя шаблона в ноде — и строка сразу
-    /// перестала быть «не используется», ещё до сохранения.
+    /// Графы передаются вместе с именем, потому что «какие ноды называют этот шаблон» считается по
+    /// НИМ, а не по тому, что лежит на диске: набрал имя шаблона в ноде — и строка сразу
+    /// перестала быть «не используется», ещё до сохранения. Графов несколько, потому что папка
+    /// шаблонов у бандла одна, а называть их могут и макрос, и любой его под-макрос (F4).
     /// </summary>
-    public void ShowMacro(string? macroName, MacroGraph? graph)
+    public void ShowMacro(string? macroName, IReadOnlyList<MacroGraph>? graphs)
     {
         var macroChanged = !string.Equals(_macroName, macroName, StringComparison.Ordinal);
         _macroName = macroName;
-        _graph = graph;
+        _graphs = graphs ?? [];
 
         OnPropertyChanged(nameof(MacroName));
         OnPropertyChanged(nameof(HasMacro));
@@ -522,13 +528,23 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     {
         // Ссылки на ОДИНОЧНЫЙ файл ключуются его именем; ссылки на НАБОР — именем папки, и
         // достаются они каждому файлу этого набора: RecognizeTag называет набор целиком.
-        var usage = _graph is null ? [] : MacroTemplateAnalysis.Analyze(_graph);
+        // Ссылки со ВСЕХ графов бандла сливаются по имени: одно и то же имя, названное и
+        // родителем, и функцией, — это два места, где шаблон используется, и показать надо оба.
+        var usage = _graphs.SelectMany(MacroTemplateAnalysis.Analyze).ToList();
         var singles = usage
             .Where(u => !u.IsSet)
-            .ToDictionary(u => u.Name, u => u.References, StringComparer.Ordinal);
+            .GroupBy(u => u.Name, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<TemplateReference>)[.. group.SelectMany(u => u.References)],
+                StringComparer.Ordinal);
         var sets = usage
             .Where(u => u.IsSet)
-            .ToDictionary(u => u.Name, u => u.References, StringComparer.Ordinal);
+            .GroupBy(u => u.Name, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<TemplateReference>)[.. group.SelectMany(u => u.References)],
+                StringComparer.Ordinal);
 
         var rows = _files
             .Select(file => new TemplateRowViewModel(

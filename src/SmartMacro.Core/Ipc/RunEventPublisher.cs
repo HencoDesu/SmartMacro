@@ -161,7 +161,9 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
             walk.ContextWindow?.ToInt64() ?? 0,
             walk.Depth,
             DateTimeOffset.UtcNow,
-            FromStart: true);
+            FromStart: true,
+            walk.SubmacroId,
+            walk.SubmacroName);
 
         // Записывается безусловно — см. комментарий к классу. Дёшево и ограничено числом
         // одновременных обходов, то есть числом игровых окон.

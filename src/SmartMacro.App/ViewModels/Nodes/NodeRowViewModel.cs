@@ -17,7 +17,7 @@ public enum MacroNodeKind
     AddTag,
     RemoveTag,
     SetIcon,
-    RunMacro,
+    RunSubmacro,
     FindElement,
     WaitForElement,
     RecognizeTag,
@@ -309,6 +309,7 @@ public abstract class NodeRowViewModel : ObservableObject
 {
     private string _displayName;
     private bool _isSelected;
+    private bool _isMarked;
     private double _x;
     private double _y;
     private bool _hasPosition;
@@ -590,6 +591,22 @@ public abstract class NodeRowViewModel : ObservableObject
         set => SetField(ref _isSelected, value);
     }
 
+    /// <summary>
+    /// Отмечена для группового действия — сегодня оно ровно одно: «выделить в под-макрос»
+    /// (волна F4).
+    ///
+    /// Отдельно от <see cref="IsSelected"/>, а не вместо него, и это решение. Одиночное выделение
+    /// управляет ИНСПЕКТОРОМ, у которого одна нода на экране; отметка — это набор, который
+    /// набирают Ctrl+кликом и который обязан пережить и клик по замечанию валидатора, и переход
+    /// по списку прогонов. Слив их в одно поле, мы получили бы инспектор, показывающий случайную
+    /// ноду из семи отмеченных.
+    /// </summary>
+    public bool IsMarked
+    {
+        get => _isMarked;
+        set => SetField(ref _isMarked, value);
+    }
+
     /// <summary>Русская подпись типа, показываемая в шапке коробки.</summary>
     public abstract string TypeLabel { get; }
 
@@ -675,6 +692,7 @@ public abstract class NodeRowViewModel : ObservableObject
             case nameof(Y):
             case nameof(HasPosition):
             case nameof(IsSelected):
+            case nameof(IsMarked):
             case nameof(IsExpanded):
             case nameof(IsExecuting):
             case nameof(IsRunningLive):
@@ -719,7 +737,7 @@ public abstract class NodeRowViewModel : ObservableObject
             AddTagNode n => new AddTagNodeRowViewModel(n),
             RemoveTagNode n => new RemoveTagNodeRowViewModel(n),
             SetIconNode n => new SetIconNodeRowViewModel(n),
-            RunMacroNode n => new RunMacroNodeRowViewModel(n),
+            RunSubmacroNode n => new RunSubmacroNodeRowViewModel(n),
             FindElementNode n => new FindElementNodeRowViewModel(n),
             WaitForElementNode n => new WaitForElementNodeRowViewModel(n),
             RecognizeTagNode n => new RecognizeTagNodeRowViewModel(n),
@@ -750,7 +768,7 @@ public abstract class NodeRowViewModel : ObservableObject
             MacroNodeKind.AddTag => new AddTagNode { Tag = string.Empty },
             MacroNodeKind.RemoveTag => new RemoveTagNode { Tag = string.Empty },
             MacroNodeKind.SetIcon => new SetIconNode { IconPath = "Assets/ClassIcons/{tag}.png" },
-            MacroNodeKind.RunMacro => new RunMacroNode { MacroName = string.Empty },
+            MacroNodeKind.RunSubmacro => new RunSubmacroNode { SubmacroId = Guid.Empty },
             MacroNodeKind.FindElement => new FindElementNode { Template = string.Empty },
             MacroNodeKind.WaitForElement => new WaitForElementNode { Template = string.Empty, TimeoutMs = 10_000 },
             MacroNodeKind.RecognizeTag => new RecognizeTagNode { TemplateSet = string.Empty, Region = default },
@@ -769,7 +787,7 @@ public abstract class NodeRowViewModel : ObservableObject
         new(MacroNodeKind.AddTag, "Добавить тег"),
         new(MacroNodeKind.RemoveTag, "Снять тег"),
         new(MacroNodeKind.SetIcon, "Сменить иконку"),
-        new(MacroNodeKind.RunMacro, "Запустить макрос"),
+        new(MacroNodeKind.RunSubmacro, "Запустить под-макрос"),
         new(MacroNodeKind.FindElement, "Найти элемент"),
         new(MacroNodeKind.WaitForElement, "Ждать элемент"),
         new(MacroNodeKind.RecognizeTag, "Распознать тег"),

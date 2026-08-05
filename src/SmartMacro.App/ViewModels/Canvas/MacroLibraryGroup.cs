@@ -1,95 +1,48 @@
 using System.Collections.ObjectModel;
-using System.Globalization;
 
 namespace SmartMacro.App.ViewModels.Canvas;
 
 /// <summary>
-/// Один заголовок панели библиотеки: <c>pw · 6</c>, <c>баг госта · 5</c>, <c>прочее · 11</c>.
+/// Один МАКРОС в панели библиотеки вместе с его под-макросами (волна F4).
+///
+/// ────────────────────────────────────────────────────────────────────────────────────────
+/// <b>Группировка по ПРЕФИКСУ ИМЕНИ убрана, и на её месте группировка по родительскому
+/// макросу.</b>
+///
+/// Прежнее правило («текст до первого дефиса; префиксы, общие для двух и более макросов,
+/// становятся заголовком; остальное — в „прочее“») выводило структуру из того, как автор назвал
+/// файлы. Оно честно работало ровно потому, что другой структуры не было: библиотека была
+/// плоским списком, и единственный способ сказать «эти пять — про одно» состоял в том, чтобы
+/// одинаково их назвать. Отсюда и «баг госта · 5», и «прочее · 11» — заголовок, который означал
+/// «эти ни с кем не совпали по имени».
+///
+/// С под-макросами структура появилась НАСТОЯЩАЯ: под-макрос принадлежит своему макросу, потому
+/// что лежит внутри его файла, и это факт формата, а не догадка по строке. Оставить рядом две
+/// группировки значило бы рисовать дерево, у которого один уровень настоящий, а второй
+/// придуманный, — и «прочее» посреди него окончательно ни о чём бы не говорило.
+///
+/// Поэтому заголовок группы — это САМ МАКРОС (строка со всеми своими кнопками), а элементы —
+/// его функции. Макрос без под-макросов остаётся просто строкой: группа с нулём элементов ничего
+/// не рисует сверх неё.
+/// ────────────────────────────────────────────────────────────────────────────────────────
 /// </summary>
 public sealed class MacroLibraryGroupViewModel
 {
-    internal MacroLibraryGroupViewModel(string prefix, string header, IEnumerable<MacroListItemViewModel> items)
+    internal MacroLibraryGroupViewModel(MacroListItemViewModel macro, IEnumerable<SubmacroListItemViewModel> items)
     {
-        Prefix = prefix;
-        Header = header;
+        Macro = macro;
         Items = [.. items];
     }
 
-    /// <summary>Общий префикс имён либо <see cref="MacroLibraryGrouping.OtherGroup"/>.</summary>
-    public string Prefix { get; }
+    /// <summary>Строка самого макроса — она и есть заголовок группы.</summary>
+    public MacroListItemViewModel Macro { get; }
 
-    /// <summary>Готовый заголовок: префикс плюс количество.</summary>
-    public string Header { get; }
+    /// <summary>Имя макроса; вынесено отдельно, потому что по нему группу ищут тесты и выделение.</summary>
+    public string Name => Macro.Name;
 
-    /// <summary>Макросы группы, по алфавиту.</summary>
-    public ObservableCollection<MacroListItemViewModel> Items { get; }
-}
+    /// <summary>Под-макросы, по подписи.</summary>
+    public ObservableCollection<SubmacroListItemViewModel> Items { get; }
 
-/// <summary>
-/// Правило группировки библиотеки. Чистый UI — на диске о нём никто не знает.
-///
-/// <b>Правило:</b> префикс макроса — это текст до первого <c>-</c>, а если дефиса нет, то всё имя
-/// целиком. Префиксы, общие для ДВУХ И БОЛЕЕ макросов, становятся группой с заголовком из
-/// префикса в нижнем регистре и числа участников; всё остальное сваливается в «прочее».
-///
-/// Половину «а если дефиса нет, то всё имя» требует макет, и её легко проглядеть: в его группе
-/// «баг госта · 5» лежат и <c>Баг госта-Лучник</c>, и просто <c>Баг госта</c>, так что правило,
-/// отправляющее любое бездефисное имя прямиком в «прочее», разорвало бы семью надвое. Половина
-/// «двух и более» — обратная сторона той же монеты: без неё каждый разовый макрос получил бы
-/// собственный заголовок, и панель состояла бы из одних заголовков.
-///
-/// Группы идут по префиксу, «прочее» приколочено последним, как бы оно ни сортировалось.
-/// </summary>
-public static class MacroLibraryGrouping
-{
-    /// <summary>Заголовок для макросов, чей префикс ни с кем не разделён.</summary>
-    public const string OtherGroup = "прочее";
-
-    /// <summary>Текст до первого <c>-</c> либо всё имя целиком.</summary>
-    public static string PrefixOf(string name)
-    {
-        ArgumentNullException.ThrowIfNull(name);
-        var dash = name.IndexOf('-', StringComparison.Ordinal);
-        return dash <= 0 ? name : name[..dash];
-    }
-
-    /// <summary>Разбивает (уже упорядоченную) библиотеку на разделы с заголовками.</summary>
-    public static List<MacroLibraryGroupViewModel> Build(IEnumerable<MacroListItemViewModel> items)
-    {
-        ArgumentNullException.ThrowIfNull(items);
-
-        var all = items.ToList();
-        var byPrefix = all
-            .GroupBy(item => PrefixOf(item.Name), StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
-
-        var groups = new List<MacroLibraryGroupViewModel>();
-        var others = new List<MacroListItemViewModel>();
-
-        foreach (var group in byPrefix)
-        {
-            if (group.Count() < 2)
-            {
-                others.AddRange(group);
-                continue;
-            }
-
-            var members = group.OrderBy(item => item.Name, StringComparer.CurrentCulture).ToList();
-            groups.Add(new MacroLibraryGroupViewModel(group.Key, Header(group.Key, members.Count), members));
-        }
-
-        groups.Sort((left, right) =>
-            string.Compare(left.Prefix, right.Prefix, StringComparison.CurrentCultureIgnoreCase));
-
-        if (others.Count > 0)
-        {
-            others.Sort((left, right) => string.Compare(left.Name, right.Name, StringComparison.CurrentCulture));
-            groups.Add(new MacroLibraryGroupViewModel(OtherGroup, Header(OtherGroup, others.Count), others));
-        }
-
-        return groups;
-    }
-
-    private static string Header(string prefix, int count) =>
-        string.Create(CultureInfo.CurrentCulture, $"{prefix.ToLowerInvariant()} · {count}");
+    /// <summary>Есть что показать вложенным списком. У макроса без функций — <c>false</c>.</summary>
+    public bool HasItems => Items.Count > 0;
 }

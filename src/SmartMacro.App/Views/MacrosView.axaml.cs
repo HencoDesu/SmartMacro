@@ -104,10 +104,22 @@ public partial class MacrosView : UserControl
     /// </summary>
     private void OnMacroRowPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (Vm is { } vm && sender is Control { DataContext: MacroListItemViewModel item })
+        if (Vm is not { } vm || sender is not Control { DataContext: MacroListItemViewModel item })
         {
-            vm.SelectedMacro = item;
+            return;
         }
+
+        // ⚠️ Найдено глазами: строка макроса, УЖЕ выбранного, ничего не делала — а с открытым
+        // под-макросом это значит «клик по родителю в дереве не возвращает к родителю». Дерево и
+        // есть навигация, и строка обязана вести туда, что на ней написано; сеттер SelectedMacro
+        // на неизменившемся значении выходит сразу и до канвы не доходит.
+        if (vm.IsSubmacroOpen && vm.SelectedMacro?.Name == item.Name)
+        {
+            vm.OpenParentGraph();
+            return;
+        }
+
+        vm.SelectedMacro = item;
     }
 
     private void OnRunMacroClicked(object? sender, RoutedEventArgs e)
@@ -133,6 +145,43 @@ public partial class MacrosView : UserControl
             vm.DeleteMacro(item);
         }
     }
+
+    // ---- под-макросы (F4) -----------------------------------------------------------------
+
+    /// <summary>
+    /// Клик по вложенной строке дерева открывает функцию на канве. Если открыт другой макрос,
+    /// сперва открываем её МАКРОС: функция без своего бандла не существует, а перескочить в неё
+    /// мимо родителя означало бы показать граф без того, что его вызывает.
+    /// </summary>
+    private void OnSubmacroRowPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (Vm is not { } vm || sender is not Control { DataContext: SubmacroListItemViewModel item })
+        {
+            return;
+        }
+
+        if (vm.SelectedMacro?.Name != item.MacroName)
+        {
+            vm.SelectedMacro = vm.Macros.FirstOrDefault(macro =>
+                string.Equals(macro.Name, item.MacroName, StringComparison.Ordinal));
+        }
+
+        vm.OpenSubmacro(item.Id);
+    }
+
+    private void OnDeleteSubmacroClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: SubmacroListItemViewModel item })
+        {
+            vm.DeleteSubmacro(item.Id);
+        }
+    }
+
+    private void OnOpenParentGraphClicked(object? sender, RoutedEventArgs e) => Vm?.OpenParentGraph();
+
+    private void OnAddSubmacroClicked(object? sender, RoutedEventArgs e) => Vm?.AddSubmacro();
+
+    private void OnExtractSubmacroClicked(object? sender, RoutedEventArgs e) => Vm?.ExtractSubmacro();
 
     /// <summary>
     /// «Импорт» — системный диалог выбора <c>.hsm</c>, дальше файл просто копируется в
@@ -575,6 +624,9 @@ public partial class MacrosView : UserControl
         {
             vm.SelectedNode = null;
             vm.CollapseNodes();
+            // Набор для извлечения сбрасывается ЗДЕСЬ и только здесь: клик по пустому месту —
+            // единственный жест, который у канвы означает «ничего не выбрано».
+            vm.ClearMarks();
         }
         else if (!point.Properties.IsMiddleButtonPressed)
         {
@@ -590,6 +642,12 @@ public partial class MacrosView : UserControl
     /// Нажатие по коробке. Выделяет её и начинает перемещение; нажатия по полям РАЗВЁРНУТОЙ
     /// коробки сюда не доходят никогда, потому что каждый контрол ввода помечает своё нажатие
     /// обработанным.
+    ///
+    /// <b>Ctrl+клик набирает НАБОР</b> для выделения в под-макрос (F4) и перемещения не начинает:
+    /// набирают его по несколько коробок подряд, и сдвинуть одну из них случайным дрожанием руки
+    /// посреди набора — не то, чего ждёшь. Обычный клик набор не трогает: он сбрасывается кликом
+    /// по пустому месту канвы, и это отдельный жест ровно затем, чтобы разглядывание графа его не
+    /// разрушало.
     /// </summary>
     private void OnNodePressed(object? sender, PointerPressedEventArgs e)
     {
@@ -599,6 +657,14 @@ public partial class MacrosView : UserControl
         }
 
         Viewport.Focus();
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            vm.ToggleMark(row);
+            e.Handled = true;
+            return;
+        }
+
         vm.SelectedNode = row;
 
         var point = e.GetCurrentPoint(Viewport);

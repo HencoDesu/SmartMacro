@@ -236,10 +236,11 @@ public sealed partial class IpcRequestDispatcher
                 // Проверки «а существует ли такой макрос» здесь нет намеренно: точку останова
                 // законно ставят и на несохранённый черновик, а набор ключуется по имени —
                 // и в тот момент, когда черновик сохранят под этим именем, она начнёт кусаться.
+                // То же и про под-макрос: он может быть только что выделен и ещё не записан.
                 //
                 // NodeIds размечен nullable — см. пояснение у SetBreakpointsRequest: поле
                 // приезжает из JSON, и клиент вправе его не положить.
-                _debug.SetBreakpoints(payload.MacroName, payload.NodeIds ?? []);
+                _debug.SetBreakpoints(payload.MacroName, payload.SubmacroId, payload.NodeIds ?? []);
                 return Ok(request);
             }
 

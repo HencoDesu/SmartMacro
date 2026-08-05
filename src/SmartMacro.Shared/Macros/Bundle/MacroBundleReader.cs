@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using SmartMacro.Macros.Model;
 
+
 namespace SmartMacro.Macros.Bundle;
 
 /// <summary>
@@ -71,9 +72,11 @@ public static class MacroBundleReader
     public static byte[]? ReadTemplate(string path, string relativePath) =>
         ReadEntryBytes(path, MacroBundleFormat.TemplateFolder, relativePath);
 
-    /// <summary>То же для <see cref="MacroBundleFormat.SubmacroFolder"/>.</summary>
-    public static byte[]? ReadSubmacro(string path, string relativePath) =>
-        ReadEntryBytes(path, MacroBundleFormat.SubmacroFolder, relativePath);
+    // Близнеца ReadTemplate для submacro/ здесь НЕТ, и это не пропуск. Шаблон читают по одному,
+    // потому что это килобайты пикселей и смотрят на них по одному; под-макросы — это JSON
+    // размером с nodes.json, и нужны они всегда все сразу: демону — исполнять, панели — показать
+    // дерево. Их и читает Read() вместе с графом, разобранными (F4). Метод, отдающий байты
+    // одного, звать было бы некому.
 
     /// <summary>
     /// ВСЕ шаблоны бандла разом, вместе с байтами, за одно открытие архива.
@@ -107,9 +110,9 @@ public static class MacroBundleReader
     /// Хранилище правит бандл по частям (сохранили граф; добавили шаблон; удалили шаблон), а
     /// писатель умеет только «весь файл целиком» — иначе замена переименованием, на которой стоит
     /// атомарность, была бы невозможна. Поэтому цикл всегда один и тот же: прочитать всё,
-    /// поменять одно, записать всё. <b>Под-макросы едут через этот метод байт в байт</b>, хотя
-    /// наполнит их только F4: бандл, собранный будущей версией и прошедший через сегодняшнее
-    /// сохранение, не имеет права их потерять.
+    /// поменять одно, записать всё. <b>Под-макросы едут через этот метод байт в байт</b> — как
+    /// файлы, а не как разобранные графы: тот, кто их не меняет, обязан вернуть на место в том
+    /// числе запись, которую сегодняшний разбор под-макросом не считает.
     /// </summary>
     /// <returns><c>null</c>, если бандл не читается настолько, что переписывать нечего.</returns>
     public static MacroBundleContent? ReadContent(string path)
@@ -223,17 +226,65 @@ public static class MacroBundleReader
                 metadata.Fault,
                 $"Граф не читался: {Lower(metadata.Message)}",
                 [],
+                [],
                 []);
         }
 
         var (graph, graphFault, graphMessage) = ReadGraph(archive);
+        var (submacros, submacroFaults) = ReadSubmacros(archive);
         return new MacroBundleReadResult(
             metadata,
             graph,
             graphFault,
             graphMessage,
             ListFolder(archive, MacroBundleFormat.TemplateFolder),
-            ListFolder(archive, MacroBundleFormat.SubmacroFolder));
+            submacros,
+            submacroFaults);
+    }
+
+    /// <summary>
+    /// Под-макросы бандла (волна F4): каждая запись <c>submacro/{Guid}.json</c> — граф.
+    ///
+    /// Не разобравшаяся запись НЕ роняет чтение и НЕ прячет родительский граф: она уезжает
+    /// отдельным списком объяснений, из которого валидатор делает ошибку. Иначе один битый
+    /// под-макрос превращал бы весь макрос в строку «файл X — ошибка», из которой не понять даже,
+    /// какой это был макрос, — то самое, ради чего <c>metadata.json</c> и <c>nodes.json</c>
+    /// разнесены.
+    ///
+    /// Записи, под правило имени не подходящие, молча пропускаются: писателю они всё равно
+    /// поедут обратно байт в байт (см. <see cref="MacroBundleContent.Submacros"/>), а обвинять
+    /// автора в чужом файле незачем.
+    /// </summary>
+    private static (IReadOnlyList<MacroSubmacro> Submacros, IReadOnlyList<string> Faults) ReadSubmacros(
+        ZipArchive archive)
+    {
+        var found = new List<MacroSubmacro>();
+        var faults = new List<string>();
+
+        foreach (var (entry, relativePath) in EnumerateFolder(archive, MacroBundleFormat.SubmacroFolder))
+        {
+            if (!MacroBundleFormat.TryParseSubmacroPath(relativePath, out var id))
+            {
+                continue;
+            }
+
+            try
+            {
+                found.Add(new MacroSubmacro(id, MacroGraphJson.Deserialize(ReadText(entry))));
+            }
+            catch (JsonException ex)
+            {
+                faults.Add($"Под-макрос «{relativePath}» не разбирается: {ex.Message}");
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException)
+            {
+                faults.Add($"Под-макрос «{relativePath}» не читается: {ex.Message}");
+            }
+        }
+
+        found.Sort(static (a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCulture));
+        faults.Sort(StringComparer.Ordinal);
+        return (found, faults);
     }
 
     private static MacroBundleMetadataResult ReadMetadata(ZipArchive archive)
@@ -432,6 +483,7 @@ public static class MacroBundleReader
             null,
             fault.Fault,
             fault.Message,
+            [],
             [],
             []);
 

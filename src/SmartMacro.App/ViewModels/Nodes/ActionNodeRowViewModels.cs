@@ -339,37 +339,64 @@ public sealed class SetIconNodeRowViewModel : ActionNodeRowViewModel
     }
 }
 
-/// <summary>Редактор <see cref="RunMacroNode"/>: макрос из библиотеки плюс флаг ожидания.</summary>
-public sealed class RunMacroNodeRowViewModel : ActionNodeRowViewModel
+/// <summary>
+/// Редактор <see cref="RunSubmacroNode"/>: под-макрос ЭТОГО бандла плюс флаг ожидания.
+///
+/// До волны F4 строка держала ИМЯ макроса библиотеки и выпадающий список имён. Теперь адресат —
+/// <c>Guid</c> под-макроса, и список у него свой (<see cref="SubmacroChoiceViewModel"/>): выбрать
+/// чужой макрос больше нельзя, потому что вызвать его нельзя.
+/// </summary>
+public sealed class RunSubmacroNodeRowViewModel : ActionNodeRowViewModel
 {
-    private string _macroName;
+    private Guid _submacroId;
     private bool _await;
-    private ObservableCollection<string> _macroChoices = [];
+    private ObservableCollection<SubmacroChoiceViewModel> _submacroChoices = [];
 
-    public RunMacroNodeRowViewModel(RunMacroNode node)
+    public RunSubmacroNodeRowViewModel(RunSubmacroNode node)
         : base(node, TargetSelectorViewModel.FromSelector(node.Target), node.Next)
     {
-        _macroName = node.MacroName;
+        _submacroId = node.SubmacroId;
         _await = node.Await;
     }
 
-    public override string TypeLabel => "Запустить макрос";
+    // ⚠️ Не «Запустить под-макрос», хотя именно так эта нода подписана в меню «+ Нода». Подпись
+    // типа печатают ДВОЕ: шапка коробки шириной 210px и заголовок инспектора, у которого справа
+    // стоит подсказка «двойной клик — правка на месте». Найдено глазами: длинный вариант въезжал
+    // в неё вплотную, без единого пикселя зазора.
+    public override string TypeLabel => "Под-макрос";
 
-    public override string Summary => Join(_macroName, _await ? "ждать" : null);
+    public override string Summary => Join(SubmacroLabel, _await ? "ждать" : null);
 
     /// <summary>
-    /// Имя вложенного макроса. Сеттер игнорирует null и пустую строку, потому что
+    /// Личность вызываемого под-макроса. Сеттер игнорирует <see cref="Guid.Empty"/>, потому что
     /// <c>ComboBox</c> проталкивает null каждый раз, когда пересобирается его ItemsSource, —
-    /// иначе вполне живая ссылка стиралась бы при каждом обновлении списка макросов.
+    /// иначе вполне живая ссылка стиралась бы при каждом обновлении списка функций.
     /// </summary>
-    public string MacroName
+    public Guid SubmacroId
     {
-        get => _macroName;
+        get => _submacroId;
+        private set
+        {
+            if (SetField(ref _submacroId, value))
+            {
+                OnPropertyChanged(nameof(Submacro));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Выбранный элемент списка — то, к чему привязан <c>ComboBox</c>. Отдельно от
+    /// <see cref="SubmacroId"/> по той же причине, по которой у ребра есть и <c>TargetId</c>, и
+    /// разрешённый элемент: список хранит ССЫЛКУ, а модель — id.
+    /// </summary>
+    public SubmacroChoiceViewModel? Submacro
+    {
+        get => _submacroChoices.FirstOrDefault(choice => choice.Id == _submacroId);
         set
         {
-            if (!string.IsNullOrEmpty(value))
+            if (value is not null)
             {
-                SetField(ref _macroName, value);
+                SubmacroId = value.Id;
             }
         }
     }
@@ -381,19 +408,29 @@ public sealed class RunMacroNodeRowViewModel : ActionNodeRowViewModel
         set => SetField(ref _await, value);
     }
 
-    /// <summary>Имена из библиотеки, которые предлагает выпадающий список; проставляет их редактор.</summary>
-    public ObservableCollection<string> MacroChoices
+    /// <summary>Под-макросы бандла, которые предлагает выпадающий список; проставляет их редактор.</summary>
+    public ObservableCollection<SubmacroChoiceViewModel> SubmacroChoices
     {
-        get => _macroChoices;
-        set => SetField(ref _macroChoices, value);
+        get => _submacroChoices;
+        set
+        {
+            if (SetField(ref _submacroChoices, value))
+            {
+                OnPropertyChanged(nameof(Submacro));
+            }
+        }
     }
 
-    public override MacroNode ToNode() => new RunMacroNode
+    /// <summary>Подпись выбранного под-макроса для коробки на канве; пусто, когда не выбран.</summary>
+    private string SubmacroLabel =>
+        _submacroChoices.FirstOrDefault(choice => choice.Id == _submacroId)?.Display ?? string.Empty;
+
+    public override MacroNode ToNode() => new RunSubmacroNode
     {
         Id = Id,
         DisplayName = DisplayName,
         Editor = Editor,
-        MacroName = _macroName,
+        SubmacroId = _submacroId,
         Await = _await,
         Target = Target?.ToSelector(),
         Next = Next.TargetId,
@@ -401,9 +438,9 @@ public sealed class RunMacroNodeRowViewModel : ActionNodeRowViewModel
 
     public override IEnumerable<string> GetInputErrors()
     {
-        if (string.IsNullOrWhiteSpace(_macroName))
+        if (_submacroId == Guid.Empty)
         {
-            yield return $"[{DisplayName}] не выбран макрос.";
+            yield return $"[{DisplayName}] не выбран под-макрос.";
         }
     }
 }

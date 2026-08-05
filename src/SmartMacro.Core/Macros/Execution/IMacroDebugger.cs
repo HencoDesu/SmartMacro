@@ -94,10 +94,15 @@ public interface IMacroDebugger
     /// котором ему предстоит ждать. <c>null</c> = идти дальше.
     /// </summary>
     /// <param name="walkId">Обход в том виде, в каком о нём доложили в <see cref="IMacroRunObserver.WalkStarted"/>.</param>
-    /// <param name="macroName">Обходимый граф — точки останова ключуются парой (макрос, нода).</param>
+    /// <param name="macroName">МАКРОС (бандл), которому принадлежит обход, — первая координата точки останова.</param>
+    /// <param name="submacroId">
+    /// Под-макрос, который обходят, либо <c>null</c> — граф верхнего уровня. ТРЕТЬЯ КООРДИНАТА,
+    /// появившаяся в F4: ноды под-макроса живут в том же макросе, но в другом графе, и пары
+    /// «макрос + нода» перестало хватать.
+    /// </param>
     /// <param name="nodeId">Нода, которая вот-вот выполнится.</param>
     /// <param name="nodeName">Её подпись — сессия несёт её дальше в событие паузы и в лог.</param>
-    MacroDebugGate? Arm(Guid walkId, string macroName, Guid nodeId, string nodeName);
+    MacroDebugGate? Arm(Guid walkId, string macroName, Guid? submacroId, Guid nodeId, string nodeName);
 
     /// <summary>
     /// Забывает затвор — и когда его отпустили штатно, и когда его бросили из-за отмены. Walker
