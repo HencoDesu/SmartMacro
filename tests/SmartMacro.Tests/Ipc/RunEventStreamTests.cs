@@ -293,7 +293,7 @@ public class RunEventStreamTests
         await fixture.SubscribeAsync(client);
 
         var nodes = Enumerable.Range(0, nodesPerWalk).Select(i => $"n{i}").ToArray();
-        // Производятся с десяти потоков разом — именно так это и делает веер RunMacroNode.
+        // Производятся с десяти потоков разом — именно так это и делает веер по селектору целей.
         await Task.WhenAll(Enumerable.Range(0, walks).Select(i => Task.Run(() =>
         {
             var walkId = Walk(fixture.Publisher, "pw-identify-one", 0x100 + i, nodes);
