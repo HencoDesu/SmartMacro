@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Macros.Execution;
@@ -178,8 +179,11 @@ public sealed partial class MacroExecutor
         {
             if (!nodesById.TryAdd(node.Id, node))
             {
-                throw new MacroRunAbortException(
-                    $"Макрос «{macro.Name}»: дубликат id ноды (одну из них зовут «{MacroNodeNames.Display(node)}»).");
+                throw new MacroRunAbortException(string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Run_Abort_DuplicateNodeId,
+                    macro.Name,
+                    MacroNodeNames.Display(node)));
             }
         }
 
@@ -201,8 +205,8 @@ public sealed partial class MacroExecutor
             ct.ThrowIfCancellationRequested();
             if (!nodesById.TryGetValue(id, out var node))
             {
-                throw new MacroRunAbortException(
-                    $"Макрос «{macro.Name}»: ребро ведёт в ноду, которой в графе нет.");
+                throw new MacroRunAbortException(string.Format(
+                    CultureInfo.CurrentCulture, Strings_Engine.Run_Abort_EdgeToMissingNode, macro.Name));
             }
 
             context.OnNodeEntered?.Invoke(MacroNodeNames.Display(node));
@@ -326,7 +330,10 @@ public sealed partial class MacroExecutor
                 await Task.WhenAll(targets.Select(hwnd => _primitives.ClickAsync(hwnd, point, n.DoubleClick, ct)))
                     .ConfigureAwait(false);
                 return NodeStep.Done(n.Next, DetailIfTracing(trace, () => Fanout(
-                    n.DoubleClick ? $"{point.X},{point.Y} dbl" : $"{point.X},{point.Y}",
+                    n.DoubleClick
+                        ? string.Format(
+                            CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_ClickDouble, point.X, point.Y)
+                        : $"{point.X},{point.Y}",
                     targets.Count)));
             }
             case DelayNode n:
@@ -336,7 +343,8 @@ public sealed partial class MacroExecutor
                     await Task.Delay(n.Ms, ct).ConfigureAwait(false);
                 }
 
-                return NodeStep.Done(n.Next, DetailIfTracing(trace, () => $"{n.Ms} мс"));
+                return NodeStep.Done(n.Next, DetailIfTracing(trace, () => string.Format(
+                    CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_Delay, n.Ms)));
             }
             case AddTagNode n:
             {
@@ -376,7 +384,8 @@ public sealed partial class MacroExecutor
                 if (ResolveTemplate(context, macro.Name, n, n.Template) is not { } template)
                 {
                     return new NodeStep(n.NotFound, RunOutcomes.NotFound,
-                        DetailIfTracing(trace, () => $"{n.Template} · нет в макросе"));
+                        DetailIfTracing(trace, () => string.Format(
+                            CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_TemplateNotInMacro, n.Template)));
                 }
 
                 var found = await _primitives.FindElementAsync(hwnd, template, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
@@ -399,7 +408,8 @@ public sealed partial class MacroExecutor
                 if (ResolveTemplate(context, macro.Name, n, n.Template) is not { } template)
                 {
                     return new NodeStep(n.Timeout, RunOutcomes.Timeout,
-                        DetailIfTracing(trace, () => $"{n.Template} · нет в макросе"));
+                        DetailIfTracing(trace, () => string.Format(
+                            CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_TemplateNotInMacro, n.Template)));
                 }
 
                 var found = await _primitives.WaitForElementAsync(hwnd, template, n.Region, n.TimeoutMs, n.MatchThreshold, ct)
@@ -416,7 +426,8 @@ public sealed partial class MacroExecutor
                 }
 
                 return new NodeStep(n.Timeout, RunOutcomes.Timeout,
-                    DetailIfTracing(trace, () => $"{n.Template} · лимит {n.TimeoutMs} мс"));
+                    DetailIfTracing(trace, () => string.Format(
+                        CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_WaitTimedOut, n.Template, n.TimeoutMs)));
             }
             case RecognizeTagNode n:
             {
@@ -425,7 +436,8 @@ public sealed partial class MacroExecutor
                 if (set.Count == 0)
                 {
                     return new NodeStep(n.NotMatched, RunOutcomes.NotMatched,
-                        DetailIfTracing(trace, () => $"{n.TemplateSet} · нет в макросе"));
+                        DetailIfTracing(trace, () => string.Format(
+                            CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_TemplateNotInMacro, n.TemplateSet)));
                 }
 
                 var tag = await _primitives.RecognizeAsync(hwnd, set, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
@@ -444,8 +456,12 @@ public sealed partial class MacroExecutor
                 return new NodeStep(n.NotMatched, RunOutcomes.NotMatched, DetailIfTracing(trace, () => n.TemplateSet));
             }
             default:
-                throw new MacroRunAbortException(
-                    $"Макрос «{macro.Name}»: нода «{MacroNodeNames.Display(node)}» имеет неподдерживаемый тип {node.GetType().Name}.");
+                throw new MacroRunAbortException(string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Run_Abort_UnsupportedNodeType,
+                    macro.Name,
+                    MacroNodeNames.Display(node),
+                    node.GetType().Name));
         }
     }
 
@@ -553,13 +569,16 @@ public sealed partial class MacroExecutor
 
         if (context.SubmacroId is not null)
         {
-            throw new MacroRunAbortException(
-                $"Макрос «{macroName}»: под-макрос «{macro.Name}» пытается позвать под-макрос, а вложенность плоская.");
+            throw new MacroRunAbortException(string.Format(
+                CultureInfo.CurrentCulture, Strings_Engine.Run_Abort_NestedSubmacro, macroName, macro.Name));
         }
 
         var subMacro = context.Submacros?.GetValueOrDefault(node.SubmacroId)
-                       ?? throw new MacroRunAbortException(
-                           $"Макрос «{macroName}»: нода «{MacroNodeNames.Display(node)}» ссылается на под-макрос, которого в этом макросе нет.");
+                       ?? throw new MacroRunAbortException(string.Format(
+                           CultureInfo.CurrentCulture,
+                           Strings_Engine.Run_Abort_SubmacroNotFound,
+                           macroName,
+                           MacroNodeNames.Display(node)));
 
         List<MacroRunContext> childContexts = [];
         if (node.Target is { } selector)
@@ -594,8 +613,12 @@ public sealed partial class MacroExecutor
 
                 if (result.Status == MacroRunStatus.Aborted)
                 {
-                    throw new MacroRunAbortException(
-                        $"Макрос «{macroName}»: под-макрос «{name}» оборван: {result.Error}");
+                    throw new MacroRunAbortException(string.Format(
+                        CultureInfo.CurrentCulture,
+                        Strings_Engine.Run_Abort_SubmacroAborted,
+                        macroName,
+                        name,
+                        result.Error));
                 }
             }
         }
@@ -605,7 +628,9 @@ public sealed partial class MacroExecutor
         }
 
         return NodeStep.Done(node.Next, DetailIfTracing(trace, () => Fanout(
-            node.Await ? name : $"{name} (без ожидания)",
+            node.Await
+                ? name
+                : string.Format(CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_SubmacroDetached, name),
             childContexts.Count)));
     }
 
@@ -679,8 +704,10 @@ public sealed partial class MacroExecutor
                 return [hwnd];
             }
 
-            throw new MacroRunAbortException(
-                $"У ноды «{MacroNodeNames.Display(node)}» нет селектора Target, а у этого прогона нет контекстного окна (у прогонов от хоткея его не бывает).");
+            throw new MacroRunAbortException(string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_Engine.Run_Abort_NodeNeedsTargetOrContext,
+                MacroNodeNames.Display(node)));
         }
 
         var matched = SelectorEvaluator.Select(_windows.Snapshot(), target);
@@ -690,8 +717,10 @@ public sealed partial class MacroExecutor
     private static IntPtr RequireContext(MacroNode node, MacroRunContext context)
     {
         return context.ContextWindow
-               ?? throw new MacroRunAbortException(
-                   $"Ноде «{MacroNodeNames.Display(node)}» нужно контекстное окно, а у этого прогона его нет (у прогонов от хоткея его не бывает).");
+               ?? throw new MacroRunAbortException(string.Format(
+                   CultureInfo.CurrentCulture,
+                   Strings_Engine.Run_Abort_NodeNeedsContextWindow,
+                   MacroNodeNames.Display(node)));
     }
 
     private static ScreenPoint ResolveClickPoint(ClickNode node, MacroVariables variables)
@@ -700,8 +729,10 @@ public sealed partial class MacroExecutor
         {
             ({ } point, null) => point,
             (null, { } pointVar) => variables.GetPoint(pointVar),
-            _ => throw new MacroRunAbortException(
-                $"У ноды ClickNode «{MacroNodeNames.Display(node)}» должно быть задано ровно одно из Point / PointVar."),
+            _ => throw new MacroRunAbortException(string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_Engine.Run_Abort_ClickNeedsExactlyOnePoint,
+                MacroNodeNames.Display(node))),
         };
     }
 

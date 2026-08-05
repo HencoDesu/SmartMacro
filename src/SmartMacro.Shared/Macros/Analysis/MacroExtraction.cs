@@ -1,4 +1,6 @@
+using System.Globalization;
 using SmartMacro.Macros.Model;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Macros.Analysis;
 
@@ -100,22 +102,20 @@ public static class MacroExtraction
         var inside = selection.Where(byId.ContainsKey).ToHashSet();
         if (inside.Count == 0)
         {
-            return MacroExtractionResult.No("Ничего не выделено: отметьте ноды, которые надо вынести в под-макрос.");
+            return MacroExtractionResult.No(Strings_Engine.Extraction_Refused_NothingSelected);
         }
 
         if (inside.Count == graph.Nodes.Count)
         {
             // Родитель остался бы из одной ноды вызова — то есть макрос, который только зовёт
             // свою же единственную функцию. Это не извлечение, а лишний уровень вложенности.
-            return MacroExtractionResult.No(
-                "Выделен весь макрос целиком. Под-макрос — это ЧАСТЬ графа; вынести всё значило бы завести уровень вложенности, который ничего не делает.");
+            return MacroExtractionResult.No(Strings_Engine.Extraction_Refused_WholeGraph);
         }
 
         if (inside.Any(id => byId[id] is RunSubmacroNode))
         {
             // Плоскость (см. MacroSubmacro): под-макрос не зовёт никого.
-            return MacroExtractionResult.No(
-                "В выделении есть нода вызова под-макроса. Под-макросы плоские — функция не может звать функцию.");
+            return MacroExtractionResult.No(Strings_Engine.Extraction_Refused_ContainsCall);
         }
 
         if (FindEntry(graph, byId, inside) is not { } entry)
@@ -257,9 +257,11 @@ public static class MacroExtraction
         var entries = EntryCandidates(graph, byId, inside);
         if (entries.Count > 1)
         {
-            return $"У выделения {entries.Count} входа: снаружи ведут рёбра в {Names(byId, entries)}. " +
-                   "Под-макрос — это функция с ОДНИМ входом; добавьте в выделение ноду, которая идёт первой, " +
-                   "или уберите лишнюю ветку.";
+            return string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_Engine.Extraction_Refused_ManyEntries,
+                entries.Count,
+                Names(byId, entries));
         }
 
         var heads = inside
@@ -268,10 +270,11 @@ public static class MacroExtraction
             .ToList();
 
         return heads.Count == 0
-            ? "В выделении нет ноды, с которой оно начинается: все они замкнуты друг на друга. " +
-              "Добавьте в выделение ноду, в которую входят снаружи."
-            : $"Непонятно, с чего под-макрос начинается: снаружи в выделение не ведёт ничего, а начал бы " +
-              $"его любой из {Names(byId, heads)}. Выделите кусок, в который входят из остального графа.";
+            ? Strings_Engine.Extraction_Refused_NoEntryClosedLoop
+            : string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_Engine.Extraction_Refused_NoEntryFromOutside,
+                Names(byId, heads));
     }
 
     // ---- выход --------------------------------------------------------------------------
@@ -318,12 +321,12 @@ public static class MacroExtraction
 
         // Сюда попадают ровно два случая (остальные извлекаются): выходов больше одного либо
         // выход один, но рядом с ним есть ветка, кончающая прогон.
-        return outside.Count > 1
-            ? $"Выходы выделения ведут в разные места: {Names(byId, outside)}. У функции возврат один, " +
-              "и куда идти после неё, выбирать надо снаружи; добавьте эти ноды в выделение или сузьте его."
-            : $"Часть выходов выделения заканчивает прогон, а часть ведёт в {Names(byId, outside)}. " +
-              "После извлечения оба стали бы одним возвратом, то есть ветка, которая раньше прогон " +
-              "заканчивала, начала бы его продолжать. Сузьте выделение или доведите обе ветки до одного места.";
+        return string.Format(
+            CultureInfo.CurrentCulture,
+            outside.Count > 1
+                ? Strings_Engine.Extraction_Refused_ManyExits
+                : Strings_Engine.Extraction_Refused_MixedExits,
+            Names(byId, outside));
     }
 
     private static string Names(Dictionary<Guid, MacroNode> byId, IEnumerable<Guid> ids) =>
@@ -336,5 +339,6 @@ public static class MacroExtraction
     /// же, что у подписи ноды, и той же реализацией — номер сквозной и берётся наименьший
     /// свободный.
     /// </summary>
-    public static string FreeName(IEnumerable<string> existing) => MacroNodeNames.Generate("функция", existing);
+    public static string FreeName(IEnumerable<string> existing) =>
+        MacroNodeNames.Generate(Strings_Engine.Extraction_DefaultSubmacroNamePrefix, existing);
 }

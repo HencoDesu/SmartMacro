@@ -5,6 +5,7 @@ using SmartMacro.Hotkeys;
 using SmartMacro.Macros.Analysis;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Native.Diagnostics;
+using SmartMacro.Resources;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Settings;
@@ -87,16 +88,19 @@ public sealed class EnvironmentDiagnostics
 
         if (await _autoStart.IsRegisteredAsync(_settings.Current, cancellationToken).ConfigureAwait(false))
         {
-            return new DiagnosticDto(DiagnosticIds.AutoStart, DiagnosticStatus.Ok, "Автозапуск", mechanism);
+            return new DiagnosticDto(DiagnosticIds.AutoStart, DiagnosticStatus.Ok,
+                Strings_Engine.Diag_AutoStart_Ok_Title, mechanism);
         }
 
         return new DiagnosticDto(DiagnosticIds.AutoStart, DiagnosticStatus.Failed,
-            "Автозапуск не зарегистрирован",
-            $"Галочки просят «{mechanism}», но в системе этого нет. "
-            + (startup is { RunAtLogon: true, RunElevated: true }
-                ? "Задачу в Планировщике с наивысшими правами может создать только администратор — "
-                  + "перезапустите демон от администратора и нажмите «Применить» ещё раз."
-                : "Подробности — в журнале демона."));
+            Strings_Engine.Diag_AutoStart_Failed_Title,
+            string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_Engine.Diag_AutoStart_Failed_Detail,
+                mechanism,
+                startup is { RunAtLogon: true, RunElevated: true }
+                    ? Strings_Engine.Diag_AutoStart_Failed_NeedAdmin
+                    : Strings_Engine.Diag_AutoStart_Failed_SeeLog));
     }
 
     /// <summary>
@@ -125,11 +129,12 @@ public sealed class EnvironmentDiagnostics
         if (blocked > 0)
         {
             return new DiagnosticDto(DiagnosticIds.Elevation, DiagnosticStatus.Failed,
-                "Ввод в окна с повышением блокируется",
-                string.Create(CultureInfo.CurrentCulture,
-                    $"{blocked} из {WindowsWord(windows.Count)} отклоняют сообщения: ")
-                + "клиенты запущены от администратора, а демон — нет (UIPI). Блокируются и ввод, и захват экрана. "
-                + "Включите «Работать с правами администратора» и перезапустите демон.");
+                Strings_Engine.Diag_Elevation_Blocked_Title,
+                string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Diag_Elevation_Blocked_Detail,
+                    blocked,
+                    WindowsWord(windows.Count)));
         }
 
         // Окон нет — сказать про UIPI нечего, и выдумывать нельзя. Но про сами права сказать
@@ -139,25 +144,30 @@ public sealed class EnvironmentDiagnostics
         {
             return elevated
                 ? new DiagnosticDto(DiagnosticIds.Elevation, DiagnosticStatus.Ok,
-                    "Права демона", "администратор; окон пока нет")
+                    Strings_Engine.Diag_Elevation_NoWindows_Ok_Title,
+                    Strings_Engine.Diag_Elevation_NoWindows_Ok_Detail)
                 : new DiagnosticDto(DiagnosticIds.Elevation, DiagnosticStatus.Warning,
-                    "Демон работает без прав администратора",
-                    "Окон сейчас нет, так что проверить нечего. Но если клиенты запускаются от администратора, "
-                    + "ввод в них будет молча отбрасываться (UIPI).");
+                    Strings_Engine.Diag_Elevation_NoWindows_Warning_Title,
+                    Strings_Engine.Diag_Elevation_NoWindows_Warning_Detail);
         }
 
         return new DiagnosticDto(DiagnosticIds.Elevation, DiagnosticStatus.Ok,
-            "Ввод в окна проходит",
-            $"{WindowsWord(windows.Count)} принимают сообщения{(elevated ? "; демон повышен" : "")}");
+            Strings_Engine.Diag_Elevation_Ok_Title,
+            string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_Engine.Diag_Elevation_Ok_Detail,
+                WindowsWord(windows.Count),
+                elevated ? Strings_Engine.Diag_Elevation_Ok_ElevatedSuffix : string.Empty));
     }
 
     // «1 окно», «2 окна», «11 окон». Найдено глазами: на одном клиенте строка читалась как
     // «1 окон» — мелочь, но такие мелочи и создают ощущение, что текст никто не вычитывал.
     private static string WindowsWord(int count) => (count % 10, count % 100) switch
     {
-        (1, not 11) => string.Create(CultureInfo.CurrentCulture, $"{count} окно"),
-        (2 or 3 or 4, not (12 or 13 or 14)) => string.Create(CultureInfo.CurrentCulture, $"{count} окна"),
-        _ => string.Create(CultureInfo.CurrentCulture, $"{count} окон"),
+        (1, not 11) => string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_Windows_One, count),
+        (2 or 3 or 4, not (12 or 13 or 14)) =>
+            string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_Windows_Few, count),
+        _ => string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_Windows_Many, count),
     };
 
     /// <summary>
@@ -187,9 +197,11 @@ public sealed class EnvironmentDiagnostics
             {
                 if (!entry.Templates.Has(usage.Name, usage.IsSet))
                 {
-                    missing.Add(usage.IsSet
-                        ? $"{entry.Name} → набор «{usage.Name}»"
-                        : $"{entry.Name} → «{usage.Name}»");
+                    missing.Add(string.Format(
+                        CultureInfo.CurrentCulture,
+                        usage.IsSet ? Strings_Engine.Diag_Templates_Ref_Set : Strings_Engine.Diag_Templates_Ref_Single,
+                        entry.Name,
+                        usage.Name));
                 }
             }
         }
@@ -197,18 +209,24 @@ public sealed class EnvironmentDiagnostics
         if (missing.Count == 0)
         {
             return new DiagnosticDto(DiagnosticIds.Templates, DiagnosticStatus.Ok,
-                "Шаблоны на месте",
-                string.Create(CultureInfo.CurrentCulture,
-                    $"файлов {files} в макросах: {_macros.Entries.Count}, все ссылки разрешаются"));
+                Strings_Engine.Diag_Templates_Ok_Title,
+                string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Diag_Templates_Ok_Detail,
+                    files,
+                    _macros.Entries.Count));
         }
 
-        var detail = missing[0] + " — такого шаблона в бандле нет.";
+        var detail = string.Format(
+            CultureInfo.CurrentCulture, Strings_Engine.Diag_Templates_Missing_Detail, missing[0]);
         if (missing.Count > 1)
         {
-            detail += string.Create(CultureInfo.CurrentCulture, $" И ещё ненайденных ссылок: {missing.Count - 1}.");
+            detail += string.Format(
+                CultureInfo.CurrentCulture, Strings_Engine.Diag_Templates_Missing_More, missing.Count - 1);
         }
 
-        return new DiagnosticDto(DiagnosticIds.Templates, DiagnosticStatus.Failed, "Шаблон в макросе не найден", detail);
+        return new DiagnosticDto(DiagnosticIds.Templates, DiagnosticStatus.Failed,
+            Strings_Engine.Diag_Templates_Missing_Title, detail);
     }
 
     /// <summary>
@@ -223,11 +241,11 @@ public sealed class EnvironmentDiagnostics
         var scale = EnvironmentProbe.DisplayScalePercent();
         return scale == BaselineScalePercent
             ? new DiagnosticDto(DiagnosticIds.DisplayScale, DiagnosticStatus.Ok,
-                "Масштабирование экрана", "100% — как при съёмке шаблонов")
+                Strings_Engine.Diag_DisplayScale_Ok_Title,
+                Strings_Engine.Diag_DisplayScale_Ok_Detail)
             : new DiagnosticDto(DiagnosticIds.DisplayScale, DiagnosticStatus.Warning,
-                string.Create(CultureInfo.CurrentCulture, $"Масштабирование экрана {scale}%"),
-                "Шаблоны и координаты в нодах сняты при 100% — они сдвинутся, и распознавание будет промахиваться "
-                + "без единой ошибки в журнале.");
+                string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_DisplayScale_Warning_Title, scale),
+                Strings_Engine.Diag_DisplayScale_Warning_Detail);
     }
 
     /// <summary>
@@ -258,11 +276,8 @@ public sealed class EnvironmentDiagnostics
             // не поломка, и снимется она, как только редактор закроют. Но зелёной карточки здесь
             // быть не может: клавиши прямо сейчас молчат.
             return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Warning,
-                "Глобальные хоткеи приостановлены",
-                "Сейчас не зарегистрировано ни одного аккорда: так бывает, пока в панели открыт "
-                + "режим «Макросы» — иначе уже занятую клавишу нельзя было бы переназначить. "
-                + "Закройте его, и хоткеи вернутся. Если ни одна панель не открыта, это ошибка: "
-                + "поможет перезапуск демона.");
+                Strings_Engine.Diag_Hotkeys_Suspended_Title,
+                Strings_Engine.Diag_Hotkeys_Suspended_Detail);
         }
 
         var bound = _macros.All.Sum(macro => macro.Triggers.OfType<Macros.Model.HotkeyTrigger>().Count());
@@ -273,32 +288,39 @@ public sealed class EnvironmentDiagnostics
         if (failures.Count == 0 && broken.Count == 0)
         {
             return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Ok,
-                "Глобальные хоткеи",
-                string.Create(CultureInfo.CurrentCulture, $"занято {bound} из {bound}"));
+                Strings_Engine.Diag_Hotkeys_Ok_Title,
+                string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_Hotkeys_Ok_Detail, bound));
         }
 
         if (failures.Count == 0)
         {
+            // Точку после замечания валидатора НЕ ставим: оно приходит уже с ней, и своя давала бы
+            // «…не найдена в графе.. По клавише» — нашлось глазами на экране. Это правило живёт в
+            // самой строке Diag_Hotkeys_BrokenGraph_Detail и в пояснении к ней.
             return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Failed,
-                "Хоткей не вооружён: в макросе ошибка",
-                string.Create(CultureInfo.CurrentCulture,
-                    $"Макросов с ошибками в графе: {broken.Count}; первый — «{broken[0].Name}»: "
-                    // Точку в конце НЕ ставим: сообщения валидатора приходят уже с ней, и своя
-                    // давала бы «…не найдена в графе.. По клавише» — нашлось глазами на экране.
-                    + $"{broken[0].FirstError} По клавише такой макрос не запустится, пока его не починить."));
+                Strings_Engine.Diag_Hotkeys_BrokenGraph_Title,
+                string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Diag_Hotkeys_BrokenGraph_Detail,
+                    broken.Count,
+                    broken[0].Name,
+                    broken[0].FirstError));
         }
 
-        var detail = string.Create(CultureInfo.CurrentCulture,
-            $"Win32 отказал в регистрации {failures.Count} из {bound}; первый — макрос "
-            + $"«{failures[0].MacroName}». Такой макрос по клавише не запустится.");
+        var detail = string.Format(
+            CultureInfo.CurrentCulture,
+            Strings_Engine.Diag_Hotkeys_Taken_Detail,
+            failures.Count,
+            bound,
+            failures[0].MacroName);
         if (broken.Count > 0)
         {
-            detail += string.Create(CultureInfo.CurrentCulture,
-                $" Ещё у {broken.Count} макросов ошибка в графе — их хоткеи не вооружены вовсе.");
+            detail += string.Format(
+                CultureInfo.CurrentCulture, Strings_Engine.Diag_Hotkeys_Taken_AlsoBroken, broken.Count);
         }
 
         return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Failed,
-            "Часть хоткеев занята другой программой", detail);
+            Strings_Engine.Diag_Hotkeys_Taken_Title, detail);
     }
 
     /// <summary>
@@ -310,10 +332,10 @@ public sealed class EnvironmentDiagnostics
     {
         var folder = _settings.FolderPath;
         return EnvironmentProbe.IsFolderWritable(folder)
-            ? new DiagnosticDto(DiagnosticIds.FolderWritable, DiagnosticStatus.Ok, "Папка приложения на запись", folder)
+            ? new DiagnosticDto(DiagnosticIds.FolderWritable, DiagnosticStatus.Ok,
+                Strings_Engine.Diag_Folder_Ok_Title, folder)
             : new DiagnosticDto(DiagnosticIds.FolderWritable, DiagnosticStatus.Failed,
-                "Папка приложения не пишется",
-                $"{folder} — сюда не сохранятся ни макросы, ни настройки, ни журнал. "
-                + "Перенесите программу из Program Files или дайте права на папку.");
+                Strings_Engine.Diag_Folder_Failed_Title,
+                string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_Folder_Failed_Detail, folder));
     }
 }

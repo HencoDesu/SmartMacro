@@ -2,6 +2,7 @@ using System.Globalization;
 using SmartMacro.Macros.Analysis;
 using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Macros.Validation;
 
@@ -107,11 +108,11 @@ public static class MacroGraphValidator
         {
             if (node.SubmacroId == Guid.Empty)
             {
-                issues.Add(Error(node, "Под-макрос не выбран."));
+                issues.Add(Error(node, Strings_Engine.Validation_Submacro_NotSelected));
             }
             else if (!known.Contains(node.SubmacroId))
             {
-                issues.Add(Error(node, "Под-макроса, на который ссылается нода, в этом макросе нет."));
+                issues.Add(Error(node, Strings_Engine.Validation_Submacro_NotFound));
             }
         }
 
@@ -130,7 +131,7 @@ public static class MacroGraphValidator
                     ValidationSeverity.Error,
                     null,
                     null,
-                    $"У под-макроса «{submacro.Name}» есть триггер. Под-макрос — это функция: хоткей превращает её в макрос верхнего уровня, а демон такой триггер не вооружает.",
+                    string.Format(CultureInfo.CurrentCulture, Strings_Engine.Validation_Submacro_HasTrigger, submacro.Name),
                     submacro.Id));
             }
 
@@ -140,7 +141,7 @@ public static class MacroGraphValidator
                     ValidationSeverity.Error,
                     node.Id,
                     MacroNodeNames.Display(node),
-                    "Под-макрос не может звать под-макрос: вложенность плоская, и именно этим исключены циклы.",
+                    Strings_Engine.Validation_Submacro_NestedCall,
                     submacro.Id));
             }
         }
@@ -174,7 +175,7 @@ public static class MacroGraphValidator
         {
             if (!byId.TryAdd(node.Id, node))
             {
-                issues.Add(Error(node, "Дубликат id ноды: две ноды графа несут один и тот же идентификатор."));
+                issues.Add(Error(node, Strings_Engine.Validation_Node_DuplicateId));
             }
         }
 
@@ -185,8 +186,8 @@ public static class MacroGraphValidator
         {
             foreach (var node in group)
             {
-                issues.Add(Warning(node,
-                    $"Имя «{group.Key}» носит больше одной ноды — в логе прогона их будет не различить."));
+                issues.Add(Warning(node, string.Format(
+                    CultureInfo.CurrentCulture, Strings_Engine.Validation_Node_DuplicateName, group.Key)));
             }
         }
 
@@ -195,7 +196,7 @@ public static class MacroGraphValidator
         if (!startIsValid)
         {
             issues.Add(new ValidationIssue(ValidationSeverity.Error, null, null,
-                "Стартовая нода не задана или не найдена в графе."));
+                Strings_Engine.Validation_Graph_StartNodeMissing));
         }
 
         // Сломанные рёбра. Целевой id не называем: ноды с таким id в графе нет, а голый guid
@@ -206,7 +207,8 @@ public static class MacroGraphValidator
             {
                 if (targetId is { } target && !byId.ContainsKey(target))
                 {
-                    issues.Add(Error(node, $"Ребро {edgeName} ведёт в ноду, которой в графе нет."));
+                    issues.Add(Error(node, string.Format(
+                        CultureInfo.CurrentCulture, Strings_Engine.Validation_Node_EdgeToMissingNode, edgeName)));
                 }
             }
         }
@@ -216,7 +218,7 @@ public static class MacroGraphValidator
         {
             if (node.Point is null == node.PointVar is null)
             {
-                issues.Add(Error(node, "У ClickNode должно быть задано ровно одно из Point / PointVar."));
+                issues.Add(Error(node, Strings_Engine.Validation_Node_ClickNeedsExactlyOnePoint));
             }
         }
 
@@ -226,8 +228,10 @@ public static class MacroGraphValidator
         {
             if (MatchThresholdOf(node) is { } threshold && (threshold <= 0 || threshold > 1))
             {
-                issues.Add(Error(node,
-                    $"Порог совпадения {threshold.ToString("0.###", CultureInfo.InvariantCulture)} вне диапазона (0; 1]."));
+                issues.Add(Error(node, string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Validation_Node_MatchThresholdOutOfRange,
+                    threshold.ToString("0.###", CultureInfo.InvariantCulture))));
             }
         }
 
@@ -254,9 +258,12 @@ public static class MacroGraphValidator
                         ValidationSeverity.Warning,
                         reference.NodeId,
                         reference.NodeName,
-                        usage.IsSet
-                            ? $"В макросе нет набора шаблонов «{usage.Name}» — нода всегда будет уходить по «не совпало»."
-                            : $"В макросе нет шаблона «{usage.Name}» — нода всегда будет уходить по «не найдено»."));
+                        string.Format(
+                            CultureInfo.CurrentCulture,
+                            usage.IsSet
+                                ? Strings_Engine.Validation_Node_TemplateSetMissing
+                                : Strings_Engine.Validation_Node_TemplateMissing,
+                            usage.Name)));
                 }
             }
         }
@@ -274,14 +281,12 @@ public static class MacroGraphValidator
                 switch (byId[id])
                 {
                     case FindElementNode or WaitForElementNode or RecognizeTagNode:
-                        issues.Add(Error(byId[id],
-                            "Условной ноде нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса)."));
+                        issues.Add(Error(byId[id], Strings_Engine.Validation_Node_ConditionalNeedsContextWindow));
                         break;
                     case KeyPressNode { Target: null } or ClickNode { Target: null } or AddTagNode { Target: null }
                         or RemoveTagNode { Target: null } or SetIconNode { Target: null }
                         or RunSubmacroNode { Target: null }:
-                        issues.Add(Error(byId[id],
-                            "Ноде действия без селектора Target нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса)."));
+                        issues.Add(Error(byId[id], Strings_Engine.Validation_Node_ActionNeedsContextWindow));
                         break;
                 }
             }
@@ -292,7 +297,7 @@ public static class MacroGraphValidator
         {
             if (!reachable.Contains(id))
             {
-                issues.Add(Warning(node, "Нода недостижима из стартовой."));
+                issues.Add(Warning(node, Strings_Engine.Validation_Node_Unreachable));
             }
         }
 
@@ -309,8 +314,10 @@ public static class MacroGraphValidator
             if (!component.Any(id => byId[id] is DelayNode or WaitForElementNode))
             {
                 var names = component.Select(id => MacroNodeNames.Display(byId[id]));
-                issues.Add(Warning(byId[component[0]],
-                    $"Цикл без ноды Delay/WaitForElement — будет крутиться вхолостую: {string.Join(" → ", names)}."));
+                issues.Add(Warning(byId[component[0]], string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Validation_Graph_LoopWithoutDelay,
+                    string.Join(" → ", names))));
             }
         }
 
@@ -380,8 +387,13 @@ public static class MacroGraphValidator
 
             var name = submacros.First(submacro => submacro.Id == call.SubmacroId).Name;
             issues.Add(Warning(call, lost.Count == 1
-                ? $"Под-макрос «{name}» пишет переменную «{lost[0]}», но подпрогон работает с КОПИЕЙ переменных — наружу значение не вернётся, и читающая его нода оборвёт прогон."
-                : $"Под-макрос «{name}» пишет переменные {string.Join(", ", lost.Select(variable => $"«{variable}»"))}, но подпрогон работает с КОПИЕЙ переменных — наружу значения не вернутся, и читающие их ноды оборвут прогон."));
+                ? string.Format(
+                    CultureInfo.CurrentCulture, Strings_Engine.Validation_Submacro_VariableLost_One, name, lost[0])
+                : string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Validation_Submacro_VariableLost_Many,
+                    name,
+                    string.Join(", ", lost.Select(variable => $"«{variable}»")))));
         }
     }
 

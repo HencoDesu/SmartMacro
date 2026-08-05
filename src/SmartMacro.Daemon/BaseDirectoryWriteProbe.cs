@@ -1,3 +1,6 @@
+using System.Globalization;
+using SmartMacro.Resources;
+
 namespace SmartMacro.Daemon;
 
 /// <summary>
@@ -85,9 +88,9 @@ public static class BaseDirectoryWriteProbe
     /// должна быть тестируемой без Win32.
     /// </summary>
     public static string DescribeFailure(string directory, string? failure) =>
-        $"Каталог программы недоступен для записи:\n\n{directory}\n\n" +
-        "SmartMacro хранит макросы, настройки, журналы и снимки экрана в своей папке. " +
-        "Распакуйте её туда, куда можно писать (например, в свой каталог " +
-        "пользователя), и запустите ещё раз.\n\n" +
-        $"Причина: {failure ?? "неизвестна"}";
+        string.Format(
+            CultureInfo.CurrentCulture,
+            Strings_Engine.Startup_WriteProbe_Failed,
+            directory,
+            failure ?? Strings_Engine.Startup_WriteProbe_ReasonUnknown);
 }

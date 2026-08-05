@@ -1,0 +1,776 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    ВЕСЬ ТЕКСТ ДВИЖКА, КОТОРЫЙ ВИДИТ ЧЕЛОВЕК, — В ОДНОМ ФАЙЛЕ.
+
+    Это рабочий документ для ВЫЧИТКИ, а не машинный артефакт. Поэтому:
+
+      * порядок записей — по смыслу, в том порядке, в каком текст встречает пользователь
+        (лоток → отказ старта → замечания валидатора → извлечение → прогон → библиотека →
+        протокол → настройки → диагностика), а НЕ по алфавиту;
+      * у каждой записи заполнен <comment>: где текст всплывает, что подставляется в дырки и
+        ошибка это или предупреждение. У движка текст оторван от места показа, и без пояснения
+        его не вычитать;
+      * удаление записи ЛОМАЕТ СБОРКУ. Класс Strings_Engine порождается из этого файла на
+        каждой сборке (цель GenerateEngineStrings в SmartMacro.Shared.csproj), поэтому снятая
+        отсюда строка исчезает как член класса, и компилятор называет все места, где она
+        печаталась. Пустоты на экране не появится.
+
+    Значения — по-русски, как есть. Перевод — отдельная работа: языковой файл кладётся рядом
+    (Strings.Engine.en.resx) и подхватывается тем же ResourceManager по Strings_Engine.Culture.
+
+    ЧЕГО ЗДЕСЬ НЕТ И ПОЧЕМУ:
+      * шаблонов [LoggerMessage] — их 162, и весь их смысл в том, что шаблон известен на этапе
+        компиляции: у них именованные дырки, по ним ищут в структурированном журнале, и уехав
+        сюда, они потеряли бы ровно то, ради чего заведены;
+      * строк, которые доезжают ТОЛЬКО до журнала и никуда больше (аргументы тех же шаблонов:
+        «(без подробностей)», «(пусто)», описание механизма автозапуска для LogApplied);
+      * тегов классов («Лучник», «Жрец») — это данные, имена, которые рисует игра;
+      * имён файлов, путей, дискриминаторов $type, ключей JSON, констант IpcMessageTypes.
+  -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+  <!-- ==================================================================================
+       ЛОТОК. Единственная поверхность демона, которую видно постоянно.
+       ================================================================================== -->
+
+  <data name="Tray_Tooltip" xml:space="preserve">
+    <value>SmartMacro</value>
+    <comment>Подсказка иконки в трее (наведение мышью). Сейчас это просто имя программы; Win32 обрезает подсказку на 127 символах.</comment>
+  </data>
+  <data name="Tray_MenuItem_OpenPanel" xml:space="preserve">
+    <value>Открыть панель</value>
+    <comment>Первый пункт меню лотка, он же действие по умолчанию (двойной клик по иконке). Запускает SmartMacro.exe либо выводит уже открытую панель вперёд.</comment>
+  </data>
+  <data name="Tray_MenuItem_Exit" xml:space="preserve">
+    <value>Выход</value>
+    <comment>Второй пункт меню лотка. Останавливает демона целиком: прогоны отменяются, теги, хоткеи и точки останова пропадают.</comment>
+  </data>
+
+  <!-- ==================================================================================
+       ОТКАЗ СТАРТА. Нативное окно с ошибкой до того, как появился журнал; выход с кодом 2.
+       ================================================================================== -->
+
+  <data name="Startup_WriteProbe_Failed" xml:space="preserve">
+    <value>Каталог программы недоступен для записи:
+
+{0}
+
+SmartMacro хранит макросы, настройки, журналы и снимки экрана в своей папке. Распакуйте её туда, куда можно писать (например, в свой каталог пользователя), и запустите ещё раз.
+
+Причина: {1}</value>
+    <comment>ФАТАЛЬНО. Единственное, что пользователь увидит, если папку с программой распаковали туда, куда писать нельзя (Program Files, сетевая шара). Нативное окно MessageBox: журнала в этот момент ещё нет. {0} — полный путь к каталогу; {1} — причина от файловой системы (текст ОС, обычно по-русски) либо Startup_WriteProbe_ReasonUnknown. Пустые строки в тексте — абзацы окна, они значимы.</comment>
+  </data>
+  <data name="Startup_WriteProbe_ReasonUnknown" xml:space="preserve">
+    <value>неизвестна</value>
+    <comment>Подставляется в дырку {1} у Startup_WriteProbe_Failed, когда файловая система отказала без сообщения. Продолжение фразы «Причина: ».</comment>
+  </data>
+
+  <!-- ==================================================================================
+       ЗАМЕЧАНИЯ ВАЛИДАТОРА. Список замечаний в редакторе и красный «!» на строке
+       библиотеки; клик по замечанию открывает нужный граф и подсвечивает ноду. Один и тот
+       же валидатор гоняют оба процесса, поэтому текст здесь — то, что видно и в панели, и в
+       журнале демона при загрузке. ОШИБКА снимает макрос с вооружения (хоткей перестаёт
+       работать), ПРЕДУПРЕЖДЕНИЕ — нет.
+       ================================================================================== -->
+
+  <data name="Validation_Node_DuplicateId" xml:space="preserve">
+    <value>Дубликат id ноды: две ноды графа несут один и тот же идентификатор.</value>
+    <comment>ОШИБКА на ноде. Бывает только у файла, правленного руками: редактор одинаковых id не делает.</comment>
+  </data>
+  <data name="Validation_Node_DuplicateName" xml:space="preserve">
+    <value>Имя «{0}» носит больше одной ноды — в логе прогона их будет не различить.</value>
+    <comment>ПРЕДУПРЕЖДЕНИЕ, и оно вешается на ОБЕ ноды сразу: обвинить одну из пары значило бы выбрать наугад. {0} — совпавшая подпись.</comment>
+  </data>
+  <data name="Validation_Graph_StartNodeMissing" xml:space="preserve">
+    <value>Стартовая нода не задана или не найдена в графе.</value>
+    <comment>ОШИБКА уровня графа (без ноды — подсвечивать нечего). Два разных случая в одной фразе: стартовая не выбрана вовсе и стартовая указывает на удалённую ноду.</comment>
+  </data>
+  <data name="Validation_Node_EdgeToMissingNode" xml:space="preserve">
+    <value>Ребро {0} ведёт в ноду, которой в графе нет.</value>
+    <comment>ОШИБКА на ноде-источнике. {0} — имя исхода латиницей, как в модели: Next, Found, NotFound, Timeout, Matched, NotMatched. Куда именно вело ребро, намеренно не называется: там оторванный guid, читателю он ничего не скажет.</comment>
+  </data>
+  <data name="Validation_Node_ClickNeedsExactlyOnePoint" xml:space="preserve">
+    <value>У ClickNode должно быть задано ровно одно из Point / PointVar.</value>
+    <comment>ОШИБКА на ноде клика: точка задаётся либо числами, либо именем переменной. Единственное замечание валидатора, где нода названа именем ТИПА (ClickNode), а не подписью.</comment>
+  </data>
+  <data name="Validation_Node_MatchThresholdOutOfRange" xml:space="preserve">
+    <value>Порог совпадения {0} вне диапазона (0; 1].</value>
+    <comment>ОШИБКА на ноде зрения. {0} — само число, уже отформатированное как «0.###». Ноль означал бы «совпадает что угодно», больше единицы — «не совпадёт никогда»; и то и другое не настройка точности, а выключенная нода.</comment>
+  </data>
+  <data name="Validation_Node_TemplateMissing" xml:space="preserve">
+    <value>В макросе нет шаблона «{0}» — нода всегда будет уходить по «не найдено».</value>
+    <comment>ПРЕДУПРЕЖДЕНИЕ (не ошибка: «набрал имя, потом импортировал файл» — нормальный порядок действий). {0} — имя шаблона из ноды. Сверяется с описью бандла .hsm.</comment>
+  </data>
+  <data name="Validation_Node_TemplateSetMissing" xml:space="preserve">
+    <value>В макросе нет набора шаблонов «{0}» — нода всегда будет уходить по «не совпало».</value>
+    <comment>ПРЕДУПРЕЖДЕНИЕ, то же самое для НАБОРА (папка templates/{0}/ внутри бандла, нода распознавания тега). {0} — имя набора.</comment>
+  </data>
+  <data name="Validation_Node_ConditionalNeedsContextWindow" xml:space="preserve">
+    <value>Условной ноде нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса).</value>
+    <comment>ОШИБКА на ноде зрения (найти / дождаться / распознать). Прогон от хоткея контекстного окна не несёт, и такая нода оборвала бы его.</comment>
+  </data>
+  <data name="Validation_Node_ActionNeedsContextWindow" xml:space="preserve">
+    <value>Ноде действия без селектора Target нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса).</value>
+    <comment>ОШИБКА, то же самое для ноды действия (клавиша, клик, тег, иконка, вызов функции): лечится либо селектором Target, либо триггером «появился процесс».</comment>
+  </data>
+  <data name="Validation_Node_Unreachable" xml:space="preserve">
+    <value>Нода недостижима из стартовой.</value>
+    <comment>ПРЕДУПРЕЖДЕНИЕ на ноде: в неё не ведёт ни одно ребро от старта, то есть выполняться она никогда не будет.</comment>
+  </data>
+  <data name="Validation_Graph_LoopWithoutDelay" xml:space="preserve">
+    <value>Цикл без ноды Delay/WaitForElement — будет крутиться вхолостую: {0}.</value>
+    <comment>ПРЕДУПРЕЖДЕНИЕ, вешается на первую ноду цикла. {0} — подписи нод цикла, склеенные через « → ».</comment>
+  </data>
+  <data name="Validation_Submacro_NotSelected" xml:space="preserve">
+    <value>Под-макрос не выбран.</value>
+    <comment>ОШИБКА на ноде вызова: адресат пустой, ноду просто не дописали. Отделено от Validation_Submacro_NotFound намеренно — «ссылается на несуществующий» про пустое поле читалось бы как поломка файла.</comment>
+  </data>
+  <data name="Validation_Submacro_NotFound" xml:space="preserve">
+    <value>Под-макроса, на который ссылается нода, в этом макросе нет.</value>
+    <comment>ОШИБКА на ноде вызова: адресат задан, но такого под-макроса в бандле нет (его удалили либо файл правили руками).</comment>
+  </data>
+  <data name="Validation_Submacro_HasTrigger" xml:space="preserve">
+    <value>У под-макроса «{0}» есть триггер. Под-макрос — это функция: хоткей превращает её в макрос верхнего уровня, а демон такой триггер не вооружает.</value>
+    <comment>ОШИБКА уровня под-макроса. {0} — имя под-макроса. Молча не работающий хоткей — тот самый дефект, ради которого проверка и заведена.</comment>
+  </data>
+  <data name="Validation_Submacro_NestedCall" xml:space="preserve">
+    <value>Под-макрос не может звать под-макрос: вложенность плоская, и именно этим исключены циклы.</value>
+    <comment>ОШИБКА на ноде вызова ВНУТРИ под-макроса. Редактор такую ноду создать не даст; ловится файл, правленный руками.</comment>
+  </data>
+  <data name="Validation_Submacro_VariableLost_One" xml:space="preserve">
+    <value>Под-макрос «{0}» пишет переменную «{1}», но подпрогон работает с КОПИЕЙ переменных — наружу значение не вернётся, и читающая его нода оборвёт прогон.</value>
+    <comment>ПРЕДУПРЕЖДЕНИЕ на ноде вызова, оно же показывается в инспекторе под выбором функции. {0} — имя под-макроса, {1} — имя переменной. Живой пример: распознавание тега внутри функции, установка иконки — снаружи.</comment>
+  </data>
+  <data name="Validation_Submacro_VariableLost_Many" xml:space="preserve">
+    <value>Под-макрос «{0}» пишет переменные {1}, но подпрогон работает с КОПИЕЙ переменных — наружу значения не вернутся, и читающие их ноды оборвут прогон.</value>
+    <comment>ПРЕДУПРЕЖДЕНИЕ, то же для нескольких переменных. {0} — имя под-макроса; {1} — имена переменных, каждое уже в кавычках «», склеенные через «, ».</comment>
+  </data>
+
+  <!-- ==================================================================================
+       ИЗВЛЕЧЕНИЕ В ПОД-МАКРОС. Строка состояния редактора после кнопки «Выделить в
+       под-макрос». Извлечение ОТКАЗЫВАЕТСЯ, а не угадывает: у функции один вход и один
+       возврат, поэтому все тексты ниже — объяснение отказа, и каждое обязано называть
+       виноватые ноды и следующее действие автора.
+       ================================================================================== -->
+
+  <data name="Extraction_Refused_NothingSelected" xml:space="preserve">
+    <value>Ничего не выделено: отметьте ноды, которые надо вынести в под-макрос.</value>
+    <comment>Отказ: выделение пусто (или в нём одни удалённые ноды).</comment>
+  </data>
+  <data name="Extraction_Refused_WholeGraph" xml:space="preserve">
+    <value>Выделен весь макрос целиком. Под-макрос — это ЧАСТЬ графа; вынести всё значило бы завести уровень вложенности, который ничего не делает.</value>
+    <comment>Отказ: родитель остался бы из одной ноды вызова, которая зовёт свою же единственную функцию.</comment>
+  </data>
+  <data name="Extraction_Refused_ContainsCall" xml:space="preserve">
+    <value>В выделении есть нода вызова под-макроса. Под-макросы плоские — функция не может звать функцию.</value>
+    <comment>Отказ: внутри выделения нода вызова, а вложенность плоская.</comment>
+  </data>
+  <data name="Extraction_Refused_ManyEntries" xml:space="preserve">
+    <value>У выделения {0} входа: снаружи ведут рёбра в {1}. Под-макрос — это функция с ОДНИМ входом; добавьте в выделение ноду, которая идёт первой, или уберите лишнюю ветку.</value>
+    <comment>Отказ: в выделение входят снаружи в нескольких местах. {0} — сколько входов (всегда 2 и больше; согласование «входа/входов» сейчас не делается); {1} — подписи этих нод в кавычках «», через запятую.</comment>
+  </data>
+  <data name="Extraction_Refused_NoEntryClosedLoop" xml:space="preserve">
+    <value>В выделении нет ноды, с которой оно начинается: все они замкнуты друг на друга. Добавьте в выделение ноду, в которую входят снаружи.</value>
+    <comment>Отказ: выделен кольцевой кусок графа, начала у него нет.</comment>
+  </data>
+  <data name="Extraction_Refused_NoEntryFromOutside" xml:space="preserve">
+    <value>Непонятно, с чего под-макрос начинается: снаружи в выделение не ведёт ничего, а начал бы его любой из {0}. Выделите кусок, в который входят из остального графа.</value>
+    <comment>Отказ: в выделение снаружи не ведёт ни одно ребро, а претендентов на первую ноду несколько. {0} — подписи претендентов в кавычках «», через запятую.</comment>
+  </data>
+  <data name="Extraction_Refused_ManyExits" xml:space="preserve">
+    <value>Выходы выделения ведут в разные места: {0}. У функции возврат один, и куда идти после неё, выбирать надо снаружи; добавьте эти ноды в выделение или сузьте его.</value>
+    <comment>Отказ: из выделения выходят в несколько разных нод. {0} — подписи этих нод в кавычках «», через запятую.</comment>
+  </data>
+  <data name="Extraction_Refused_MixedExits" xml:space="preserve">
+    <value>Часть выходов выделения заканчивает прогон, а часть ведёт в {0}. После извлечения оба стали бы одним возвратом, то есть ветка, которая раньше прогон заканчивала, начала бы его продолжать. Сузьте выделение или доведите обе ветки до одного места.</value>
+    <comment>Отказ: смешанный случай — один выход наружу плюс ветка, обрывающая прогон. Молча слить их значило бы переписать замысел автора. {0} — подпись ноды снаружи в кавычках «».</comment>
+  </data>
+  <data name="Extraction_DefaultSubmacroNamePrefix" xml:space="preserve">
+    <value>функция</value>
+    <comment>Основа имени, которое предлагается новому под-макросу: «функция-1», «функция-2». Единственное русское имя-по-умолчанию в модели — подписи нод рядом с ним латинские (click-1, delay-2) и латинские намеренно, см. MacroNodeNames.</comment>
+  </data>
+
+  <!-- ==================================================================================
+       ПРОГОН. Полоса лога прогона в панели: колонка «подробности» у каждой ноды, причина
+       паузы у отладчика и — красной строкой — причина обрыва. Строки короткие потому, что
+       колонка узкая и читают её боковым зрением, пока макрос идёт.
+       ================================================================================== -->
+
+  <data name="Run_Detail_Delay" xml:space="preserve">
+    <value>{0} мс</value>
+    <comment>Подробность ноды задержки в полосе лога. {0} — сколько миллисекунд.</comment>
+  </data>
+  <data name="Run_Detail_ClickDouble" xml:space="preserve">
+    <value>{0},{1} dbl</value>
+    <comment>Подробность ноды клика, когда клик двойной. {0}, {1} — координаты в клиентской системе окна. Одиночный клик печатает только координаты, без слов.</comment>
+  </data>
+  <data name="Run_Detail_TemplateNotInMacro" xml:space="preserve">
+    <value>{0} · нет в макросе</value>
+    <comment>Подробность ноды зрения, когда названного шаблона (или набора) в бандле нет: нода не обрывает прогон, а уходит по ветке «не найдено» / «не совпало». {0} — имя шаблона или набора из ноды. Валидатор говорит об этом заранее.</comment>
+  </data>
+  <data name="Run_Detail_WaitTimedOut" xml:space="preserve">
+    <value>{0} · лимит {1} мс</value>
+    <comment>Подробность ноды ожидания, когда она сдалась по таймауту. {0} — имя шаблона, {1} — лимит в миллисекундах.</comment>
+  </data>
+  <data name="Run_Detail_SubmacroDetached" xml:space="preserve">
+    <value>{0} (без ожидания)</value>
+    <comment>Подробность ноды вызова, когда родитель не ждёт функцию. {0} — имя под-макроса.</comment>
+  </data>
+  <data name="Run_PauseReason_Breakpoint" xml:space="preserve">
+    <value>брейкпоинт</value>
+    <comment>Причина паузы: обход упёрся в точку останова. Печатается в полосе лога и на панели инструментов отладчика. Единственный из четырёх — заимствование, а не русское слово.</comment>
+  </data>
+  <data name="Run_PauseReason_Step" xml:space="preserve">
+    <value>шаг</value>
+    <comment>Причина паузы: обход прошёл одну ноду по кнопке «Шаг» и встал снова.</comment>
+  </data>
+  <data name="Run_PauseReason_UntilCursor" xml:space="preserve">
+    <value>до курсора</value>
+    <comment>Причина паузы: обход дошёл до ноды, на которую указали командой «выполнить до курсора».</comment>
+  </data>
+  <data name="Run_PauseReason_Paused" xml:space="preserve">
+    <value>пауза</value>
+    <comment>Причина паузы по умолчанию — просто нажали «Пауза». Тот же текст достаётся неизвестной причине, если их станет больше.</comment>
+  </data>
+  <data name="Run_Abort_DuplicateNodeId" xml:space="preserve">
+    <value>Макрос «{0}»: дубликат id ноды (одну из них зовут «{1}»).</value>
+    <comment>ОБРЫВ прогона. {0} — имя макроса, {1} — подпись одной из совпавших нод. То же самое валидатор говорит заранее; сюда доходит файл, правленный руками мимо валидатора.</comment>
+  </data>
+  <data name="Run_Abort_EdgeToMissingNode" xml:space="preserve">
+    <value>Макрос «{0}»: ребро ведёт в ноду, которой в графе нет.</value>
+    <comment>ОБРЫВ прогона. {0} — имя макроса. Какая нода оборвалась, видно по последней строке полосы лога, поэтому в тексте её нет.</comment>
+  </data>
+  <data name="Run_Abort_UnsupportedNodeType" xml:space="preserve">
+    <value>Макрос «{0}»: нода «{1}» имеет неподдерживаемый тип {2}.</value>
+    <comment>ОБРЫВ прогона: в файле нода типа, которого эта сборка не знает. {0} — имя макроса, {1} — подпись ноды, {2} — имя типа из кода (латиницей).</comment>
+  </data>
+  <data name="Run_Abort_NestedSubmacro" xml:space="preserve">
+    <value>Макрос «{0}»: под-макрос «{1}» пытается позвать под-макрос, а вложенность плоская.</value>
+    <comment>ОБРЫВ прогона. {0} — имя макроса, {1} — имя под-макроса, который зовёт. Единственная страховка от циклов в рантайме: валидатор такой граф отвергает раньше.</comment>
+  </data>
+  <data name="Run_Abort_SubmacroNotFound" xml:space="preserve">
+    <value>Макрос «{0}»: нода «{1}» ссылается на под-макрос, которого в этом макросе нет.</value>
+    <comment>ОБРЫВ прогона. {0} — имя макроса, {1} — подпись ноды вызова.</comment>
+  </data>
+  <data name="Run_Abort_SubmacroAborted" xml:space="preserve">
+    <value>Макрос «{0}»: под-макрос «{1}» оборван: {2}</value>
+    <comment>ОБРЫВ прогона родителя из-за обрыва функции, которую он ждал. {0} — имя макроса, {1} — имя под-макроса, {2} — причина обрыва функции (уже готовая фраза с точкой, поэтому своей точки в конце нет).</comment>
+  </data>
+  <data name="Run_Abort_NodeNeedsTargetOrContext" xml:space="preserve">
+    <value>У ноды «{0}» нет селектора Target, а у этого прогона нет контекстного окна (у прогонов от хоткея его не бывает).</value>
+    <comment>ОБРЫВ прогона на ноде действия. {0} — подпись ноды. Валидатор говорит то же самое заранее — см. Validation_Node_ActionNeedsContextWindow.</comment>
+  </data>
+  <data name="Run_Abort_NodeNeedsContextWindow" xml:space="preserve">
+    <value>Ноде «{0}» нужно контекстное окно, а у этого прогона его нет (у прогонов от хоткея его не бывает).</value>
+    <comment>ОБРЫВ прогона на ноде зрения. {0} — подпись ноды. Парная к Validation_Node_ConditionalNeedsContextWindow.</comment>
+  </data>
+  <data name="Run_Abort_ClickNeedsExactlyOnePoint" xml:space="preserve">
+    <value>У ноды ClickNode «{0}» должно быть задано ровно одно из Point / PointVar.</value>
+    <comment>ОБРЫВ прогона на ноде клика. {0} — подпись ноды. Парная к Validation_Node_ClickNeedsExactlyOnePoint, с той разницей, что здесь названы и тип, и подпись.</comment>
+  </data>
+  <data name="Run_Variable_NotDefined" xml:space="preserve">
+    <value>Переменная «{0}» в этом прогоне не определена.</value>
+    <comment>ОБРЫВ прогона: нода прочитала переменную, которую никто не записывал (в том числе через подстановку {имя} внутри строки). {0} — имя переменной.</comment>
+  </data>
+  <data name="Run_Variable_TypeMismatch" xml:space="preserve">
+    <value>Переменная «{0}» — не {1} (текущее значение: {2}).</value>
+    <comment>ОБРЫВ прогона: переменная есть, но держит значение другого рода. {0} — имя переменной; {1} — ожидавшийся род в именительном падеже (см. Run_VariableType_Point); {2} — то, что в ней лежит.</comment>
+  </data>
+  <data name="Run_VariableType_Point" xml:space="preserve">
+    <value>точка</value>
+    <comment>Подставляется в дырку {1} у Run_Variable_TypeMismatch. Единственный род значения, который сейчас требуют по имени (ClickNode.PointVar).</comment>
+  </data>
+
+  <!-- ==================================================================================
+       БИБЛИОТЕКА И ФАЙЛ МАКРОСА (.hsm). Проверка имени в поле переименования, отказы
+       сохранения и импорта (панель печатает их как «Не удалось сохранить: …», «Импорт не
+       удался: …») и вердикты читателя бандла — они же подсказка у красного «!» на строке
+       библиотеки и строчка в журнале демона при загрузке.
+       ================================================================================== -->
+
+  <data name="Bundle_Name_Empty" xml:space="preserve">
+    <value>Имя макроса не может быть пустым.</value>
+    <comment>Отказ проверки имени. Имя макроса И ЕСТЬ основа имени файла, поэтому правила здесь — правила NTFS.</comment>
+  </data>
+  <data name="Bundle_Name_TooLong" xml:space="preserve">
+    <value>Имя макроса должно быть не длиннее {0} символов.</value>
+    <comment>Отказ проверки имени. {0} — предел (MacroBundleFolder.MaxNameLength); подставляется, чтобы текст и проверка не разъехались, если предел поменяют.</comment>
+  </data>
+  <data name="Bundle_Name_InvalidCharacter" xml:space="preserve">
+    <value>Имя макроса не может содержать «{0}».</value>
+    <comment>Отказ проверки имени. {0} — ОДИН символ, первый недопустимый из встреченных.</comment>
+  </data>
+  <data name="Bundle_Name_TrailingDotOrSpace" xml:space="preserve">
+    <value>Имя макроса не может заканчиваться точкой или пробелом.</value>
+    <comment>Отказ проверки имени: такое имя NTFS принимает, но потом молча обрезает.</comment>
+  </data>
+  <data name="Bundle_Name_ReservedDevice" xml:space="preserve">
+    <value>«{0}» — зарезервированное имя устройства Windows.</value>
+    <comment>Отказ проверки имени: CON, PRN, AUX, NUL, COM1…LPT9. {0} — само имя.</comment>
+  </data>
+  <data name="Bundle_NameTaken" xml:space="preserve">
+    <value>Макрос «{0}» в библиотеке уже есть.</value>
+    <comment>Отказ сохранения или импорта: имя занято чужим макросом, а разрешения заменить его не давали. {0} — занятое имя. Пользователю после этого показывают выбор из трёх вариантов (заменить / другое имя / отмена).</comment>
+  </data>
+  <data name="Bundle_Unreadable_Overwrite" xml:space="preserve">
+    <value>Бандл «{0}» не читается, а перезапись уничтожила бы его содержимое. {1}</value>
+    <comment>Отказ сохранения: перед записью надо прочитать свой же файл (шаблоны, под-макросы, паспорт), а он не читается. {0} — путь к файлу, {1} — вердикт читателя (одна из записей Bundle_Read_*) либо Bundle_Unreadable_ReasonUnknown.</comment>
+  </data>
+  <data name="Bundle_Unreadable_ReasonUnknown" xml:space="preserve">
+    <value>Причина неизвестна.</value>
+    <comment>Подставляется в дырку {1} у Bundle_Unreadable_Overwrite, когда вердикта читателя нет.</comment>
+  </data>
+  <data name="Bundle_Import_NotABundle" xml:space="preserve">
+    <value>«{0}» — не бандл SmartMacro.</value>
+    <comment>Отказ импорта: выбранный файл не открывается как бандл либо в нём нет паспорта. {0} — путь к выбранному файлу. Запасной текст: обычно вместо него печатается более точный вердикт читателя.</comment>
+  </data>
+  <data name="Bundle_Read_FileMissing" xml:space="preserve">
+    <value>Файла «{0}» нет.</value>
+    <comment>Вердикт читателя: файла или папки не существует. {0} — путь.</comment>
+  </data>
+  <data name="Bundle_Read_FileNotOpened" xml:space="preserve">
+    <value>Файл «{0}» не открывается: {1}</value>
+    <comment>Вердикт читателя: файл есть, но открыть его не дали (занят, нет прав). Состояние ВРЕМЕННОЕ, и отличать его от порчи важно. {0} — путь, {1} — сообщение ОС.</comment>
+  </data>
+  <data name="Bundle_Read_NotAnArchive" xml:space="preserve">
+    <value>Файл не открывается как бандл: {0}</value>
+    <comment>Вердикт читателя: файл открылся, но это не zip. {0} — сообщение распаковщика. Путь здесь не называется — его знает тот, кто показывает строку.</comment>
+  </data>
+  <data name="Bundle_Read_MetadataEntryMissing" xml:space="preserve">
+    <value>В бандле нет «{0}» — это не бандл SmartMacro.</value>
+    <comment>Вердикт читателя: zip открылся, но паспорта в нём нет. {0} — имя записи внутри архива (metadata.json).</comment>
+  </data>
+  <data name="Bundle_Read_MetadataUnreadable" xml:space="preserve">
+    <value>Запись «{0}» не читается: {1}</value>
+    <comment>Вердикт читателя: паспорт в архиве есть, но распаковать его не удалось. {0} — имя записи, {1} — сообщение распаковщика.</comment>
+  </data>
+  <data name="Bundle_Read_MetadataNoVersionField" xml:space="preserve">
+    <value>В «{0}» нет поля «{1}» — файл сделан не этой программой либо повреждён.</value>
+    <comment>Вердикт читателя: паспорт разобрался как JSON, но версии формата в нём нет. Версию достают ПЕРВОЙ и отдельно — иначе бандл чужой версии отвечал бы «повреждён». {0} — имя записи, {1} — имя поля (FormatVersion, латиницей: это имя в файле).</comment>
+  </data>
+  <data name="Bundle_Read_MetadataNotJson" xml:space="preserve">
+    <value>«{0}» не разбирается как JSON: {1}</value>
+    <comment>Вердикт читателя: паспорт вообще не JSON. {0} — имя записи, {1} — сообщение разборщика (по-английски, от System.Text.Json).</comment>
+  </data>
+  <data name="Bundle_Read_MetadataMalformed" xml:space="preserve">
+    <value>«{0}» не разбирается: {1}</value>
+    <comment>Вердикт читателя: JSON паспорта верный, но поля не те. {0} — имя записи, {1} — сообщение разборщика. Дословно совпадает с Bundle_Read_GraphMalformed — записи оставлены раздельными, чтобы про паспорт и про граф можно было сказать по-разному.</comment>
+  </data>
+  <data name="Bundle_Read_VersionMismatch" xml:space="preserve">
+    <value>Бандл сделан {0} версией формата (v{1}); эта сборка читает v{2}.</value>
+    <comment>Вердикт читателя: версия формата не та. НЕ повреждение — такой файл остаётся на месте и в сторону не отодвигается. {0} — Bundle_Read_VersionNewer или Bundle_Read_VersionOlder, {1} — версия файла, {2} — версия сборки.</comment>
+  </data>
+  <data name="Bundle_Read_VersionNewer" xml:space="preserve">
+    <value>более новой</value>
+    <comment>Подставляется в дырку {0} у Bundle_Read_VersionMismatch: файл из будущей версии программы.</comment>
+  </data>
+  <data name="Bundle_Read_VersionOlder" xml:space="preserve">
+    <value>более ранней</value>
+    <comment>Подставляется в дырку {0} у Bundle_Read_VersionMismatch: файл из прошлой версии программы. Обратной совместимости нет намеренно.</comment>
+  </data>
+  <data name="Bundle_Read_GraphNotRead" xml:space="preserve">
+    <value>Граф не читался: {0}</value>
+    <comment>Вердикт читателя: до графа дело не дошло, потому что не прочитался паспорт. {0} — вердикт про паспорт, у которого первая буква переведена в строчную (или Bundle_Read_MetadataNotRead).</comment>
+  </data>
+  <data name="Bundle_Read_MetadataNotRead" xml:space="preserve">
+    <value>паспорт бандла не прочитан.</value>
+    <comment>Подставляется в дырку {0} у Bundle_Read_GraphNotRead, когда причины нет. Со строчной буквы и с точкой: это продолжение фразы.</comment>
+  </data>
+  <data name="Bundle_Read_GraphEntryMissing" xml:space="preserve">
+    <value>В бандле нет «{0}».</value>
+    <comment>Вердикт читателя: паспорт цел, а графа в архиве нет. {0} — имя записи (nodes.json). Ровно тот случай, ради которого паспорт и граф разнесены по разным записям: строка библиотеки покажет настоящее имя и описание автора.</comment>
+  </data>
+  <data name="Bundle_Read_GraphMalformed" xml:space="preserve">
+    <value>«{0}» не разбирается: {1}</value>
+    <comment>Вердикт читателя: граф есть, но это не разбираемый JSON модели. {0} — имя записи, {1} — сообщение разборщика. Дословно совпадает с Bundle_Read_MetadataMalformed.</comment>
+  </data>
+  <data name="Bundle_Read_GraphUnreadable" xml:space="preserve">
+    <value>Запись «{0}» не читается: {1}</value>
+    <comment>Вердикт читателя: запись графа не распаковывается. {0} — имя записи, {1} — сообщение распаковщика. Дословно совпадает с Bundle_Read_MetadataUnreadable.</comment>
+  </data>
+  <data name="Bundle_Read_SubmacroMalformed" xml:space="preserve">
+    <value>Под-макрос «{0}» не разбирается: {1}</value>
+    <comment>Вердикт читателя об ОДНОЙ записи submacro/: становится ошибкой валидации уровня бандла, но родительский граф не прячет. {0} — имя записи внутри архива, {1} — сообщение разборщика.</comment>
+  </data>
+  <data name="Bundle_Read_SubmacroUnreadable" xml:space="preserve">
+    <value>Под-макрос «{0}» не читается: {1}</value>
+    <comment>То же, когда запись под-макроса не распаковывается. {0} — имя записи, {1} — сообщение распаковщика.</comment>
+  </data>
+
+  <!-- ==================================================================================
+       ОТКАЗЫ ПРОТОКОЛА. Демон отвечает панели отказом, панель печатает текст как есть —
+       в строке ошибки редактора либо в полосе состояния. Пользователь их видит редко: почти
+       все означают, что панель нарушила порядок обращений.
+       ================================================================================== -->
+
+  <data name="Ipc_Rejected_MacroNotFound" xml:space="preserve">
+    <value>Макрос '{0}' не найден.</value>
+    <comment>Отказ на «Запустить»: имени нет в библиотеке даже после перечитывания папки. Единственный отказ, который пользователь встречает по-настоящему. {0} — имя макроса. Кавычки здесь ПРЯМЫЕ, в отличие от «» во всех остальных текстах.</comment>
+  </data>
+  <data name="Ipc_Rejected_RunEventsNeedConnection" xml:space="preserve">
+    <value>Подписка на события прогона возможна только по соединению.</value>
+    <comment>Отказ: подписка — состояние соединения, и запросу без него отвечать нечем.</comment>
+  </data>
+  <data name="Ipc_Rejected_DebuggerNeedsSubscription" xml:space="preserve">
+    <value>Команды отладчика доступны только подписчику событий прогона.</value>
+    <comment>Отказ: счёт подключённых отладчиков и есть гарантия того, что припаркованный обход кто-то распустит. Команда извне этого счёта могла бы оставить обход стоять навсегда.</comment>
+  </data>
+  <data name="Ipc_Rejected_HotkeySuspensionNeedsConnection" xml:space="preserve">
+    <value>Приостановка хоткеев возможна только по соединению.</value>
+    <comment>Отказ и на снятие хоткеев, и на их возврат (текст один на оба случая): приостановка — аренда, привязанная к соединению, и отпускается вместе с ним.</comment>
+  </data>
+  <data name="Ipc_Rejected_LogNeedsConnection" xml:space="preserve">
+    <value>Подписка на журнал возможна только по соединению.</value>
+    <comment>Отказ: то же самое для ленты журнала.</comment>
+  </data>
+  <data name="Ipc_Rejected_SaveSettingsWithoutPayload" xml:space="preserve">
+    <value>SaveSettings: нагрузка без настроек.</value>
+    <comment>Отказ: запрос на сохранение настроек пришёл пустым. Единственный текст, начинающийся с имени запроса, — это отказ для того, кто пишет клиента, а не для пользователя.</comment>
+  </data>
+  <data name="Ipc_Rejected_NoBroadcaster" xml:space="preserve">
+    <value>Событие активации некому разослать.</value>
+    <comment>Отказ на просьбу второго запуска панели вывести первую вперёд: рассылать событие некому. Означает поломку сборки демона, а не действие пользователя.</comment>
+  </data>
+
+  <!-- ==================================================================================
+       НАСТРОЙКИ. Отказы проверки полей (панель подсвечивает ими строку и не даёт
+       «Применить»), подписи способов ввода и описание механизма автозапуска.
+       ================================================================================== -->
+
+  <data name="Settings_Engine_Field_ProcessPollInterval" xml:space="preserve">
+    <value>Поиск новых процессов</value>
+    <comment>Название поля в отказе проверки; встаёт в начало Settings_Engine_Issue_OutOfRange. Как часто демон ищет запущенные клиенты.</comment>
+  </data>
+  <data name="Settings_Engine_Field_WindowPollInterval" xml:space="preserve">
+    <value>Проверка живости окон</value>
+    <comment>Название поля в отказе проверки. Как часто демон убеждается, что окна ещё живы.</comment>
+  </data>
+  <data name="Settings_Engine_Field_MatchThreshold" xml:space="preserve">
+    <value>Порог совпадения</value>
+    <comment>Название поля в отказе проверки: порог по умолчанию для нод зрения. Дословно совпадает с началом замечания валидатора Validation_Node_MatchThresholdOutOfRange — там про порог одной ноды, здесь про умолчание.</comment>
+  </data>
+  <data name="Settings_Engine_Field_VisionPollInterval" xml:space="preserve">
+    <value>Интервал опроса распознавания</value>
+    <comment>Название поля в отказе проверки: как часто нода ожидания делает новый снимок.</comment>
+  </data>
+  <data name="Settings_Engine_Field_ClassMatchThreshold" xml:space="preserve">
+    <value>Порог распознавания класса</value>
+    <comment>Название поля в отказе проверки: порог отдельного сопоставителя классов (окно характеристик).</comment>
+  </data>
+  <data name="Settings_Engine_Field_LuminanceThreshold" xml:space="preserve">
+    <value>Порог яркости</value>
+    <comment>Название поля в отказе проверки: граница бинаризации для сопоставителя классов, 0–255.</comment>
+  </data>
+  <data name="Settings_Engine_Field_SettleDelay" xml:space="preserve">
+    <value>Оседание</value>
+    <comment>Название поля в отказе проверки: пауза после сигнала побудки окна, до первого нажатия. Единственное название поля из одного слова.</comment>
+  </data>
+  <data name="Settings_Engine_Field_DeactivationDelay" xml:space="preserve">
+    <value>Деактивация</value>
+    <comment>Название поля в отказе проверки: пауза перед тем, как окно отпустят обратно в фон.</comment>
+  </data>
+  <data name="Settings_Engine_Unit_Seconds" xml:space="preserve">
+    <value>с</value>
+    <comment>Единица в отказе проверки — секунды. Подставляется в дырку {2} у Settings_Engine_Issue_OutOfRange трижды; перед ней добавляется пробел.</comment>
+  </data>
+  <data name="Settings_Engine_Unit_Milliseconds" xml:space="preserve">
+    <value>мс</value>
+    <comment>Единица в отказе проверки — миллисекунды. Там же. Поля без единицы (порог яркости) передают пустую строку, и пробел тогда тоже не добавляется.</comment>
+  </data>
+  <data name="Settings_Engine_Issue_OutOfRange" xml:space="preserve">
+    <value>{0}: {1}{2} — допустимо от {3}{2} до {4}{2}.</value>
+    <comment>Отказ проверки для целочисленного поля. {0} — название поля (Settings_Engine_Field_*), {1} — введённое значение, {2} — единица с ведущим пробелом (повторяется трижды), {3} и {4} — границы.</comment>
+  </data>
+  <data name="Settings_Engine_Issue_ThresholdOutOfRange" xml:space="preserve">
+    <value>{0}: {1:F2} — допустимо от {2:F2} до 1.00.</value>
+    <comment>Отказ проверки для порога (дробное 0–1). {0} — название поля, {1} — введённое значение, {2} — нижняя граница. Верхняя граница вписана в текст числом «1.00» — единицы порог не превышает по определению.</comment>
+  </data>
+  <data name="Settings_Engine_Issue_ProcessNameEmpty" xml:space="preserve">
+    <value>Имя процесса не может быть пустым.</value>
+    <comment>Отказ проверки профиля процесса: строка пуста.</comment>
+  </data>
+  <data name="Settings_Engine_Issue_ProcessNameHasExtension" xml:space="preserve">
+    <value>«{0}» — имя процесса пишется без расширения: «{1}».</value>
+    <comment>Отказ проверки профиля: расширение отвергается, а не срезается молча — с ним профиль выглядел бы рабочим и не следил бы ни за чем. {0} — как ввели, {1} — как надо (то же без «.exe»).</comment>
+  </data>
+  <data name="Settings_Engine_Issue_ProcessNameDuplicate" xml:space="preserve">
+    <value>Профиль для «{0}» уже есть — имена процессов не различаются регистром.</value>
+    <comment>Отказ проверки профиля: второй профиль на тот же процесс. {0} — имя процесса.</comment>
+  </data>
+  <data name="Settings_Engine_Json_NotParsed" xml:space="preserve">
+    <value>Файл настроек не разбирается.</value>
+    <comment>Сообщение исключения при чтении settings.json, правленного руками (лишняя запятая). Демон на этом НЕ сбрасывает настройки к умолчаниям и файл не переписывает.</comment>
+  </data>
+  <data name="Settings_Engine_Json_LiteralNull" xml:space="preserve">
+    <value>Файл настроек содержит литеральный 'null'.</value>
+    <comment>То же для файла, в котором лежит ровно слово null. Кавычки здесь ПРЯМЫЕ, в отличие от «» в соседних текстах.</comment>
+  </data>
+  <data name="Settings_Engine_InputMethod_SendMessage_Badge" xml:space="preserve">
+    <value>в фоне ✓ · Shift+1 ✕</value>
+    <comment>Значок рядом с пунктом «SendMessage» в списке способов ввода: работает ли по фоновым окнам и умеет ли сочетания с модификаторами. Дословно совпадает со значком PostMessage.</comment>
+  </data>
+  <data name="Settings_Engine_InputMethod_SendMessage_Detail" xml:space="preserve">
+    <value>Синхронно, по фоновым окнам. Ждёт ответа каждого окна: на десяти клиентах заметно медленнее. Модификаторы (Shift+1) не работают — PW читает их через GetKeyState, который межпоточный SendMessage не обновляет. Умолчание: именно на нём работает игра.</value>
+    <comment>Подсказка при наведении на способ ввода «SendMessage». Показывается дважды: в списке «Ввод по умолчанию» и на кнопке выбора у конкретного процесса.</comment>
+  </data>
+  <data name="Settings_Engine_InputMethod_PostMessage_Badge" xml:space="preserve">
+    <value>в фоне ✓ · Shift+1 ✕</value>
+    <comment>Значок рядом с пунктом «PostMessage». Дословно совпадает со значком SendMessage: различаются эти два способа не тем, что значок показывает, а скоростью и подтверждением доставки.</comment>
+  </data>
+  <data name="Settings_Engine_InputMethod_PostMessage_Detail" xml:space="preserve">
+    <value>Асинхронно, по фоновым окнам. Быстрее всех, но факт доставки не подтверждается: с ним 1–2 клиента из 11 периодически теряли широковещательное нажатие. Модификаторы (Shift+1) не работают.</value>
+    <comment>Подсказка при наведении на способ ввода «PostMessage».</comment>
+  </data>
+  <data name="Settings_Engine_InputMethod_SendInput_Badge" xml:space="preserve">
+    <value>в фоне ✕ · Shift+1 ✓</value>
+    <comment>Значок рядом с пунктом «SendInput». Способ не реализован, и интерфейс его НЕ предлагает — текст виден только тому, кто вписал значение в settings.json руками.</comment>
+  </data>
+  <data name="Settings_Engine_InputMethod_SendInput_Detail" xml:space="preserve">
+    <value>Через очередь ввода ОС. Единственный способ, который умеет сочетания с модификаторами, но требует переднего плана: SmartMacro отберёт фокус, а действия по десяти окнам пойдут по очереди. Пока не реализован.</value>
+    <comment>Подсказка про «SendInput». Последняя фраза — единственное место, где программа сообщает, что способ есть в модели, но не работает.</comment>
+  </data>
+  <data name="Settings_Engine_AutoStart_Off" xml:space="preserve">
+    <value>автозапуск выключен</value>
+    <comment>Строка «способ» в блоке «Запуск и права» и подробность зелёной карточки диагностики: обе галочки сняты. Со строчной буквы: встаёт внутрь фразы.</comment>
+  </data>
+  <data name="Settings_Engine_AutoStart_RunKey" xml:space="preserve">
+    <value>ключ Run в HKCU</value>
+    <comment>Тот же «способ»: запускать при входе без повышения. Ключ Run поднять процесс с правами не умеет — за этим Планировщик.</comment>
+  </data>
+  <data name="Settings_Engine_AutoStart_ElevateOnManualStart" xml:space="preserve">
+    <value>автозапуска нет; повышение запрашивается при ручном старте</value>
+    <comment>Тот же «способ»: повышение просят, а автозапуск не просят. Единственный из четырёх с точкой с запятой внутри.</comment>
+  </data>
+  <data name="Settings_Engine_AutoStart_ScheduledTask" xml:space="preserve">
+    <value>задача в Планировщике, наивысшие права</value>
+    <comment>Тот же «способ»: обе галочки. Создать такую задачу может только администратор — если не вышло, об этом скажет карточка Diag_AutoStart_Failed_Title.</comment>
+  </data>
+
+  <!-- ==================================================================================
+       ПРОВЕРКА СРЕДЫ. Полоса карточек внизу экрана настроек, по кнопке «Проверить среду».
+       У каждой карточки заголовок (крупно) и подробность (мелко). Проверок шесть, в порядке
+       показа: права, шаблоны, масштаб экрана, хоткеи, папка на запись, автозапуск; седьмую,
+       время ответа канала, делает панель. Карточки с проблемами показываются ПЕРВЫМИ.
+       Существует всё это потому, что почти все отказы программы средовые, а выглядят
+       одинаково: макрос просто не работает, и в журнале тихо.
+       ================================================================================== -->
+
+  <data name="Diag_Elevation_Blocked_Title" xml:space="preserve">
+    <value>Ввод в окна с повышением блокируется</value>
+    <comment>ОТКАЗ (красная карточка), проверка прав. Худший из средовых случаев: всё выглядит работающим, а до игры не доходит ничего.</comment>
+  </data>
+  <data name="Diag_Elevation_Blocked_Detail" xml:space="preserve">
+    <value>{0} из {1} отклоняют сообщения: клиенты запущены от администратора, а демон — нет (UIPI). Блокируются и ввод, и захват экрана. Включите «Работать с правами администратора» и перезапустите демон.</value>
+    <comment>Подробность той же карточки. {0} — сколько окон отказало (голое число), {1} — сколько всего окон, уже вместе со словом (Diag_Windows_*). Проверяется настоящей отправкой WM_NULL каждому окну, а не выводом «мы не повышены»: ложная тревога учит не читать диагностику.</comment>
+  </data>
+  <data name="Diag_Elevation_NoWindows_Ok_Title" xml:space="preserve">
+    <value>Права демона</value>
+    <comment>НОРМА (зелёная карточка), проверка прав: окон ещё нет, но демон повышен. Единственный заголовок этой проверки, который не утверждает ничего о вводе, — потому что проверить его не на чем.</comment>
+  </data>
+  <data name="Diag_Elevation_NoWindows_Ok_Detail" xml:space="preserve">
+    <value>администратор; окон пока нет</value>
+    <comment>Подробность той же карточки. Со строчной буквы — как и все короткие подробности-состояния.</comment>
+  </data>
+  <data name="Diag_Elevation_NoWindows_Warning_Title" xml:space="preserve">
+    <value>Демон работает без прав администратора</value>
+    <comment>ПРЕДУПРЕЖДЕНИЕ (жёлтая карточка), проверка прав: окон нет и прав нет. Не отказ: если клиенты тоже запустят обычным пользователем, всё будет работать.</comment>
+  </data>
+  <data name="Diag_Elevation_NoWindows_Warning_Detail" xml:space="preserve">
+    <value>Окон сейчас нет, так что проверить нечего. Но если клиенты запускаются от администратора, ввод в них будет молча отбрасываться (UIPI).</value>
+    <comment>Подробность той же карточки: тот самый случай, когда пользователь ещё не запустил игру и может починить всё заранее.</comment>
+  </data>
+  <data name="Diag_Elevation_Ok_Title" xml:space="preserve">
+    <value>Ввод в окна проходит</value>
+    <comment>НОРМА, проверка прав: окна есть и все приняли WM_NULL.</comment>
+  </data>
+  <data name="Diag_Elevation_Ok_Detail" xml:space="preserve">
+    <value>{0} принимают сообщения{1}</value>
+    <comment>Подробность той же карточки. {0} — число окон вместе со словом (Diag_Windows_*), {1} — Diag_Elevation_Ok_ElevatedSuffix либо пусто. Согласование хромает: при одном окне выходит «1 окно принимают сообщения».</comment>
+  </data>
+  <data name="Diag_Elevation_Ok_ElevatedSuffix" xml:space="preserve">
+    <value>; демон повышен</value>
+    <comment>Хвост Diag_Elevation_Ok_Detail, добавляется, когда демон работает с правами администратора. Начинается с точки с запятой без пробела перед ней — приклеивается вплотную.</comment>
+  </data>
+  <data name="Diag_Windows_One" xml:space="preserve">
+    <value>{0} окно</value>
+    <comment>Число окон с согласованным словом, форма для 1, 21, 31… Встаёт внутрь подробностей проверки прав. Заведено после дефекта «1 окон», найденного глазами на одном клиенте.</comment>
+  </data>
+  <data name="Diag_Windows_Few" xml:space="preserve">
+    <value>{0} окна</value>
+    <comment>То же, форма для 2–4, 22–24…</comment>
+  </data>
+  <data name="Diag_Windows_Many" xml:space="preserve">
+    <value>{0} окон</value>
+    <comment>То же, форма для 0, 5–20, 25… — и она же для нуля.</comment>
+  </data>
+  <data name="Diag_Templates_Ok_Title" xml:space="preserve">
+    <value>Шаблоны на месте</value>
+    <comment>НОРМА, проверка шаблонов: каждое имя, названное нодой, нашлось в бандле своего макроса.</comment>
+  </data>
+  <data name="Diag_Templates_Ok_Detail" xml:space="preserve">
+    <value>файлов {0} в макросах: {1}, все ссылки разрешаются</value>
+    <comment>Подробность той же карточки. {0} — сколько всего файлов-шаблонов, {1} — по скольким макросам они разложены. Порядок слов необычный: «файлов N», а не «N файлов».</comment>
+  </data>
+  <data name="Diag_Templates_Missing_Title" xml:space="preserve">
+    <value>Шаблон в макросе не найден</value>
+    <comment>ОТКАЗ, проверка шаблонов: нода называет имя, которого в бандле нет. Дублирует замечание валидатора намеренно — сюда заходят, когда открывать по очереди десять макросов не хочется.</comment>
+  </data>
+  <data name="Diag_Templates_Missing_Detail" xml:space="preserve">
+    <value>{0} — такого шаблона в бандле нет.</value>
+    <comment>Подробность той же карточки, про ПЕРВУЮ ненайденную ссылку. {0} — готовая пара «макрос → шаблон» (Diag_Templates_Ref_Single или Diag_Templates_Ref_Set).</comment>
+  </data>
+  <data name="Diag_Templates_Missing_More" xml:space="preserve">
+    <value> И ещё ненайденных ссылок: {0}.</value>
+    <comment>Хвост Diag_Templates_Missing_Detail, когда ненайденных ссылок больше одной. {0} — сколько их ещё. НАЧИНАЕТСЯ С ПРОБЕЛА: приклеивается к предыдущей фразе.</comment>
+  </data>
+  <data name="Diag_Templates_Ref_Single" xml:space="preserve">
+    <value>{0} → «{1}»</value>
+    <comment>Ненайденная ссылка на одиночный шаблон, встаёт в дырку {0} у Diag_Templates_Missing_Detail. {0} — имя макроса, {1} — имя шаблона. Макрос называется потому, что одного «Лучник.png нет» мало: непонятно, где искать.</comment>
+  </data>
+  <data name="Diag_Templates_Ref_Set" xml:space="preserve">
+    <value>{0} → набор «{1}»</value>
+    <comment>То же для НАБОРА шаблонов. {0} — имя макроса, {1} — имя набора.</comment>
+  </data>
+  <data name="Diag_DisplayScale_Ok_Title" xml:space="preserve">
+    <value>Масштабирование экрана</value>
+    <comment>НОРМА, проверка масштаба. Заголовок называет предмет, а не вердикт, — в отличие от жёлтого варианта, где в заголовок вписано само число.</comment>
+  </data>
+  <data name="Diag_DisplayScale_Ok_Detail" xml:space="preserve">
+    <value>100% — как при съёмке шаблонов</value>
+    <comment>Подробность той же карточки. Сто процентов вписаны в текст числом: это не настройка, а тот масштаб, при котором сняты все шаблоны и координаты в нодах.</comment>
+  </data>
+  <data name="Diag_DisplayScale_Warning_Title" xml:space="preserve">
+    <value>Масштабирование экрана {0}%</value>
+    <comment>ПРЕДУПРЕЖДЕНИЕ, проверка масштаба. {0} — текущий масштаб в процентах. Не отказ: работать не мешает, но распознавание начнёт промахиваться.</comment>
+  </data>
+  <data name="Diag_DisplayScale_Warning_Detail" xml:space="preserve">
+    <value>Шаблоны и координаты в нодах сняты при 100% — они сдвинутся, и распознавание будет промахиваться без единой ошибки в журнале.</value>
+    <comment>Подробность той же карточки.</comment>
+  </data>
+  <data name="Diag_Hotkeys_Suspended_Title" xml:space="preserve">
+    <value>Глобальные хоткеи приостановлены</value>
+    <comment>ПРЕДУПРЕЖДЕНИЕ, проверка хоткеев, и проверяется это состояние ПЕРВЫМ. Зелёной карточки здесь быть не может: клавиши прямо сейчас молчат.</comment>
+  </data>
+  <data name="Diag_Hotkeys_Suspended_Detail" xml:space="preserve">
+    <value>Сейчас не зарегистрировано ни одного аккорда: так бывает, пока в панели открыт режим «Макросы» — иначе уже занятую клавишу нельзя было бы переназначить. Закройте его, и хоткеи вернутся. Если ни одна панель не открыта, это ошибка: поможет перезапуск демона.</value>
+    <comment>Подробность той же карточки. Последняя фраза — про случай, когда панель убили Диспетчером задач: аренда приостановки отпускается вместе с соединением, но если этого не случилось, лечит только перезапуск.</comment>
+  </data>
+  <data name="Diag_Hotkeys_Ok_Title" xml:space="preserve">
+    <value>Глобальные хоткеи</value>
+    <comment>НОРМА, проверка хоткеев: все привязанные сочетания вооружены.</comment>
+  </data>
+  <data name="Diag_Hotkeys_Ok_Detail" xml:space="preserve">
+    <value>занято {0} из {0}</value>
+    <comment>Подробность той же карточки. {0} — сколько хоткеев привязано; ОБА числа одинаковые по построению (карточка зелёная ровно тогда, когда не вооружено ни одного), поэтому дырка одна и повторяется дважды.</comment>
+  </data>
+  <data name="Diag_Hotkeys_BrokenGraph_Title" xml:space="preserve">
+    <value>Хоткей не вооружён: в макросе ошибка</value>
+    <comment>ОТКАЗ, проверка хоткеев, причина первая: демон намеренно не вооружает триггеры макроса с ошибкой в графе. Отделено от «занято другой программой», потому что действие пользователя разное: починить граф, а не сменить сочетание.</comment>
+  </data>
+  <data name="Diag_Hotkeys_BrokenGraph_Detail" xml:space="preserve">
+    <value>Макросов с ошибками в графе: {0}; первый — «{1}»: {2} По клавише такой макрос не запустится, пока его не починить.</value>
+    <comment>Подробность той же карточки. {0} — сколько таких макросов, {1} — имя первого, {2} — первое замечание валидатора про него. Точки после {2} нет намеренно: замечание приходит уже с точкой, и своя давала бы «…в графе нет.. По клавише».</comment>
+  </data>
+  <data name="Diag_Hotkeys_Taken_Title" xml:space="preserve">
+    <value>Часть хоткеев занята другой программой</value>
+    <comment>ОТКАЗ, проверка хоткеев, причина вторая: Win32 отказал в регистрации, потому что аккордом владеет кто-то ещё. До этой карточки такой отказ уходил в журнал, который никто не читает.</comment>
+  </data>
+  <data name="Diag_Hotkeys_Taken_Detail" xml:space="preserve">
+    <value>Win32 отказал в регистрации {0} из {1}; первый — макрос «{2}». Такой макрос по клавише не запустится.</value>
+    <comment>Подробность той же карточки. {0} — сколько сочетаний не досталось, {1} — сколько всего привязано, {2} — имя первого пострадавшего макроса.</comment>
+  </data>
+  <data name="Diag_Hotkeys_Taken_AlsoBroken" xml:space="preserve">
+    <value> Ещё у {0} макросов ошибка в графе — их хоткеи не вооружены вовсе.</value>
+    <comment>Хвост Diag_Hotkeys_Taken_Detail, когда обе причины совпали. {0} — сколько макросов с ошибкой. НАЧИНАЕТСЯ С ПРОБЕЛА.</comment>
+  </data>
+  <data name="Diag_Folder_Ok_Title" xml:space="preserve">
+    <value>Папка приложения на запись</value>
+    <comment>НОРМА, проверка папки. Подробностью идёт сам путь, без слов. Проверяется созданием и удалением пробного файла, а не выводом из ACL: именно это умозаключение и врёт в интересных случаях.</comment>
+  </data>
+  <data name="Diag_Folder_Failed_Title" xml:space="preserve">
+    <value>Папка приложения не пишется</value>
+    <comment>ОТКАЗ, проверка папки: не сохранится ничего — ни макросы, ни настройки, ни журнал.</comment>
+  </data>
+  <data name="Diag_Folder_Failed_Detail" xml:space="preserve">
+    <value>{0} — сюда не сохранятся ни макросы, ни настройки, ни журнал. Перенесите программу из Program Files или дайте права на папку.</value>
+    <comment>Подробность той же карточки. {0} — путь к папке. То же самое, что говорит окно отказа старта (Startup_WriteProbe_Failed), но другими словами и уже в работающей программе.</comment>
+  </data>
+  <data name="Diag_AutoStart_Ok_Title" xml:space="preserve">
+    <value>Автозапуск</value>
+    <comment>НОРМА, проверка автозапуска: в системе зарегистрировано ровно то, что просят галочки. Подробностью идёт способ (Settings_Engine_AutoStart_*).</comment>
+  </data>
+  <data name="Diag_AutoStart_Failed_Title" xml:space="preserve">
+    <value>Автозапуск не зарегистрирован</value>
+    <comment>ОТКАЗ, проверка автозапуска. Разойтись состояние может и без участия панели: задачу снёс чистильщик, папку перенесли, файл настроек принесли с другой машины.</comment>
+  </data>
+  <data name="Diag_AutoStart_Failed_Detail" xml:space="preserve">
+    <value>Галочки просят «{0}», но в системе этого нет. {1}</value>
+    <comment>Подробность той же карточки. {0} — способ (Settings_Engine_AutoStart_*), {1} — что делать: Diag_AutoStart_Failed_NeedAdmin либо Diag_AutoStart_Failed_SeeLog.</comment>
+  </data>
+  <data name="Diag_AutoStart_Failed_NeedAdmin" xml:space="preserve">
+    <value>Задачу в Планировщике с наивысшими правами может создать только администратор — перезапустите демон от администратора и нажмите «Применить» ещё раз.</value>
+    <comment>Подставляется в дырку {1} у Diag_AutoStart_Failed_Detail, когда просят обе галочки: это единственная реальная причина отказа.</comment>
+  </data>
+  <data name="Diag_AutoStart_Failed_SeeLog" xml:space="preserve">
+    <value>Подробности — в журнале демона.</value>
+    <comment>Подставляется в ту же дырку в остальных случаях. Отсылка к журналу — признание, что точнее сказать нечем: настоящая причина осталась в строке от реестра или schtasks.</comment>
+  </data>
+</root>
