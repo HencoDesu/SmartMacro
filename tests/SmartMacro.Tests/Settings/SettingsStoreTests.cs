@@ -171,10 +171,20 @@ public class SettingsStoreTests
         }
     }
 
-    // Правка блокнотом. Наблюдатель гасит дребезг 300 мс, поэтому ждём с запасом; событие — это
-    // ровно то, чем правка руками доезжает до открытой панели.
+    // Правка блокнотом: событие — это ровно то, чем правка руками доезжает до открытой панели.
+    //
+    // ⚠️ Отметка времени файла двигается ЯВНО, и без этого тест плавал. Подавление эха в
+    // хранилище сравнивает LastWriteTimeUtc с подписью, поставленной, когда оно писало само, — а
+    // конструктор пишет файл, если его нет. Тест писал следом через микросекунды, обе записи
+    // попадали в один тик отметки, и правка гасилась как своя же. Событие не приходило ВООБЩЕ,
+    // поэтому увеличение срока ожидания не помогало (проверено: с пятью секундами и [Retry(2)]
+    // падали все три попытки, с тридцатью — те же три).
+    //
+    // Сдвиг отметки — не поблажка тесту, а устранение того, чего в жизни не бывает: человек в
+    // блокноте не сохраняет файл через микросекунду после демона. Всё остальное тест проверяет
+    // по-настоящему — наблюдатель обязан сработать, дребезг отгаснуть, HasFileChanged признать
+    // изменение, Load разобрать файл, а событие дойти до подписчика.
     [Test]
-    [Retry(2)]
     public async Task ExternalEdit_IsPickedUpByTheWatcher()
     {
         var directory = TempDirectory();
@@ -189,7 +199,10 @@ public class SettingsStoreTests
                 Watch = new WatchSettings { ProcessPollIntervalSeconds = 11, WindowPollIntervalSeconds = 13 },
             }));
 
-            var seen = await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            // Отодвигаем отметку от той, что поставил конструктор: см. пояснение выше.
+            File.SetLastWriteTimeUtc(store.FilePath, DateTime.UtcNow.AddSeconds(1));
+
+            var seen = await changed.Task.WaitAsync(TimeSpan.FromSeconds(15));
 
             await Assert.That(seen.Watch.ProcessPollIntervalSeconds).IsEqualTo(11);
             await Assert.That(store.Current.Watch.WindowPollIntervalSeconds).IsEqualTo(13);
