@@ -9,69 +9,55 @@ using SmartMacro.Macros.Validation;
 namespace SmartMacro.Macros.Storage;
 
 /// <summary>
-/// Библиотека макросов на диске: по одному БАНДЛУ <c>.hsm</c> на макрос в папке <c>macros/</c> в
-/// корне установки, где ОСНОВА ИМЕНИ ФАЙЛА и есть имя макроса.
+/// Библиотека макросов на диске глазами ДЕМОНА: по одному БАНДЛУ <c>.hsm</c> на макрос в папке
+/// <c>macros/</c> в корне установки, где основа имени файла и есть имя макроса.
 ///
-/// <b>До волны F2 здесь лежали голые <c>*.json</c> с графом, а шаблоны жили одним общим деревом
-/// <c>templates/</c>.</b> Связь между графом и его шаблонами при этом не была скреплена ничем:
-/// отданный другому человеку файл молча не работал, потому что <c>templates/classes/Лучник.png</c>
-/// был только у автора. Теперь макрос — это zip без сжатия, внутри которого лежит и граф, и его
-/// собственные шаблоны (§13.1 спеки, <see cref="MacroBundleFormat"/>). Цена названа честно: два
-/// макроса с распознаванием класса несут по своей копии одиннадцати PNG, и поправленный шаблон
-/// приходится разносить руками.
+/// <b>С волны F3 это хранилище ТОЛЬКО ЧИТАЕТ.</b> Единственный автор изменений — панель: редактор
+/// живёт в ней, значит она и пишет, а процессы делят файловую систему, так что макрос перестал
+/// ходить по трубе вовсе. Отсюда три вещи, которые здесь ИСЧЕЗЛИ и возвращать их не надо:
+/// <list type="bullet">
+///   <item><c>SaveAsync</c> / <c>DeleteAsync</c> и правка шаблонов — вместе с запросами
+///     <c>SaveMacro</c>, <c>DeleteMacro</c>, <c>AddMacroTemplate</c>, <c>DeleteMacroTemplate</c>,
+///     которых в протоколе больше нет;</item>
+///   <item><b>подавление собственных записей</b> — сверка подписи папки по временам последней
+///     записи. Демон не пишет, глушить нечего, и заметный кусок мудрёного кода ушёл целиком;</item>
+///   <item>вторая дорога чтения шаблонов (<c>TemplateCatalog</c> / <c>ReadTemplate</c>) — браузер
+///     теперь читает бандл сам, а кэш исполнителя ходит в файл своей дорогой.</item>
+/// </list>
 ///
-/// За что отвечает:
-///   * загрузить всё при создании, пропуская (а не падая на) непрочитавшиеся бандлы;
-///   * CRUD через <see cref="SaveAsync"/> / <see cref="DeleteAsync"/> с проверкой имени по
-///     правилам NTFS, плюс правку шаблонов внутри бандла;
-///   * горячую перезагрузку через <see cref="FileSystemWatcher"/> с гашением дребезга, где
-///     собственные записи подавляются сравнением подписи папки по временам последней записи.
+/// <b>Взамен появилась ВАЛИДАЦИЯ ПРИ ЗАГРУЗКЕ, и она обязательна.</b> Пока писал демон, работала
+/// гарантия «оно в библиотеке ⇒ демон его принял». Теперь в силе только «кто-то положил туда файл»,
+/// поэтому судит о графе тот, кто его исполняет: каждый прочитанный бандл проходит общий
+/// <see cref="MacroGraphValidator"/> с ЕГО ЖЕ описью шаблонов, вердикт ложится в
+/// <see cref="MacroLibraryEntry.Issues"/>, и <c>HotkeyListener</c> берёт себе привязки только из
+/// <see cref="Armed"/>. Иначе «хоткей нажимается, ничего не происходит» вернулось бы с другой
+/// стороны.
 ///
-/// ИНВАРИАНТ: ХРАНИЛИЩЕ НЕ СОЧИНЯЕТ СОДЕРЖИМОГО. Конструктор заводит саму папку, если её ещё нет
-/// (иначе некуда класть первый макрос и не на что натравливать наблюдателя), читает её — и на
-/// этом всё: библиотека сразу после создания хранилища ровно такая, какой её оставил
-/// пользователь.
+/// ИНВАРИАНТ: ХРАНИЛИЩЕ НЕ ПИШЕТ НА ДИСК ВООБЩЕ НИЧЕГО. Конструктор заводит саму папку, если её
+/// ещё нет (иначе не на что натравливать наблюдателя), читает её — и на этом всё. Раньше инвариант
+/// звучал как «конструктор не пишет»; F3 распространила его на весь класс.
 ///
-/// Так было НЕ ВСЕГДА, и потому это записано инвариантом, а не подразумевается. До отмены
-/// обратной совместимости конструктор ещё и мигрировал унаследованный <c>macros.json</c>,
-/// переименовывал его вместе с <c>hotkeys.json</c> в <c>*.migrated</c>, сеял шесть примеров
-/// <c>pw-*</c> и ставил маркер <c>.examples-seeded</c>. То есть «создать объект» означало
-/// «изменить состояние на диске»: тест не мог построить хранилище, не получив в придачу чужих
-/// файлов, а пользователь не мог понять, откуда в его папке макросы, которых он не писал.
-/// Побочные эффекты сюда не возвращать: если что-то нужно записать на старте, это отдельный
-/// метод, видимый на месте вызова.
+/// <b><c>*.json.incompatible</c> нет, и это тоже решение, а не пропажа.</b> Отодвигание непарсимого
+/// файла в сторону появилось, когда ноды перешли на <c>Guid</c>. У бандла эта беда снята форматом:
+/// <see cref="MacroBundleReader"/> не бросает и различает «повреждён» и «сделан другой версией
+/// формата», а версия пишется в файл с первого дня. Отодвинуть бандл БУДУЩЕЙ версии значило бы
+/// соврать ровно тем способом, ради недопущения которого поле версии и заведено. Поэтому файл
+/// остаётся на месте, а причина уходит в журнал целиком — и, с волны F3, ещё и в библиотеку панели
+/// отдельной строкой с восклицательным знаком.
 ///
-/// <b><c>*.json.incompatible</c> больше нет, и это тоже решение, а не пропажа.</b> Отодвигание
-/// непарсимого файла в сторону появилось, когда ноды перешли на <c>Guid</c>: старые файлы
-/// перестали разбираться ВСЕ РАЗОМ, и пользователь открыл бы панель с пустой библиотекой без
-/// единого следа. У бандла эта беда снята форматом: <see cref="MacroBundleReader"/> не бросает и
-/// различает «повреждён» и «сделан другой версией формата», а версия пишется в файл с первого
-/// дня. Отодвинуть бандл БУДУЩЕЙ версии значило бы соврать ровно тем способом, ради недопущения
-/// которого поле версии и заведено. Поэтому файл остаётся на месте, а причина уходит в журнал
-/// целиком — и оба конца остаются у пользователя в руках.
+/// Реализует <see cref="IMacroGraphResolver"/>, так что <c>RunMacroNode</c> разрешает под-макросы
+/// прямо из живой библиотеки.
 ///
-/// Реализует <see cref="IMacroGraphResolver"/>, так что <c>RunMacroNode</c> разрешает
-/// под-макросы прямо из живой библиотеки.
-///
-/// Параллелизм: записи выстраивает в очередь семафор; чтения идут через неизменяемый снимок
-/// <see cref="All"/> и обходятся без блокировок.
+/// Параллелизм: чтения идут через неизменяемый снимок и обходятся без блокировок; перезагрузку
+/// выстраивает в очередь семафор.
 /// </summary>
 public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
 {
-    /// <summary>Имя папки с макросами относительно каталога приложения.</summary>
-    public const string FolderName = "macros";
-
     private const int ReloadDebounceMs = 300;
-
-    // Наблюдатель смотрит только на бандлы. Временный файл атомарной записи назван так, чтобы под
-    // этот фильтр не попадать ни длинным именем («foo.hsm.tmp»), ни коротким 8.3
-    // («FOOHSM~1.TMP»): 8.3 берёт первые три символа ПОСЛЕДНЕГО расширения — см.
-    // MacroBundleWriter.
-    private static readonly string BundleFilter = "*" + MacroBundleFormat.Extension;
 
     private readonly string _directory;
     private readonly ILogger<MacroGraphStore> _logger;
-    private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private readonly FileSystemWatcher? _watcher;
 
     private CancellationTokenSource? _pendingReload;
@@ -79,11 +65,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
 
     private ImmutableList<MacroLibraryEntry> _entries = [];
     private ImmutableList<MacroGraph> _macros = [];
-
-    // Снимок «путь → время последней записи» на момент последней загрузки или записи, которую
-    // выполнили МЫ. Перезагрузка, дождавшаяся конца дребезга и совпавшая с этой подписью, —
-    // это либо эхо нашей же записи, либо дубль события, и она выбрасывается.
-    private ImmutableDictionary<string, DateTime> _signature = ImmutableDictionary<string, DateTime>.Empty;
+    private ImmutableList<MacroGraph> _armed = [];
 
     /// <summary>
     /// Боевой конструктор: <c>macros/</c> в КОРНЕ УСТАНОВКИ. В поставке это папка уровнем выше
@@ -101,19 +83,20 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
         _logger = logger;
-        _directory = Path.Combine(baseDirectory, FolderName);
+        _directory = MacroBundleFolder.In(baseDirectory);
 
-        // Единственное обращение к диску на запись за весь конструктор — и то это папка, а не
-        // её содержимое. См. инвариант в комментарии класса.
+        // Единственное обращение к диску на запись за всю жизнь объекта — и то это папка, а не её
+        // содержимое. См. инвариант в комментарии класса.
         Directory.CreateDirectory(_directory);
-        Reload(raiseEvent: false);
+        Reload();
 
         // Наблюдатель ставится по возможности: горячая перезагрузка — приятное дополнение, так
-        // что сбои прав или платформы деградируют до «перезапустите, чтобы подхватить внешние
-        // правки», а не до падения.
+        // что сбои прав или платформы деградируют до «перезапустите, чтобы подхватить правки»,
+        // а не до падения. С волны F3 это ЕДИНСТВЕННЫЙ способ демона узнать о новом макросе:
+        // панель пишет файл и демону об этом не сообщает.
         try
         {
-            _watcher = new FileSystemWatcher(_directory, BundleFilter)
+            _watcher = new FileSystemWatcher(_directory, MacroBundleFolder.Filter)
             {
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
                 EnableRaisingEvents = true,
@@ -129,8 +112,16 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
     }
 
-    /// <summary>Поднимается после изменения библиотеки — сохранения, удаления или внешней правки.</summary>
-    public event Action<IReadOnlyList<MacroGraph>>? MacrosChanged;
+    /// <summary>
+    /// Поднимается после того, как библиотека перечитана и изменилась.
+    ///
+    /// Нагрузки нет намеренно: все три подписчика в этом же процессе и берут из хранилища РАЗНОЕ —
+    /// <c>HotkeyListener</c> вооружаемые графы, <c>MacroTemplateCache</c> ничего (он просто
+    /// сбрасывается), <c>IpcServer</c> тоже ничего (он рассылает голое событие). Список графов
+    /// параметром обслуживал бы только первого и врал бы ему с волны F3, когда «вся библиотека» и
+    /// «то, что можно вооружить» перестали совпадать.
+    /// </summary>
+    public event Action? MacrosChanged;
 
     /// <summary>Абсолютный путь к папке с макросами.</summary>
     public string FolderPath => _directory;
@@ -139,11 +130,19 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     public IReadOnlyList<MacroGraph> All => _macros;
 
     /// <summary>
-    /// Тот же снимок, но целыми бандлами: граф плюс паспорт плюс опись шаблонов. Нужен тем, кто
-    /// спрашивает про ФАЙЛ, а не про граф, — валидации при сохранении, диагностике и браузеру
-    /// шаблонов.
+    /// Тот же снимок, но целыми бандлами: граф плюс паспорт плюс опись шаблонов плюс вердикт
+    /// валидатора. Нужен тем, кто спрашивает про ФАЙЛ, а не про граф.
     /// </summary>
     public IReadOnlyList<MacroLibraryEntry> Entries => _entries;
+
+    /// <summary>
+    /// Макросы, чьи триггеры позволено вооружать: граф прочитан И валидатор не нашёл в нём ошибок.
+    ///
+    /// Отдельный список, а не фильтр на месте вызова, потому что спрашивают его из двух мест
+    /// (регистрация при старте и перерегистрация по изменению библиотеки), а «забыли отфильтровать
+    /// в одном из них» выглядит как хоткей, который иногда работает.
+    /// </summary>
+    public IReadOnlyList<MacroGraph> Armed => _armed;
 
     /// <inheritdoc />
     public MacroGraph? TryGet(string name) => TryGetEntry(name)?.Graph;
@@ -168,375 +167,104 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
     }
 
     /// <summary>
-    /// Пишет <paramref name="graph"/> в <c>macros/{Name}.hsm</c> и поднимает
-    /// <see cref="MacrosChanged"/>.
+    /// Перечитывает папку прямо сейчас, не дожидаясь наблюдателя.
     ///
-    /// <b>Пишется бандл целиком, а меняется в нём только граф.</b> Шаблоны, под-макросы и паспорт
-    /// (в том числе <see cref="MacroBundleMetadata.Id"/> и дата создания) читаются из
-    /// существующего файла и кладутся обратно; меняется лишь дата правки. Иначе сохранение графа
-    /// стирало бы шаблоны — то есть ровно то, ради чего бандл и заведён.
+    /// Существует ради одной гонки, и её завела как раз F3. Панель пишет файл сама, а демон узнаёт
+    /// о нём наблюдателем с гашением дребезга в 300 мс — значит, «Сохранить», а следом сразу
+    /// «Запустить» способны попасть в промежуток, где макроса в снимке ещё нет, и кнопка ответила
+    /// бы «макрос не найден» про файл, который только что записали. Поэтому <c>RunMacro</c>,
+    /// промахнувшись мимо снимка, заглядывает на диск ещё раз. Только на промахе: обычный путь
+    /// по-прежнему не ходит в файловую систему вовсе.
     /// </summary>
-    /// <param name="graph">Сохраняемый граф; его имя становится основой имени файла.</param>
-    /// <param name="renamedFrom">
-    /// Прежнее имя, если это переименование.
-    ///
-    /// Без него переименование теряло бы шаблоны: редактор переименовывает записью под новым
-    /// именем и удалением старого файла (именно в таком порядке — сбой между шагами обязан
-    /// оставить две копии, а не ноль), а под новым именем бандла ещё нет, и наследовать вложения
-    /// не от чего. Паспорт при переименовании тоже переезжает целиком: <c>Id</c> не меняется
-    /// никогда, а переименование — это не дублирование.
-    /// </param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <exception cref="ArgumentException">Имя графа не годится в качестве имени файла.</exception>
-    public async Task SaveAsync(MacroGraph graph, string? renamedFrom = null,
-        CancellationToken cancellationToken = default)
+    /// <returns><c>true</c>, если состав библиотеки изменился (и <see cref="MacrosChanged"/> поднято).</returns>
+    public bool Refresh()
     {
-        ArgumentNullException.ThrowIfNull(graph);
-        if (ValidateName(graph.Name) is { } nameError)
-        {
-            throw new ArgumentException(nameError, nameof(graph));
-        }
-
-        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _reloadLock.Wait();
+        bool changed;
         try
         {
-            var path = PathFor(graph.Name);
-            var previous = ReadContentOrNull(path)
-                           ?? (renamedFrom is null ? null : ReadContentOrNull(PathFor(renamedFrom)));
-
-            var content = new MacroBundleContent
-            {
-                Metadata = previous?.Metadata.Touch() ?? MacroBundleMetadata.CreateNew(graph.Name),
-                Graph = graph,
-                Templates = previous?.Templates ?? [],
-                Submacros = previous?.Submacros ?? [],
-            };
-
-            // Ошибки сохранению не мешают — редактор обязан уметь сохранить недоделанный граф, —
-            // но они громкие, потому что исполнитель оборвёт прогон, который дойдёт до сломанного
-            // места. Проверяем ПОСЛЕ того, как собрали содержимое: опись шаблонов берётся из того
-            // бандла, который сейчас ляжет на диск, а не из того, что лежал раньше.
-            var inventory = MacroTemplateInventory.FromPaths(content.Templates.Select(file => file.Path));
-            foreach (var issue in MacroGraphValidator.Validate(graph, inventory))
-            {
-                if (issue.Severity == ValidationSeverity.Error)
-                {
-                    LogValidationError(graph.Name, issue.NodeName ?? "(граф)", issue.Message);
-                }
-            }
-
-            MacroBundleWriter.Write(path, content);
-            LogSaved(graph.Name, path, content.Templates.Count);
-            Reload(raiseEvent: false);
+            var before = Signature();
+            Reload();
+            changed = !before.SequenceEqual(Signature());
         }
         finally
         {
-            _writeLock.Release();
+            _reloadLock.Release();
         }
 
-        MacrosChanged?.Invoke(_macros);
+        // Только на изменившемся снимке: перерегистрация хоткеев и сброс кэша шаблонов на каждый
+        // промах мимо библиотеки были бы платой за то, что макроса действительно нет.
+        if (changed)
+        {
+            MacrosChanged?.Invoke();
+        }
+
+        return changed;
     }
 
-    /// <summary>
-    /// Удаляет <c>macros/{name}.hsm</c> и поднимает <see cref="MacrosChanged"/>.
-    /// </summary>
-    /// <param name="name">Имя удаляемого макроса.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns><c>false</c>, если такого файла нет (события не будет).</returns>
-    public async Task<bool> DeleteAsync(string name, CancellationToken cancellationToken = default)
-    {
-        if (ValidateName(name) is not null)
-        {
-            return false;
-        }
-
-        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var path = PathFor(name);
-            if (!File.Exists(path))
-            {
-                return false;
-            }
-
-            File.Delete(path);
-            LogDeleted(name, path);
-            Reload(raiseEvent: false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-
-        MacrosChanged?.Invoke(_macros);
-        return true;
-    }
-
-    // ------------------------------------------------------------------ шаблоны бандла
-
-    /// <summary>
-    /// Кладёт шаблон в бандл макроса, заменяя одноимённый.
-    ///
-    /// Бандл при этом переписывается целиком — иначе не выйдет атомарной замены, — так что цена
-    /// добавления одного PNG равна цене сохранения макроса. Для файлов в десятки килобайт это
-    /// ничто, а взамен «добавили шаблон» ничем не отличается от «сохранили граф»: тот же
-    /// временный файл, то же переименование, то же событие.
-    /// </summary>
-    /// <param name="macroName">Макрос, которому принадлежит шаблон.</param>
-    /// <param name="set">Набор (подпапка) либо <c>null</c> — одиночный шаблон.</param>
-    /// <param name="templateName">Имя шаблона = основа имени файла; для набора это тег.</param>
-    /// <param name="png">Содержимое файла.</param>
-    /// <param name="cancellationToken">Токен отмены.</param>
-    /// <returns><c>false</c>, если такого макроса нет или его бандл не читается.</returns>
-    public Task<bool> AddTemplateAsync(string macroName, string? set, string templateName, byte[] png,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(templateName);
-        ArgumentNullException.ThrowIfNull(png);
-
-        var relativePath = MacroBundleFormat.TemplatePath(set, templateName);
-        if (!MacroBundleFormat.TryParseTemplatePath(relativePath, out _, out _))
-        {
-            return Task.FromResult(false);
-        }
-
-        return EditBundleAsync(macroName, content =>
-        {
-            var templates = content.Templates
-                .Where(file => !SamePath(file.Path, relativePath))
-                .Append(new MacroBundleFile(relativePath, png))
-                .ToList();
-            LogTemplateAdded(macroName, relativePath, png.Length);
-            return content with { Templates = templates };
-        }, cancellationToken);
-    }
-
-    /// <summary>Убирает шаблон из бандла макроса. <c>false</c> — такого шаблона там нет.</summary>
-    public Task<bool> DeleteTemplateAsync(string macroName, string? set, string templateName,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(templateName);
-
-        var relativePath = MacroBundleFormat.TemplatePath(set, templateName);
-        return EditBundleAsync(macroName, content =>
-        {
-            var templates = content.Templates.Where(file => !SamePath(file.Path, relativePath)).ToList();
-            if (templates.Count == content.Templates.Count)
-            {
-                return null;
-            }
-
-            LogTemplateDeleted(macroName, relativePath);
-            return content with { Templates = templates };
-        }, cancellationToken);
-    }
-
-    /// <summary>
-    /// Перечень шаблонов макроса для браузера в редакторе: пути, размеры, вес — без байтов.
-    ///
-    /// <b>Это ВТОРАЯ дорога чтения, и она намеренно ходит на диск каждый раз</b>, минуя кэш
-    /// исполнителя (<c>MacroTemplateCache</c>). Довод тот же, что был у общего дерева: браузер
-    /// существует ровно затем, чтобы показать, что в бандле лежит СЕЙЧАС, — а список, отвечающий
-    /// снимком из кэша, был бы для этого бесполезен.
-    /// </summary>
-    public IReadOnlyList<MacroBundleTemplateInfo> TemplateCatalog(string macroName) =>
-        TryGetEntry(macroName) is { } entry ? MacroBundleReader.ReadTemplateCatalog(entry.Path) : [];
-
-    /// <summary>Байты одного шаблона для превью — с диска, минуя кэш исполнителя.</summary>
-    /// <returns><c>null</c>, если макроса, шаблона или файла нет.</returns>
-    public byte[]? ReadTemplate(string macroName, string? set, string templateName)
-    {
-        if (string.IsNullOrWhiteSpace(templateName) || TryGetEntry(macroName) is not { } entry)
-        {
-            return null;
-        }
-
-        var relativePath = MacroBundleFormat.TemplatePath(set, templateName);
-        // Сегменты пути в имени — это попытка вычитать что-то за пределами templates/, а не
-        // шаблон, которого не хватает; разбор их не пропустит.
-        return MacroBundleFormat.TryParseTemplatePath(relativePath, out _, out _)
-            ? MacroBundleReader.ReadTemplate(entry.Path, relativePath)
-            : null;
-    }
-
-    /// <summary>
-    /// Проверяет имя макроса по правилам имён файлов NTFS (имя И ЕСТЬ основа имени файла).
-    /// </summary>
-    /// <param name="name">Проверяемое имя.</param>
-    /// <returns>Описание ошибки или <c>null</c>, если имя годится.</returns>
-    public static string? ValidateName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return "Имя макроса не может быть пустым.";
-        }
-
-        if (name.Length > 100)
-        {
-            return "Имя макроса должно быть не длиннее 100 символов.";
-        }
-
-        var invalid = name.IndexOfAny(Path.GetInvalidFileNameChars());
-        if (invalid >= 0)
-        {
-            return $"Имя макроса не может содержать «{name[invalid]}».";
-        }
-
-        if (name.EndsWith('.') || name.EndsWith(' '))
-        {
-            return "Имя макроса не может заканчиваться точкой или пробелом.";
-        }
-
-        if (IsReservedDeviceName(name))
-        {
-            return $"«{name}» — зарезервированное имя устройства Windows.";
-        }
-
-        return null;
-    }
-
-    private static bool IsReservedDeviceName(string name)
-    {
-        // CON, PRN, AUX, NUL, COM0-9, LPT0-9 — в Windows негодны как основы имён файлов.
-        var stem = name.Split('.')[0];
-        if (stem is "CON" or "PRN" or "AUX" or "NUL")
-        {
-            return true;
-        }
-
-        return stem.Length == 4
-               && (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
-                   stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase))
-               && char.IsAsciiDigit(stem[3]);
-    }
-
-    // NTFS регистр не различает, так что «Лучник.png» и «лучник.png» — это не два шаблона.
-    private static bool SamePath(string left, string right) =>
-        string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
-
-    private string PathFor(string name) => Path.Combine(_directory, name + MacroBundleFormat.Extension);
-
-    private static MacroBundleContent? ReadContentOrNull(string path) =>
-        File.Exists(path) ? MacroBundleReader.ReadContent(path) : null;
-
-    // Общий ход всякой правки бандла: прочитать всё → поменять одно → записать всё. Писатель умеет
-    // только «файл целиком», и это не ограничение, а условие атомарности: заменить переименованием
-    // можно только готовый файл.
-    private async Task<bool> EditBundleAsync(string macroName, Func<MacroBundleContent, MacroBundleContent?> edit,
-        CancellationToken cancellationToken)
-    {
-        if (ValidateName(macroName) is not null)
-        {
-            return false;
-        }
-
-        await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var path = PathFor(macroName);
-            if (ReadContentOrNull(path) is not { } content)
-            {
-                LogBundleNotRewritable(macroName);
-                return false;
-            }
-
-            if (edit(content) is not { } updated)
-            {
-                return false;
-            }
-
-            MacroBundleWriter.Write(path, updated with { Metadata = updated.Metadata.Touch() });
-            Reload(raiseEvent: false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-
-        MacrosChanged?.Invoke(_macros);
-        return true;
-    }
+    // «Что мы сейчас держим» одной строкой на макрос: имя плюс дата правки из его паспорта.
+    // Даты хватает, и это не экономия — писатель проставляет её на КАЖДУЮ запись бандла, включая
+    // правку одного шаблона, так что «шаблон подменили, граф прежний» отсюда видно. Читается она
+    // из уже прочитанного паспорта, то есть не стоит ни одного лишнего обращения к диску.
+    //
+    // Это НЕ вернувшееся подавление собственных записей — та сверка отвечала на вопрос «мы ли это
+    // писали» и ушла вместе с авторством демона. Здесь вопрос другой и куда более скромный: есть
+    // ли смысл будить подписчиков. Путь наблюдателя эту сверку не делает вовсе и поднимает событие
+    // безусловно — ему важно сказать «я перечитал», даже если ничего не изменилось.
+    private List<(string Name, DateTimeOffset Modified)> Signature() =>
+        [.. _entries.Select(entry => (entry.Name, entry.Metadata.Modified))];
 
     // Полное перечитывание папки. Не бросает никогда: бандл, который не прочитался, попадает в
-    // лог и пропускается, чтобы одна кривая правка руками не опустошила библиотеку.
-    private void Reload(bool raiseEvent)
+    // лог и пропускается, чтобы одна кривая правка руками не опустошила библиотеку. Файл при этом
+    // НЕ трогаем — см. про *.incompatible в комментарии класса.
+    private void Reload()
     {
         var entries = new List<MacroLibraryEntry>();
-        var signature = ImmutableDictionary.CreateBuilder<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         var skipped = 0;
 
-        foreach (var path in EnumerateFilesSafe())
+        foreach (var bundle in MacroBundleFolder.Read(_directory))
         {
-            try
+            if (bundle is not { Graph: not null, Metadata: not null })
             {
-                signature[path] = File.GetLastWriteTimeUtc(path);
-            }
-            catch (IOException)
-            {
-                // Файл пишут прямо сейчас либо его удалили между перечислением и опросом
-                // атрибутов; следующее событие перечитает.
-            }
-
-            var stem = Path.GetFileNameWithoutExtension(path);
-            var read = MacroBundleReader.Read(path);
-            if (read is not { IsOk: true, Graph: not null, Metadata.Metadata: not null })
-            {
-                // Читатель не бросает и различает «повреждён», «занят», «сделан другой версией
-                // формата» — поэтому здесь достаточно перенести его вердикт в журнал целиком.
-                // Файл при этом НЕ трогаем; см. про *.incompatible в комментарии класса.
-                var fault = read.Metadata.IsOk ? read.GraphFault : read.Metadata.Fault;
-                var message = (read.Metadata.IsOk ? read.GraphMessage : read.Metadata.Message) ?? "(без подробностей)";
-                LogBundleSkipped(path, fault.ToString(), message);
+                LogBundleSkipped(bundle.Path, bundle.Fault.ToString(), bundle.FaultMessage ?? "(без подробностей)");
                 skipped++;
                 continue;
             }
 
-            var graph = read.Graph;
-            if (!string.Equals(graph.Name, stem, StringComparison.Ordinal))
+            if (bundle.NameOverridden)
             {
                 // Главенствует имя файла — переименовали файл, значит переименовали макрос.
-                LogNameMismatch(graph.Name, stem);
-                graph = new MacroGraph
-                {
-                    Name = stem,
-                    Triggers = graph.Triggers,
-                    StartNodeId = graph.StartNodeId,
-                    Nodes = graph.Nodes,
-                };
+                LogNameMismatch(bundle.Metadata.Name, bundle.Name);
             }
 
-            entries.Add(new MacroLibraryEntry(stem, graph, read.Metadata.Metadata, read.TemplatePaths, path));
+            // Валидация ЗДЕСЬ, а не на первом прогоне: гарантия «оно в библиотеке ⇒ демон его
+            // принял» ушла вместе с SaveMacro, и её место заняло «демон прочитал и вынес
+            // вердикт». Опись подаётся из ЭТОГО бандла — та же, что увидит панель.
+            var issues = MacroGraphValidator.Validate(bundle.Graph, bundle.Templates).ToList();
+            var entry = new MacroLibraryEntry(
+                bundle.Name,
+                bundle.Graph,
+                bundle.Metadata,
+                bundle.TemplatePaths,
+                bundle.Path,
+                issues);
+
+            if (entry.HasErrors)
+            {
+                LogNotArmed(entry.Name, entry.FirstError ?? "(без подробностей)");
+            }
+
+            entries.Add(entry);
         }
 
-        entries.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
         _entries = [.. entries];
         _macros = [.. entries.Select(entry => entry.Graph)];
-        _signature = signature.ToImmutable();
+        _armed = [.. entries.Where(entry => !entry.HasErrors).Select(entry => entry.Graph)];
         LogLoaded(entries.Count, skipped, _directory);
-
-        if (raiseEvent)
-        {
-            MacrosChanged?.Invoke(_macros);
-        }
     }
 
-    private IEnumerable<string> EnumerateFilesSafe()
-    {
-        try
-        {
-            return Directory.EnumerateFiles(_directory, BundleFilter)
-                .OrderBy(static p => p, StringComparer.OrdinalIgnoreCase).ToArray();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            LogEnumerationFailed(ex, _directory);
-            return [];
-        }
-    }
-
-    // FileSystemWatcher стреляет с пула потоков, а редакторы выдают по нескольку событий на одно
-    // сохранение, поэтому весь всплеск внутри окна гашения дребезга схлопывается в одну проверку
-    // на перезагрузку.
+    // FileSystemWatcher стреляет с пула потоков, а замена файла даёт по нескольку событий на одну
+    // запись, поэтому весь всплеск внутри окна гашения дребезга схлопывается в одну перезагрузку.
     private void OnFileChanged(object? sender, FileSystemEventArgs e)
     {
         var cts = new CancellationTokenSource();
@@ -557,10 +285,9 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
             return; // вытеснено более свежим событием
         }
 
-        var changed = false;
         try
         {
-            await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await _reloadLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -569,14 +296,7 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
 
         try
         {
-            if (!HasFolderChanged())
-            {
-                // Эхо нашей же записи или дубль события — делать нечего.
-                return;
-            }
-
-            Reload(raiseEvent: false);
-            changed = true;
+            Reload();
             LogReloadedExternally(_macros.Count);
         }
         catch (Exception ex)
@@ -585,43 +305,14 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
         }
         finally
         {
-            _writeLock.Release();
+            _reloadLock.Release();
         }
 
-        // Поднимается снаружи блокировки, чтобы подписчики могли вызывать нас обратно без
-        // взаимной блокировки.
-        if (changed)
-        {
-            MacrosChanged?.Invoke(_macros);
-        }
-    }
-
-    private bool HasFolderChanged()
-    {
-        var current = _signature;
-        var seen = 0;
-        foreach (var path in EnumerateFilesSafe())
-        {
-            seen++;
-            if (!current.TryGetValue(path, out var known))
-            {
-                return true;
-            }
-
-            try
-            {
-                if (File.GetLastWriteTimeUtc(path) != known)
-                {
-                    return true;
-                }
-            }
-            catch (IOException)
-            {
-                return true;
-            }
-        }
-
-        return seen != current.Count;
+        // Поднимается БЕЗУСЛОВНО и снаружи блокировки. Безусловно — потому что событие с волны F3
+        // означает «демон перечитал библиотеку и сейчас перерегистрирует хоткеи», а это правда и
+        // тогда, когда набор графов не изменился (поменялся один шаблон внутри бандла, скажем);
+        // снаружи — чтобы подписчики могли вызывать нас обратно без взаимной блокировки.
+        MacrosChanged?.Invoke();
     }
 
     // Идемпотентно — и обязано таким быть: хранилище зарегистрировано дважды (само по себе и как
@@ -663,6 +354,6 @@ public sealed partial class MacroGraphStore : IMacroGraphResolver, IDisposable
 
         pending?.Dispose();
 
-        _writeLock.Dispose();
+        _reloadLock.Dispose();
     }
 }

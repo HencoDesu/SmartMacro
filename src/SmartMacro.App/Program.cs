@@ -39,9 +39,6 @@ internal static class Program
     /// </summary>
     private const string PanelConfigurationFileName = "appsettings.panel.json";
 
-    /// <summary>Папка с макросами внутри корня установки — её показывает и открывает редактор.</summary>
-    private const string MacroFolderName = "macros";
-
     // Хватает на случай, когда демон уже поднят (он либо отвечает сразу, либо его нет).
     private static readonly TimeSpan ExistingDaemonWindow = TimeSpan.FromSeconds(2);
 
@@ -131,7 +128,7 @@ internal static class Program
                 return 1;
             }
 
-            Services = new AppServices(client, Path.Combine(root, MacroFolderName));
+            Services = new AppServices(client, root);
             try
             {
                 BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

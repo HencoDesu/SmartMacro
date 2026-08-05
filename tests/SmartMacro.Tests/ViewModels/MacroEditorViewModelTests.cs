@@ -5,53 +5,47 @@ using SmartMacro.App.ViewModels;
 using SmartMacro.App.ViewModels.Nodes;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
-using SmartMacro.Macros.Validation;
 using SmartMacro.Native;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
 
-// Стадия 3: поведение редактора макросов, без окон и через IPC.
+// Поведение редактора макросов, без окон.
 //
-// Демон заменён заглушкой DaemonLibraryStub, а не расписан моком по вызовам, потому что
-// проверяемые поведения разговорны по своей природе: сохранение — это «запрос → демон пишет →
-// демон рассылает MacrosChanged → клиент перезапрашивает», и логика редактора вокруг
-// несохранённых правок и внешних изменений имеет смысл только против собеседника, который
-// действительно делает все четыре шага. Поэтому заглушка держит настоящую библиотеку, проверяет
-// настоящим MacroGraphValidator и шлёт те же события в том же порядке, что и демон, — в том
-// числе поднимает MacrosChanged ИЗНУТРИ сохранения, а именно этот порядок и делает «наша
-// собственная запись вернулась эхом» настоящим случаем.
+// Стадия 3 отдала библиотеку демону и проверяла редактор через заглушку IPC. Волна F3 вернула
+// авторство панели, и заглушки не стало: под редактором теперь НАСТОЯЩАЯ папка macros/ во
+// временном каталоге (см. TempLibrary). Так и должно быть — «сохранить» означает «записать zip и
+// перечитать папку», а подделав это интерфейсом, мы проверяли бы вместо атомарной записи, переноса
+// шаблонов при переименовании и нечитаемого бандла в списке собственный мок.
+//
+// Демон при этом никуда не делся, но отвечает теперь только за своё: прогоны, отказы регистрации
+// хоткеев, отладчик. Его по-прежнему изображает FakeIpcClient.
 public class MacroEditorViewModelTests
 {
-    /// <summary>Минимальный демон: библиотека макросов, список прогонов и договорённость SaveMacro.</summary>
-    private sealed class DaemonLibraryStub
+    /// <summary>Панель целиком: настоящая папка макросов плюс поддельный демон над ней.</summary>
+    private sealed class Panel : IDisposable
     {
-        public DaemonLibraryStub()
+        public Panel()
         {
-            Client = new FakeIpcClient();
-            Client.Respond(IpcMessageTypes.GetMacros, _ => Snapshot());
             Client.Respond(IpcMessageTypes.GetRunningMacros, _ => Runs.ToArray());
-            Client.Respond(IpcMessageTypes.SaveMacro, payload => Save((SaveMacroRequest)payload!));
-            Client.Respond(IpcMessageTypes.DeleteMacro, payload => Delete((DeleteMacroRequest)payload!));
         }
 
-        public FakeIpcClient Client { get; }
+        public TempLibrary Library { get; } = new();
 
-        public List<MacroGraph> Macros { get; } = [];
+        public FakeIpcClient Client { get; } = new();
 
         public List<RunningMacroDto> Runs { get; } = [];
 
-        public MacroGraph? Find(string name) =>
-            Macros.FirstOrDefault(macro => string.Equals(macro.Name, name, StringComparison.Ordinal));
+        /// <summary>Граф из библиотеки или <c>null</c> — так на неё смотрит тест.</summary>
+        public MacroGraph? Find(string name) => Library.Library.TryGet(name)?.Graph;
 
-        /// <summary>Пишет граф так, как это сделал бы сторонний редактор, и присылает пуш об изменении.</summary>
-        public void WriteExternally(MacroGraph graph)
-        {
-            Macros.RemoveAll(macro => string.Equals(macro.Name, graph.Name, StringComparison.Ordinal));
-            Macros.Add(graph);
-            Client.RaiseEvent(IpcMessageTypes.MacrosChanged);
-        }
+        /// <summary>Сколько макросов лежит в папке, включая нечитаемые.</summary>
+        public int Count => Library.Library.Entries.Count;
+
+        /// <summary>Пишет бандл мимо панели — так выглядит правка проводником или другой сборкой.</summary>
+        public void WriteExternally(MacroGraph graph) => Library.WriteExternally(graph);
 
         public void SetRuns(params RunningMacroDto[] runs)
         {
@@ -60,54 +54,14 @@ public class MacroEditorViewModelTests
             Client.RaiseEvent(IpcMessageTypes.RunningMacrosChanged, Runs.ToArray());
         }
 
-        private MacroGraph[] Snapshot() =>
-            [.. Macros.OrderBy(macro => macro.Name, StringComparer.Ordinal)];
-
-        // Повторяет IpcRequestDispatcher.SaveMacroAsync: проверить, добавить проверку имени как
-        // замечание уровня графа, отказать при любой ошибке, иначе записать и разослать.
-        private ValidationIssueDto[] Save(SaveMacroRequest request)
-        {
-            var issues = new List<ValidationIssue>(MacroGraphValidator.Validate(request.Macro));
-            if (NameError(request.Macro.Name) is { } nameError)
-            {
-                issues.Add(new ValidationIssue(ValidationSeverity.Error, null, null, nameError));
-            }
-
-            if (issues.Any(issue => issue.Severity == ValidationSeverity.Error))
-            {
-                return [.. issues.Select(issue => issue.ToDto())];
-            }
-
-            Macros.RemoveAll(macro => string.Equals(macro.Name, request.Macro.Name, StringComparison.Ordinal));
-            Macros.Add(request.Macro);
-            // Поднимается до того, как вернётся ответ, — ровно так же, как это делает демон:
-            // насос событий и путь ответа суть разные писатели на одном соединении.
-            Client.RaiseEvent(IpcMessageTypes.MacrosChanged);
-            // Пусто — значит, записано. При успехе предупреждения намеренно НЕ сообщаются.
-            return [];
-        }
-
-        private object? Delete(DeleteMacroRequest request)
-        {
-            if (Macros.RemoveAll(macro => string.Equals(macro.Name, request.Name, StringComparison.Ordinal)) > 0)
-            {
-                Client.RaiseEvent(IpcMessageTypes.MacrosChanged);
-            }
-
-            return null;
-        }
-
-        private static string? NameError(string name) =>
-            string.IsNullOrWhiteSpace(name) || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
-                ? $"имя '{name}' не годится для файла"
-                : null;
+        public void Dispose() => Library.Dispose();
     }
 
     private static MacroEditorViewModel CreateEditor(
-        DaemonLibraryStub daemon,
+        Panel panel,
         IMacroLauncher? launcher = null,
         IHotkeySuspension? hotkeys = null) =>
-        new(daemon.Client, launcher, hotkeys, ImmediateUiDispatcher.Instance, @"C:\smartmacro\macros");
+        new(panel.Client, panel.Library.Library, launcher, hotkeys, ImmediateUiDispatcher.Instance);
 
     /// <summary>a → b → c, все ноды Delay, триггеров нет (поэтому правило про контекст не действует).</summary>
     private static MacroGraph Chain(string name = "цепочка") => new()
@@ -127,7 +81,8 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task DeleteNode_ClearsEveryInboundEdge()
     {
-        using var vm = CreateEditor(new DaemonLibraryStub());
+        using var daemon = new Panel();
+        using var vm = CreateEditor(daemon);
         vm.LoadGraph(Chain());
 
         vm.DeleteNode(vm.Nodes.Single(n => n.DisplayName == "b"));
@@ -141,7 +96,8 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task DeleteStartNode_MovesTheStartToWhatIsLeft()
     {
-        using var vm = CreateEditor(new DaemonLibraryStub());
+        using var daemon = new Panel();
+        using var vm = CreateEditor(daemon);
         vm.LoadGraph(Chain());
 
         vm.DeleteNode(vm.Nodes.Single(n => n.DisplayName == "a"));
@@ -153,7 +109,8 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task DeletingEveryNode_LeavesAnEmptyStart_WithoutThrowing()
     {
-        using var vm = CreateEditor(new DaemonLibraryStub());
+        using var daemon = new Panel();
+        using var vm = CreateEditor(daemon);
         vm.LoadGraph(Chain());
 
         while (vm.Nodes.Count > 0)
@@ -168,7 +125,8 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task RenamingANode_ChangesTheLabelAndNothingElse()
     {
-        using var vm = CreateEditor(new DaemonLibraryStub());
+        using var daemon = new Panel();
+        using var vm = CreateEditor(daemon);
         vm.LoadGraph(Chain());
 
         vm.Nodes.Single(n => n.DisplayName == "a").DisplayName = "начало";
@@ -188,7 +146,8 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task BlankDisplayName_IsRejected()
     {
-        using var vm = CreateEditor(new DaemonLibraryStub());
+        using var daemon = new Panel();
+        using var vm = CreateEditor(daemon);
         vm.LoadGraph(Chain());
 
         // Безымянная нода читалась бы в полосе лога как пропущенная строка.
@@ -200,7 +159,8 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task AddNode_NamesNodesAfterTheirType_AndSeedsTheStartOfAnEmptyGraph()
     {
-        using var vm = CreateEditor(new DaemonLibraryStub());
+        using var daemon = new Panel();
+        using var vm = CreateEditor(daemon);
         vm.LoadGraph(new MacroGraph { Name = "пусто", StartNodeId = Guid.Empty, Nodes = [] });
 
         var first = vm.AddNode(MacroNodeKind.KeyPress);
@@ -220,25 +180,35 @@ public class MacroEditorViewModelTests
     // ---- что не пускает сохранить ------------------------------------------------------------
 
     [Test]
-    public async Task Save_SendsSaveMacro_AndTheGraphLandsInTheLibrary()
+    public async Task Save_WritesTheBundle_AndTheGraphLandsInTheLibrary()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(Chain("рабочий"));
 
         var saved = await vm.SaveAsync();
 
         await Assert.That(saved).IsTrue();
-        await Assert.That(daemon.Client.CountOf(IpcMessageTypes.SaveMacro)).IsEqualTo(1);
+        await Assert.That(File.Exists(daemon.Library.PathFor("рабочий"))).IsTrue();
         await Assert.That(daemon.Find("рабочий")).IsNotNull();
+        // Ни одного запроса ПРО МАКРОС по трубе не ушло: писать — дело панели. Всё, что редактор
+        // спрашивает у демона, — это его собственное состояние.
+        await Assert.That(daemon.Client.Requests.Select(r => r.Type).Distinct().Order().ToList())
+            .IsEquivalentTo(new List<string>
+            {
+                IpcMessageTypes.GetBreakpoints,
+                IpcMessageTypes.GetHotkeyFailures,
+                IpcMessageTypes.GetRunningMacros,
+                IpcMessageTypes.GetWindows,
+            }.Order().ToList());
         await Assert.That(vm.Issues.Any(i => i.IsError)).IsFalse();
         await Assert.That(vm.IsDirty()).IsFalse();
     }
 
     [Test]
-    public async Task Save_RejectedByTheDaemon_RendersTheIssues_AndTheEditorStaysDirty()
+    public async Task Save_BlockedByAValidationError_RendersTheIssues_AndTheEditorStaysDirty()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
 
         // У макроса на хоткее нет контекстного окна, поэтому достижимая условная нода — это
@@ -257,16 +227,16 @@ public class MacroEditorViewModelTests
         var saved = await vm.SaveAsync();
 
         await Assert.That(saved).IsFalse();
-        await Assert.That(daemon.Macros).IsEmpty();
+        await Assert.That(daemon.Count).IsEqualTo(0);
         await Assert.That(vm.Issues.Any(i => i.IsError)).IsTrue();
         await Assert.That(vm.ErrorMessage).IsNotNull();
         await Assert.That(vm.IsDirty()).IsTrue();
     }
 
     [Test]
-    public async Task Save_IsBlockedLocallyByARowLevelInputError_AndNothingIsSent()
+    public async Task Save_IsBlockedByARowLevelInputError_AndNothingIsWritten()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(Chain("кривая-пауза"));
         ((DelayNodeRowViewModel)vm.Nodes[0]).SecondsText = "две секунды";
@@ -274,16 +244,16 @@ public class MacroEditorViewModelTests
         var saved = await vm.SaveAsync();
 
         await Assert.That(saved).IsFalse();
-        // Недопечатанное число до провода не доходит: BuildGraph втихую подставил бы что-нибудь,
+        // Недопечатанное число до файла не доходит: BuildGraph втихую подставил бы что-нибудь,
         // о чём пользователь не просил.
-        await Assert.That(daemon.Client.CountOf(IpcMessageTypes.SaveMacro)).IsEqualTo(0);
+        await Assert.That(daemon.Count).IsEqualTo(0);
         await Assert.That(vm.Issues.Any(i => i.IsError)).IsTrue();
     }
 
     [Test]
     public async Task Save_IsBlockedByAnUnusableName()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(Chain());
         vm.MacroName = "плохое/имя";
@@ -291,14 +261,14 @@ public class MacroEditorViewModelTests
         var saved = await vm.SaveAsync();
 
         await Assert.That(saved).IsFalse();
-        await Assert.That(daemon.Macros).IsEmpty();
+        await Assert.That(daemon.Count).IsEqualTo(0);
         await Assert.That(vm.Issues.Any(i => i.IsError)).IsTrue();
     }
 
     [Test]
     public async Task Save_SucceedsWithWarnings_WhichAreReDerivedLocally()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
         // "orphan" недостижим от стартовой ноды — это предупреждение, а не ошибка, и притом
         // такое, которое демон при успешном сохранении НЕ возвращает.
@@ -325,7 +295,7 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task Rename_SavesTheNewNameAndDeletesTheOldOne()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(Chain("старое-имя"));
         await vm.SaveAsync();
@@ -336,15 +306,14 @@ public class MacroEditorViewModelTests
         await Assert.That(saved).IsTrue();
         await Assert.That(daemon.Find("новое-имя")).IsNotNull();
         await Assert.That(daemon.Find("старое-имя")).IsNull();
-        await Assert.That(daemon.Client.PayloadsOf<DeleteMacroRequest>(IpcMessageTypes.DeleteMacro).Single().Name)
-            .IsEqualTo("старое-имя");
+        await Assert.That(File.Exists(daemon.Library.PathFor("старое-имя"))).IsFalse();
         await Assert.That(vm.Macros.Select(m => m.Name)).IsEquivalentTo(new[] { "новое-имя" });
     }
 
     [Test]
     public async Task Save_RoundTripsAGraphWithEveryNodeTypeAcrossTheWire()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
         var original = NodeRowRoundTripTests.EveryNodeType();
         vm.LoadGraph(original);
@@ -382,7 +351,7 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task EmptyLibrary_GetsItsOwnHint_NotThePickOneHint()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
 
         await Assert.That(vm.IsLibraryEmpty).IsTrue();
@@ -403,7 +372,8 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task DraftOnAnEmptyLibrary_ShowsNeitherHint()
     {
-        using var vm = CreateEditor(new DaemonLibraryStub());
+        using var daemon = new Panel();
+        using var vm = CreateEditor(daemon);
 
         vm.NewMacro();
 
@@ -413,14 +383,13 @@ public class MacroEditorViewModelTests
     }
 
     [Test]
-    public async Task Construction_FetchesTheLibrary_AndSelectingAMacroLoadsIt()
+    public async Task Construction_ReadsTheFolder_AndSelectingAMacroLoadsIt()
     {
-        var daemon = new DaemonLibraryStub();
-        daemon.Macros.Add(Chain("первый"));
-        daemon.Macros.Add(Chain("второй"));
+        using var daemon = new Panel();
+        daemon.WriteExternally(Chain("первый"));
+        daemon.WriteExternally(Chain("второй"));
         using var vm = CreateEditor(daemon);
 
-        await Assert.That(daemon.Client.CountOf(IpcMessageTypes.GetMacros)).IsEqualTo(1);
         await Assert.That(vm.Macros).Count().IsEqualTo(2);
         await Assert.That(vm.HasOpenMacro).IsFalse();
 
@@ -433,28 +402,46 @@ public class MacroEditorViewModelTests
     }
 
     [Test]
-    public async Task Reconnect_RefetchesTheLibrary()
+    // Библиотека — факт файловой системы, а не факт демона: переподключение к ней отношения не
+    // имеет, а вот файл, положенный в папку, обязан появиться сам.
+    public async Task LibraryChange_ShowsUp_WithoutAskingTheDaemon()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
         await Assert.That(vm.Macros).IsEmpty();
 
-        daemon.Macros.Add(Chain("появился-пока-нас-не-было"));
-        daemon.Client.RaiseConnected();
+        daemon.WriteExternally(Chain("появился-пока-нас-не-было"));
 
-        await Assert.That(daemon.Client.CountOf(IpcMessageTypes.GetMacros)).IsEqualTo(2);
         await Assert.That(vm.Macros.Select(m => m.Name)).IsEquivalentTo(new[] { "появился-пока-нас-не-было" });
     }
 
+    // Единственное, что после F3 означает пуш MacrosChanged: «демон перечитал папку и
+    // перерегистрировал хоткеи». Значит, и делать по нему надо ровно одно — перечитать список
+    // сочетаний, которые Windows не отдала.
     [Test]
-    public async Task MacrosChanged_ReloadsACleanEditor()
+    public async Task MacrosChangedPush_RereadsOnlyTheHotkeyFailures()
     {
-        var daemon = new DaemonLibraryStub();
-        daemon.Macros.Add(Chain("живой"));
+        using var daemon = new Panel();
+        daemon.Client.Respond(IpcMessageTypes.GetHotkeyFailures, _ => Array.Empty<HotkeyFailureDto>());
+        using var vm = CreateEditor(daemon);
+        var before = daemon.Client.CountOf(IpcMessageTypes.GetHotkeyFailures);
+
+        daemon.Client.RaiseEvent(IpcMessageTypes.MacrosChanged);
+
+        await Assert.That(daemon.Client.CountOf(IpcMessageTypes.GetHotkeyFailures)).IsEqualTo(before + 1);
+        // Библиотеку при этом никто не спрашивает: её панель читает сама.
+        await Assert.That(vm.Macros).IsEmpty();
+    }
+
+    [Test]
+    public async Task ExternalEdit_ReloadsACleanEditor()
+    {
+        using var daemon = new Panel();
+        daemon.WriteExternally(Chain("живой"));
         using var vm = CreateEditor(daemon);
         vm.SelectedMacro = vm.Macros.Single();
 
-        // Кто-то правит файл у нас за спиной; наблюдатель демона присылает пуш MacrosChanged.
+        // Кто-то правит файл у нас за спиной; его подхватывает наблюдатель самой панели.
         daemon.WriteExternally(new MacroGraph
         {
             Name = "живой",
@@ -468,10 +455,10 @@ public class MacroEditorViewModelTests
     }
 
     [Test]
-    public async Task MacrosChanged_DoesNotClobberUnsavedEdits()
+    public async Task ExternalEdit_DoesNotClobberUnsavedEdits()
     {
-        var daemon = new DaemonLibraryStub();
-        daemon.Macros.Add(Chain("живой"));
+        using var daemon = new Panel();
+        daemon.WriteExternally(Chain("живой"));
         using var vm = CreateEditor(daemon);
         vm.SelectedMacro = vm.Macros.Single();
         ((DelayNodeRowViewModel)vm.Nodes[0]).SecondsText = "9";
@@ -491,7 +478,7 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task OurOwnSave_IsNotMistakenForAnExternalChange()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(Chain("своё"));
 
@@ -505,56 +492,60 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task NewMacro_ProducesASaveableDraftThatIsNotYetInTheLibrary()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
 
         vm.NewMacro();
 
         await Assert.That(vm.HasOpenMacro).IsTrue();
         await Assert.That(vm.Nodes).Count().IsEqualTo(1);
-        await Assert.That(daemon.Macros).IsEmpty();
+        await Assert.That(daemon.Count).IsEqualTo(0);
 
         await Assert.That(await vm.SaveAsync()).IsTrue();
-        await Assert.That(daemon.Macros).Count().IsEqualTo(1);
+        await Assert.That(daemon.Count).IsEqualTo(1);
     }
 
     [Test]
-    public async Task DeleteMacro_SendsDeleteMacro_AndClosesTheEditor()
+    public async Task DeleteMacro_RemovesTheFile_AndClosesTheEditor()
     {
-        var daemon = new DaemonLibraryStub();
-        daemon.Macros.Add(Chain("на-удаление"));
+        using var daemon = new Panel();
+        daemon.WriteExternally(Chain("на-удаление"));
         using var vm = CreateEditor(daemon);
         vm.SelectedMacro = vm.Macros.Single();
 
-        var deleted = await vm.DeleteMacroAsync(vm.Macros.Single());
+        var deleted = vm.DeleteMacro(vm.Macros.Single());
 
         await Assert.That(deleted).IsTrue();
-        await Assert.That(daemon.Client.PayloadsOf<DeleteMacroRequest>(IpcMessageTypes.DeleteMacro).Single().Name)
-            .IsEqualTo("на-удаление");
+        await Assert.That(File.Exists(daemon.Library.PathFor("на-удаление"))).IsFalse();
         await Assert.That(vm.Macros).IsEmpty();
         await Assert.That(vm.HasOpenMacro).IsFalse();
     }
 
     [Test]
-    public async Task DeleteMacro_ReportsAFailedRequest()
+    public async Task DeleteMacro_ReportsAFileThatWillNotGo()
     {
-        var daemon = new DaemonLibraryStub();
-        daemon.Macros.Add(Chain("упрямый"));
+        using var daemon = new Panel();
+        daemon.WriteExternally(Chain("упрямый"));
         using var vm = CreateEditor(daemon);
-        daemon.Client.Fail(IpcMessageTypes.DeleteMacro, "файл занят");
 
-        var deleted = await vm.DeleteMacroAsync(vm.Macros.Single());
+        // Файл держат открытым БЕЗ права на удаление — так выглядит чужая программа, вцепившаяся
+        // в бандл. Windows отвечает на File.Delete отказом, и молчать об этом нельзя.
+        using (File.Open(daemon.Library.PathFor("упрямый"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var deleted = vm.DeleteMacro(vm.Macros.Single());
+            await Assert.That(deleted).IsFalse();
+        }
 
-        await Assert.That(deleted).IsFalse();
         await Assert.That(vm.ErrorMessage).IsNotNull();
         await Assert.That(vm.Macros).Count().IsEqualTo(1);
     }
 
     [Test]
-    public async Task FolderPath_IsTheHostSuppliedDaemonFolder()
+    public async Task FolderPath_IsTheMacrosFolderOfTheInstallationRoot()
     {
-        using var vm = CreateEditor(new DaemonLibraryStub());
-        await Assert.That(vm.FolderPath).IsEqualTo(@"C:\smartmacro\macros");
+        using var daemon = new Panel();
+        using var vm = CreateEditor(daemon);
+        await Assert.That(vm.FolderPath).IsEqualTo(daemon.Library.FolderPath);
     }
 
     // ---- запуск, остановка, хоткеи -------------------------------------------------------------
@@ -562,8 +553,8 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task Run_GoesThroughTheLauncher()
     {
-        var daemon = new DaemonLibraryStub();
-        daemon.Macros.Add(Chain("запускаемый"));
+        using var daemon = new Panel();
+        daemon.WriteExternally(Chain("запускаемый"));
         var launcher = A.Fake<IMacroLauncher>();
         using var vm = CreateEditor(daemon, launcher: launcher);
 
@@ -576,8 +567,8 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task RunState_FollowsTheDaemonsRunList_AndStopSendsStopMacro()
     {
-        var daemon = new DaemonLibraryStub();
-        daemon.Macros.Add(Chain("бегущий"));
+        using var daemon = new Panel();
+        daemon.WriteExternally(Chain("бегущий"));
         using var vm = CreateEditor(daemon);
 
         var runId = Guid.NewGuid();
@@ -595,7 +586,7 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task HotkeySuspension_IsForwarded_AndOptional()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         var hotkeys = A.Fake<IHotkeySuspension>();
         using var withSuspension = CreateEditor(daemon, hotkeys: hotkeys);
 
@@ -615,7 +606,7 @@ public class MacroEditorViewModelTests
     [Test]
     public async Task SelectIssue_HighlightsTheOffendingNode()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(new MacroGraph
         {
@@ -639,9 +630,9 @@ public class MacroEditorViewModelTests
     }
 
     [Test]
-    public async Task Dispose_UnsubscribesFromTheDaemon()
+    public async Task Dispose_UnsubscribesFromBothTheFolderAndTheDaemon()
     {
-        var daemon = new DaemonLibraryStub();
+        using var daemon = new Panel();
         var vm = CreateEditor(daemon);
         vm.Dispose();
 

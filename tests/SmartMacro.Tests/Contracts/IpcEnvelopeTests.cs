@@ -126,12 +126,12 @@ public class IpcEnvelopeTests
     {
         // Транспорт — это JSON Lines: перевод строки внутри сообщения разрезал бы его надвое.
         // MacroGraphJson.Options делает отступы (файлы правят руками), так что это ровно та
-        // настройка, которую IpcJson обязан перебить, — а нагрузка с графом здесь самый жирный
-        // случай.
+        // настройка, которую IpcJson обязан перебить. Самой жирной нагрузкой был граф макроса;
+        // с волны F3 он по трубе не ходит, и место главного тяжеловеса занял снимок настроек.
         var request = new IpcRequest(
             1,
-            IpcMessageTypes.SaveMacro,
-            IpcJson.Write(new SaveMacroRequest(Macros.FullMacroGraphFixture.Build())));
+            IpcMessageTypes.SaveSettings,
+            IpcJson.Write(new SaveSettingsRequest(new SmartMacro.Contracts.Settings.AppSettings())));
 
         var json = JsonSerializer.Serialize(request, IpcJson.Options);
 

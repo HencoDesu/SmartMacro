@@ -126,11 +126,95 @@ public partial class MacrosView : UserControl
         }
     }
 
-    private async void OnDeleteMacroClicked(object? sender, RoutedEventArgs e)
+    private void OnDeleteMacroClicked(object? sender, RoutedEventArgs e)
     {
         if (Vm is { } vm && sender is Button { DataContext: MacroListItemViewModel item })
         {
-            await vm.DeleteMacroAsync(item);
+            vm.DeleteMacro(item);
+        }
+    }
+
+    /// <summary>
+    /// «Импорт» — системный диалог выбора <c>.hsm</c>, дальше файл просто копируется в
+    /// <c>macros/</c>. Это весь импорт целиком: с волны F3 библиотека — это папка, а панель —
+    /// её автор.
+    /// </summary>
+    private async void OnImportMacroClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm || TopLevel.GetTopLevel(this) is not { } top)
+        {
+            return;
+        }
+
+        IReadOnlyList<IStorageFile> picked;
+        try
+        {
+            picked = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Импорт макроса",
+                AllowMultiple = true,
+                FileTypeFilter = [new FilePickerFileType("Макрос SmartMacro") { Patterns = ["*.hsm"] }],
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Диалог импорта макроса не открылся");
+            return;
+        }
+
+        foreach (var file in picked)
+        {
+            // Локальный путь, а не поток: импорт — это File.Copy, и бандл обязан доехать байт в
+            // байт. Файл из места без пути (облачный провайдер) импортировать нечем, и сказать
+            // об этом честнее, чем пересобрать бандл сегодняшним писателем и потерять то, чего
+            // сегодняшняя версия формата не знает.
+            if (file.TryGetLocalPath() is { Length: > 0 } path)
+            {
+                vm.ImportMacro(path);
+            }
+            else
+            {
+                vm.ErrorMessage = $"«{file.Name}» лежит не на диске — импортировать нечего.";
+            }
+        }
+    }
+
+    /// <summary>«Экспорт» — системный диалог сохранения, дальше файл отдаётся как есть.</summary>
+    private async void OnExportMacroClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm
+            || sender is not Button { DataContext: MacroListItemViewModel item }
+            || TopLevel.GetTopLevel(this) is not { } top)
+        {
+            return;
+        }
+
+        if (vm.ExportPath(item) is not { } source)
+        {
+            vm.ErrorMessage = $"Файл макроса «{item.Name}» не найден.";
+            return;
+        }
+
+        try
+        {
+            var target = await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = "Экспорт макроса",
+                SuggestedFileName = item.Name + ".hsm",
+                DefaultExtension = "hsm",
+                FileTypeChoices = [new FilePickerFileType("Макрос SmartMacro") { Patterns = ["*.hsm"] }],
+            });
+
+            if (target?.TryGetLocalPath() is { Length: > 0 } destination)
+            {
+                File.Copy(source, destination, overwrite: true);
+                vm.StatusMessage = $"«{item.Name}» экспортирован.";
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            vm.ErrorMessage = $"Экспорт не удался: {ex.Message}";
+            Log.Warning(ex, "Экспорт макроса '{Macro}' не выполнен", item.Name);
         }
     }
 
@@ -148,20 +232,20 @@ public partial class MacrosView : UserControl
         }
     }
 
-    private async void OnDeleteTemplateClicked(object? sender, RoutedEventArgs e)
+    private void OnDeleteTemplateClicked(object? sender, RoutedEventArgs e)
     {
         if (TemplatesVm is { } templates && sender is Button { DataContext: TemplateRowViewModel row })
         {
-            await templates.DeleteAsync(row);
+            templates.Delete(row);
         }
     }
 
     /// <summary>
-    /// «+ файл…» — системный диалог выбора PNG, дальше байты уезжают демону.
+    /// «+ файл…» — системный диалог выбора PNG, дальше байты уезжают в бандл.
     ///
     /// Множественный выбор разрешён: одиннадцать имён классов кладут в набор одной пачкой, а не
-    /// одиннадцатью походами в диалог. Каждый файл едет отдельным запросом — бандл переписывается
-    /// на каждый, но это десятки килобайт, а взамен один битый файл не отменяет остальных.
+    /// одиннадцатью походами в диалог. Каждый файл кладётся отдельно — бандл переписывается на
+    /// каждый, но это десятки килобайт, а взамен один битый файл не отменяет остальных.
     /// </summary>
     private async void OnAddTemplateClicked(object? sender, RoutedEventArgs e)
     {
@@ -193,7 +277,7 @@ public partial class MacrosView : UserControl
                 await using var stream = await file.OpenReadAsync();
                 using var buffer = new MemoryStream();
                 await stream.CopyToAsync(buffer);
-                await templates.ImportAsync(file.Name, buffer.ToArray());
+                templates.Import(file.Name, buffer.ToArray());
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

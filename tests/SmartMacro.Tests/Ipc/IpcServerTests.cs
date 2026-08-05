@@ -192,7 +192,8 @@ public class IpcServerTests
         await using var fixture = new ServerFixture();
         var (client, serve) = await fixture.ConnectAsync();
 
-        await fixture.Engine.Macros.SaveAsync(new MacroGraph
+        // Файл кладёт панель, демон перечитывает папку — с волны F3 других путей нет.
+        fixture.Engine.WriteMacro(new MacroGraph
         {
             Name = "новый",
             StartNodeId = Ids.Of("n0"),
@@ -202,7 +203,8 @@ public class IpcServerTests
         var evt = Parse(await client.ReadLineAsync());
 
         await Assert.That(TypeOf(evt)).IsEqualTo(IpcMessageTypes.MacrosChanged);
-        // Нагрузки нет по протоколу: библиотека бывает большой, клиент перезапрашивает сам.
+        // Нагрузки нет по протоколу: библиотеку клиент читает сам, а это событие с волны F3
+        // значит «демон перечитал папку и перерегистрировал хоткеи».
         await Assert.That(evt.TryGetProperty("Payload", out _)).IsFalse();
 
         client.CloseClient();

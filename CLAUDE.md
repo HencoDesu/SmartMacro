@@ -8,13 +8,13 @@ Windows-only desktop automation tool (C# / .NET 10 / Avalonia). Generic in desig
 
 ## Where it stands
 
-**Nothing is in flight.** The rename to SmartMacro, the node-graph macro model, tags replacing the character roster, the daemon/panel split, the whole UI, the debugger, the settings store and the shipped layout are all built and green.
+**Nothing is in flight.** The rename to SmartMacro, the node-graph macro model, tags replacing the character roster, the daemon/panel split, the whole UI, the debugger, the settings store, the shipped layout and the `.hsm` format through wave F3 are all built and green. Only F4 (submacros) is left of the format plan — see `docs/spec.md` §13.1.
 
 The refactoring plan that got us here was **deleted** once it was done — not out of tidiness: a plan file sitting in `docs/` reads as a to-do no matter what disclaimer you put on it, and that one had gone further than stale. Its node catalogue still described the string `Id` the model no longer has, and its IPC catalogue listed 21 requests against today's 27. It is in git history if you want it. `docs/design/implementation-plan.md` survives because the mockups next to it are still the visual reference — but it is history too, and several of its claims were disproved on contact (the targets badge needed no new IPC; the breakpoint dot could not live on the box corner). Read it for context, never as a to-do.
 
-**`docs/spec.md` describes the system as built** and is the place to look first. Its most load-bearing part is **§14, the decision history** — tables of «было → стало → почему» covering what was dropped before the refactor (FOLLOW/HOLD/COMBAT state machine, LLM integration, per-character roster, nameplate identification), what the refactor itself changed, and the `.hsm` waves. **§13.1 is the `.hsm` decision in full**, with a table saying which wave is done. Read it before proposing anything that sounds like a fresh idea; a good share of "obvious improvements" are in there with a reason they were rejected.
+**`docs/spec.md` describes the system as built** and is the place to look first. Its most load-bearing part is **§14, the decision history** — tables of «было → стало → почему» covering what was dropped before the refactor (FOLLOW/HOLD/COMBAT state machine, LLM integration, per-character roster, nameplate identification), what the refactor itself changed, and the `.hsm` waves. **§13.1 is the `.hsm` decision in full**, with a table saying which wave is done — F1, F2 and F3 are, F4 (submacros) is not. Read it before proposing anything that sounds like a fresh idea; a good share of "obvious improvements" are in there with a reason they were rejected.
 
-Gate: `dotnet run --project tests/SmartMacro.Tests` — **737 tests**, and they are expected green before anything is committed.
+Gate: `dotnet run --project tests/SmartMacro.Tests` — **741 tests**, and they are expected green before anything is committed.
 
 The sections below are the constraints that are load-bearing — the things that look arbitrary, are not, and will be "simplified" back into bugs by anyone who does not know why they are there. Wave tags (D4, D3b, …) survive only because commit messages reference them.
 
@@ -73,13 +73,80 @@ Stage 5 (translating comments to Russian) is deliberately last.
 
 **`ShellMode.Templates` is gone from the rail** and `TemplatesViewModel` folded into `MacroEditorViewModel` — the rail is about entities, and a template stopped being one. Its counter went with it: there is no "how many templates are there" number any more, only "how many does THIS macro have", and that lives in the inspector next to triggers and variables. Selecting the browser's row still costs one image request; the list is still metadata only; there are still deliberately no thumbnails.
 
-**«НЕТ ФАЙЛА» is gone and the validator has it instead, which is a promotion.** A bundle's template set is known statically, so `MacroGraphValidator.Validate(graph, inventory)` says "this node names a template the macro doesn't have" at save time rather than in a section you had to go and open, or a log line mid-run. It is a **Warning**, not an Error: an error would block saving, and "type the name, then import the file" is a normal order of operations; a missing template does not abort the run either — the node takes «не найдено», which is what that edge is for. ⚠️ **`null` inventory and an empty one are different**: `null` means "the bundle's contents are unknown" and skips the check entirely. Both ends pass a real one — the daemon from the library entry, the panel from `TemplatesViewModel.Inventory` — because two runs of one validator disagreeing is the D4 targets-badge lie again.
+**«НЕТ ФАЙЛА» is gone and the validator has it instead, which is a promotion.** A bundle's template set is known statically, so `MacroGraphValidator.Validate(graph, inventory)` says "this node names a template the macro doesn't have" at save time (panel) and at load time (daemon), rather than in a section you had to go and open, or a log line mid-run. It is a **Warning**, not an Error: an error would block saving, and "type the name, then import the file" is a normal order of operations; a missing template does not abort the run either — the node takes «не найдено», which is what that edge is for. ⚠️ **`null` inventory and an empty one are different**: `null` means "the bundle's contents are unknown" and skips the check entirely. Both ends pass a real one — the daemon from the library entry, the panel from `TemplatesViewModel.Inventory` — because two runs of one validator disagreeing is the D4 targets-badge lie again.
 
-**Four requests, and two of them are temporary by design.** `GetTemplates` and `GetTemplateImage` are retargeted at a macro; `AddMacroTemplate`/`DeleteMacroTemplate` exist because the tree the user used to drop files into is gone and the panel cannot write a zip until F3. All four disappear in F3. Editing a bundle always goes read-everything → change one thing → write everything, because atomic replacement needs a finished file; so adding a template costs the same as saving the macro and raises the same `MacrosChanged`.
+**The four template requests are gone (F3), exactly where F2 said they would be.** `GetTemplates`, `GetTemplateImage`, `AddMacroTemplate` and `DeleteMacroTemplate` were retargeted at a macro in F2 and the last two were marked temporary the day they were written; the panel writes the zip itself now. Editing a bundle always goes read-everything → change one thing → write everything, because atomic replacement needs a finished file; so adding a template costs the same as saving the macro.
 
-**Writing is atomic, and that lives in `Shared` next to the writer** — not in the store, because F3's writer is the panel and the logic must be reused, not rewritten. Temp file in the same folder (`{name}.hsm.tmp`, which misses the `*.hsm` watcher filter in both long and 8.3 form), then replace. ⚠️ **The replace is `File.Replace` (`ReplaceFile`), NOT `File.Move(overwrite: true)` (`MoveFileEx`)** — measured, not read: `Move` throws `UnauthorizedAccessException` when the destination is open *even if the reader opened it with `FileShare.Delete`*; `Replace` succeeds with `FileShare.Delete` and fails without it. So `FileShare.Delete` in `MacroBundleReader` is not decoration, it is the other half of the mechanism. Renaming a macro carries `SaveMacroRequest.RenamedFrom` so the new bundle inherits templates, submacros and the passport — without it renaming would silently drop the templates, which is exactly what the format exists to prevent.
+**Writing is atomic, and that lives in `Shared` next to the writer** — not in the store, because the writer is the panel (F3) and the logic is reused, not rewritten. Temp file in the same folder (`{name}.hsm.tmp`, which misses the `*.hsm` watcher filter in both long and 8.3 form), then replace. ⚠️ **The replace is `File.Replace` (`ReplaceFile`), NOT `File.Move(overwrite: true)` (`MoveFileEx`)** — measured, not read: `Move` throws `UnauthorizedAccessException` when the destination is open *even if the reader opened it with `FileShare.Delete`*; `Replace` succeeds with `FileShare.Delete` and fails without it. So `FileShare.Delete` in `MacroBundleReader` is not decoration, it is the other half of the mechanism. Renaming a macro carries `renamedFrom` so the new bundle inherits templates, submacros and the passport — without it renaming would silently drop the templates, which is exactly what the format exists to prevent. (It was `SaveMacroRequest.RenamedFrom` until F3 took the request away; the parameter stayed.)
 
 **`*.json.incompatible` is gone.** Moving an unparseable file aside was introduced when node ids became `Guid`s and every old file stopped parsing at once. The bundle removes that failure by format: the reader distinguishes "corrupt" from "made by another format version", and moving a *future-version* bundle aside would be the exact lie the version field exists to prevent. The file stays put and the reader's verdict goes to the log in full.
+
+### The panel owns the library (F3)
+
+**The panel is the only author of macros; the daemon only reads and executes.** The editor lives
+in the panel, so the panel writes; the two processes share a filesystem, so **the macro stopped
+travelling over the pipe entirely.** Seven requests are gone and must not come back: `GetMacros`,
+`SaveMacro`, `DeleteMacro`, `GetTemplates`, `GetTemplateImage`, `AddMacroTemplate`,
+`DeleteMacroTemplate` — the last two were introduced by F2 under protest and marked as dying here.
+Two protocol conventions went with them: «`SaveMacro` → `[]` means saved» and «warnings on a
+successful save are not returned».
+
+**`MacroBundleFolder` (Shared) is the folder-as-a-library, and it is one implementation for two
+processes**: enumerate, read a row, validate a name against NTFS rules, save a graph
+(read-everything → change one thing → write everything), delete, import. Two readings of one folder
+would drift exactly the way the D4 targets badge would have: the panel showing one thing, the engine
+running another.
+
+**`MacroGraphStore` is read-only now, and own-write suppression is gone with it** — the folder
+signature by last-write time was a sizeable piece of clever code that had nothing left to silence.
+The store's invariant grew from «the constructor writes nothing» to «the class writes nothing».
+
+**The panel has its OWN `FileSystemWatcher`, and that is a decision.** The objection is «two
+processes watching one folder»; the answer is that they watch for different things and pay
+differently for missing them. Without its own watcher the panel would learn about *its own write*
+from the daemon — after a 300 ms debounce and a round trip, i.e. exactly the loop F3 exists to
+remove. The daemon needs its own regardless (hotkeys, template cache), so the «second» watcher is
+really the first. The real hazard of two watchers is two *writers*, and F3 removes that by
+construction. No own-write suppression on the panel side either: the editor already compares the
+open graph's *content* with what is on disk, which is stronger than any timestamp signature.
+
+**`MacrosChanged` survived with a new meaning: «the daemon re-read the folder and re-registered the
+hotkeys».** It says nothing about library contents — the panel knows those first, from its own
+watcher. The one thing only the daemon knows is which chords Windows granted, so the only correct
+response to the push is to re-read `GetHotkeyFailures`.
+
+**The guarantee changed and had to be serviced.** «It is in the library ⇒ the daemon accepted it»
+rested on `SaveMacro`. What holds now is «somebody put a file there», so **the daemon validates
+every bundle at load and refuses to arm the triggers of an invalid one** (`MacroGraphStore.Armed`,
+which is what `HotkeyListener` reads — never `All`). Otherwise «the hotkey does nothing» comes back
+from the other side — the D4 defect exactly. The validator is shared and the inventory is the same
+one, so **the panel reaches the same verdict itself** and needs no new request to say «хоткей не
+вооружён — в макросе ошибок: N» on the library row. The environment diagnostic distinguishes the two
+causes, because the user's next action differs: rebind the chord, or fix the graph.
+
+**One race F3 introduced.** The panel writes the file; the daemon hears about it through a debounced
+watcher. «Сохранить» then immediately «Запустить» can land in the gap. So `RunMacro`, on a miss,
+re-reads the folder once (`MacroGraphStore.Refresh`) before refusing — only on a miss, and `Refresh`
+raises `MacrosChanged` only when the snapshot actually changed (name + `Metadata.Modified`, which
+the writer touches on every write, so a template edit counts). The watcher path raises
+unconditionally: its message is «I re-read», not «something differs».
+
+**An unreadable bundle stays in the panel's list**, with a red `!`, the reader's verdict in the
+tooltip, and a second line under the name. Before F3 such a file existed in the folder and appeared
+nowhere in the UI. The case the format was split for finally reaches the screen: **when
+`metadata.json` parses and `nodes.json` does not, the row shows the author's real name and
+description** rather than «файл X — ошибка». ▸ is dead on those rows, × is not — it is the only way
+to remove the file without opening Explorer.
+
+**Import is a file copy; export hands the file over as it is.** Importing must NOT parse and rewrite
+the bundle: run through today's writer it would lose everything today's format version does not know
+— the exact loss the format exists to prevent. A taken name gets a `-2` suffix, and the file stem
+wins over the `Name` inside, so the copy honestly answers to its new name.
+
+⚠️ **The 1 MB ceiling was a limit of the PROTOCOL and is gone from import.** It existed so a
+multi-megabyte base64 string would not queue ahead of a running macro's events. It survives for the
+*preview* only, for a local reason: the preview pane is palm-sized and decoding an arbitrary blob
+holds Skia memory.
 
 ### The log feed (Лог)
 
@@ -149,17 +216,17 @@ Build warnings NU1903 (Tmds.DBus.Protocol) are known noise.
 Six projects, two executables:
 
 - `Daemon` (WinExe, tray + hosted engine) → `Core` (all daemon-side domain logic) → `Contracts` → `Shared` → `Native`
-- `App` (Avalonia panel) → `Contracts` → `Shared` → `Native` — **and nothing else.** No `SmartMacro.Core` reference: that is the load-bearing constraint of the split, and the reason the panel's output directory contains no OpenCV, no Tesseract and no native vision blobs. If a view-model needs something from Core, the answer is a new IPC message type, not a reference.
+- `App` (Avalonia panel) → `Contracts` → `Shared` → `Native` — **and nothing else.** No `SmartMacro.Core` reference: that is the load-bearing constraint of the split, and the reason the panel's output directory contains no OpenCV, no Tesseract and no native vision blobs. If a view-model needs something from Core, the answer is a new IPC message type — or, since F3, the shared domain in `Shared`; never a reference to Core. `App/Macros/MacroLibrary` is the one piece of domain state the panel owns: the `macros/` folder, over `MacroBundleFolder`.
 
 `Native` is Win32 P/Invoke via `LibraryImport`, no dependencies.
 
 **`SmartMacro.Shared` (F1) is the shared DOMAIN**: the macro graph model (`SmartMacro.Macros.Model`), its pure validator (`SmartMacro.Macros.Validation`), the pure analyses (`SmartMacro.Macros.Analysis` — `MacroVariableAnalysis`, `MacroTemplateAnalysis`, the latter narrowed to one graph in F2) and the `.hsm` bundle reader/writer/inventory (`SmartMacro.Macros.Bundle`). Namespaces are `SmartMacro.Macros.*` — kept from when these lived in Core, and the reason the move out of Contracts needed **zero `using` edits**; `RootNamespace=SmartMacro` in the csproj is what keeps folder and namespace in step.
 
-**`SmartMacro.Contracts` is the PROTOCOL**: `SmartMacro.Contracts.Dto` (`WindowDto`, `RunningMacroDto`, `ValidationIssueDto`, `TemplateDto`, `LogEntryDto`, …), `SmartMacro.Contracts.Settings` (`AppSettings` + its validator), and `SmartMacro.Contracts.Ipc` (envelope, `IpcMessageTypes` catalog, `IpcJson`, `IpcPipe`, `IpcConnection`, `InstallationLayout`, `PeerExecutableLocator`).
+**`SmartMacro.Contracts` is the PROTOCOL**: `SmartMacro.Contracts.Dto` (`WindowDto`, `RunningMacroDto`, `ValidationIssueDto`, `HotkeyFailureDto`, `LogEntryDto`, …), `SmartMacro.Contracts.Settings` (`AppSettings` + its validator), and `SmartMacro.Contracts.Ipc` (envelope, `IpcMessageTypes` catalog, `IpcJson`, `IpcPipe`, `IpcConnection`, `InstallationLayout`, `PeerExecutableLocator`).
 
 ⚠️ **The two tiers have DIFFERENT rules — do not merge them in your head.** `Contracts`: references `Native` + `Shared`, **no file IO, no registry, no processes**. `Shared`: references `Native`, **file IO IS allowed** — reading and writing `.hsm` is needed on both sides and that means `System.IO.Compression`. The half that is common and load-bearing: **no OpenCV, no Tesseract, in either.** Everything in `Shared` ships inside the panel too, so "files are allowed here, let's also put template decoding via OpenCV here" is exactly the move that undoes the split. Both rules are written in the respective `.csproj` headers.
 
-**Direction is `Contracts → Shared`, and it follows from what was already written**: protocol payloads mention the domain (`SaveMacroRequest` carries a `MacroGraph`, `ValidationIssueDto` maps `ValidationIssue`, `IpcJson` is a copy of `MacroGraphJson.Options` so the file and wire dialects cannot drift). There is no mention the other way — the model, the validator and the bundle know nothing about the envelope or the pipe, and must not, because the domain has to be readable with no daemon running. F3, where macros stop travelling over the pipe entirely, thins that dependency but does not reverse it.
+**Direction is `Contracts → Shared`, and it follows from what was already written**: protocol payloads mention the domain (`ValidationIssueDto` maps `ValidationIssue`, `IpcJson` is a copy of `MacroGraphJson.Options`). There is no mention the other way — the model, the validator and the bundle know nothing about the envelope or the pipe, and must not, because the domain has to be readable with no daemon running. **F3 thinned that dependency without reversing it**: the graph no longer travels at all (`SaveMacroRequest` and its `MacroGraph` are gone), so the copied JSON options survive not for polymorphic nodes but because the rules the wire does need — string enums, out-of-order metadata — are already configured there, and a second set of the same rules would cost more than one.
 
 Anything needing OpenCV/Tesseract belongs in Core; mappers from live Core types to DTOs therefore live in `Core/Ipc/DtoMappers.cs`, not in Contracts.
 
@@ -171,7 +238,7 @@ Four protocol facts every caller has to respect:
 
 - **Responses may arrive out of order.** The server does not await a handler before reading the next request. Correlate by `Id`; never by arrival.
 - **A client that stops draining events is dropped.** So `IIpcClient.Connected` is a re-fetch signal, not a nicety — every view-model re-seeds its snapshots there, and reconciles (drops rows the daemon no longer reports) rather than merely upserting.
-- **`SaveMacro` → `[]` means saved.** A non-empty issue list means nothing was written. Warnings on a *successful* save are NOT returned, so the editor re-derives them by running `MacroGraphValidator` locally.
+- **Nothing about macros is asked of the daemon (F3).** Not the library, not writing, not templates: the panel reads and writes `macros/` itself. `SaveSettings` inherited the old `SaveMacro` convention (`[]` means written) because the settings file is still the daemon's.
 - **Two of the pushes are opt-in and per-connection**, and they are the only two frequent ones: `RunEvents` (`SubscribeRunEvents`) and `LogEntries` (`SubscribeLog`). Their flags are separate on purpose — one is scoped to «Макросы», the other to the panel's whole life — so neither mode pays the other's traffic. Both are forgotten with the connection, so both must be re-requested on every `Connected`.
 
 `IIpcBroadcaster` (Core) exists so `RequestActivate` and the tray can push `ActivateWindow` without a DI cycle: `IpcServer` implements it and hands itself to the dispatcher in its own constructor. Its two `BroadcastTo*Subscribers` lanes must stay **synchronous and non-blocking** — `LogEventPublisher`'s recursion guard is scoped to the duration of the call.
@@ -192,7 +259,7 @@ hotkey / process-appeared / UI Run
 - **WindowRegistry** (`Core/Windows`) is the sole owner of window tags AND the `hwnd → IGameWindow` lookup. Tag selectors (`RequireTags`/`ExcludeTags`) route every fan-out; "identified" just means "has at least one tag".
 - **Orchestrator** (`Core/Orchestration`) turns triggers into runs. Hotkey runs have no context window (macros must route by selector) and are single-flight per macro NAME; process-appeared runs get the new window as context and are single-flight per (macro, window) so N clients launching at once each boot. Both seed the `cursor` variable via `CursorPositionProvider`. Its `OnProcessAppeared` is also the only place a window is *adopted*, and **`Register` and `StartProcessAppearedMacros` are deliberately adjacent, synchronous lines** — a node reaching an unregistered hwnd fails at execution, so nothing may go between them. Ordering at shutdown is the mirror image: `WindowLifetimeMonitor` is registered in the host BEFORE the orchestrator so it stops AFTER it, and windows leave the registry only once in-flight runs have been cancelled.
 - **Macros** — the model (polymorphic `$type` nodes + triggers), its validator and the `.hsm` bundle live in `Shared/Macros`; `Core/Macros` keeps the daemon-side halves: `Execution` (`MacroExecutor` walker, `MacroPrimitives`, `MacroRunRegistry`, run variables) and `Storage`. The node catalogue and its semantics are in `docs/spec.md` §5.1; see «The node model» below for the two things about it that constrain callers.
-- **`MacroGraphStore`** (`Core/Macros/Storage`) is the library of record: one `.hsm` BUNDLE per macro under `macros/` in the installation root, filename stem = macro name. Its snapshot is a list of `MacroLibraryEntry` (graph + passport + template inventory); `All` still hands out bare graphs, which is how everything that need not know about bundles looks at it. It resolves sub-macros for `RunMacroNode`, supplies `HotkeyListener`'s bindings (re-registered on every change), and tells the orchestrator which graphs a new process should boot. **Its constructor writes nothing**: it creates the folder if missing, reads it, and stops. That is an invariant written on the class, not an accident — until backwards compatibility was dropped the same constructor migrated a legacy `macros.json`, renamed it and `hotkeys.json` to `*.migrated`, seeded six `pw-*` examples and dropped a `.examples-seeded` marker, so *constructing the object* meant *changing state on disk*. `DefaultMacroGraphs` and `LegacyMacroMigration` are gone; do not hang start-up side effects back on the ctor.
+- **`MacroGraphStore`** (`Core/Macros/Storage`) is the daemon's READ-ONLY view of the library: one `.hsm` BUNDLE per macro under `macros/` in the installation root, filename stem = macro name. Its snapshot is a list of `MacroLibraryEntry` (graph + passport + template inventory + the validator's verdict); `All` still hands out bare graphs, `Armed` hands out only the ones without errors, and that second list is what `HotkeyListener` reads. It resolves sub-macros for `RunMacroNode`, supplies `HotkeyListener`'s bindings (re-registered on every change), and tells the orchestrator which graphs a new process should boot. **It writes nothing at all** (F3 grew this from «the constructor writes nothing»): the constructor creates the folder if missing, reads it, and stops. That is an invariant written on the class, not an accident — until backwards compatibility was dropped the same constructor migrated a legacy `macros.json`, renamed it and `hotkeys.json` to `*.migrated`, seeded six `pw-*` examples and dropped a `.examples-seeded` marker, so *constructing the object* meant *changing state on disk*. `DefaultMacroGraphs` and `LegacyMacroMigration` are gone; do not hang start-up side effects back on the ctor.
 - **Identification** is no longer built in: it is an ordinary macro the user writes — `KeyPress(C)` → `Delay` → `RecognizeTagNode` (template set `"classes"` → `templates/classes/{tag}.png`) → `SetIconNode` → `KeyPress(C)`. Master/ignored characters are just tags in a selector (`ExcludeTags: ["Лучник", "Шаман"]`).
 
 ### The node model: `Guid` identity, `DisplayName` label
@@ -332,7 +399,7 @@ process silently.
 
 ### Runtime state files (in the installation ROOT, gitignored)
 
-`settings.json` (all engine knobs — see «Settings» above), `macros/*.hsm` (one bundle per macro, templates inside it) and `debug/` all live in the installation ROOT — the folder the panel sits in, one level above the daemon (see «The shipped layout»). The daemon's own `logs/smartmacro-*.log` is the exception: it stays in `daemon/`, next to the exe whose `appsettings.json` names it. `MacroGraphStore` follows the usual store pattern — load on ctor → immutable snapshot → CRUD persists + raises `MacrosChanged` → subscribers (`HotkeyListener`, and the panel via the `MacrosChanged` push) re-register live — plus a debounced `FileSystemWatcher` for external edits, with our own writes suppressed by comparing a folder signature of last-write timestamps. An unparseable file is skipped and logged, never fatal to the load.
+`settings.json` (all engine knobs — see «Settings» above), `macros/*.hsm` (one bundle per macro, templates inside it) and `debug/` all live in the installation ROOT — the folder the panel sits in, one level above the daemon (see «The shipped layout»). The daemon's own `logs/smartmacro-*.log` is the exception: it stays in `daemon/`, next to the exe whose `appsettings.json` names it. `MacroGraphStore` loads on ctor → immutable snapshot → a debounced `FileSystemWatcher` raises `MacrosChanged` → subscribers (`HotkeyListener`, `MacroTemplateCache`, and the panel via the push) re-register live. Since F3 the watcher is the *only* source of change, because the daemon never writes; own-write suppression is gone with the writing. An unparseable file is skipped and logged, never fatal to the load — and shown as a row by the panel, which reads the same folder itself.
 
 The panel writes `logs/smartmacro-ui-*.log` into the root as well, at an absolute path computed in code — in the dev tree the root IS the daemon's output folder, so both logs share one `logs/` there. The panel has no configuration file at all; an optional `appsettings.panel.json` next to the exe overrides the built-in Serilog defaults if the user drops one in. Every engine knob (`Agent`, `ProcessProfiles`, `Vision:*`) is the daemon's, and lives in `settings.json`.
 

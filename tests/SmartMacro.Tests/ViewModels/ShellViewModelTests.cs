@@ -39,11 +39,12 @@ public class ShellViewModelTests
     private static ShellViewModel CreateShell(
         FakeIpcClient client,
         IMacroLauncher? launcher = null,
-        IHotkeySuspension? hotkeys = null) =>
+        IHotkeySuspension? hotkeys = null,
+        TempLibrary? library = null) =>
         new(
             new WorkspaceViewModel(client, ImmediateUiDispatcher.Instance),
-            new MacroEditorViewModel(client, launcher, hotkeys, ImmediateUiDispatcher.Instance,
-                @"C:\smartmacro\macros"),
+            new MacroEditorViewModel(client, library?.Library ?? TempLibrary.Shared, launcher, hotkeys,
+                ImmediateUiDispatcher.Instance),
             new LogViewModel(client, ImmediateUiDispatcher.Instance),
             new SettingsViewModel(client, ImmediateUiDispatcher.Instance),
             launcher);
@@ -101,10 +102,13 @@ public class ShellViewModelTests
     {
         var client = new FakeIpcClient()
             .Respond(IpcMessageTypes.GetWindows, new[] { Window(HwndA, "Лучник"), Window(HwndB) })
-            .Respond(IpcMessageTypes.GetMacros, new[] { Macro("pw-boot"), Macro("pw-assist") })
             .Respond(IpcMessageTypes.GetRunningMacros, Array.Empty<RunningMacroDto>());
+        // Счётчик «Макросов» с волны F3 считает ФАЙЛЫ в папке, а не ответ демона.
+        using var library = new TempLibrary();
+        library.WriteExternally(Macro("pw-boot"));
+        library.WriteExternally(Macro("pw-assist"));
 
-        using var shell = CreateShell(client);
+        using var shell = CreateShell(client, library: library);
 
         await Assert.That(Row(shell, ShellMode.Windows).CounterText).IsEqualTo("2");
         await Assert.That(Row(shell, ShellMode.Macros).CounterText).IsEqualTo("2");
@@ -204,14 +208,17 @@ public class ShellViewModelTests
     [Test]
     public async Task SwitchingModes_DoesNotAskForTemplates()
     {
-        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetTemplates, Array.Empty<TemplateDto>());
+        var client = new FakeIpcClient();
         using var shell = CreateShell(client);
 
         shell.SelectMode(ShellMode.Runs);
         shell.SelectMode(ShellMode.Log);
         shell.SelectMode(ShellMode.Windows);
 
-        await Assert.That(client.CountOf(IpcMessageTypes.GetTemplates)).IsEqualTo(0);
+        // С волны F3 шаблоны вообще не ходят по трубе, поэтому утверждение стало сильнее:
+        // переключение режимов не шлёт НИЧЕГО, кроме того, что принадлежит демону.
+        await Assert.That(client.Requests.Select(r => r.Type).Distinct().Order().ToList())
+            .DoesNotContain("GetTemplates");
     }
 
     [Test]
@@ -234,8 +241,9 @@ public class ShellViewModelTests
     [Test]
     public async Task SelectedRow_RendersItsCounterInAccent()
     {
-        using var shell = CreateShell(new FakeIpcClient().Respond(
-            IpcMessageTypes.GetMacros, new[] { Macro("pw-boot") }));
+        using var library = new TempLibrary();
+        library.WriteExternally(Macro("pw-boot"));
+        using var shell = CreateShell(new FakeIpcClient(), library: library);
 
         await Assert.That(Row(shell, ShellMode.Macros).CounterIsAccent).IsFalse();
         shell.SelectMode(ShellMode.Macros);
@@ -337,15 +345,17 @@ public class ShellViewModelTests
     public async Task IdentifyAll_RunsPwIdentify_OnlyWhenTheLibraryHasIt()
     {
         var launcher = A.Fake<IMacroLauncher>();
-        var client = new FakeIpcClient().Respond(IpcMessageTypes.GetMacros, new[] { Macro("pw-boot") });
-        using var shell = CreateShell(client, launcher);
+        var client = new FakeIpcClient();
+        using var library = new TempLibrary();
+        library.WriteExternally(Macro("pw-boot"));
+        using var shell = CreateShell(client, launcher, library: library);
 
         await Assert.That(shell.CanIdentifyAll).IsFalse();
         shell.IdentifyAll();
         A.CallTo(() => launcher.RunMacro(A<string>._)).MustNotHaveHappened();
 
-        client.Respond(IpcMessageTypes.GetMacros, new[] { Macro("pw-boot"), Macro(ShellViewModel.IdentifyMacroName) });
-        client.RaiseEvent(IpcMessageTypes.MacrosChanged);
+        // Макрос появляется в папке — этого достаточно, демон здесь ни при чём.
+        library.WriteExternally(Macro(ShellViewModel.IdentifyMacroName));
 
         await Assert.That(shell.CanIdentifyAll).IsTrue();
         shell.IdentifyAll();

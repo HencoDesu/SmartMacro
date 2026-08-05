@@ -159,7 +159,7 @@ public class SettingsProtocolTests
     public async Task RunDiagnostics_ReportsATemplateNamedByAMacroButMissingOnDisk()
     {
         using var harness = new IpcDispatcherHarness();
-        await harness.Macros.SaveAsync(new SmartMacro.Macros.Model.MacroGraph
+        harness.WriteMacro(new SmartMacro.Macros.Model.MacroGraph
         {
             Name = "нужен-шаблон",
             StartNodeId = Ids.Of("n1"),

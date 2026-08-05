@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Hotkeys;
+using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Native;
@@ -8,6 +9,10 @@ using SmartMacro.Native.Hotkey;
 namespace SmartMacro.Tests;
 
 // W0.2b: привязки хоткеев приходят теперь из библиотеки макросов, а не из hotkeys.json.
+//
+// F3: библиотеку пишет ПАНЕЛЬ, поэтому тесты кладут бандлы в папку файлами и ждут наблюдателя —
+// ровно тем путём, каким макрос попадает к демону в жизни. Отсюда же и главная новая проверка:
+// у макроса, который не прошёл валидацию при загрузке, хоткей НЕ вооружается.
 //
 // Слушателя гоняют БЕЗ вызова StartAsync, поэтому мониторы Win32 не порождают своих потоков с
 // циклом сообщений и не трогают RegisterHotKey — до запуска они безжизненны. Так логика вывода
@@ -41,6 +46,13 @@ public class HotkeyListenerTests
         Nodes = [new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = VirtualKey.F1, Target = new TargetSelector() }],
     };
 
+    /// <summary>Кладёт бандл в <c>macros/</c> — тем же путём, каким это делает панель.</summary>
+    private static void Write(string dir, MacroGraph graph) =>
+        MacroBundleFolder.Save(MacroBundleFolder.In(dir), graph);
+
+    private static void Delete(string dir, string name) =>
+        MacroBundleFolder.Delete(MacroBundleFolder.In(dir), name);
+
     private static HotkeyListener CreateListener(MacroGraphStore store) => new(
         store,
         new Win32HotkeyMonitor(NullLogger<Win32HotkeyMonitor>.Instance),
@@ -67,15 +79,15 @@ public class HotkeyListenerTests
         var dir = CreateTempDir();
         try
         {
-            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
-            await store.SaveAsync(WithTriggers("immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
-            await store.SaveAsync(WithTriggers("cursor",
+            Write(dir, WithTriggers("immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
+            Write(dir, WithTriggers("cursor",
                 new HotkeyTrigger(HotkeyModifiers.Control, VirtualKey.F22),
                 new HotkeyTrigger(HotkeyModifiers.None, 0, MouseButton.XButton1)));
             // Триггеры по процессу и библиотечные макросы без триггеров аккордов не дают.
-            await store.SaveAsync(WithTriggers("boot", new ProcessAppearedTrigger("elementclient_64")));
-            await store.SaveAsync(WithTriggers("helper"));
+            Write(dir, WithTriggers("boot", new ProcessAppearedTrigger("elementclient_64")));
+            Write(dir, WithTriggers("helper"));
 
+            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
             using var listener = CreateListener(store);
 
             await Assert.That(listener.Bindings.Values.Order().ToList())
@@ -103,21 +115,22 @@ public class HotkeyListenerTests
     }
 
     [Test]
+    [NotInParallel]
     public async Task MacrosChanged_RebuildsTheBindingSet()
     {
         var dir = CreateTempDir();
         try
         {
-            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
-            await store.SaveAsync(WithTriggers("first", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
+            Write(dir, WithTriggers("first", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
 
+            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
             using var listener = CreateListener(store);
             await Assert.That(listener.Bindings.Values.Single()).IsEqualTo("first");
 
             // Перепривязка макроса — обычная правка библиотеки: отдельного конфига, который надо
-            // было бы синхронизировать, нет.
-            await store.SaveAsync(WithTriggers("first", new HotkeyTrigger(HotkeyModifiers.Shift, VirtualKey.F13)));
-            await store.SaveAsync(WithTriggers("second", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F14)));
+            // было бы синхронизировать, нет. Файл кладёт панель, демон узнаёт наблюдателем.
+            Write(dir, WithTriggers("first", new HotkeyTrigger(HotkeyModifiers.Shift, VirtualKey.F13)));
+            Write(dir, WithTriggers("second", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F14)));
 
             var rebuilt = await WaitUntilAsync(() => listener.KeyboardBindings.Count == 2);
             await Assert.That(rebuilt).IsTrue();
@@ -126,7 +139,7 @@ public class HotkeyListenerTests
                 .IsEquivalentTo(new List<VirtualKey> { VirtualKey.F13, VirtualKey.F14 });
 
             // Удаление макроса уносит с собой и его хоткей.
-            await store.DeleteAsync("second");
+            Delete(dir, "second");
             var shrunk = await WaitUntilAsync(() => listener.KeyboardBindings.Count == 1);
             await Assert.That(shrunk).IsTrue();
             await Assert.That(listener.Bindings.Values.Single()).IsEqualTo("first");
@@ -143,13 +156,48 @@ public class HotkeyListenerTests
         var dir = CreateTempDir();
         try
         {
-            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
-            await store.SaveAsync(WithTriggers("broken", new HotkeyTrigger(HotkeyModifiers.Control, 0)));
-            await store.SaveAsync(WithTriggers("fine", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F20)));
+            Write(dir, WithTriggers("broken", new HotkeyTrigger(HotkeyModifiers.Control, 0)));
+            Write(dir, WithTriggers("fine", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F20)));
 
+            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
             using var listener = CreateListener(store);
 
             await Assert.That(listener.Bindings.Values.Single()).IsEqualTo("fine");
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+
+    // F3: гарантия «оно в библиотеке ⇒ демон его принял» ушла вместе с SaveMacro — писать в
+    // macros/ теперь может кто угодно. Значит, вооружать аккорд макроса, в графе которого есть
+    // ошибка, нельзя: симптомом был бы молчащий хоткей, то есть ровно тот дефект, ради которого
+    // в D4 заводили GetHotkeyFailures, только с другой стороны.
+    [Test]
+    public async Task ABrokenGraph_DoesNotGetItsHotkeyArmed()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            Write(dir, WithTriggers("здоровый", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F20)));
+            Write(dir, new MacroGraph
+            {
+                Name = "битый",
+                Triggers = [new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F21)],
+                // Стартовой ноды в графе нет — жёсткая ошибка валидации.
+                StartNodeId = Ids.Of("нет-такой"),
+                Nodes = [new DelayNode { Id = Ids.Of("d0"), DisplayName = "d0", Ms = 10 }],
+            });
+
+            using var store = new MacroGraphStore(dir, NullLogger<MacroGraphStore>.Instance);
+            using var listener = CreateListener(store);
+
+            // В библиотеке он есть — панель обязана его показать; вооружённых аккордов у него нет.
+            await Assert.That(store.All).Count().IsEqualTo(2);
+            await Assert.That(listener.Bindings.Values.Order().ToList())
+                .IsEquivalentTo(new List<string> { "здоровый" });
+            await Assert.That(listener.KeyboardBindings.Any(d => d.Key == VirtualKey.F21)).IsFalse();
         }
         finally
         {

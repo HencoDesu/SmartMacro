@@ -3,11 +3,8 @@ using Microsoft.Extensions.Logging;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Hotkeys;
-using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Execution;
-using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Storage;
-using SmartMacro.Macros.Validation;
 using SmartMacro.Contracts.Settings;
 using SmartMacro.Orchestration;
 using SmartMacro.Settings;
@@ -180,9 +177,20 @@ public sealed partial class IpcRequestDispatcher
                 // ничегонеделание: кнопка «Запустить» в редакторе не должна выглядеть
                 // сработавшей. Всё после этой точки — «отправил и забыл»: макрос может идти
                 // часами, поэтому ответ означает «начали», а не «закончили».
+                //
+                // ПРОМАХ = ПОВОД ЗАГЛЯНУТЬ НА ДИСК ЕЩЁ РАЗ, и это гонка, которую завела F3.
+                // Пишет теперь панель, а демон узнаёт о новом файле наблюдателем с гашением
+                // дребезга в 300 мс: «Сохранить», а сразу следом «Запустить» попадают в
+                // промежуток, где макроса в снимке ещё нет, и кнопка отвечала бы «не найден» про
+                // файл, который только что записали. Перечитываем только на промахе — обычный
+                // путь по-прежнему в файловую систему не ходит.
                 if (_macros.TryGet(payload.Name) is null)
                 {
-                    throw new IpcRequestRejectedException($"Макрос '{payload.Name}' не найден.");
+                    _macros.Refresh();
+                    if (_macros.TryGet(payload.Name) is null)
+                    {
+                        throw new IpcRequestRejectedException($"Макрос '{payload.Name}' не найден.");
+                    }
                 }
 
                 _runner.RunMacro(payload.Name);
@@ -201,22 +209,6 @@ public sealed partial class IpcRequestDispatcher
 
             case IpcMessageTypes.GetRunningMacros:
                 return Ok(request, IpcJson.Write(_runs.Snapshot().ToDto()));
-
-            case IpcMessageTypes.GetMacros:
-                // Материализуем в массив, чтобы полиморфные конвертеры нод видели MacroGraph[],
-                // а не последовательность интерфейсного типа.
-                return Ok(request, IpcJson.Write<MacroGraph[]>([.. _macros.All]));
-
-            case IpcMessageTypes.SaveMacro:
-                return await SaveMacroAsync(request, cancellationToken).ConfigureAwait(false);
-
-            case IpcMessageTypes.DeleteMacro:
-            {
-                var payload = Require<DeleteMacroRequest>(request);
-                // false = такого файла нет. По контракту это ничегонеделание, а не ошибка.
-                await _macros.DeleteAsync(payload.Name, cancellationToken).ConfigureAwait(false);
-                return Ok(request);
-            }
 
             case IpcMessageTypes.SubscribeRunEvents:
             {
@@ -286,63 +278,6 @@ public sealed partial class IpcRequestDispatcher
                 // в отличие от SetBreakpoints, нет и не нужно: список приходит не из провода,
                 // а от реализации в этом же процессе, и интерфейс обещает его ненулевым.
                 return Ok(request, IpcJson.Write<HotkeyFailureDto[]>([.. _hotkeys.Failures]));
-
-            // ---------------------------------------------------------------- шаблоны
-
-            case IpcMessageTypes.GetTemplates:
-            {
-                var payload = Require<GetTemplatesRequest>(request);
-                return Ok(request, IpcJson.Write(TemplatesOf(payload.MacroName)));
-            }
-
-            case IpcMessageTypes.GetTemplateImage:
-                return GetTemplateImage(request);
-
-            case IpcMessageTypes.AddMacroTemplate:
-            {
-                var payload = Require<AddMacroTemplateRequest>(request);
-                var png = payload.Png
-                          ?? throw new IpcRequestRejectedException("AddMacroTemplate: нагрузка без содержимого файла.");
-
-                if (string.IsNullOrWhiteSpace(payload.Name))
-                {
-                    throw new IpcRequestRejectedException("AddMacroTemplate: имя шаблона не задано.");
-                }
-
-                // Тот же потолок, что у превью, и по той же причине: труба общая с потоком
-                // событий прогона, а многомегабайтная строка base64 встанет перед ними. Настоящие
-                // шаблоны — вырезки интерфейса в десятки килобайт.
-                if (png.Length > TemplateLimits.MaxImageBytes)
-                {
-                    throw new IpcRequestRejectedException(
-                        $"Шаблон '{Describe(payload.Set, payload.Name)}' — {png.Length} Б, "
-                        + $"это больше потолка в {TemplateLimits.MaxImageBytes} Б.");
-                }
-
-                if (!await _macros.AddTemplateAsync(payload.MacroName, payload.Set, payload.Name, png,
-                        cancellationToken).ConfigureAwait(false))
-                {
-                    throw new IpcRequestRejectedException(
-                        $"Шаблон '{Describe(payload.Set, payload.Name)}' не записан: макрос '{payload.MacroName}' не найден либо его бандл не читается.");
-                }
-
-                return Ok(request, IpcJson.Write(TemplatesOf(payload.MacroName)));
-            }
-
-            case IpcMessageTypes.DeleteMacroTemplate:
-            {
-                var payload = Require<DeleteMacroTemplateRequest>(request);
-                if (string.IsNullOrWhiteSpace(payload.Name))
-                {
-                    throw new IpcRequestRejectedException("DeleteMacroTemplate: имя шаблона не задано.");
-                }
-
-                // false = такого шаблона в бандле нет. По контракту это ничегонеделание, а не
-                // ошибка, — ровно как у DeleteMacro.
-                await _macros.DeleteTemplateAsync(payload.MacroName, payload.Set, payload.Name, cancellationToken)
-                    .ConfigureAwait(false);
-                return Ok(request, IpcJson.Write(TemplatesOf(payload.MacroName)));
-            }
 
             // ------------------------------------------------------------------ журнал
 
@@ -433,92 +368,6 @@ public sealed partial class IpcRequestDispatcher
                 LogUnknownType(request.Type, request.Id);
                 return Fail(request, $"unknown request type: {request.Type}");
         }
-    }
-
-    /// <summary>
-    /// Байты одного шаблона для превью.
-    ///
-    /// Оба отказа здесь — это отказы, а не пустой ответ, и намеренно: панель просит картинку по
-    /// строке, которую сама же нарисовала из <c>GetTemplates</c>, так что «нет такого шаблона»
-    /// означает, что список устарел (или что имя пришло не из списка), и молчаливая пустая
-    /// картинка спрятала бы ровно это. Потолок сверяется здесь ещё раз, хотя панель по размеру
-    /// из списка обычно и не спрашивает: между перечислением и запросом бандл мог смениться, а
-    /// многомегабайтная строка base64 встала бы в трубе перед событиями работающего макроса
-    /// (см. <see cref="TemplateLimits.MaxImageBytes"/>).
-    /// </summary>
-    private IpcResponse GetTemplateImage(IpcRequest request)
-    {
-        var payload = Require<GetTemplateImageRequest>(request);
-        if (string.IsNullOrWhiteSpace(payload.Name))
-        {
-            throw new IpcRequestRejectedException("GetTemplateImage: имя шаблона не задано.");
-        }
-
-        // null = такого шаблона в бандле нет ЛИБО имя несло сегменты пути (что и есть попытка
-        // вычитать что-то за пределами templates/), ЛИБО макроса нет вовсе.
-        var bytes = _macros.ReadTemplate(payload.MacroName, payload.Set, payload.Name)
-                    ?? throw new IpcRequestRejectedException(
-                        $"Шаблон '{Describe(payload.Set, payload.Name)}' у макроса '{payload.MacroName}' не найден.");
-
-        if (bytes.Length > TemplateLimits.MaxImageBytes)
-        {
-            throw new IpcRequestRejectedException(
-                $"Шаблон '{Describe(payload.Set, payload.Name)}' — {bytes.Length} Б, "
-                + $"это больше потолка превью в {TemplateLimits.MaxImageBytes} Б.");
-        }
-
-        return Ok(request, IpcJson.Write(new TemplateImageDto(payload.MacroName, payload.Set, payload.Name, bytes)));
-    }
-
-    // Перечень шаблонов макроса в проводной форме. Неизвестный макрос даёт ПУСТОЙ список, а не
-    // отказ: панель спрашивает про то, что открыто в редакторе, а открытым вполне может быть
-    // черновик, которого на диске ещё нет.
-    private TemplateDto[] TemplatesOf(string macroName) => [.. _macros.TemplateCatalog(macroName).ToDto()];
-
-    private static string Describe(string? set, string name) => set is null ? name : $"{set}/{name}";
-
-    /// <summary>
-    /// Проверить → отказать или записать. Ответ И ЕСТЬ список замечаний: пустой означает, что
-    /// граф записан, непустой — что в записи отказано, и он несёт причины.
-    /// </summary>
-    private async Task<IpcResponse> SaveMacroAsync(IpcRequest request, CancellationToken cancellationToken)
-    {
-        var payload = Require<SaveMacroRequest>(request);
-        var graph = payload.Macro
-                    ?? throw new IpcRequestRejectedException("SaveMacro payload has no macro.");
-
-        // Опись шаблонов берётся у ТОГО бандла, в который граф ляжет, — у существующего под этим
-        // именем, а при переименовании у прежнего (его вложения переедут). Нет ни того, ни
-        // другого — значит, это новый макрос, и опись пустая: сказать «шаблона нет» про пустой
-        // бандл честно, а вот промолчать было бы неверно.
-        var target = _macros.TryGetEntry(graph.Name)
-                     ?? (payload.RenamedFrom is null ? null : _macros.TryGetEntry(payload.RenamedFrom));
-        var issues = new List<ValidationIssue>(
-            MacroGraphValidator.Validate(graph, target?.Templates ?? MacroTemplateInventory.Empty));
-
-        // Валидатор проверяет ГРАФ; хранилище проверяет ИМЯ (оно же основа имени файла) и на
-        // плохом бросает. Если вместо этого поднять его как замечание уровня графа, редактор
-        // нарисует «имя содержит '/'» рядом со структурными ошибками, а не покажет невнятно
-        // провалившийся запрос.
-        if (MacroGraphStore.ValidateName(graph.Name) is { } nameError)
-        {
-            issues.Add(new ValidationIssue(ValidationSeverity.Error, null, null, nameError));
-        }
-
-        if (issues.Any(issue => issue.Severity == ValidationSeverity.Error))
-        {
-            // Предупреждения едут вместе с ошибками — пусть редактор сразу покажет всё, что
-            // всё равно попросят исправить.
-            LogSaveRejected(graph.Name, issues.Count(i => i.Severity == ValidationSeverity.Error));
-            return Ok(request, IpcJson.Write(issues.ToDto()));
-        }
-
-        await _macros.SaveAsync(graph, payload.RenamedFrom, cancellationToken).ConfigureAwait(false);
-        // Пустой список = записано. При успехе предупреждения намеренно НЕ возвращаются: у
-        // этого поля в протоколе ровно один смысл (причины отказа), и перегрузка его вторым
-        // смыслом сделала бы так, что каждое предупреждение выглядело бы для клиента как
-        // несостоявшееся сохранение.
-        return Ok(request, IpcJson.Write(Array.Empty<ValidationIssueDto>()));
     }
 
     /// <summary>

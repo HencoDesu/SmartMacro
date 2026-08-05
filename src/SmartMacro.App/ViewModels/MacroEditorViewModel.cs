@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Globalization;
 using Serilog;
 using SmartMacro.App.Ipc;
+using SmartMacro.App.Macros;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.Services;
 using SmartMacro.App.ViewModels.Canvas;
@@ -12,32 +13,92 @@ using SmartMacro.App.ViewModels.Nodes;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Analysis;
+using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
 using SmartMacro.Native;
 
 namespace SmartMacro.App.ViewModels;
 
-/// <summary>Один макрос в левом списке библиотеки редактора.</summary>
+/// <summary>
+/// Один макрос в левом списке библиотеки редактора — <b>в том числе тот, который не читается</b>.
+///
+/// До F3 библиотека приезжала списком графов (<c>GetMacros</c>), а хранилище демона молча
+/// пропускало испорченный бандл: файл лежал в папке, но в интерфейсе его не было ВООБЩЕ. Теперь
+/// папку читает панель, и нечитаемый бандл остаётся строкой — с восклицательным знаком и
+/// причиной. Пользователь должен видеть, что макрос существует, но с ним беда: иначе единственный
+/// способ узнать об этом — открыть папку проводником.
+///
+/// Отдельный случай, ради которого <c>metadata.json</c> и <c>nodes.json</c> и разносили:
+/// <b>паспорт мог прочитаться, когда граф не прочитался</b>. Тогда строка несёт НАСТОЯЩЕЕ имя и
+/// описание, а не «файл X — ошибка», из которой не понять даже, какой это был макрос.
+/// </summary>
 public sealed class MacroListItemViewModel : ObservableObject
 {
     private bool _isRunning;
     private bool _isCurrent;
     private string? _hotkeyProblem;
 
-    public MacroListItemViewModel(MacroGraph macro)
+    /// <param name="entry">Строка папки: бандл ровно в том виде, в каком он прочитался.</param>
+    /// <param name="issues">
+    /// Что сказал валидатор об этом графе. Панель считает его сама и тем же кодом, каким считает
+    /// демон при загрузке (<see cref="MacroGraphValidator"/> живёт в <c>Shared</c>), — поэтому
+    /// «почему хоткей молчит» она объясняет без единого запроса.
+    /// </param>
+    public MacroListItemViewModel(MacroBundleEntry entry, IReadOnlyList<ValidationIssue>? issues = null)
     {
-        ArgumentNullException.ThrowIfNull(macro);
-        Name = macro.Name;
-        Summary = Describe(macro);
-        TriggerBadge = Badge(macro);
+        ArgumentNullException.ThrowIfNull(entry);
+        Name = entry.Name;
+        ErrorCount = issues?.Count(issue => issue.Severity == ValidationSeverity.Error) ?? 0;
+
+        if (entry.Graph is { } macro)
+        {
+            Summary = Describe(macro);
+            TriggerBadge = Badge(macro);
+            HasHotkeyTrigger = macro.Triggers.OfType<HotkeyTrigger>().Any();
+            return;
+        }
+
+        // Бандл не читается. Имя строки — по-прежнему основа имени файла (она и есть личность),
+        // а вот подпись берётся из паспорта, если тот уцелел.
+        Problem = entry.FaultMessage ?? "Бандл не читается.";
+        BrokenDetail = entry.Metadata is { } passport
+            ? string.IsNullOrWhiteSpace(passport.Description)
+                ? passport.Name
+                : $"{passport.Name} — {passport.Description}"
+            : "паспорт бандла тоже не прочитан";
+        Summary = $"{BrokenDetail} · {Problem}";
     }
 
     /// <summary>Имя макроса = основа имени файла = его личность.</summary>
     public string Name { get; }
 
-    /// <summary>Триггеры и число нод — текст подсказки.</summary>
+    /// <summary>Триггеры и число нод — текст подсказки. У нечитаемого бандла — имя из паспорта и причина.</summary>
     public string Summary { get; }
+
+    /// <summary>
+    /// Почему бандл не открылся, вердиктом читателя целиком, либо <c>null</c> у здорового
+    /// макроса. Строка при этом из списка НЕ пропадает — см. примечание к типу.
+    /// </summary>
+    public string? Problem { get; }
+
+    /// <summary>
+    /// Вторая строка у испорченного макроса: имя и описание из паспорта, если он прочитался.
+    /// Именно ради этого случая формат и держит паспорт отдельной записью.
+    /// </summary>
+    public string? BrokenDetail { get; }
+
+    /// <summary><c>true</c> у бандла, чей граф не прочитался.</summary>
+    public bool IsBroken => Problem is not null;
+
+    /// <summary>Сколько ошибок нашёл валидатор. Больше нуля — демон не вооружит триггеры этого макроса.</summary>
+    public int ErrorCount { get; }
+
+    /// <summary>У макроса есть хоткей-триггер — значит, «не вооружён» про него говорить осмысленно.</summary>
+    public bool HasHotkeyTrigger { get; }
+
+    /// <summary>Запуск возможен: граф прочитан и в нём нет ошибок, а прогона сейчас нет.</summary>
+    public bool CanRun => !IsBroken && ErrorCount == 0 && !_isRunning;
 
     /// <summary>
     /// Односложный чип рядом с именем: сочетание (<c>F23</c>), <c>процесс</c> либо
@@ -59,6 +120,7 @@ public sealed class MacroListItemViewModel : ObservableObject
             if (SetField(ref _isRunning, value))
             {
                 OnPropertyChanged(nameof(IsNotRunning));
+                OnPropertyChanged(nameof(CanRun));
             }
         }
     }
@@ -174,38 +236,42 @@ public sealed class ValidationIssueViewModel
 /// сохранения и обращение с библиотекой ниже — те же самые, какими пользовался строчный
 /// редактор, и потому canvas удалось построить, не трогая их.
 ///
-/// <b>Стадия 3: библиотека удалённая.</b> Там, где эта VM держала <c>MacroGraphStore</c>, она
-/// теперь держит снимок, полученный по IPC и обновляемый на <c>MacrosChanged</c> и на каждом
-/// переподключении. Три следствия, которые стоит знать, прежде чем править этот класс:
+/// <b>Волна F3 вернула сюда файлы, но не демона.</b> На стадии 3 эта VM отдала библиотеку демону и
+/// смотрела на неё через <c>GetMacros</c>/<c>SaveMacro</c>; теперь она держит
+/// <see cref="MacroLibrary"/> — папку <c>macros/</c> со своим наблюдателем — и пишет туда сама.
+/// Демон эти файлы только читает. Четыре следствия, которые стоит знать, прежде чем править класс:
 ///
-///   * <b>Валидатор по документам — демон.</b> <c>SaveMacro</c> отвечает списком замечаний;
-///     пустой означает, что граф записан. Предупреждения при УДАЧНОМ сохранении не
-///     возвращаются (протокол даёт этому полю ровно один смысл — причины отказа), поэтому их
-///     заново выводят на месте тем же <see cref="MacroGraphValidator"/>.
-///   * <b>Эхо собственного сохранения может прийти раньше ответа на него.</b> Демон
-///     рассылает <c>MacrosChanged</c> изнутри своего сохранения, другим путём записи, нежели
-///     ответ, — поэтому опорные значения для вопроса «а не внешняя ли это правка?»
-///     выставляются ДО того, как запрос уйдёт, и откатываются, если его отвергли.
-///   * <b>Удачная запись сливается в локальную библиотеку сразу</b>, не дожидаясь пуша, —
-///     так список и выделение устаканиваются синхронно.
+///   * <b>Валидатор — местный, и он же демонский.</b> <see cref="MacroGraphValidator"/> живёт в
+///     <c>Shared</c>: панель гоняет его до записи (ошибка блокирует сохранение, предупреждение —
+///     нет), демон — при загрузке библиотеки. Один код, одна опись шаблонов, один вердикт;
+///     разойтись им негде, и потому «почему хоткей молчит» панель объясняет без запросов.
+///   * <b>Эха собственной записи ждать не надо.</b> Файл записан к моменту возврата из
+///     <see cref="SaveAsync"/>, снимок библиотеки перечитан там же. Наблюдатель принесёт то же
+///     самое содержимое спустя гашение дребезга, и <see cref="ApplyLibrary"/> узнает его по
+///     сравнению СОДЕРЖИМОГО (<c>_diskJson</c>) — этой проверки достаточно, подавления записей,
+///     как было у демона, здесь нет.
+///   * <b>Нечитаемый бандл — это строка списка, а не пропажа.</b> См.
+///     <see cref="MacroListItemViewModel"/>.
+///   * <b>Про демона осталось ровно одно: какие сочетания взяла Windows.</b> Пуш
+///     <c>MacrosChanged</c> теперь значит «демон перечитал папку и перерегистрировал хоткеи», и
+///     единственный правильный ответ на него — перечитать <c>GetHotkeyFailures</c>.
 ///
 /// Всё, что имеет форму Avalonia, держится снаружи намеренно, чтобы класс целиком можно было
-/// гонять headless против поддельного <see cref="IIpcClient"/>, — а это важно, потому что
-/// отображение «граф ↔ VM» и есть то место, где завелась бы тихая потеря данных.
+/// гонять headless против поддельного <see cref="IIpcClient"/> и настоящей библиотеки во временной
+/// папке, — а это важно, потому что отображение «граф ↔ VM» и есть то место, где завелась бы тихая
+/// потеря данных.
 /// </summary>
 public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 {
     private const string DraftName = "новый-макрос";
 
-    /// <summary>Папка, в которой демон держит файлы макросов, относительно его собственного каталога.</summary>
-    private const string MacroFolderName = "macros";
-
     private readonly IIpcClient _client;
+    private readonly MacroLibrary _macros;
     private readonly IMacroLauncher? _launcher;
     private readonly IHotkeySuspension? _hotkeys;
     private readonly IUiDispatcher _dispatcher;
 
-    private IReadOnlyList<MacroGraph> _library = [];
+    private IReadOnlyList<MacroBundleEntry> _library = [];
     private IReadOnlyList<RunningMacroDto> _runningMacros = [];
     private IReadOnlyList<HotkeyFailureDto> _hotkeyFailures = [];
 
@@ -251,32 +317,30 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     // canvas не прокладывали по наполовину обновлённому графу.
     private int _edgeRebuildSuspended;
 
-    /// <param name="client">Соединение с демоном — библиотека, прогоны и записи.</param>
+    /// <param name="client">Соединение с демоном — прогоны, хоткеи, отладчик. Библиотека сюда больше не ходит.</param>
+    /// <param name="macros">Папка <c>macros/</c>: чтение, запись, импорт. Панель — её единственный автор.</param>
     /// <param name="launcher">Шов для ручного «Запустить»; <c>null</c> гасит кнопку.</param>
     /// <param name="hotkeys">Приостановка и возобновление вокруг ловушки сочетаний; <c>null</c> ничего не делает.</param>
-    /// <param name="dispatcher">Перекладывание пушей демона в поток UI.</param>
-    /// <param name="macroFolderPath">
-    /// Абсолютный путь, стоящий за кнопкой «открыть папку». Его подаёт хост, потому что только
-    /// ОН знает, где живёт демон; по умолчанию это <c>macros/</c> рядом с этим исполняемым
-    /// файлом, что верно для развёрнутой раскладки «бок о бок».
-    /// </param>
+    /// <param name="dispatcher">Перекладывание пушей демона и событий наблюдателя в поток UI.</param>
     public MacroEditorViewModel(
         IIpcClient client,
+        MacroLibrary macros,
         IMacroLauncher? launcher = null,
         IHotkeySuspension? hotkeys = null,
-        IUiDispatcher? dispatcher = null,
-        string? macroFolderPath = null)
+        IUiDispatcher? dispatcher = null)
     {
+        ArgumentNullException.ThrowIfNull(macros);
         _client = client;
+        _macros = macros;
         _launcher = launcher;
         _hotkeys = hotkeys;
         _dispatcher = dispatcher ?? AvaloniaUiDispatcher.Instance;
-        FolderPath = macroFolderPath ?? Path.Combine(AppContext.BaseDirectory, MacroFolderName);
         // Браузер шаблонов принадлежит РЕДАКТОРУ, а не оболочке (волна F2): с переездом шаблонов
         // внутрь бандла они перестали быть самостоятельной сущностью и стали свойством макроса —
         // таким же, как триггеры и переменные, и живущим там же, в инспекторе.
-        Templates = new TemplatesViewModel(client, _dispatcher);
+        Templates = new TemplatesViewModel(macros, _dispatcher);
 
+        _macros.Changed += OnLibraryChanged;
         _client.Connected += OnConnected;
         _client.EventReceived += OnEventReceived;
         // Одна подписка на весь список триггеров, а не крючок в каждом из
@@ -284,6 +348,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         // которых должно было бы помнить, а забытое оставляет ловушку, чьё состояние конфликта
         // не обновляется никогда.
         Triggers.CollectionChanged += OnTriggersCollectionChanged;
+
+        // Библиотека — факт файловой системы, а не факт демона, поэтому список наполняется сразу и
+        // безусловно: с упавшим (или ещё не поднятым) демоном он всё равно правда.
+        ApplyLibrary(_macros.Entries);
 
         if (_client.IsConnected)
         {
@@ -331,6 +399,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                     ? null
                     : $"Несохранённые изменения в «{discarded}» отброшены.";
             }
+            else if (value.Problem is { } problem)
+            {
+                // Нечитаемый бандл. Открывать нечего, но молчать нельзя: строка кликабельна ровно
+                // затем, чтобы можно было спросить «а что с ним не так».
+                ErrorMessage = $"«{value.Name}» не открывается: {problem}";
+            }
         }
     }
 
@@ -377,8 +451,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Абсолютный путь к папке макросов демона — то, что стоит за кнопкой «открыть папку».</summary>
-    public string FolderPath { get; }
+    /// <summary>Абсолютный путь к папке макросов — то, что стоит за кнопкой «открыть папку».</summary>
+    public string FolderPath => _macros.FolderPath;
 
     /// <summary>
     /// Живой снимок окон у редактора, стоящий за бейджем целей каждой ноды (D4). Засевается
@@ -1145,12 +1219,14 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     // ---- команды библиотеки -----------------------------------------------------------
 
-    /// <summary>Пересевает библиотеку и состояние прогонов от демона.</summary>
+    /// <summary>
+    /// Пересевает у демона всё, чем владеет ОН: прогоны, окна, отказы регистрации хоткеев и точки
+    /// останова. Библиотека сюда не входит — её панель читает с диска сама (F3).
+    /// </summary>
     public async Task RefreshAsync()
     {
         try
         {
-            var macros = await _client.RequestAsync<MacroGraph[]>(IpcMessageTypes.GetMacros).ConfigureAwait(false);
             var runs = await _client.RequestAsync<RunningMacroDto[]>(IpcMessageTypes.GetRunningMacros)
                 .ConfigureAwait(false);
             // Бейджу целей нужен список окон, и эта VM держит собственный, а не лезет в
@@ -1174,13 +1250,14 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                     _breakpoints[set.MacroName] = set.NodeIds;
                 }
 
-                ApplyLibrary(macros ?? []);
+                RefreshRunState();
+                RefreshHotkeyConflicts();
                 ApplyBreakpointsToRows();
             });
         }
         catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
         {
-            Log.Warning(ex, "Не удалось получить библиотеку макросов");
+            Log.Warning(ex, "Не удалось получить состояние демона");
         }
     }
 
@@ -1215,24 +1292,27 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         StatusMessage = "Черновик — не сохранён.";
     }
 
-    /// <summary>Удаляет макрос из библиотеки (и закрывает его, если он был открыт).</summary>
-    public async Task<bool> DeleteMacroAsync(MacroListItemViewModel item)
+    /// <summary>
+    /// Удаляет файл макроса (и закрывает его, если он был открыт).
+    ///
+    /// Удаление возможно и у НЕЧИТАЕМОГО бандла — это, собственно, единственный способ убрать его
+    /// из библиотеки, не открывая проводник.
+    /// </summary>
+    public bool DeleteMacro(MacroListItemViewModel item)
     {
         ArgumentNullException.ThrowIfNull(item);
         ErrorMessage = null;
 
         try
         {
-            // Удаление несуществующего макроса по протоколу — пустая операция, так что сюда
-            // доходит только беда транспорта или файлового ввода-вывода.
-            await _client
-                .RequestAsync(IpcMessageTypes.DeleteMacro, new DeleteMacroRequest(item.Name))
-                .ConfigureAwait(true);
+            // false = такого файла нет. Это ничегонеделание, а не ошибка: библиотеку могли
+            // почистить снаружи между отрисовкой строки и нажатием.
+            _macros.Delete(item.Name);
         }
-        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ErrorMessage = $"Не удалось удалить «{item.Name}».";
-            Log.Warning(ex, "DeleteMacro '{Macro}' не выполнен", item.Name);
+            ErrorMessage = $"Не удалось удалить «{item.Name}»: {ex.Message}";
+            Log.Warning(ex, "Удаление макроса '{Macro}' не выполнено", item.Name);
             return false;
         }
 
@@ -1241,11 +1321,54 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             CloseEditor();
         }
 
-        // Применяем на месте, не дожидаясь пуша MacrosChanged, — так к моменту возврата отсюда
-        // список уже устаканился.
-        SetLibrary([.. _library.Where(macro => !string.Equals(macro.Name, item.Name, StringComparison.Ordinal))]);
+        ApplyLibrary(_macros.Entries);
         StatusMessage = $"Макрос «{item.Name}» удалён.";
         return true;
+    }
+
+    /// <summary>
+    /// Импорт: копирует чужой <c>.hsm</c> в <c>macros/</c> и открывает его.
+    ///
+    /// Это ВЕСЬ импорт целиком — процессы делят файловую систему, поэтому «положить макрос в
+    /// библиотеку» и есть «положить файл в папку». Бандл копируется байт в байт: пропустив его
+    /// через сегодняшнего писателя, мы бы потеряли всё, чего сегодняшняя версия формата не знает.
+    /// </summary>
+    /// <param name="sourcePath">Путь к импортируемому файлу.</param>
+    /// <returns>Имя, под которым макрос лёг в библиотеку, либо <c>null</c> при отказе.</returns>
+    public string? ImportMacro(string sourcePath)
+    {
+        ErrorMessage = null;
+        string name;
+        try
+        {
+            name = _macros.Import(sourcePath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            ErrorMessage = $"Импорт не удался: {ex.Message}";
+            Log.Warning(ex, "Импорт макроса из {Path} не выполнен", sourcePath);
+            return null;
+        }
+
+        ApplyLibrary(_macros.Entries);
+        if (TryGet(name) is { } graph)
+        {
+            LoadGraph(graph);
+            SelectByName(name);
+        }
+
+        StatusMessage = $"Макрос «{name}» импортирован.";
+        return name;
+    }
+
+    /// <summary>
+    /// Экспорт: путь к бандлу, который вид скопирует туда, куда укажет пользователь. Отдаём файл
+    /// как есть — в нём уже лежит всё, что нужно получателю.
+    /// </summary>
+    public string? ExportPath(MacroListItemViewModel item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return _macros.PathOf(item.Name);
     }
 
     /// <summary>Запускает макрос без контекстного окна — ручной эквивалент его хоткея.</summary>
@@ -1401,16 +1524,26 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         HasOpenMacro && !string.Equals(_loadedJson, SerializeCurrent(), StringComparison.Ordinal);
 
     /// <summary>
-    /// Проверяет открытый граф и сохраняет его.
+    /// Проверяет открытый граф и записывает его в <c>macros/{имя}.hsm</c>.
     ///
-    /// Два заслона, по порядку: сперва должны разобраться собственные поля каждой строки (это
-    /// проверяется здесь — демон недонабранного числа не видит никогда, только получившийся из
-    /// него граф), а затем демонский <c>SaveMacro</c> должен вернуться с пустым списком
-    /// замечаний. Непустой означает, что не записали ничего, и несёт причины, включая проверку
-    /// имени файла.
+    /// <b>Пишет ПАНЕЛЬ, и с волны F3 это единственный автор.</b> Отсюда три заслона, все местные:
+    /// сперва должны разобраться собственные поля каждой строки (недонабранного числа не видит
+    /// никакой валидатор, только получившийся из него граф), затем имя должно годиться в имя
+    /// файла, затем общий <see cref="MacroGraphValidator"/> не должен найти ОШИБОК. Предупреждения
+    /// записи не мешают и показываются рядом с «Сохранено».
+    ///
+    /// Тот же валидатор с той же описью шаблонов прогонит демон, когда прочитает этот файл;
+    /// разойтись им негде — код один и живёт в <c>Shared</c>. Ошибка, всё же попавшая в папку
+    /// (правкой руками, чужой сборкой), стоит макросу вооружённых триггеров, о чём строка
+    /// библиотеки и говорит.
+    ///
+    /// Запись АТОМАРНА: целиком во временный файл рядом, затем <c>ReplaceFile</c>, — так что
+    /// наблюдатель демона не поймает половину, а читающий прямо сейчас демон не порвётся. Механизм
+    /// живёт в <c>Shared</c> рядом с писателем (<c>MacroBundleWriter</c>) и «упрощению» до
+    /// <c>File.Move(overwrite: true)</c> не подлежит — это измерено, а не вычитано.
     /// </summary>
     /// <returns><c>false</c>, когда ничего не записано; почему — объясняет <see cref="Issues"/>.</returns>
-    public async Task<bool> SaveAsync(CancellationToken cancellationToken = default)
+    public Task<bool> SaveAsync(CancellationToken cancellationToken = default)
     {
         ClearIssues();
         ErrorMessage = null;
@@ -1418,7 +1551,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         if (!HasOpenMacro)
         {
-            return false;
+            return Task.FromResult(false);
         }
 
         var inputErrors = Triggers.SelectMany(row => row.GetInputErrors())
@@ -1432,16 +1565,49 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         if (inputErrors.Count > 0)
         {
             ErrorMessage = "Сохранение отменено: исправьте ошибки.";
-            return false;
+            return Task.FromResult(false);
         }
 
         var graph = BuildGraph();
         var name = graph.Name;
 
-        // Опорные значения сдвигаются ДО запроса: демон рассылает MacrosChanged изнутри своего
-        // сохранения, по насосу событий, а не по пути ответа, — так что эхо способно дойти до
-        // нас первым, и обработчик горячей перезагрузки обязан опознать его как наше.
+        // Имя проверяется отдельно от графа и ПЕРВЫМ: это правило NTFS, а не правило модели, и
+        // живёт оно там же, где запись (MacroBundleFolder). Иначе «имя содержит /» дошло бы до
+        // пользователя невнятно упавшим вводом-выводом.
+        if (MacroBundleFolder.ValidateName(name) is { } nameError)
+        {
+            AddIssue(new ValidationIssueViewModel(nameError, isError: true));
+            ErrorMessage = "Сохранение отменено: исправьте ошибки.";
+            return Task.FromResult(false);
+        }
+
+        // Опись подаётся ТА ЖЕ, что увидит демон (волна F2): перечень бандла у панели уже есть —
+        // его держит браузер шаблонов. Без него проверка «нода называет шаблон, которого нет»
+        // здесь молча не сработала бы, хотя у демона сработала, а расхождение двух прогонов
+        // одного валидатора — ровно та ложь, которой этот проект избегает у бейджа целей.
+        var issues = MacroGraphValidator.Validate(graph, Templates.Inventory).ToList();
+        if (issues.Any(issue => issue.Severity == ValidationSeverity.Error))
+        {
+            // Предупреждения едут вместе с ошибками — пусть пользователь сразу увидит всё, что
+            // всё равно попросят исправить.
+            foreach (var issue in issues)
+            {
+                AddIssue(new ValidationIssueViewModel(issue));
+            }
+
+            ErrorMessage = "Сохранение отменено: исправьте ошибки.";
+            return Task.FromResult(false);
+        }
+
         var previousName = _loadedName;
+        var renamedFrom = previousName is null || string.Equals(previousName, name, StringComparison.Ordinal)
+            ? null
+            : previousName;
+
+        // Опорные значения сдвигаются ДО записи, и это не педантизм: библиотека поднимает своё
+        // Changed изнутри Save, то есть ApplyLibrary отработает раньше, чем сюда вернётся
+        // управление. Со старыми опорами он опознал бы наш собственный файл как чужую правку и
+        // на мгновение зажёг «изменён на диске».
         var previousLoadedJson = _loadedJson;
         var previousDiskJson = _diskJson;
         var json = MacroGraphJson.Serialize(graph);
@@ -1449,88 +1615,52 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _loadedJson = json;
         _diskJson = json;
 
-        ValidationIssueDto[]? rejected;
         try
         {
-            rejected = await _client
-                .RequestAsync<ValidationIssueDto[]>(
-                    IpcMessageTypes.SaveMacro,
-                    // previousName едет вместе с графом: под НОВЫМ именем бандла ещё нет, и без
-                    // подсказки демону не от чего унаследовать шаблоны переименованного макроса.
-                    new SaveMacroRequest(graph, previousName is null || string.Equals(previousName, name, StringComparison.Ordinal) ? null : previousName),
-                    cancellationToken: cancellationToken)
-                .ConfigureAwait(true);
+            // renamedFrom едет вместе с графом: под НОВЫМ именем бандла ещё нет, и без подсказки
+            // не от чего унаследовать шаблоны, под-макросы и паспорт переименованного макроса.
+            _macros.Save(graph, renamedFrom);
         }
-        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
             _loadedName = previousName;
             _loadedJson = previousLoadedJson;
             _diskJson = previousDiskJson;
             ErrorMessage = $"Не удалось сохранить: {ex.Message}";
-            return false;
+            Log.Warning(ex, "Запись макроса '{Macro}' не выполнена", name);
+            return Task.FromResult(false);
         }
 
-        if (rejected is { Length: > 0 })
-        {
-            // Отказали — записано ничего не было, так что несохранённых правок в редакторе
-            // остаётся ровно столько же, сколько и было.
-            _loadedName = previousName;
-            _loadedJson = previousLoadedJson;
-            _diskJson = previousDiskJson;
-            foreach (var issue in rejected)
-            {
-                AddIssue(new ValidationIssueViewModel(issue.ToIssue()));
-            }
-
-            ErrorMessage = "Сохранение отменено: исправьте ошибки.";
-            return false;
-        }
-
-        if (previousName is not null && !string.Equals(previousName, name, StringComparison.Ordinal))
+        if (renamedFrom is not null)
         {
             // Переименование: имя И ЕСТЬ основа имени файла, поэтому старый файл должен уйти.
             // Порядок важен — сперва записать, потом удалить, чтобы сбой между этими шагами
             // оставил две копии, а не ноль.
             try
             {
-                await _client
-                    .RequestAsync(IpcMessageTypes.DeleteMacro, new DeleteMacroRequest(previousName),
-                        cancellationToken: cancellationToken)
-                    .ConfigureAwait(true);
+                _macros.Delete(renamedFrom);
             }
-            catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                Log.Warning(ex, "Переименование: старый файл '{Macro}' не удалён", previousName);
+                Log.Warning(ex, "Переименование: старый файл '{Macro}' не удалён", renamedFrom);
             }
         }
 
-        // Удачное сохранение по протоколу возвращает ПУСТОЙ список, предупреждения в том числе,
-        // — поэтому их выводят здесь заново тем же валидатором, который гонял демон. Ошибок тут
-        // появиться не может: демон бы отказал в записи.
-        //
-        // Опись шаблонов подаётся ТА ЖЕ, что у демона (волна F2): перечень бандла у панели уже
-        // есть — его держит браузер шаблонов, — и без него проверка «нода называет шаблон,
-        // которого нет» здесь молча не сработала бы, хотя у демона сработала. Расхождение двух
-        // прогонов одного валидатора — ровно та ложь, которой этот проект избегает у бейджа
-        // целей.
-        foreach (var issue in MacroGraphValidator.Validate(graph, Templates.Inventory))
+        foreach (var issue in issues)
         {
-            if (issue.Severity != ValidationSeverity.Error)
-            {
-                AddIssue(new ValidationIssueViewModel(issue));
-            }
+            AddIssue(new ValidationIssueViewModel(issue));
         }
 
-        SetLibrary(MergeSaved(graph, previousName));
+        ApplyLibrary(_macros.Entries);
         // Бандл теперь есть (а при переименовании — под новым именем): браузер шаблонов обязан
-        // перенацелиться, иначе кнопка «+ Шаблон» продолжит говорить «сохраните макрос».
+        // перенацелиться, иначе кнопка «+ файл…» продолжит говорить «сохраните макрос».
         SyncTemplateUsage();
         ChangedOnDisk = false;
         SelectByName(name);
         StatusMessage = Issues.Count > 0
             ? $"Сохранено с предупреждениями ({Issues.Count})."
             : "Сохранено.";
-        return true;
+        return Task.FromResult(true);
     }
 
     /// <summary>Отбрасывает локальные правки и перечитывает открытый макрос из снимка библиотеки.</summary>
@@ -1680,6 +1810,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _macros.Changed -= OnLibraryChanged;
         _client.Connected -= OnConnected;
         _client.EventReceived -= OnEventReceived;
         Triggers.CollectionChanged -= OnTriggersCollectionChanged;
@@ -1748,9 +1879,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         // Кто ещё в библиотеке владеет сочетанием. Открытый макрос пропускаем: его триггеры —
         // это СТРОКИ, которые могут уже отличаться от того, что лежит на диске.
         var owners = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var macro in _library)
+        foreach (var entry in _library)
         {
-            if (_loadedName is not null && string.Equals(macro.Name, _loadedName, StringComparison.Ordinal))
+            if (entry.Graph is not { } macro
+                || (_loadedName is not null && string.Equals(entry.Name, _loadedName, StringComparison.Ordinal)))
             {
                 continue;
             }
@@ -1759,7 +1891,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             {
                 if (HotkeyTriggerRowViewModel.ChordKey(trigger) is { } key)
                 {
-                    owners.TryAdd(key, macro.Name);
+                    owners.TryAdd(key, entry.Name);
                 }
             }
         }
@@ -1803,8 +1935,21 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         RefreshLibraryHotkeyProblems();
     }
 
-    // Строки библиотеки несут ту же новость для макросов, которых никто не открывал, — на тот
-    // случай, когда хоткей умер при старте демона и сказать об этом на экране больше нечему.
+    /// <summary>
+    /// Строки библиотеки несут ту же новость для макросов, которых никто не открывал, — на тот
+    /// случай, когда хоткей умер при старте демона и сказать об этом на экране больше нечему.
+    ///
+    /// <b>С волны F3 причин две, и они разные.</b> Первая старая: Windows не отдала сочетание, и
+    /// узнать это может только демон (<c>GetHotkeyFailures</c>). Вторая появилась вместе с
+    /// инверсией авторства: демон не вооружает триггеры макроса, в графе которого валидатор нашёл
+    /// ошибку, — иначе «оно в библиотеке ⇒ демон его принял» сменилось бы на «кто-то положил туда
+    /// файл», а симптом остался бы прежним: клавиша нажимается, ничего не происходит. Панель
+    /// выносит этот вердикт САМА, тем же валидатором из <c>Shared</c> и по тому же файлу, так что
+    /// нового запроса не потребовалось ни одного.
+    ///
+    /// Порядок намеренный: ошибка в графе называется первой. Сочетание, отвергнутое Windows,
+    /// чинится сменой аккорда, а сломанный граф — правкой макроса, и второе надо делать раньше.
+    /// </summary>
     private void RefreshLibraryHotkeyProblems()
     {
         var byMacro = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -1818,14 +1963,23 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         foreach (var item in Macros)
         {
-            item.HotkeyProblem = byMacro.TryGetValue(item.Name, out var text) ? text : null;
+            item.HotkeyProblem = item switch
+            {
+                { HasHotkeyTrigger: true, ErrorCount: > 0 } =>
+                    $"хоткей не вооружён — в макросе ошибок: {item.ErrorCount}",
+                _ => byMacro.TryGetValue(item.Name, out var text) ? text : null,
+            };
         }
     }
 
     // ---- внутренности --------------------------------------------------------------------
 
     private MacroGraph? TryGet(string name) =>
-        _library.FirstOrDefault(macro => string.Equals(macro.Name, name, StringComparison.Ordinal));
+        _library.FirstOrDefault(entry => string.Equals(entry.Name, name, StringComparison.Ordinal))?.Graph;
+
+    // Папка изменилась: своей записью, чужим редактором или файлом, положенным в неё проводником.
+    // Наблюдатель стреляет с пула потоков, поэтому перекладываем в поток UI.
+    private void OnLibraryChanged() => _dispatcher.Post(() => ApplyLibrary(_macros.Entries));
 
     private void OnConnected()
     {
@@ -1859,9 +2013,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             }
 
             case IpcMessageTypes.MacrosChanged:
-                // По протоколу без нагрузки — библиотека бывает большой, поэтому демон говорит
-                // «что-то изменилось», а мы идём и забираем.
-                _ = ReloadLibraryAsync();
+                // С волны F3 это событие НЕ про содержимое библиотеки: её мы читаем сами и своим
+                // наблюдателем, обычно раньше. Означает оно ровно «демон перечитал папку и
+                // перерегистрировал хоткеи» — то есть единственный момент, когда список отказов
+                // Windows мог смениться. Это и есть то, за чем сюда идут.
+                _ = RefreshHotkeyFailuresAsync();
                 break;
 
             case IpcMessageTypes.RunningMacrosChanged:
@@ -2231,21 +2387,6 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private bool IsOpenMacro(string macroName) =>
         _loadedName is not null && string.Equals(_loadedName, macroName, StringComparison.Ordinal);
 
-    private async Task ReloadLibraryAsync()
-    {
-        try
-        {
-            var macros = await _client.RequestAsync<MacroGraph[]>(IpcMessageTypes.GetMacros).ConfigureAwait(false);
-            _dispatcher.Post(() => ApplyLibrary(macros ?? []));
-        }
-        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
-        {
-            Log.Warning(ex, "Не удалось перечитать библиотеку макросов");
-        }
-
-        await RefreshHotkeyFailuresAsync().ConfigureAwait(false);
-    }
-
     /// <summary>
     /// Перечитывает, какие сочетания демону не удалось зарегистрировать.
     ///
@@ -2274,20 +2415,29 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void ApplyLibrary(IReadOnlyList<MacroGraph> macros)
+    private void ApplyLibrary(IReadOnlyList<MacroBundleEntry> entries)
     {
-        SetLibrary(macros);
+        SetLibrary(entries);
 
         if (!HasOpenMacro || _loadedName is null)
         {
             return; // ничего не открыто либо это несохранённый черновик, за файлом которого следить нечего
         }
 
-        var onDisk = macros.FirstOrDefault(m => string.Equals(m.Name, _loadedName, StringComparison.Ordinal));
-        if (onDisk is null)
+        var entry = entries.FirstOrDefault(row => string.Equals(row.Name, _loadedName, StringComparison.Ordinal));
+        if (entry is null)
         {
             ChangedOnDisk = true;
             StatusMessage = $"Файл «{_loadedName}» исчез с диска — сохранение создаст его заново.";
+            return;
+        }
+
+        if (entry.Graph is not { } onDisk)
+        {
+            // Файл на месте, но перестал читаться — подменили снаружи на что-то испорченное.
+            // Открытый граф не трогаем: он у нас цел, и сохранение его восстановит.
+            ChangedOnDisk = true;
+            StatusMessage = $"Файл «{_loadedName}» на диске больше не читается: {entry.FaultMessage}";
             return;
         }
 
@@ -2310,10 +2460,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         StatusMessage = "Макрос обновлён на диске — перечитан.";
     }
 
-    private void SetLibrary(IReadOnlyList<MacroGraph> macros)
+    private void SetLibrary(IReadOnlyList<MacroBundleEntry> entries)
     {
-        _library = macros;
-        RebuildLibrary(macros);
+        _library = entries;
+        RebuildLibrary(entries);
         RefreshRunState();
         // Макрос, только что занявший (или отпустивший) сочетание, меняет то, с чем сталкивается
         // каждая открытая ловушка, а RebuildLibrary наделала новых объектов строк, которым нужны
@@ -2321,22 +2471,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         RefreshHotkeyConflicts();
     }
 
-    // Записанный граф сразу же заменяет запись в снимке (или добавляется к ним), а
-    // переименование выбрасывает старую, — поэтому список и выделение верны ещё до прихода
-    // MacrosChanged.
-    private IReadOnlyList<MacroGraph> MergeSaved(MacroGraph graph, string? renamedFrom)
-    {
-        var next = _library
-            .Where(macro => !string.Equals(macro.Name, graph.Name, StringComparison.Ordinal)
-                            && (renamedFrom is null ||
-                                !string.Equals(macro.Name, renamedFrom, StringComparison.Ordinal)))
-            .Append(graph)
-            .OrderBy(macro => macro.Name, StringComparer.Ordinal)
-            .ToList();
-        return next;
-    }
-
-    private void RebuildLibrary(IReadOnlyList<MacroGraph> macros)
+    private void RebuildLibrary(IReadOnlyList<MacroBundleEntry> entries)
     {
         // ОТКРЫТЫЙ макрос предпочтительнее подсвеченной сейчас строки: после сохранения нового
         // макроса список пересобирается из отложенного события, и опора на прежнее выделение
@@ -2346,9 +2481,14 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         try
         {
             Macros.Clear();
-            foreach (var macro in macros)
+            foreach (var entry in entries)
             {
-                Macros.Add(new MacroListItemViewModel(macro));
+                // Вердикт выносится ЗДЕСЬ и тем же валидатором, каким его выносит демон при
+                // загрузке: только так строка может честно сказать «хоткей не вооружён, потому
+                // что в графе ошибка» — без единого запроса и без второй копии правила.
+                Macros.Add(new MacroListItemViewModel(
+                    entry,
+                    entry.Graph is null ? null : MacroGraphValidator.Validate(entry.Graph, entry.Templates)));
             }
 
             SelectedMacro = previous is null
@@ -2362,12 +2502,14 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         SyncCurrentFlags();
         RebuildGroups();
-        RebuildMacroChoices(macros);
+        RebuildMacroChoices(entries);
     }
 
-    private void RebuildMacroChoices(IReadOnlyList<MacroGraph> macros)
+    private void RebuildMacroChoices(IReadOnlyList<MacroBundleEntry> entries)
     {
-        var names = macros.Select(m => m.Name).ToList();
+        // Нечитаемый бандл в список предлагаемых имён не попадает: назвать его из RunMacroNode
+        // можно, но выполнить нельзя, и предлагать такое имя значило бы советовать поломку.
+        var names = entries.Where(entry => entry.IsReadable).Select(entry => entry.Name).ToList();
         // Ссылку на несуществующий больше макрос оставляем выбираемой, чтобы открытие графа,
         // чей вложенный макрос удалили, не обнуляло эту ссылку молча.
         foreach (var row in Nodes.OfType<RunMacroNodeRowViewModel>())

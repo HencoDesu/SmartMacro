@@ -577,9 +577,11 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
     private void OnWindowClosed(ManagedWindowInfo window) =>
         Broadcast(IpcMessageTypes.WindowClosed, () => IpcJson.Write(new WindowClosedEvent(window.Hwnd.ToInt64())));
 
-    // По протоколу без нагрузки: библиотека бывает большой, а клиент дотянет её сам через
-    // GetMacros.
-    private void OnMacrosChanged(IReadOnlyList<MacroGraph> macros) =>
+    // Без нагрузки, и с волны F3 — с новым смыслом. Библиотеку панель читает сама, прямо из
+    // macros/; демону про её содержимое сказать больше нечего. А вот про СЕБЯ есть: это событие
+    // означает «демон перечитал папку и перерегистрировал хоткеи», то есть единственный момент,
+    // когда осмысленно перечитать GetHotkeyFailures. См. каталог у IpcMessageTypes.MacrosChanged.
+    private void OnMacrosChanged() =>
         Broadcast(IpcMessageTypes.MacrosChanged);
 
     // Список прогонов маленький, а UI он нужен немедленно, поэтому это событие состояние всё же

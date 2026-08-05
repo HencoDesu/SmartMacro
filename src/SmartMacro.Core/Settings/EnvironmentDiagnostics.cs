@@ -231,28 +231,53 @@ public sealed class EnvironmentDiagnostics
     }
 
     /// <summary>
-    /// Глобальные аккорды: сколько из привязанных Win32 действительно отдал.
+    /// Глобальные аккорды: сколько из привязанных демон действительно вооружил.
     ///
-    /// Тот же список, что показывает ⚠ на строке библиотеки макросов (<c>GetHotkeyFailures</c>),
-    /// — здесь он просто сведён в одно число.
+    /// <b>Не вооружить сочетание можно ДВУМЯ способами, и оба ведут к одному симптому</b> —
+    /// клавиша нажимается, не происходит ничего. Первый: Win32 отказал в регистрации, потому что
+    /// аккордом владеет другая программа (тот же список, что показывает ⚠ на строке библиотеки
+    /// через <c>GetHotkeyFailures</c>). Второй появился в F3 вместе с инверсией авторства: в
+    /// <c>macros/</c> может лечь файл, который никто не проверял, и хоткей макроса с ошибкой в
+    /// графе демон не вооружает намеренно. Об этом здесь сказано отдельной строкой, потому что
+    /// действие пользователя в двух случаях разное: сменить сочетание или починить граф.
     /// </summary>
     private DiagnosticDto CheckHotkeys()
     {
         var failures = _hotkeys.Failures;
         var bound = _macros.All.Sum(macro => macro.Triggers.OfType<Macros.Model.HotkeyTrigger>().Count());
+        var broken = _macros.Entries
+            .Where(entry => entry.HasErrors && entry.Graph.Triggers.OfType<Macros.Model.HotkeyTrigger>().Any())
+            .ToList();
 
-        if (failures.Count == 0)
+        if (failures.Count == 0 && broken.Count == 0)
         {
             return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Ok,
                 "Глобальные хоткеи",
                 string.Create(CultureInfo.CurrentCulture, $"занято {bound} из {bound}"));
         }
 
+        if (failures.Count == 0)
+        {
+            return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Failed,
+                "Хоткей не вооружён: в макросе ошибка",
+                string.Create(CultureInfo.CurrentCulture,
+                    $"Макросов с ошибками в графе: {broken.Count}; первый — «{broken[0].Name}»: "
+                    // Точку в конце НЕ ставим: сообщения валидатора приходят уже с ней, и своя
+                    // давала бы «…не найдена в графе.. По клавише» — нашлось глазами на экране.
+                    + $"{broken[0].FirstError} По клавише такой макрос не запустится, пока его не починить."));
+        }
+
+        var detail = string.Create(CultureInfo.CurrentCulture,
+            $"Win32 отказал в регистрации {failures.Count} из {bound}; первый — макрос "
+            + $"«{failures[0].MacroName}». Такой макрос по клавише не запустится.");
+        if (broken.Count > 0)
+        {
+            detail += string.Create(CultureInfo.CurrentCulture,
+                $" Ещё у {broken.Count} макросов ошибка в графе — их хоткеи не вооружены вовсе.");
+        }
+
         return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Failed,
-            "Часть хоткеев занята другой программой",
-            string.Create(CultureInfo.CurrentCulture,
-                $"Win32 отказал в регистрации {failures.Count} из {bound}; первый — макрос "
-                + $"«{failures[0].MacroName}». Такой макрос по клавише не запустится."));
+            "Часть хоткеев занята другой программой", detail);
     }
 
     /// <summary>

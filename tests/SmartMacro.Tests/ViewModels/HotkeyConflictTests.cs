@@ -21,12 +21,14 @@ namespace SmartMacro.Tests.ViewModels;
 //     GetHotkeyFailures.
 public class HotkeyConflictTests
 {
-    private sealed class Daemon
+    // С волны F3 «демон» здесь распался надвое, и это ровно то, что проверяет этот файл:
+    // библиотека — это папка, а список сочетаний, в которых отказала Windows, — это всё, что осталось от
+    // демона.
+    private sealed class Daemon : IDisposable
     {
         public Daemon()
         {
             Client = new FakeIpcClient();
-            Client.Respond(IpcMessageTypes.GetMacros, _ => Macros.ToArray());
             Client.Respond(IpcMessageTypes.GetRunningMacros, _ => Array.Empty<RunningMacroDto>());
             Client.Respond(IpcMessageTypes.GetWindows, _ => Array.Empty<WindowDto>());
             Client.Respond(IpcMessageTypes.GetHotkeyFailures, _ => Failures.ToArray());
@@ -34,9 +36,21 @@ public class HotkeyConflictTests
 
         public FakeIpcClient Client { get; }
 
-        public List<MacroGraph> Macros { get; } = [];
+        public TempLibrary Library { get; } = new();
 
         public List<HotkeyFailureDto> Failures { get; } = [];
+
+        /// <summary>Графы в порядке добавления — так тесты открывают нужный из них.</summary>
+        public List<MacroGraph> Macros { get; } = [];
+
+        /// <summary>Кладёт макрос в папку и перечитывает снимок.</summary>
+        public void Add(MacroGraph graph)
+        {
+            Macros.Add(graph);
+            Library.WriteExternally(graph);
+        }
+
+        public void Dispose() => Library.Dispose();
     }
 
     private static MacroGraph Graph(string name, params MacroTrigger[] triggers) => new()
@@ -48,7 +62,7 @@ public class HotkeyConflictTests
     };
 
     private static MacroEditorViewModel CreateEditor(Daemon daemon, IHotkeySuspension? hotkeys = null) =>
-        new(daemon.Client, null, hotkeys, ImmediateUiDispatcher.Instance, @"C:\smartmacro\macros");
+        new(daemon.Client, daemon.Library.Library, null, hotkeys, ImmediateUiDispatcher.Instance);
 
     private static HotkeyTriggerRowViewModel Hotkey(MacroEditorViewModel vm) =>
         vm.Triggers.OfType<HotkeyTriggerRowViewModel>().Single();
@@ -58,9 +72,9 @@ public class HotkeyConflictTests
     [Test]
     public async Task ChordOwnedByAnotherMacro_NamesTheOwner()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
-        daemon.Macros.Add(Graph("баг-госта"));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
+        daemon.Add(Graph("баг-госта"));
 
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(daemon.Macros[1]);
@@ -75,9 +89,9 @@ public class HotkeyConflictTests
     [Test]
     public async Task FreeChord_HasNoConflict()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
-        daemon.Macros.Add(Graph("баг-госта"));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
+        daemon.Add(Graph("баг-госта"));
 
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(daemon.Macros[1]);
@@ -93,8 +107,8 @@ public class HotkeyConflictTests
     [Test]
     public async Task OwnChordOnDisk_DoesNotConflictWithItself()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.Control, VirtualKey.F23)));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.Control, VirtualKey.F23)));
 
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(daemon.Macros[0]);
@@ -105,8 +119,8 @@ public class HotkeyConflictTests
     [Test]
     public async Task SameChordTwiceInOneMacro_IsReportedOnTheSecondRow()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("баг-госта"));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("баг-госта"));
 
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(daemon.Macros[0]);
@@ -125,8 +139,8 @@ public class HotkeyConflictTests
     [Test]
     public async Task UnboundPickers_DoNotClashWithEachOther()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("баг-госта"));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("баг-госта"));
 
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(daemon.Macros[0]);
@@ -140,9 +154,9 @@ public class HotkeyConflictTests
     [Test]
     public async Task MouseChordAndKeyboardChord_AreNeverTheSameBinding()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("pw-cursor", new HotkeyTrigger(HotkeyModifiers.None, 0, MouseButton.XButton1)));
-        daemon.Macros.Add(Graph("баг-госта"));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("pw-cursor", new HotkeyTrigger(HotkeyModifiers.None, 0, MouseButton.XButton1)));
+        daemon.Add(Graph("баг-госта"));
 
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(daemon.Macros[1]);
@@ -160,8 +174,8 @@ public class HotkeyConflictTests
     [Test]
     public async Task ConflictAppearsWhenAnotherMacroTakesTheChord()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("баг-госта"));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("баг-госта"));
 
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(daemon.Macros[0]);
@@ -170,7 +184,7 @@ public class HotkeyConflictTests
         await Assert.That(row.Conflict).IsNull();
 
         // Кто-то правит файл другого макроса, и демон присылает пуш об изменении.
-        daemon.Macros.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
+        daemon.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
         daemon.Client.RaiseEvent(IpcMessageTypes.MacrosChanged);
 
         await Assert.That(row.Conflict).IsEqualTo("уже занят pw-immunity");
@@ -181,8 +195,8 @@ public class HotkeyConflictTests
     [Test]
     public async Task ChordRefusedByWindows_SaysSoInThePicker()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("баг-госта", new HotkeyTrigger(HotkeyModifiers.Win, VirtualKey.L)));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("баг-госта", new HotkeyTrigger(HotkeyModifiers.Win, VirtualKey.L)));
         daemon.Failures.Add(new HotkeyFailureDto("баг-госта", HotkeyModifiers.Win, VirtualKey.L));
 
         using var vm = CreateEditor(daemon);
@@ -197,8 +211,8 @@ public class HotkeyConflictTests
     [Test]
     public async Task RegistrationFailureOfAnotherMacro_DoesNotAccuseTheWinner()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("first", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("first", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
         daemon.Failures.Add(new HotkeyFailureDto("second", HotkeyModifiers.None, VirtualKey.F23));
 
         using var vm = CreateEditor(daemon);
@@ -213,9 +227,9 @@ public class HotkeyConflictTests
     [Test]
     public async Task LibraryConflict_TakesPrecedenceOverTheRegistrationFailure()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
-        daemon.Macros.Add(Graph("баг-госта", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
+        daemon.Add(Graph("баг-госта", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
         daemon.Failures.Add(new HotkeyFailureDto("баг-госта", HotkeyModifiers.None, VirtualKey.F23));
 
         using var vm = CreateEditor(daemon);
@@ -230,9 +244,9 @@ public class HotkeyConflictTests
     [Test]
     public async Task LibraryRow_MarksAMacroWhoseHotkeyNeverRegistered()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("баг-госта", new HotkeyTrigger(HotkeyModifiers.Win, VirtualKey.L)));
-        daemon.Macros.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("баг-госта", new HotkeyTrigger(HotkeyModifiers.Win, VirtualKey.L)));
+        daemon.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
         daemon.Failures.Add(new HotkeyFailureDto("баг-госта", HotkeyModifiers.Win, VirtualKey.L));
 
         using var vm = CreateEditor(daemon);
@@ -251,8 +265,8 @@ public class HotkeyConflictTests
     [Test]
     public async Task ResumingHotkeys_RefetchesTheFailureList()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("баг-госта", new HotkeyTrigger(HotkeyModifiers.Win, VirtualKey.L)));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("баг-госта", new HotkeyTrigger(HotkeyModifiers.Win, VirtualKey.L)));
         var suspension = A.Fake<IHotkeySuspension>();
 
         using var vm = CreateEditor(daemon, suspension);
@@ -270,8 +284,8 @@ public class HotkeyConflictTests
     [Test]
     public async Task RemovingATriggerRow_ClearsTheClashItCaused()
     {
-        var daemon = new Daemon();
-        daemon.Macros.Add(Graph("баг-госта"));
+        using var daemon = new Daemon();
+        daemon.Add(Graph("баг-госта"));
 
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(daemon.Macros[0]);

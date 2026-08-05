@@ -17,8 +17,10 @@ namespace SmartMacro.Tests.ViewModels;
 // останавливает N обходов, и пауза, о которой попросили, но которая ещё не наступила.
 public class MacroDebuggerViewModelTests
 {
+    // Библиотека ОБЩАЯ и пустая: отладчик проверяется на графе, поданном через
+    // LoadGraph, а не выбранном из папки, — хранилище к паузе и шагу отношения не имеет.
     private static MacroEditorViewModel CreateEditor(FakeIpcClient client) =>
-        new(client, null, null, ImmediateUiDispatcher.Instance, @"C:\smartmacro\macros");
+        new(client, TempLibrary.Shared, null, null, ImmediateUiDispatcher.Instance);
 
     /// <summary>Три задержки и запись тега — достаточно, чтобы были и середина, и конец, и переменная.</summary>
     private static MacroGraph Sample() => new()
@@ -42,7 +44,6 @@ public class MacroDebuggerViewModelTests
 
     private static FakeIpcClient Daemon(params BreakpointSetDto[] breakpoints) =>
         new FakeIpcClient()
-            .Respond(IpcMessageTypes.GetMacros, new[] { Sample() })
             .Respond(IpcMessageTypes.GetBreakpoints, breakpoints)
             .Respond(IpcMessageTypes.SubscribeRunEvents, Array.Empty<RunWalkDto>())
             .Respond(IpcMessageTypes.DebugCommand, new DebugAckDto(true, false, false));
@@ -50,7 +51,7 @@ public class MacroDebuggerViewModelTests
     private static MacroEditorViewModel Opened(FakeIpcClient daemon)
     {
         var editor = CreateEditor(daemon);
-        editor.SelectedMacro = editor.Macros.Single(m => m.Name == "pw-boot");
+        editor.LoadGraph(Sample());
         return editor;
     }
 
@@ -498,22 +499,18 @@ public class MacroDebuggerViewModelTests
     public async Task AMixedSlotReadDropsTheFieldName_RatherThanNamingTheWrongOne()
     {
         var daemon = new FakeIpcClient()
-            .Respond(IpcMessageTypes.GetBreakpoints, Array.Empty<BreakpointSetDto>())
-            .Respond(IpcMessageTypes.GetMacros, new[]
-            {
-                new MacroGraph
-                {
-                    Name = "смешанное",
-                    StartNodeId = Ids.Of("click"),
-                    Nodes =
-                    [
-                        new ClickNode { Id = Ids.Of("click"), DisplayName = "click", PointVar = "cursor", Next = Ids.Of("tag") },
-                        new AddTagNode { Id = Ids.Of("tag"), DisplayName = "tag", Tag = "проба-{cursor}" },
-                    ],
-                },
-            });
+            .Respond(IpcMessageTypes.GetBreakpoints, Array.Empty<BreakpointSetDto>());
         var editor = CreateEditor(daemon);
-        editor.SelectedMacro = editor.Macros.Single();
+        editor.LoadGraph(new MacroGraph
+        {
+            Name = "смешанное",
+            StartNodeId = Ids.Of("click"),
+            Nodes =
+            [
+                new ClickNode { Id = Ids.Of("click"), DisplayName = "click", PointVar = "cursor", Next = Ids.Of("tag") },
+                new AddTagNode { Id = Ids.Of("tag"), DisplayName = "tag", Tag = "проба-{cursor}" },
+            ],
+        });
 
         var cursor = editor.Variables.Single(v => v.RawName == "cursor");
 

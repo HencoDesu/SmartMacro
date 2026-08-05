@@ -4,6 +4,7 @@ using SmartMacro.App.ViewModels.Canvas;
 using SmartMacro.App.ViewModels.Nodes;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
 using SmartMacro.Tests.Ipc;
@@ -18,8 +19,10 @@ namespace SmartMacro.Tests.ViewModels;
 // заметит первым.
 public class MacroCanvasTests
 {
+    // Библиотека ОБЩАЯ и пустая: эти тесты про вычисления канвы, а не про файлы, и
+    // в папку ни один из них не пишет. Графы подаются через LoadGraph.
     private static MacroEditorViewModel CreateEditor(FakeIpcClient? client = null) =>
-        new(client ?? new FakeIpcClient(), null, null, ImmediateUiDispatcher.Instance, @"C:\smartmacro\macros");
+        new(client ?? new FakeIpcClient(), TempLibrary.Shared, null, null, ImmediateUiDispatcher.Instance);
 
     /// <summary>То же самое, но отдаёт и поддельный демон, чтобы тест мог слать в него события прогона.</summary>
     private static MacroEditorViewModel CreateEditor(out FakeIpcClient daemon)
@@ -328,12 +331,13 @@ public class MacroCanvasTests
     [Test]
     public async Task Library_IsGroupedAndFilterable()
     {
-        var daemon = new FakeIpcClient();
-        daemon.Respond(IpcMessageTypes.GetMacros, new[]
-        {
-            Graph("pw-boot"), Graph("pw-assist"), Graph("Сбор наград"),
-        });
-        using var vm = CreateEditor(daemon);
+        // Здесь библиотека важна по содержанию, так что папка своя.
+        using var library = new TempLibrary();
+        library.WriteExternally(Graph("pw-boot"));
+        library.WriteExternally(Graph("pw-assist"));
+        library.WriteExternally(Graph("Сбор наград"));
+        using var vm = new MacroEditorViewModel(
+            new FakeIpcClient(), library.Library, null, null, ImmediateUiDispatcher.Instance);
 
         await Assert.That(vm.MacroGroups.Select(g => g.Header))
             .IsEquivalentTo(new[] { "pw · 2", "прочее · 1" });
@@ -893,7 +897,17 @@ public class MacroCanvasTests
     }
 
     private static List<MacroListItemViewModel> Items(params string[] names) =>
-        [.. names.Select(name => new MacroListItemViewModel(Graph(name)))];
+        [.. names.Select(name => new MacroListItemViewModel(Entry(Graph(name))))];
+
+    /// <summary>Строка папки без самой папки: группировка смотрит только на имя.</summary>
+    private static MacroBundleEntry Entry(MacroGraph graph) => new(
+        graph.Name,
+        graph.Name + ".hsm",
+        graph,
+        MacroBundleMetadata.CreateNew(graph.Name),
+        [],
+        MacroBundleFault.None,
+        null);
 
     private static MacroGraph Graph(string name) => new()
     {

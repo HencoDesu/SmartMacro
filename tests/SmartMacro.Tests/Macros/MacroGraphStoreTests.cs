@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Macros.Bundle;
@@ -8,24 +7,39 @@ using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Macros;
 
-// W0.2b: библиотека макросов поверх папки — круг CRUD, устойчивость к испорченному файлу,
-// проверка имени, а также подавление дребезга и собственных записей у наблюдателя.
+// Хранилище демона — с волны F3 ТОЛЬКО ЧИТАТЕЛЬ. Всё, что про запись, переехало в
+// MacroBundleFolderTests: пишет теперь панель, а реализация общая и лежит в Shared.
 //
-// F2: файл на диске стал бандлом .hsm, внутри которого лежит и граф, и собственные шаблоны
-// макроса. Отсюда три новые темы: шаблоны переживают сохранение графа, переименование их не
-// теряет, а запись атомарна.
+// Осталось здесь три темы, и все три — про демона:
+//   * загрузка не падает на испорченном файле и не трогает его;
+//   * ВАЛИДАЦИЯ ПРИ ЗАГРУЗКЕ и Armed — без них «оно в библиотеке ⇒ демон его принял» сменилось бы
+//     на «кто-то положил туда файл», а симптомом был бы молчащий хоткей;
+//   * наблюдатель — единственный способ демона узнать о новом макросе, ведь панель ему об этом не
+//     сообщает.
+//
+// Подавления собственных записей больше нет и тест на него удалён вместе с механизмом: демон не
+// пишет, глушить нечего.
 //
 // Тесты наблюдателя помечены [NotInParallel] и работают на настоящих временных папках:
 // FileSystemWatcher — то единственное здесь, что нельзя подделать, не проверяя вместо него
 // собственный мок.
 public class MacroGraphStoreTests
 {
-    private static MacroGraph Chain(string name, params MacroNode[] nodes) =>
-        new() { Name = name, StartNodeId = nodes[0].Id, Nodes = [.. nodes] };
+    private static MacroGraph SimpleMacro(string name, VirtualKey key = VirtualKey.F1) => new()
+    {
+        Name = name,
+        StartNodeId = Ids.Of("n0"),
+        Nodes = [new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = key, Target = new TargetSelector() }],
+    };
 
-    private static MacroGraph SimpleMacro(string name, VirtualKey key = VirtualKey.F1) =>
-        Chain(name,
-            new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = key, Target = new TargetSelector() });
+    /// <summary>Граф с хоткеем, но со СЛОМАННЫМ стартом: валидатор обязан назвать это ошибкой.</summary>
+    private static MacroGraph BrokenMacro(string name) => new()
+    {
+        Name = name,
+        Triggers = [new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F9)],
+        StartNodeId = Ids.Of("нет-такой-ноды"),
+        Nodes = [new DelayNode { Id = Ids.Of("d0"), DisplayName = "d0", Ms = 10 }],
+    };
 
     private static string CreateTempDir()
     {
@@ -37,13 +51,16 @@ public class MacroGraphStoreTests
     private static MacroGraphStore CreateStore(string baseDirectory) =>
         new(baseDirectory, NullLogger<MacroGraphStore>.Instance);
 
-    private static string BundlePath(string dir, string name) =>
-        Path.Combine(dir, "macros", name + MacroBundleFormat.Extension);
+    private static string MacrosDir(string dir) => Path.Combine(dir, "macros");
 
-    /// <summary>Пишет бандл мимо хранилища — так выглядит файл, принесённый со стороны.</summary>
-    private static void WriteBundle(string dir, string fileStem, MacroGraph graph, params (string Path, string Bytes)[] templates)
+    private static string BundlePath(string dir, string name) =>
+        Path.Combine(MacrosDir(dir), name + MacroBundleFormat.Extension);
+
+    /// <summary>Пишет бандл мимо хранилища — так выглядит файл, положенный туда панелью.</summary>
+    private static void WriteBundle(string dir, string fileStem, MacroGraph graph,
+        params (string Path, string Bytes)[] templates)
     {
-        Directory.CreateDirectory(Path.Combine(dir, "macros"));
+        Directory.CreateDirectory(MacrosDir(dir));
         MacroBundleWriter.Write(BundlePath(dir, fileStem), new MacroBundleContent
         {
             Metadata = MacroBundleMetadata.CreateNew(graph.Name),
@@ -85,21 +102,19 @@ public class MacroGraphStoreTests
     // Инвариант хранилища: построить объект — значит прочитать папку, и только. Раньше
     // конструктор мигрировал старый macros.json, переименовывал его в *.migrated, сеял шесть
     // примеров pw-* и ставил маркер .examples-seeded — то есть «создать объект» означало
-    // «изменить состояние на диске». Тест стоит здесь именно затем, чтобы побочные эффекты не
-    // навесили обратно: примеров нет вовсе — ни в коде, ни отдельной раздаточной папкой.
+    // «изменить состояние на диске». С волны F3 инвариант распространился на весь класс: демон не
+    // пишет вообще ничего.
     [Test]
     public async Task Construction_ReadsTheFolder_AndWritesNothingIntoIt()
     {
         var dir = CreateTempDir();
         try
         {
-            var macrosDir = Path.Combine(dir, "macros");
-
             using (var fresh = CreateStore(dir))
             {
                 // Папку завести можно — это единственная уступка; класть в неё что-либо нельзя.
-                await Assert.That(Directory.Exists(macrosDir)).IsTrue();
-                await Assert.That(Directory.EnumerateFileSystemEntries(macrosDir)).IsEmpty();
+                await Assert.That(Directory.Exists(MacrosDir(dir))).IsTrue();
+                await Assert.That(Directory.EnumerateFileSystemEntries(MacrosDir(dir))).IsEmpty();
                 await Assert.That(fresh.All).IsEmpty();
             }
 
@@ -112,7 +127,7 @@ public class MacroGraphStoreTests
 
             await Assert.That(store.All.Select(graph => graph.Name).ToList())
                 .IsEquivalentTo(new List<string> { "мой" });
-            await Assert.That(Directory.EnumerateFiles(macrosDir).Select(Path.GetFileName).ToList())
+            await Assert.That(Directory.EnumerateFiles(MacrosDir(dir)).Select(Path.GetFileName).ToList())
                 .IsEquivalentTo(new List<string?> { "мой.hsm" });
             // Унаследованный файл остаётся ровно там, где лежал: ни разбора, ни переименования.
             await Assert.That(File.Exists(legacy)).IsTrue();
@@ -125,135 +140,21 @@ public class MacroGraphStoreTests
     }
 
     [Test]
-    public async Task Save_WritesOneBundlePerGraph_AndRoundTrips()
+    public async Task Load_ReadsBundlesWrittenByThePanel_TemplatesIncluded()
     {
         var dir = CreateTempDir();
         try
         {
-            using (var store = CreateStore(dir))
-            {
-                await store.SaveAsync(SimpleMacro("иммунка", VirtualKey.F8));
-                await store.SaveAsync(SimpleMacro("ассист", VirtualKey.F2));
+            WriteBundle(dir, "с-шаблонами", SimpleMacro("с-шаблонами", VirtualKey.F8),
+                ("classes/Лучник.png", "archer"));
 
-                await Assert.That(store.All).Count().IsEqualTo(2);
-                await Assert.That(File.Exists(BundlePath(dir, "иммунка"))).IsTrue();
-                await Assert.That(File.Exists(BundlePath(dir, "ассист"))).IsTrue();
-            }
-
-            // Новое хранилище — это настоящая загрузка с диска, а не снимок из памяти.
-            using var reloaded = CreateStore(dir);
-            await Assert.That(reloaded.All).Count().IsEqualTo(2);
-            var macro = reloaded.TryGet("иммунка");
-            await Assert.That(macro).IsNotNull();
-            await Assert.That(macro!.Nodes).Count().IsEqualTo(1);
-            await Assert.That(((KeyPressNode)macro.Nodes[0]).Key).IsEqualTo(VirtualKey.F8);
-        }
-        finally
-        {
-            DeleteTempDir(dir);
-        }
-    }
-
-    // Бандл — это zip без сжатия, и это видно: содержимое обязано читаться любым просмотрщиком, а
-    // git — уметь считать по нему дельту.
-    [Test]
-    public async Task Save_WritesAStoreOnlyZip_WithBothEntries()
-    {
-        var dir = CreateTempDir();
-        try
-        {
             using var store = CreateStore(dir);
-            await store.SaveAsync(SimpleMacro("бандл"));
-
-            using var archive = ZipFile.OpenRead(BundlePath(dir, "бандл"));
-            await Assert.That(archive.Entries.Select(e => e.FullName).Order().ToList())
-                .IsEquivalentTo(new List<string> { "metadata.json", "nodes.json" }.Order().ToList());
-            await Assert.That(archive.Entries.All(e => e.CompressedLength == e.Length)).IsTrue();
-        }
-        finally
-        {
-            DeleteTempDir(dir);
-        }
-    }
-
-    // Главное свойство бандла: сохранение ГРАФА не имеет права стереть шаблоны, иначе первое же
-    // «Сохранить» после импорта картинок обнулило бы работу.
-    [Test]
-    public async Task Save_KeepsTheTemplatesThatAreAlreadyInTheBundle()
-    {
-        var dir = CreateTempDir();
-        try
-        {
-            using var store = CreateStore(dir);
-            await store.SaveAsync(SimpleMacro("с-шаблонами"));
-            await store.AddTemplateAsync("с-шаблонами", "classes", "Лучник", Encoding.UTF8.GetBytes("archer"));
-
-            await store.SaveAsync(SimpleMacro("с-шаблонами", VirtualKey.F9));
 
             var entry = store.TryGetEntry("с-шаблонами");
             await Assert.That(entry).IsNotNull();
             await Assert.That(entry!.TemplatePaths).IsEquivalentTo(new List<string> { "classes/Лучник.png" });
             await Assert.That(entry.Templates.Has("classes", isSet: true)).IsTrue();
-            await Assert.That(((KeyPressNode)entry.Graph.Nodes[0]).Key).IsEqualTo(VirtualKey.F9);
-        }
-        finally
-        {
-            DeleteTempDir(dir);
-        }
-    }
-
-    // Переименование делается «записать новый → удалить старый», то есть под новым именем бандла
-    // ещё нет. Без подсказки renamedFrom шаблоны переименованного макроса просто исчезли бы —
-    // молча, ровно тем способом, ради недопущения которого весь формат и заведён.
-    [Test]
-    public async Task Save_WithRenamedFrom_CarriesTemplatesAndIdentityOver()
-    {
-        var dir = CreateTempDir();
-        try
-        {
-            using var store = CreateStore(dir);
-            await store.SaveAsync(SimpleMacro("старое-имя"));
-            await store.AddTemplateAsync("старое-имя", null, "Кнопка", Encoding.UTF8.GetBytes("png"));
-            var id = store.TryGetEntry("старое-имя")!.Metadata.Id;
-
-            await store.SaveAsync(SimpleMacro("новое-имя"), renamedFrom: "старое-имя");
-            await store.DeleteAsync("старое-имя");
-
-            var renamed = store.TryGetEntry("новое-имя");
-            await Assert.That(renamed).IsNotNull();
-            await Assert.That(renamed!.TemplatePaths).IsEquivalentTo(new List<string> { "Кнопка.png" });
-            // Guid при переименовании НЕ меняется: переименование — это не дублирование.
-            await Assert.That(renamed.Metadata.Id).IsEqualTo(id);
-        }
-        finally
-        {
-            DeleteTempDir(dir);
-        }
-    }
-
-    [Test]
-    public async Task AddTemplate_ThenDelete_RoundTripsThroughTheBundle()
-    {
-        var dir = CreateTempDir();
-        try
-        {
-            using var store = CreateStore(dir);
-            await store.SaveAsync(SimpleMacro("правки"));
-
-            var added = await store.AddTemplateAsync("правки", "classes", "Жрец", Encoding.UTF8.GetBytes("priest"));
-            await Assert.That(added).IsTrue();
-            await Assert.That(store.ReadTemplate("правки", "classes", "Жрец")).IsNotNull();
-            await Assert.That(store.TemplateCatalog("правки").Select(t => t.Path))
-                .IsEquivalentTo(new List<string> { "classes/Жрец.png" });
-
-            var removed = await store.DeleteTemplateAsync("правки", "classes", "Жрец");
-            await Assert.That(removed).IsTrue();
-            await Assert.That(store.TryGetEntry("правки")!.TemplatePaths).IsEmpty();
-
-            // Удалить несуществующий — пустая операция, а не ошибка.
-            await Assert.That(await store.DeleteTemplateAsync("правки", "classes", "Жрец")).IsFalse();
-            // Как и положить шаблон в макрос, которого нет.
-            await Assert.That(await store.AddTemplateAsync("нет-такого", null, "X", [1])).IsFalse();
+            await Assert.That(((KeyPressNode)entry.Graph.Nodes[0]).Key).IsEqualTo(VirtualKey.F8);
         }
         finally
         {
@@ -270,16 +171,15 @@ public class MacroGraphStoreTests
         var dir = CreateTempDir();
         try
         {
-            var macrosDir = Path.Combine(dir, "macros");
             WriteBundle(dir, "good", SimpleMacro("good"));
-            File.WriteAllText(Path.Combine(macrosDir, "broken.hsm"), "это вообще не zip");
+            File.WriteAllText(Path.Combine(MacrosDir(dir), "broken.hsm"), "это вообще не zip");
 
             using var store = CreateStore(dir);
 
             await Assert.That(store.All).Count().IsEqualTo(1);
             await Assert.That(store.All[0].Name).IsEqualTo("good");
             await Assert.That(store.TryGet("broken")).IsNull();
-            await Assert.That(Directory.EnumerateFiles(macrosDir).Select(Path.GetFileName).Order().ToList())
+            await Assert.That(Directory.EnumerateFiles(MacrosDir(dir)).Select(Path.GetFileName).Order().ToList())
                 .IsEquivalentTo(new List<string?> { "broken.hsm", "good.hsm" }.Order().ToList());
         }
         finally
@@ -308,22 +208,32 @@ public class MacroGraphStoreTests
         }
     }
 
+    // F3: гарантия «оно в библиотеке ⇒ демон его принял» пропала вместе с SaveMacro. Теперь судит
+    // сам демон при загрузке — тем же валидатором из Shared, каким судит панель, — и невалидный
+    // макрос в Armed не попадает. Без этого «хоткей нажимается, ничего не происходит» вернулось бы
+    // с другой стороны.
     [Test]
-    public async Task Delete_RemovesFileAndEntry_UnknownNameIsFalse()
+    public async Task Load_ValidatesEveryBundle_AndKeepsBrokenGraphsOutOfArmed()
     {
         var dir = CreateTempDir();
         try
         {
+            WriteBundle(dir, "здоровый", SimpleMacro("здоровый"));
+            WriteBundle(dir, "битый", BrokenMacro("битый"));
+
             using var store = CreateStore(dir);
-            await store.SaveAsync(SimpleMacro("gone"));
 
-            var deleted = await store.DeleteAsync("gone");
-            var missing = await store.DeleteAsync("never-existed");
+            // В библиотеке он есть — файл существует, и панель обязана его показать.
+            await Assert.That(store.All.Select(m => m.Name).Order().ToList())
+                .IsEquivalentTo(new List<string> { "битый", "здоровый" }.Order().ToList());
+            // А вооружать его триггеры нечем.
+            await Assert.That(store.Armed.Select(m => m.Name).ToList())
+                .IsEquivalentTo(new List<string> { "здоровый" });
 
-            await Assert.That(deleted).IsTrue();
-            await Assert.That(missing).IsFalse();
-            await Assert.That(store.All).IsEmpty();
-            await Assert.That(File.Exists(BundlePath(dir, "gone"))).IsFalse();
+            var broken = store.TryGetEntry("битый");
+            await Assert.That(broken!.HasErrors).IsTrue();
+            await Assert.That(broken.FirstError).IsNotNull();
+            await Assert.That(store.TryGetEntry("здоровый")!.HasErrors).IsFalse();
         }
         finally
         {
@@ -331,84 +241,43 @@ public class MacroGraphStoreTests
         }
     }
 
+    // Предупреждение — не ошибка: макрос с ним исполняется и хоткей у него вооружён. Разница
+    // важна, потому что «нода называет шаблон, которого в бандле нет» и «до ноды не добраться» —
+    // это именно предупреждения, а блокировать ими запуск значило бы запретить нормальный порядок
+    // работы («сначала набрать имя, потом положить файл»).
     [Test]
-    public async Task Save_RejectsNamesThatAreNotUsableFileNames()
+    public async Task Load_ArmsMacrosThatOnlyHaveWarnings()
     {
         var dir = CreateTempDir();
         try
         {
-            using var store = CreateStore(dir);
-
-            await Assert.That(async () => await store.SaveAsync(SimpleMacro("bad/name")))
-                .Throws<ArgumentException>();
-            await Assert.That(store.All).IsEmpty();
-        }
-        finally
-        {
-            DeleteTempDir(dir);
-        }
-    }
-
-    [Test]
-    [Arguments("normal-name", true)]
-    [Arguments("кириллица тоже", true)]
-    [Arguments("", false)]
-    [Arguments("   ", false)]
-    [Arguments("has/slash", false)]
-    [Arguments("has:colon", false)]
-    [Arguments("trailing.", false)]
-    [Arguments("CON", false)]
-    [Arguments("COM1", false)]
-    public async Task ValidateName_MatchesNtfsRules(string name, bool expectedValid)
-    {
-        var error = MacroGraphStore.ValidateName(name);
-        await Assert.That(error is null).IsEqualTo(expectedValid);
-    }
-
-    // Временный файл атомарной записи назван так, чтобы под фильтр наблюдателя (*.hsm) не попасть
-    // ни длинным именем, ни коротким 8.3. Проверяем следствие: после записи в папке ровно один
-    // файл, и это бандл.
-    [Test]
-    public async Task Save_IsAtomic_AndLeavesNoTemporaryFileBehind()
-    {
-        var dir = CreateTempDir();
-        try
-        {
-            using var store = CreateStore(dir);
-            await store.SaveAsync(SimpleMacro("атомарно"));
-            await store.SaveAsync(SimpleMacro("атомарно", VirtualKey.F4));
-
-            await Assert.That(Directory.EnumerateFiles(Path.Combine(dir, "macros")).Select(Path.GetFileName).ToList())
-                .IsEquivalentTo(new List<string?> { "атомарно.hsm" });
-            await Assert.That(File.Exists(BundlePath(dir, "атомарно") + MacroBundleWriter.TempSuffix)).IsFalse();
-        }
-        finally
-        {
-            DeleteTempDir(dir);
-        }
-    }
-
-    // Замена переименованием обязана проходить и тогда, когда бандл в этот момент читают:
-    // MoveFileEx с MOVEFILE_REPLACE_EXISTING отказывает, если получатель открыт без FileShare.Delete,
-    // и это ровно тот отказ, который проявлялся бы изредка и невоспроизводимо.
-    [Test]
-    public async Task Save_SucceedsWhileTheBundleIsBeingRead()
-    {
-        var dir = CreateTempDir();
-        try
-        {
-            using var store = CreateStore(dir);
-            await store.SaveAsync(SimpleMacro("занят-чтением"));
-
-            var path = BundlePath(dir, "занят-чтением");
-            using (var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+            var graph = new MacroGraph
             {
-                await Assert.That(async () => await store.SaveAsync(SimpleMacro("занят-чтением", VirtualKey.F7)))
-                    .ThrowsNothing();
-                await Assert.That(reader.Length).IsGreaterThan(0);
-            }
+                Name = "с-предупреждением",
+                Triggers = [new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F10)],
+                StartNodeId = Ids.Of("n0"),
+                Nodes =
+                [
+                    new KeyPressNode
+                    {
+                        Id = Ids.Of("n0"),
+                        DisplayName = "key-1",
+                        Key = VirtualKey.F1,
+                        Target = new TargetSelector(),
+                    },
+                    // Сюда ничто не ведёт → недостижима → предупреждение, а не ошибка.
+                    new DelayNode { Id = Ids.Of("orphan"), DisplayName = "orphan", Ms = 100 },
+                ],
+            };
+            WriteBundle(dir, "с-предупреждением", graph);
 
-            await Assert.That(((KeyPressNode)store.TryGet("занят-чтением")!.Nodes[0]).Key).IsEqualTo(VirtualKey.F7);
+            using var store = CreateStore(dir);
+
+            var entry = store.TryGetEntry("с-предупреждением");
+            await Assert.That(entry!.Issues).IsNotEmpty();
+            await Assert.That(entry.HasErrors).IsFalse();
+            await Assert.That(store.Armed.Select(m => m.Name).ToList())
+                .IsEquivalentTo(new List<string> { "с-предупреждением" });
         }
         finally
         {
@@ -416,23 +285,25 @@ public class MacroGraphStoreTests
         }
     }
 
+    // F3 завела гонку: панель пишет файл, а демон узнаёт о нём наблюдателем с гашением дребезга.
+    // «Сохранить», а сразу следом «Запустить» попадают в промежуток, где макроса в снимке ещё нет,
+    // — Refresh закрывает его, не дожидаясь наблюдателя.
     [Test]
-    [NotInParallel]
-    public async Task Watcher_SuppressesOurOwnWrites()
+    public async Task Refresh_PicksUpAJustWrittenBundle_WithoutWaitingForTheWatcher()
     {
         var dir = CreateTempDir();
         try
         {
             using var store = CreateStore(dir);
-            var events = 0;
-            store.MacrosChanged += _ => Interlocked.Increment(ref events);
+            await Assert.That(store.TryGet("только-что")).IsNull();
 
-            await store.SaveAsync(SimpleMacro("mine"));
+            WriteBundle(dir, "только-что", SimpleMacro("только-что"));
 
-            // SaveAsync поднимает ровно одно событие; событие наблюдателя, вызванное его же
-            // собственной записью, обязано быть проглочено. Ждём дольше 300 мс дребезга плюс запас.
-            await Task.Delay(900);
-            await Assert.That(Volatile.Read(ref events)).IsEqualTo(1);
+            await Assert.That(store.Refresh()).IsTrue();
+            await Assert.That(store.TryGet("только-что")).IsNotNull();
+            // Состав не изменился — событие не поднимаем: перерегистрация хоткеев и сброс кэша
+            // шаблонов не должны быть платой за промах мимо снимка.
+            await Assert.That(store.Refresh()).IsFalse();
         }
         finally
         {
@@ -449,9 +320,9 @@ public class MacroGraphStoreTests
         {
             using var store = CreateStore(dir);
             var events = 0;
-            store.MacrosChanged += _ => Interlocked.Increment(ref events);
+            store.MacrosChanged += () => Interlocked.Increment(ref events);
 
-            // Кто-то правит папку у нас за спиной (проводник, git checkout). Всплеск записей
+            // Так выглядит запись панели (а равно проводника или git checkout): всплеск записей
             // обязан схлопнуться в одну-единственную перезагрузку.
             for (var i = 0; i < 3; i++)
             {
@@ -482,14 +353,13 @@ public class MacroGraphStoreTests
         // неожиданно», ненулевой код возврата).
         //
         // Воспроизводится это только после того, как событие наблюдателя взвело перезагрузку:
-        // на нетронутой папке поле пустое, и двойное освобождение молча безвредно, — потому-то
-        // всё и оставалось незамеченным, пока в том же сеансе не случалась внешняя правка.
+        // на нетронутой папке поле пустое, и двойное освобождение молча безвредно.
         var dir = CreateTempDir();
         try
         {
             var store = CreateStore(dir);
             var changed = 0;
-            store.MacrosChanged += _ => Interlocked.Increment(ref changed);
+            store.MacrosChanged += () => Interlocked.Increment(ref changed);
 
             WriteBundle(dir, "external", SimpleMacro("external"));
             var armed = await WaitUntilAsync(() => Volatile.Read(ref changed) > 0);
@@ -514,8 +384,8 @@ public class MacroGraphStoreTests
             var path = BundlePath(dir, "занят");
 
             // Файл держат открытым эксклюзивно — так выглядит редактор, сохраняющий его прямо
-            // сейчас. Читатель бандла отличает это от порчи (NotAnArchive против Malformed), и
-            // трогать файл нельзя: следующая перезагрузка прочитает его как ни в чём не бывало.
+            // сейчас. Читатель бандла отличает это от порчи, и трогать файл нельзя: следующая
+            // перезагрузка прочитает его как ни в чём не бывало.
             using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None))
             {
                 using var store = CreateStore(dir);

@@ -8,6 +8,7 @@ using SmartMacro.Settings;
 using SmartMacro.Ipc;
 using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Execution;
+using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Orchestration;
 using SmartMacro.Vision;
@@ -125,12 +126,21 @@ internal sealed class IpcDispatcherHarness : IDisposable
     public CaptureDumpService Captures { get; }
 
     /// <summary>
-    /// Кладёт шаблон в бандл макроса — тем же путём, которым это делает панель, то есть через
-    /// настоящее хранилище. Отдельного провайдера шаблонов у диспетчера больше нет: с волны F2
-    /// шаблон живёт внутри <c>.hsm</c>, и владелец у него один — <see cref="MacroGraphStore"/>.
+    /// Кладёт макрос в папку — тем же путём, которым это делает панель, то есть файлом мимо
+    /// демона. С волны F3 других путей нет: хранилище демона только читает.
     /// </summary>
-    public Task<bool> WriteTemplateAsync(string macroName, string? set, string name, byte[] bytes) =>
-        Macros.AddTemplateAsync(macroName, set, name, bytes);
+    public void WriteMacro(MacroGraph graph, params (string Path, byte[] Bytes)[] templates)
+    {
+        var folder = MacroBundleFolder.In(_baseDirectory);
+        Directory.CreateDirectory(folder);
+        MacroBundleWriter.Write(MacroBundleFolder.PathFor(folder, graph.Name), new MacroBundleContent
+        {
+            Metadata = MacroBundleMetadata.CreateNew(graph.Name),
+            Graph = graph,
+            Templates = [.. templates.Select(t => new MacroBundleFile(t.Path, t.Bytes))],
+        });
+        Macros.Refresh();
+    }
 
     /// <summary>Настоящий: именно из насоса событий прогона и отвечает <c>SubscribeRunEvents</c>.</summary>
     public RunEventPublisher RunEvents { get; }
@@ -156,7 +166,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
 
     /// <summary>Путь к файлу, который занял бы макрос с таким именем.</summary>
     public string MacroFile(string name) =>
-        Path.Combine(_baseDirectory, MacroGraphStore.FolderName, name + MacroBundleFormat.Extension);
+        MacroBundleFolder.PathFor(MacroBundleFolder.In(_baseDirectory), name);
 
     public Task<IpcResponse> DispatchAsync(string type, object? payload = null, int id = 1,
         IIpcSession? session = null) =>

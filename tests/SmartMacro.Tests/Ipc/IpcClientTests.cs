@@ -182,7 +182,7 @@ public class IpcClientTests
         await fixture.Client.StartAsync(TimeSpan.FromSeconds(2));
 
         await Assert
-            .That(async () => await fixture.Client.RequestAsync(IpcMessageTypes.GetMacros, timeout: ShortTimeout))
+            .That(async () => await fixture.Client.RequestAsync(IpcMessageTypes.GetRunningMacros, timeout: ShortTimeout))
             .Throws<TimeoutException>();
     }
 
@@ -207,7 +207,7 @@ public class IpcClientTests
         fixture.Observe();
         await fixture.Client.StartAsync(TimeSpan.FromSeconds(2));
 
-        var pending = fixture.Client.RequestAsync(IpcMessageTypes.GetMacros);
+        var pending = fixture.Client.RequestAsync(IpcMessageTypes.GetRunningMacros);
         await pair.ReadLineAsync();
 
         // Труба демона закрывается — ответа не будет уже никогда. Уронить вызов лучше, чем дать
@@ -239,13 +239,13 @@ public class IpcClientTests
         await Assert.That(await WaitUntilAsync(() => Volatile.Read(ref fixture.ConnectedCount) >= 2)).IsTrue();
         await Assert.That(await WaitUntilAsync(() => fixture.Client.IsConnected)).IsTrue();
 
-        var pending = fixture.Client.RequestAsync<MacroGraphNames>(IpcMessageTypes.GetMacros);
+        var pending = fixture.Client.RequestAsync<MacroNames>(IpcMessageTypes.GetRunningMacros);
         var request = ParseRequest(await second.ReadLineAsync());
-        await second.SendAsync(new IpcResponse(request.Id, Ok: true, IpcJson.Write(new MacroGraphNames(["pw-boot"]))));
+        await second.SendAsync(new IpcResponse(request.Id, Ok: true, IpcJson.Write(new MacroNames(["pw-boot"]))));
 
         await Assert.That((await pending)!.Names).IsEquivalentTo(new[] { "pw-boot" });
     }
 
     /// <summary>Нагрузка-заглушка: тесту важно, что по новому соединению идёт трафик, а не что именно.</summary>
-    private sealed record MacroGraphNames(IReadOnlyList<string> Names);
+    private sealed record MacroNames(IReadOnlyList<string> Names);
 }

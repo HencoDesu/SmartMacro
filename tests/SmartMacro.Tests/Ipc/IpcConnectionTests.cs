@@ -31,22 +31,24 @@ public class IpcConnectionTests
     }
 
     [Test]
-    public async Task WriteAsync_FatGraphPayload_StaysOnOneLine()
+    public async Task WriteAsync_FatPayload_StaysOnOneLine()
     {
         using var pair = new DuplexStreamPair();
         await using var connection = ServerSide(pair);
 
+        // Самой жирной нагрузкой был граф макроса; с волны F3 он по трубе не ходит вовсе, и
+        // тяжеловесом остался снимок настроек — он же единственная нагрузка, которую IpcJson
+        // печатает настройками, унаследованными от файлового диалекта с его отступами.
         await connection.WriteAsync(new IpcResponse(
             1,
             Ok: true,
-            IpcJson.Write(new SaveMacroRequest(FullMacroGraphFixture.Build()))));
+            IpcJson.Write(new SaveSettingsRequest(new SmartMacro.Contracts.Settings.AppSettings()))));
 
         var line = await pair.ReadLineAsync();
-        // Просочись отступы графа наружу — читатель остановился бы на первом же внутреннем
-        // переводе строки, и эта десериализация бросила бы исключение.
+        // Просочись отступы наружу — читатель остановился бы на первом же внутреннем переводе
+        // строки, и эта десериализация бросила бы исключение.
         var reloaded = JsonSerializer.Deserialize<IpcResponse>(line, IpcJson.Options)!;
-        await Assert.That(IpcJson.Read<SaveMacroRequest>(reloaded.Payload)!.Macro.Nodes)
-            .Count().IsEqualTo(FullMacroGraphFixture.NodeCount);
+        await Assert.That(IpcJson.Read<SaveSettingsRequest>(reloaded.Payload)!.Settings).IsNotNull();
     }
 
     [Test]
@@ -70,7 +72,7 @@ public class IpcConnectionTests
 
         await pair.SendLineAsync(string.Empty);
         await pair.SendLineAsync("   ");
-        await pair.SendAsync(new IpcRequest(7, IpcMessageTypes.GetMacros));
+        await pair.SendAsync(new IpcRequest(7, IpcMessageTypes.GetRunningMacros));
 
         var request = await connection.ReadAsync<IpcRequest>();
 

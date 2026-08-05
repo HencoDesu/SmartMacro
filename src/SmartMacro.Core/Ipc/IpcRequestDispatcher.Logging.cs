@@ -13,10 +13,6 @@ public sealed partial class IpcRequestDispatcher
     [LoggerMessage(LogLevel.Warning, "Запрос IPC неизвестного типа '{Type}' (#{Id}) — клиент новее демона?")]
     partial void LogUnknownType(string type, int id);
 
-    [LoggerMessage(LogLevel.Information,
-        "SaveMacro '{Macro}' отклонён — ошибок валидации: {ErrorCount}, ничего не записано")]
-    partial void LogSaveRejected(string macro, int errorCount);
-
     [LoggerMessage(LogLevel.Information, "По IPC запрошено выключение — останавливаем хост, как только ответ уйдёт")]
     partial void LogShutdownRequested();
 }

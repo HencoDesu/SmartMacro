@@ -308,7 +308,6 @@ public class TargetBadgeTests
     public async Task Editor_SeedsTheCatalogue_AndAttachesItToEveryNode()
     {
         var client = new FakeIpcClient();
-        client.Respond(IpcMessageTypes.GetMacros, _ => Array.Empty<MacroGraph>());
         client.Respond(IpcMessageTypes.GetRunningMacros, _ => Array.Empty<RunningMacroDto>());
         client.Respond(IpcMessageTypes.GetWindows, _ => new[]
         {
@@ -316,7 +315,8 @@ public class TargetBadgeTests
             new WindowDto(0x2, "elementclient_64", ["перс", "Склад"]),
         });
 
-        using var editor = new MacroEditorViewModel(client, null, null, ImmediateUiDispatcher.Instance, @"C:\m");
+        using var editor = new MacroEditorViewModel(
+            client, TempLibrary.Shared, null, null, ImmediateUiDispatcher.Instance);
         editor.LoadGraph(new MacroGraph
         {
             Name = "тест",

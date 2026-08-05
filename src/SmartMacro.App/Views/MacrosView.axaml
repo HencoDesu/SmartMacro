@@ -1253,35 +1253,60 @@
                                                             PointerPressed="OnMacroRowPressed">
                                                         <Grid ColumnDefinitions="*,Auto">
                                                             <StackPanel Grid.Column="0"
-                                                                        Orientation="Horizontal"
-                                                                        Spacing="7"
-                                                                        VerticalAlignment="Center">
-                                                                <TextBlock FontSize="11.5"
-                                                                           VerticalAlignment="Center"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           Foreground="{Binding IsCurrent, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneTextBrush|NocturneTextSecondaryBrush}"
-                                                                           Text="{Binding Name}" />
-                                                                <Border Padding="5,1"
-                                                                        CornerRadius="3"
                                                                         VerticalAlignment="Center"
-                                                                        Background="{DynamicResource NocturneSurfaceInsetBrush}"
-                                                                        IsVisible="{Binding HasTriggerBadge}">
-                                                                    <TextBlock FontSize="9.5"
-                                                                               FontFamily="{DynamicResource NocturneFontFamilyMono}"
-                                                                               Foreground="{DynamicResource NocturneTextMutedBrush}"
-                                                                               Text="{Binding TriggerBadge}" />
-                                                                </Border>
-                                                                <!-- Сочетание привязано, но Windows нам его не отдала.
-                                                                     Показано на СТРОКЕ, потому что это единственное
-                                                                     место, где это можно заметить, не открывая макрос, —
-                                                                     а случается такое обычно при старте демона, с
-                                                                     макросом, который никто не правит. -->
-                                                                <TextBlock FontSize="9"
-                                                                           VerticalAlignment="Center"
-                                                                           Foreground="{DynamicResource NocturneDangerBrush}"
-                                                                           IsVisible="{Binding HasHotkeyProblem}"
-                                                                           ToolTip.Tip="{Binding HotkeyProblem}"
-                                                                           Text="&#x25B2;" />
+                                                                        Spacing="1">
+                                                                <StackPanel Orientation="Horizontal"
+                                                                            Spacing="7"
+                                                                            VerticalAlignment="Center">
+                                                                    <!-- Бандл не читается. Строка ОСТАЁТСЯ в списке:
+                                                                         файл существует, и пользователь обязан это
+                                                                         видеть — иначе единственный способ узнать о
+                                                                         нём — открыть папку проводником. -->
+                                                                    <TextBlock FontSize="10"
+                                                                               VerticalAlignment="Center"
+                                                                               Foreground="{DynamicResource NocturneDangerBrush}"
+                                                                               IsVisible="{Binding IsBroken}"
+                                                                               ToolTip.Tip="{Binding Problem}"
+                                                                               Text="!" />
+                                                                    <TextBlock FontSize="11.5"
+                                                                               VerticalAlignment="Center"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               Foreground="{Binding IsCurrent, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneTextBrush|NocturneTextSecondaryBrush}"
+                                                                               Text="{Binding Name}" />
+                                                                    <Border Padding="5,1"
+                                                                            CornerRadius="3"
+                                                                            VerticalAlignment="Center"
+                                                                            Background="{DynamicResource NocturneSurfaceInsetBrush}"
+                                                                            IsVisible="{Binding HasTriggerBadge}">
+                                                                        <TextBlock FontSize="9.5"
+                                                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                                                                   Foreground="{DynamicResource NocturneTextMutedBrush}"
+                                                                                   Text="{Binding TriggerBadge}" />
+                                                                    </Border>
+                                                                    <!-- Хоткей привязан, но не работает. Две причины и
+                                                                         оба раза один симптом: Windows не отдала
+                                                                         сочетание (это знает только демон) либо в графе
+                                                                         ошибка и демон не вооружил триггер вовсе (это
+                                                                         панель считает сама, тем же валидатором).
+                                                                         Показано на СТРОКЕ, потому что это единственное
+                                                                         место, где такое можно заметить, не открывая
+                                                                         макрос. -->
+                                                                    <TextBlock FontSize="9"
+                                                                               VerticalAlignment="Center"
+                                                                               Foreground="{DynamicResource NocturneDangerBrush}"
+                                                                               IsVisible="{Binding HasHotkeyProblem}"
+                                                                               ToolTip.Tip="{Binding HotkeyProblem}"
+                                                                               Text="&#x25B2;" />
+                                                                </StackPanel>
+                                                                <!-- Паспорт прочитался, а граф — нет: показываем
+                                                                     настоящее имя и описание автора, а не «файл X —
+                                                                     ошибка». Ради этого случая metadata.json и
+                                                                     nodes.json и лежат в бандле порознь. -->
+                                                                <TextBlock FontSize="9.5"
+                                                                           TextTrimming="CharacterEllipsis"
+                                                                           Foreground="{DynamicResource NocturneTextMutedBrush}"
+                                                                           IsVisible="{Binding IsBroken}"
+                                                                           Text="{Binding BrokenDetail}" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="1"
                                                                         Orientation="Horizontal"
@@ -1291,7 +1316,7 @@
                                                                         Padding="4,0"
                                                                         FontSize="10"
                                                                         ToolTip.Tip="Запустить"
-                                                                        IsEnabled="{Binding IsNotRunning}"
+                                                                        IsEnabled="{Binding CanRun}"
                                                                         Click="OnRunMacroClicked" />
                                                                 <Button Content="■"
                                                                         Classes="ghost"
@@ -1300,6 +1325,12 @@
                                                                         ToolTip.Tip="Остановить"
                                                                         IsEnabled="{Binding IsRunning}"
                                                                         Click="OnStopMacroClicked" />
+                                                                <Button Content="⤓"
+                                                                        Classes="ghost"
+                                                                        Padding="4,0"
+                                                                        FontSize="10"
+                                                                        ToolTip.Tip="Экспорт — отдать файл .hsm как есть"
+                                                                        Click="OnExportMacroClicked" />
                                                                 <Button Content="×"
                                                                         Classes="ghost"
                                                                         Padding="4,0"
@@ -1322,12 +1353,25 @@
                             Padding="8"
                             BorderThickness="0,1,0,0"
                             BorderBrush="{DynamicResource NocturneDividerBrush}">
-                        <Button Content="+ Новый макрос"
-                                Classes="accent"
-                                Height="26"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center"
-                                Click="OnNewMacroClicked" />
+                        <!-- Импорт рядом с созданием, а не в шапке: обе кнопки отвечают на один
+                             вопрос «откуда в библиотеке берётся макрос». Экспорт живёт на СТРОКЕ —
+                             он всегда про конкретный файл. -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Button Grid.Column="0"
+                                    Content="+ Новый макрос"
+                                    Classes="accent"
+                                    Height="26"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Click="OnNewMacroClicked" />
+                            <Button Grid.Column="1"
+                                    Content="Импорт…"
+                                    Height="26"
+                                    Padding="10,0"
+                                    Margin="6,0,0,0"
+                                    ToolTip.Tip="Скопировать чужой .hsm в папку макросов"
+                                    Click="OnImportMacroClicked" />
+                        </Grid>
                     </Border>
                 </Grid>
             </Border>

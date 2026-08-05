@@ -16,6 +16,15 @@ namespace SmartMacro.Hotkeys;
 /// самом макросе, так что привязка и поведение не могут разъехаться, а слушателю остаётся
 /// просто перерегистрироваться всякий раз, когда библиотека меняется.
 ///
+/// <b>Источник — <see cref="MacroGraphStore.Armed"/>, а НЕ <c>All</c>, и это требование F3.</b>
+/// Автором библиотеки стала панель, значит гарантия «оно в библиотеке ⇒ демон его принял»
+/// пропала: в <c>macros/</c> может лечь файл, который никто не проверял. Вооружить сочетание у
+/// макроса с ошибкой в графе значило бы вернуть «хоткей нажимается, ничего не происходит» — тот
+/// самый дефект, ради которого в D4 заводили <c>GetHotkeyFailures</c>, только с другой стороны.
+/// Судит общий <see cref="Validation.MacroGraphValidator"/> при загрузке; панель выносит тот же
+/// вердикт из того же файла и тем же кодом, поэтому объяснять пользователю, почему клавиша молчит,
+/// ей не требуется ни одного запроса.
+///
 /// Сама регистрация делегирована двум Win32-мониторам (RegisterHotKey для аккордов клавиатуры,
 /// WH_MOUSE_LL для аккордов мыши); этот класс владеет только отображением «id → макрос» и
 /// жизненным циклом «старт / стоп / приостановка».
@@ -49,7 +58,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
         _macros = macros;
         _logger = logger;
 
-        BuildDescriptors(_macros.All);
+        BuildDescriptors(_macros.Armed);
         _keyboardMonitor.HotkeyPressed += OnMonitorHotkeyPressed;
         _mouseMonitor.HotkeyPressed += OnMonitorHotkeyPressed;
         _macros.MacrosChanged += OnMacrosChanged;
@@ -114,7 +123,7 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
             _suspended = false;
             if (_started)
             {
-                BuildDescriptors(_macros.All);
+                BuildDescriptors(_macros.Armed);
                 await _keyboardMonitor.StartAsync(_keyboardDescriptors, cancellationToken).ConfigureAwait(false);
                 await _mouseMonitor.StartAsync(_mouseDescriptors, cancellationToken).ConfigureAwait(false);
                 CollectFailures();
@@ -166,12 +175,12 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
         }
     }
 
-    private void OnMacrosChanged(IReadOnlyList<MacroGraph> macros)
+    private void OnMacrosChanged()
     {
-        _ = RestartAsync(macros, CancellationToken.None);
+        _ = RestartAsync(CancellationToken.None);
     }
 
-    private async Task RestartAsync(IReadOnlyList<MacroGraph> macros, CancellationToken cancellationToken)
+    private async Task RestartAsync(CancellationToken cancellationToken)
     {
         await _restartLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -183,6 +192,9 @@ public sealed partial class HotkeyListener : IHostedService, IHotkeyRegistration
                 return;
             }
 
+            // Снимок берётся ЗДЕСЬ, а не приезжает нагрузкой события: хранилище отдаёт разным
+            // подписчикам разное, и вооружаемые графы — это не «вся библиотека».
+            var macros = _macros.Armed;
             if (!_started)
             {
                 BuildDescriptors(macros);

@@ -1,4 +1,5 @@
 using SmartMacro.App.Ipc;
+using SmartMacro.App.Macros;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.Services;
 using SmartMacro.App.ViewModels;
@@ -6,12 +7,16 @@ using SmartMacro.App.ViewModels;
 namespace SmartMacro.App;
 
 /// <summary>
-/// Всё, чем владеет процесс панели, — а после стадии 3 список очень короткий: одно
-/// IPC-соединение и три тонких переходника поверх него.
+/// Всё, чем владеет процесс панели: одно IPC-соединение, два тонких переходника поверх него —
+/// и, с волны F3, ПАПКА МАКРОСОВ.
+///
+/// Последнее — единственное доменное состояние, которое здесь есть, и появилось оно намеренно:
+/// автором изменений в макросах стала панель, а библиотека — факт файловой системы, а не факт
+/// демона, поэтому владеть ею должен процесс, в котором живёт редактор.
 ///
 /// Это пришло на смену полноценному корню композиции на <c>Microsoft.Extensions.Hosting</c>.
 /// Контейнер отрабатывал свой хлеб, пока движок жил внутри UI: дюжина синглтонов, у которых
-/// порядок разрешения имел значение. Но граф из четырёх объектов, где нечем управлять по времени
+/// порядок разрешения имел значение. Но граф из пяти объектов, где нечем управлять по времени
 /// жизни, дешевле прочитать, чем настроить, — а выкинуть пакеты хоста и было одной из целей
 /// разделения.
 /// </summary>
@@ -19,13 +24,21 @@ internal sealed class AppServices : IAsyncDisposable
 {
     private readonly IpcClient _client;
 
-    public AppServices(IpcClient client, string macroFolderPath)
+    /// <param name="client">Соединение с демоном.</param>
+    /// <param name="root">
+    /// Корень установки. Отсюда берётся <c>macros/</c>; вычисляет его хост, потому что только он
+    /// знает, где на самом деле лежит демон (в дереве разработки корень — его папка).
+    /// </param>
+    public AppServices(IpcClient client, string root)
     {
         _client = client;
-        MacroFolderPath = macroFolderPath;
+        Library = new MacroLibrary(root);
         MacroLauncher = new IpcMacroLauncher(client);
         HotkeySuspension = new IpcHotkeySuspension(client);
     }
+
+    /// <summary>Папка <c>macros/</c>: панель — её единственный автор, демон только читает (F3).</summary>
+    public MacroLibrary Library { get; }
 
     /// <summary>Соединение с демоном. Всё, что показывает UI, пришло отсюда.</summary>
     public IIpcClient Client => _client;
@@ -38,13 +51,6 @@ internal sealed class AppServices : IAsyncDisposable
 
     /// <summary>Приостановка и возобновление глобальных хоткеев демона вокруг ловушки сочетания.</summary>
     public IHotkeySuspension HotkeySuspension { get; }
-
-    /// <summary>
-    /// Абсолютный путь к папке <c>macros/</c> демона — для кнопки «открыть папку» в редакторе.
-    /// Вычисляется от того места, где на самом деле лежит исполняемый файл демона: в дереве
-    /// разработки это соседний каталог bin, а не наш.
-    /// </summary>
-    public string MacroFolderPath { get; }
 
     /// <summary>
     /// Собирает оболочку целиком — рейку режимов и обе режимные view-models. Намеренно фабрика, а
@@ -72,7 +78,7 @@ internal sealed class AppServices : IAsyncDisposable
     /// отдельной фабрики у них здесь больше нет.
     /// </summary>
     public MacroEditorViewModel CreateMacroEditorViewModel() =>
-        new(Client, MacroLauncher, HotkeySuspension, Dispatcher, MacroFolderPath);
+        new(Client, Library, MacroLauncher, HotkeySuspension, Dispatcher);
 
     /// <summary>
     /// Собирает view-model ленты журнала, стоящую за режимом «Лог». Своего пути к файлам она,
@@ -91,5 +97,9 @@ internal sealed class AppServices : IAsyncDisposable
     /// </summary>
     public SettingsViewModel CreateSettingsViewModel() => new(Client, Dispatcher);
 
-    public ValueTask DisposeAsync() => _client.DisposeAsync();
+    public ValueTask DisposeAsync()
+    {
+        Library.Dispose();
+        return _client.DisposeAsync();
+    }
 }

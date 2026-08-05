@@ -1,5 +1,4 @@
 using SmartMacro.Contracts.Dto;
-using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Windows;
 
@@ -45,30 +44,6 @@ public static class DtoMappers
     {
         ArgumentNullException.ThrowIfNull(runs);
         return [.. runs.Select(run => run.ToDto())];
-    }
-
-    /// <summary>
-    /// Проецирует перечень шаблонов ОДНОГО бандла на проводную форму.
-    ///
-    /// Путь внутри бандла разбирается на пару «набор + имя» тем же
-    /// <see cref="MacroBundleFormat.TryParseTemplatePath"/>, которым его читают исполнитель и
-    /// валидатор, — иначе браузер показывал бы не то множество, которое найдёт движок. Записи,
-    /// шаблоном не являющиеся, каталог уже отфильтровал.
-    /// </summary>
-    public static IReadOnlyList<TemplateDto> ToDto(this IEnumerable<MacroBundleTemplateInfo> templates)
-    {
-        ArgumentNullException.ThrowIfNull(templates);
-
-        var rows = new List<TemplateDto>();
-        foreach (var template in templates)
-        {
-            if (MacroBundleFormat.TryParseTemplatePath(template.Path, out var set, out var name))
-            {
-                rows.Add(new TemplateDto(set, name, template.Size.Width, template.Size.Height, template.Bytes));
-            }
-        }
-
-        return rows;
     }
 
     // Реестр штампует DateTime.UtcNow, так что значение и ЕСТЬ UTC, — но DateTime, попавший

@@ -35,15 +35,28 @@ public class MacroTemplateCacheTests
 
         public MacroTemplateCache Cache { get; }
 
-        public Task SaveAsync(string name) => Store.SaveAsync(new MacroGraph
+        /// <summary>Кладёт макрос в папку файлом — так же, как это делает панель (F3).</summary>
+        public void Save(string name)
         {
-            Name = name,
-            StartNodeId = Ids.Of("n0"),
-            Nodes = [new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = VirtualKey.F1, Target = new TargetSelector() }],
-        });
+            MacroBundleFolder.Save(MacroBundleFolder.In(Root), new MacroGraph
+            {
+                Name = name,
+                StartNodeId = Ids.Of("n0"),
+                Nodes = [new KeyPressNode { Id = Ids.Of("n0"), DisplayName = "n0", Key = VirtualKey.F1, Target = new TargetSelector() }],
+            });
+            Store.Refresh();
+        }
 
-        public Task AddAsync(string macro, string? set, string name, string content) =>
-            Store.AddTemplateAsync(macro, set, name, Encoding.UTF8.GetBytes(content));
+        public void Add(string macro, string? set, string name, string content)
+        {
+            var relativePath = MacroBundleFormat.TemplatePath(set, name);
+            MacroBundleFolder.EditTemplates(MacroBundleFolder.In(Root), macro, templates =>
+            [
+                .. templates.Where(f => !string.Equals(f.Path, relativePath, StringComparison.OrdinalIgnoreCase)),
+                new MacroBundleFile(relativePath, Encoding.UTF8.GetBytes(content)),
+            ]);
+            Store.Refresh();
+        }
 
         public void Dispose()
         {
@@ -65,10 +78,10 @@ public class MacroTemplateCacheTests
     public async Task Source_ResolvesSinglesAndSets_FromTheMacrosOwnBundle()
     {
         using var harness = new Harness();
-        await harness.SaveAsync("макрос");
-        await harness.AddAsync("макрос", null, "Кнопка", "single");
-        await harness.AddAsync("макрос", "classes", "Лучник", "archer");
-        await harness.AddAsync("макрос", "classes", "Жрец", "priest");
+        harness.Save("макрос");
+        harness.Add("макрос", null, "Кнопка", "single");
+        harness.Add("макрос", "classes", "Лучник", "archer");
+        harness.Add("макрос", "classes", "Жрец", "priest");
 
         var source = harness.Cache.For("макрос");
 
@@ -87,10 +100,10 @@ public class MacroTemplateCacheTests
     public async Task TheSameNameInTwoMacros_ResolvesToTwoDifferentFiles()
     {
         using var harness = new Harness();
-        await harness.SaveAsync("первый");
-        await harness.SaveAsync("второй");
-        await harness.AddAsync("первый", null, "Кнопка", "из первого");
-        await harness.AddAsync("второй", null, "Кнопка", "из второго");
+        harness.Save("первый");
+        harness.Save("второй");
+        harness.Add("первый", null, "Кнопка", "из первого");
+        harness.Add("второй", null, "Кнопка", "из второго");
 
         await Assert.That(Text(harness.Cache.For("первый").TryGetTemplate("Кнопка"))).IsEqualTo("из первого");
         await Assert.That(Text(harness.Cache.For("второй").TryGetTemplate("Кнопка"))).IsEqualTo("из второго");
@@ -113,8 +126,8 @@ public class MacroTemplateCacheTests
     public async Task Nothing_IsRead_UntilTheFirstTemplateIsAskedFor()
     {
         using var harness = new Harness();
-        await harness.SaveAsync("макрос");
-        await harness.AddAsync("макрос", null, "Кнопка", "png");
+        harness.Save("макрос");
+        harness.Add("макрос", null, "Кнопка", "png");
 
         var source = harness.Cache.For("макрос");
         await Assert.That(harness.Cache.CachedMacros).IsEqualTo(0);
@@ -130,11 +143,11 @@ public class MacroTemplateCacheTests
     public async Task EditingTheBundle_DropsTheCache_SoTheNextRunSeesTheNewBytes()
     {
         using var harness = new Harness();
-        await harness.SaveAsync("макрос");
-        await harness.AddAsync("макрос", null, "Кнопка", "старое");
+        harness.Save("макрос");
+        harness.Add("макрос", null, "Кнопка", "старое");
         await Assert.That(Text(harness.Cache.For("макрос").TryGetTemplate("Кнопка"))).IsEqualTo("старое");
 
-        await harness.AddAsync("макрос", null, "Кнопка", "новое");
+        harness.Add("макрос", null, "Кнопка", "новое");
 
         await Assert.That(harness.Cache.CachedMacros).IsEqualTo(0);
         await Assert.That(Text(harness.Cache.For("макрос").TryGetTemplate("Кнопка"))).IsEqualTo("новое");
@@ -146,13 +159,13 @@ public class MacroTemplateCacheTests
     public async Task ASourceHandedToARun_KeepsItsSnapshot_AcrossACacheDrop()
     {
         using var harness = new Harness();
-        await harness.SaveAsync("макрос");
-        await harness.AddAsync("макрос", null, "Кнопка", "старое");
+        harness.Save("макрос");
+        harness.Add("макрос", null, "Кнопка", "старое");
 
         var running = harness.Cache.For("макрос");
         await Assert.That(Text(running.TryGetTemplate("Кнопка"))).IsEqualTo("старое");
 
-        await harness.AddAsync("макрос", null, "Кнопка", "новое");
+        harness.Add("макрос", null, "Кнопка", "новое");
 
         await Assert.That(Text(running.TryGetTemplate("Кнопка"))).IsEqualTo("старое");
         await Assert.That(Text(harness.Cache.For("макрос").TryGetTemplate("Кнопка"))).IsEqualTo("новое");
@@ -165,7 +178,7 @@ public class MacroTemplateCacheTests
     public async Task EntriesThatAreNotTemplates_AreIgnoredByBothTheSnapshotAndTheInventory()
     {
         using var harness = new Harness();
-        await harness.SaveAsync("макрос");
+        harness.Save("макрос");
         var path = Path.Combine(harness.Root, "macros", "макрос" + MacroBundleFormat.Extension);
         var content = MacroBundleReader.ReadContent(path)!;
         MacroBundleWriter.Write(path, content with
