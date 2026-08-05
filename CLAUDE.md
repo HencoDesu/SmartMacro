@@ -16,7 +16,7 @@ The refactoring plan that got us here was **deleted** once it was done — not o
 
 ⚠️ **§13.1 is gone, and that is the point.** It was the `.hsm` decision written up as something not yet built, and it survived three waves as a to-do. With F4 the format is finished, so its contents moved into the sections that describe what exists — the bundle layout and the library in §5.7, templates inside the macro in §8, submacros in §5.1, the panel's authorship in §5.7 and §6.1 — and the reasoning became rows in §14. Do not recreate a "planned format" section.
 
-Gate: `dotnet run --project tests/SmartMacro.Tests` — **788 tests**, and they are expected green before anything is committed.
+Gate: `dotnet run --project tests/SmartMacro.Tests` — **838 tests**, and they are expected green before anything is committed.
 
 The sections below are the constraints that are load-bearing — the things that look arbitrary, are not, and will be "simplified" back into bugs by anyone who does not know why they are there. Wave tags (D4, D3b, …) survive only because commit messages reference them.
 
@@ -42,6 +42,7 @@ Two departures from the mockup, both from looking at it running:
 - **Nothing is produced unless someone subscribed** (`SubscribeRunEvents`). `IsEnabled` is one volatile read per node, checked in the walker before it times anything or formats a detail string — not merely documented there. The daemon is resident and the panel is not, so unsubscribed is the normal state and must cost nothing.
 - **Events are coalesced into batches, at most one envelope per 50 ms.** This is not an optimisation. `IpcServer` gives each connection a 256-deep queue and **drops a client that stops draining**; a ten-window fan-out is several hundred events in a few hundred milliseconds, so unbatched the panel would be dropped exactly when the user is watching. Measured: 344 events, one envelope, zero loss.
 - **Overflow is counted and reported, never silent.** The queue is bounded and `TryWrite` failures ride out as `RunEventBatch.Dropped` so the panel can say the log has a hole. The engine must never block — a walk runs between two Win32 messages to a live game.
+- **A walk is struck off the live list in a `finally`, and it was not always.** `MacroExecutor.RunAsync` caught three exception types and closed the books after them; anything else — and `ArgumentException` from an empty tag is reachable through a hand-edited or imported bundle, because that rule lives only in the panel's view-model — flew past `WalkFinished` and `trace.Finished`. The walk then stayed in `RunEventPublisher._live` **until the daemon restarted**: every later `SubscribeRunEvents` handed the panel a phantom walk that would never finish, and the list grew with each such failure. The exception still escapes to the orchestrator, which logs it as a bug — that distinction is worth keeping — but the bookkeeping closes on every path now.
 
 A panel connecting mid-run gets the live walks with `FromStart = false` and says so. There is deliberately no per-run history buffer: between a drop and a reconnect nobody was subscribed, so recording had stopped and a buffer would be stale.
 
@@ -50,6 +51,8 @@ A panel connecting mid-run gets the live walks with `FromStart = false` and says
 `Core/Macros/Execution/MacroDebugSession` is the whole engine side: breakpoints, per-walk pause state, and the attach count. It reaches the walker as `MacroRunContext.Debugger` — the control sibling of `Observer`, with the same `IsActive` gate, so an undebugged walk pays one volatile read per node and allocates nothing.
 
 **The gate is between two nodes, and that is the safety argument, not a convenience.** Every `ActivateAsync`/`DeactivateAsync` bracket and every vision tick's wake/re-freeze lives entirely inside `IMacroPrimitives`, so by the time control is back in `MacroExecutor` no game window is left woken. Pausing there cannot strand a frozen client; pausing anywhere deeper could. `ABreakpointParksTheWalkBeforeTheNodeRuns` pins it with a primitive-call count.
+
+⚠️ **That argument rested on something that was not actually guaranteed until the review.** The bracket *lived* inside the primitive as described, but its completion did not: `GameWindow`'s wake→capture→freeze had no `try/finally`, and both `Task.Delay(settle, ct)` and `CapturePng()` throw. ■ Стоп mid-vision-tick left up to ten clients awake with nobody left to re-freeze them. All four brackets are now `try/finally`, and the freeze rule («не трогаем окно переднего плана», previously copy-pasted three times) is one `Refreeze()`. `AgentInputDispatcher` had it right all along and is the reason the input path never showed the bug — including its deliberate refusal to pass the token into `Deactivate`, which is now written down where the token arrives.
 
 **Breakpoints live in the daemon's session, never in the macro file.** The reasoning is written where the storage is (`MacroDebugSession`): a breakpoint is a fact about a debugging session, and persisting one would put it in a diff, travel with any macro the user shares, and make a red dot dirty the editor. The ergonomic half of persistence comes free from the split — the daemon outlives the panel, so a breakpoint survives closing and reopening the UI. It does not survive «Выход» from the tray, which is also when every tag, hotkey and run goes.
 
@@ -120,7 +123,11 @@ response to the push is to re-read `GetHotkeyFailures`.
 **The guarantee changed and had to be serviced.** «It is in the library ⇒ the daemon accepted it»
 rested on `SaveMacro`. What holds now is «somebody put a file there», so **the daemon validates
 every bundle at load and refuses to arm the triggers of an invalid one** (`MacroGraphStore.Armed`,
-which is what `HotkeyListener` reads — never `All`). Otherwise «the hotkey does nothing» comes back
+which is what `HotkeyListener` reads — **and, since the review, `Orchestrator` too**. It read `All`
+for years, so a macro with a validation error had a dead hotkey and an honest red row in the library
+— and still booted on every client launch, running half a login sequence across ten windows before
+dying on the broken node. Worse than the D4 defect F3 closed: the macro did not go quiet, it did
+half the job). Otherwise «the hotkey does nothing» comes back
 from the other side — the D4 defect exactly. The validator is shared and the inventory is the same
 one, so **the panel reaches the same verdict itself** and needs no new request to say «хоткей не
 вооружён — в макросе ошибок: N» on the library row. The environment diagnostic distinguishes the two
@@ -142,8 +149,18 @@ to remove the file without opening Explorer.
 
 **Import is a file copy; export hands the file over as it is.** Importing must NOT parse and rewrite
 the bundle: run through today's writer it would lose everything today's format version does not know
-— the exact loss the format exists to prevent. A taken name gets a `-2` suffix, and the file stem
-wins over the `Name` inside, so the copy honestly answers to its new name.
+— the exact loss the format exists to prevent. The file stem wins over the `Name` inside, so the
+copy honestly answers to its new name.
+
+⚠️ **A taken name ASKS — it does not resolve itself.** Import used to append `-2` silently and
+`Save` used to overwrite silently; the review found the second was destroying macros (rename onto an
+existing name produced one file with one macro's graph and another's templates, then deleted the
+survivor). Both now go through `IMacroNameConflictPrompt` — a seam, not a `Win32MessageBox` call,
+because the view-models must stay headless-testable — and the dialog names what would be lost («будет
+потеряно: 11 шаблонов, 2 под-макроса»). `FreeName` did not go away: it is one of the three answers,
+now chosen by a person. **The refusal lives in `MacroBundleFolder` as well as in the panel**, and
+that is deliberate: the panel asks, the folder makes it impossible to lose the race between the
+question and the write.
 
 ⚠️ **The 1 MB ceiling was a limit of the PROTOCOL and is gone from import.** It existed so a
 multi-megabyte base64 string would not queue ahead of a running macro's events. It survives for the
@@ -347,6 +364,7 @@ Four protocol facts every caller has to respect:
 - **A client that stops draining events is dropped.** So `IIpcClient.Connected` is a re-fetch signal, not a nicety — every view-model re-seeds its snapshots there, and reconciles (drops rows the daemon no longer reports) rather than merely upserting.
 - **Nothing about macros is asked of the daemon (F3).** Not the library, not writing, not templates: the panel reads and writes `macros/` itself. `SaveSettings` inherited the old `SaveMacro` convention (`[]` means written) because the settings file is still the daemon's.
 - **Two of the pushes are opt-in and per-connection**, and they are the only two frequent ones: `RunEvents` (`SubscribeRunEvents`) and `LogEntries` (`SubscribeLog`). Their flags are separate on purpose — one is scoped to «Макросы», the other to the panel's whole life — so neither mode pays the other's traffic. Both are forgotten with the connection, so both must be re-requested on every `Connected`.
+- **Hotkey suspension is a THIRD thing forgotten with the connection, and it had to be taught that.** `SuspendHotkeys` edits daemon state, so before the review a panel killed by Task Manager while in «Макросы» left the daemon with zero registered chords — forever, since `OnMacrosChanged` deliberately does not re-register while suspended — and the environment check reported a cheerful green «занято N из N» because nothing could ask whether they were suspended. It is now a **lease**: a per-connection flag plus a holder count in `HotkeyListener`, released by the same `finally` that drops the two subscriptions. Both halves earn their keep — the flag stops one chatty client leaking a second lease, the count stops a departing panel restoring chords while a second panel still has a key-capture box open. The diagnostic card grew a third state instead of a seventh check, so the count-written-out-in-four-places trap stays closed.
 
 `IIpcBroadcaster` (Core) exists so `RequestActivate` and the tray can push `ActivateWindow` without a DI cycle: `IpcServer` implements it and hands itself to the dispatcher in its own constructor. Its two `BroadcastTo*Subscribers` lanes must stay **synchronous and non-blocking** — `LogEventPublisher`'s recursion guard is scoped to the duration of the call.
 
