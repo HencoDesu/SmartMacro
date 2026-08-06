@@ -10,7 +10,6 @@ using SmartMacro.Contracts.Settings;
 using SmartMacro.Orchestration;
 using SmartMacro.Resources;
 using SmartMacro.Settings;
-using SmartMacro.Vision;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Ipc;
@@ -44,7 +43,6 @@ public sealed partial class IpcRequestDispatcher
     private readonly MacroRunRegistry _runs;
     private readonly IMacroRunner _runner;
     private readonly IHotkeyRegistration _hotkeys;
-    private readonly CaptureDumpService _captures;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly RunEventPublisher _runEvents;
     private readonly LogEventPublisher _log;
@@ -65,7 +63,6 @@ public sealed partial class IpcRequestDispatcher
         MacroRunRegistry runs,
         IMacroRunner runner,
         IHotkeyRegistration hotkeys,
-        CaptureDumpService captures,
         IHostApplicationLifetime lifetime,
         RunEventPublisher runEvents,
         LogEventPublisher log,
@@ -83,7 +80,6 @@ public sealed partial class IpcRequestDispatcher
         _runs = runs;
         _runner = runner;
         _hotkeys = hotkeys;
-        _captures = captures;
         _lifetime = lifetime;
         _runEvents = runEvents;
         _log = log;
@@ -367,12 +363,6 @@ public sealed partial class IpcRequestDispatcher
             {
                 var results = await _diagnostics.RunAsync(cancellationToken).ConfigureAwait(false);
                 return Ok(request, IpcJson.Write<DiagnosticDto[]>([.. results]));
-            }
-
-            case IpcMessageTypes.DumpCaptures:
-            {
-                var folder = await _captures.DumpAsync(cancellationToken).ConfigureAwait(false);
-                return Ok(request, IpcJson.Write(folder));
             }
 
             case IpcMessageTypes.Shutdown:

@@ -256,9 +256,6 @@ public static class IpcMessageTypes
     /// </summary>
     public const string RunDiagnostics = "RunDiagnostics";
 
-    /// <summary>Запрос: — → Ответ: строка JSON, каталог, куда записаны снимки. Отладка машинного зрения.</summary>
-    public const string DumpCaptures = "DumpCaptures";
-
     /// <summary>Запрос: — → Ответ: —. Штатное завершение демона; ответ уходит до выхода из процесса.</summary>
     public const string Shutdown = "Shutdown";
 

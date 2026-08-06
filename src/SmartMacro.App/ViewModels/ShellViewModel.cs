@@ -3,7 +3,6 @@ using System.Collections.Specialized;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using SmartMacro.App.Mvvm;
-using SmartMacro.App.Services;
 using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels;
@@ -143,15 +142,6 @@ public sealed class TagSummaryItemViewModel
 /// </summary>
 public sealed class ShellViewModel : ObservableObject, IDisposable
 {
-    /// <summary>
-    /// Тот макрос из библиотеки, что стоит за кнопкой «Опознать все». Опознание перестало быть
-    /// встроенным ещё в W0.2b — это граф-пример <c>pw-identify</c>, поэтому кнопка запускает
-    /// именно его, а когда такого макроса в библиотеке нет, она гаснет, вместо того чтобы
-    /// слать запрос, который демон отвергнет.
-    /// </summary>
-    public const string IdentifyMacroName = "pw-identify";
-
-    private readonly IMacroLauncher? _launcher;
     private ShellModeViewModel? _selectedMode;
     private ShellMode _currentMode = ShellMode.Windows;
     private bool _hotkeysSuspended;
@@ -161,8 +151,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         WorkspaceViewModel workspace,
         MacroEditorViewModel editor,
         LogViewModel log,
-        SettingsViewModel settings,
-        IMacroLauncher? launcher = null)
+        SettingsViewModel settings)
     {
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(editor);
@@ -173,7 +162,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Editor = editor;
         Log = log;
         Settings = settings;
-        _launcher = launcher;
 
         // ⚠️ Строки «Шаблоны» здесь БОЛЬШЕ НЕТ (волна F2). Рейка — про сущности, а шаблон
         // перестал ею быть: общего дерева templates/ не существует, файл лежит внутри бандла
@@ -363,22 +351,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// <summary><c>true</c>, когда <see cref="OtherRunsText"/> есть что показать.</summary>
     public bool HasOtherRuns => Workspace.Runs.Count > 1;
 
-    // ---- действия в шапке «Окна» ----------------------------------------------------------
-
-    /// <summary><c>true</c>, когда в библиотеке действительно есть <see cref="IdentifyMacroName"/>.</summary>
-    public bool CanIdentifyAll { get; private set; }
-
-    /// <summary>Запускает макрос опознания по всем окнам, в которые попадают его селекторы.</summary>
-    public void IdentifyAll()
-    {
-        if (!CanIdentifyAll || _launcher is null)
-        {
-            return;
-        }
-
-        _launcher.RunMacro(IdentifyMacroName);
-    }
-
     // ---- хоткеи ---------------------------------------------------------------------------
 
     /// <summary><c>true</c>, пока глобальные хоткеи демона выключены по нашей просьбе.</summary>
@@ -566,18 +538,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasOtherRuns));
     }
 
-    private void RefreshMacroState()
-    {
-        Mode(ShellMode.Macros).SetCount(Editor.Macros.Count);
-
-        var canIdentify =
-            Editor.Macros.Any(item => string.Equals(item.Name, IdentifyMacroName, StringComparison.Ordinal));
-        if (canIdentify != CanIdentifyAll)
-        {
-            CanIdentifyAll = canIdentify;
-            OnPropertyChanged(nameof(CanIdentifyAll));
-        }
-    }
+    private void RefreshMacroState() => Mode(ShellMode.Macros).SetCount(Editor.Macros.Count);
 
     // Самый многочисленный тег первым, дальше по алфавиту — устойчивый порядок, поднимающий
     // наверх полосы реальный состав пати.

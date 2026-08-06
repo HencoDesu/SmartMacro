@@ -2,6 +2,7 @@ using System.Text.Json;
 using SmartMacro.App.Ipc;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Native;
 
 namespace SmartMacro.Tests.Ipc;
 
@@ -66,6 +67,7 @@ public class IpcClientTests
                 // отступает — ровно то состояние, которое нам и нужно при разборке.
                 throw new IOException("нет доступных соединений");
             }
+
             var pair = _staged.Dequeue();
             return Task.FromResult(new IpcConnection(pair.ServerInput, pair.ServerOutput, leaveOpen: true));
         }
@@ -92,8 +94,10 @@ public class IpcClientTests
             {
                 return true;
             }
+
             await Task.Delay(10);
         }
+
         return condition();
     }
 
@@ -110,19 +114,27 @@ public class IpcClientTests
         // (обработчиков он не дожидается), так что клиент не вправе полагаться на порядок
         // прибытия.
         var first = fixture.Client.RequestAsync<WindowDto[]>(IpcMessageTypes.GetWindows);
-        var second = fixture.Client.RequestAsync<string>(IpcMessageTypes.DumpCaptures);
+        var second = fixture.Client.RequestAsync<HotkeyFailureDto[]>(IpcMessageTypes.GetHotkeyFailures);
 
         var requests = (await pair.ReadLinesAsync(2)).Select(ParseRequest).ToList();
         var windowsId = requests.Single(r => r.Type == IpcMessageTypes.GetWindows).Id;
-        var dumpId = requests.Single(r => r.Type == IpcMessageTypes.DumpCaptures).Id;
+        var hotkeysId = requests.Single(r => r.Type == IpcMessageTypes.GetHotkeyFailures).Id;
 
-        await pair.SendAsync(new IpcResponse(dumpId, Ok: true, IpcJson.Write("C:/debug")));
+        await pair.SendAsync(new IpcResponse(
+            hotkeysId,
+            Ok: true,
+            IpcJson.Write(new[]
+            {
+                new HotkeyFailureDto("иммунка", HotkeyModifiers.Control | HotkeyModifiers.Shift, VirtualKey.F1),
+            })));
         await pair.SendAsync(new IpcResponse(
             windowsId,
             Ok: true,
             IpcJson.Write(new[] { new WindowDto(0x1111, "elementclient_64", ["Лучник"]) })));
 
-        await Assert.That(await second).IsEqualTo("C:/debug");
+        var failures = await second;
+        await Assert.That(failures).IsNotNull();
+        await Assert.That(failures!.Single().MacroName).IsEqualTo("иммунка");
         var windows = await first;
         await Assert.That(windows).IsNotNull();
         await Assert.That(windows!.Single().ProcessName).IsEqualTo("elementclient_64");
@@ -182,7 +194,8 @@ public class IpcClientTests
         await fixture.Client.StartAsync(TimeSpan.FromSeconds(2));
 
         await Assert
-            .That(async () => await fixture.Client.RequestAsync(IpcMessageTypes.GetRunningMacros, timeout: ShortTimeout))
+            .That(async () =>
+                await fixture.Client.RequestAsync(IpcMessageTypes.GetRunningMacros, timeout: ShortTimeout))
             .Throws<TimeoutException>();
     }
 

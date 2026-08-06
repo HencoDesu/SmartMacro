@@ -11,7 +11,6 @@ using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Orchestration;
-using SmartMacro.Vision;
 using SmartMacro.Windows;
 
 namespace SmartMacro.Tests.Ipc;
@@ -20,16 +19,14 @@ namespace SmartMacro.Tests.Ipc;
 /// Диспетчер, собранный с настоящим движком настолько, насколько его дёшево построить.
 ///
 /// Настоящие: <see cref="WindowRegistry"/>, <see cref="MacroRunRegistry"/>,
-/// <see cref="MacroGraphStore"/> над временной папкой, <see cref="CaptureDumpService"/> над
-/// временной папкой. Это те части, ПОВЕДЕНИЕ которых обработчики и обязаны наружу выставлять,
-/// так что, подделав их, мы проверяли бы разве что тот факт, что диспетчер зовёт методы, которые
-/// мы ему и написали звать.
+/// <see cref="MacroGraphStore"/> над временной папкой. Это те части, ПОВЕДЕНИЕ которых
+/// обработчики и обязаны наружу выставлять, так что, подделав их, мы проверяли бы разве что тот
+/// факт, что диспетчер зовёт методы, которые мы ему и написали звать.
 ///
 /// Подделаны: <see cref="IMacroRunner"/> и <see cref="IHotkeyRegistration"/> (настоящий
 /// <see cref="Orchestrator"/> или <see cref="HotkeyListener"/> тянет за собой монитор процессов,
-/// фабрику агентов и два монитора Win32), <see cref="IClassMatcher"/> и
-/// <see cref="IHostApplicationLifetime"/> — модульный тест, который взаправду останавливает
-/// хост, не нужен никому.
+/// фабрику агентов и два монитора Win32) и <see cref="IHostApplicationLifetime"/> — модульный
+/// тест, который взаправду останавливает хост, не нужен никому.
 /// </summary>
 internal sealed class IpcDispatcherHarness : IDisposable
 {
@@ -46,10 +43,8 @@ internal sealed class IpcDispatcherHarness : IDisposable
 
         Runner = A.Fake<IMacroRunner>();
         Hotkeys = A.Fake<IHotkeyRegistration>();
-        Matcher = A.Fake<IClassMatcher>();
         Lifetime = A.Fake<IHostApplicationLifetime>();
 
-        Captures = new CaptureDumpService(_baseDirectory, Windows, Matcher, NullLogger<CaptureDumpService>.Instance);
         RunEvents = new RunEventPublisher(NullLogger<RunEventPublisher>.Instance);
         Log = new LogEventPublisher();
         Debug = new MacroDebugSession(NullLogger<MacroDebugSession>.Instance);
@@ -71,7 +66,6 @@ internal sealed class IpcDispatcherHarness : IDisposable
             Runs,
             Runner,
             Hotkeys,
-            Captures,
             Lifetime,
             RunEvents,
             Log,
@@ -150,11 +144,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
     /// <summary>Сессия по умолчанию для обработчиков, которым соединение обязательно.</summary>
     public FakeSession Session { get; }
 
-    public IClassMatcher Matcher { get; }
-
     public IHostApplicationLifetime Lifetime { get; }
-
-    public CaptureDumpService Captures { get; }
 
     /// <summary>
     /// Кладёт макрос в папку — тем же путём, которым это делает панель, то есть файлом мимо
@@ -190,9 +180,7 @@ internal sealed class IpcDispatcherHarness : IDisposable
 
     public IpcRequestDispatcher Dispatcher { get; }
 
-    /// <summary>
-    /// Папка, внутри которой хранилище пишет <c>macros/</c>, а служба дампов — <c>debug/</c>.
-    /// </summary>
+    /// <summary>Папка, внутри которой хранилище держит <c>macros/</c> и <c>settings.json</c>.</summary>
     public string BaseDirectory => _baseDirectory;
 
     /// <summary>Путь к файлу, который занял бы макрос с таким именем.</summary>

@@ -47,8 +47,7 @@ public class ShellViewModelTests
             new MacroEditorViewModel(client, library?.Library ?? TempLibrary.Shared, launcher, hotkeys,
                 ImmediateUiDispatcher.Instance),
             new LogViewModel(client, ImmediateUiDispatcher.Instance),
-            new SettingsViewModel(client, ImmediateUiDispatcher.Instance),
-            launcher);
+            new SettingsViewModel(client, ImmediateUiDispatcher.Instance));
 
     private static LogEntryDto Entry(long seq, LogLevelDto level, string message = "строка") =>
         new(seq, DateTimeOffset.UtcNow, level, "SmartMacro.Windows.WindowRegistry", message, null);
@@ -342,29 +341,6 @@ public class ShellViewModelTests
         await Assert.That(shell.HasRuns).IsFalse();
         await Assert.That(shell.PrimaryRun).IsNull();
         await Assert.That(shell.OtherRunsText).IsEmpty();
-    }
-
-    // ---- «Опознать все» --------------------------------------------------------------------
-
-    [Test]
-    public async Task IdentifyAll_RunsPwIdentify_OnlyWhenTheLibraryHasIt()
-    {
-        var launcher = A.Fake<IMacroLauncher>();
-        var client = new FakeIpcClient();
-        using var library = new TempLibrary();
-        library.WriteExternally(Macro("pw-boot"));
-        using var shell = CreateShell(client, launcher, library: library);
-
-        await Assert.That(shell.CanIdentifyAll).IsFalse();
-        shell.IdentifyAll();
-        A.CallTo(() => launcher.RunMacro(A<string>._)).MustNotHaveHappened();
-
-        // Макрос появляется в папке — этого достаточно, демон здесь ни при чём.
-        library.WriteExternally(Macro(ShellViewModel.IdentifyMacroName));
-
-        await Assert.That(shell.CanIdentifyAll).IsTrue();
-        shell.IdentifyAll();
-        A.CallTo(() => launcher.RunMacro(ShellViewModel.IdentifyMacroName)).MustHaveHappenedOnceExactly();
     }
 
     // ---- область действия хоткеев --------------------------------------------------------------

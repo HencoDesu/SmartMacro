@@ -6,7 +6,6 @@ using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Resources;
 using SmartMacro.Native;
-using SmartMacro.Tests.Macros;
 
 namespace SmartMacro.Tests.Ipc;
 
@@ -330,20 +329,7 @@ public class IpcRequestDispatcherTests
         await Assert.That(IpcJson.Read<HotkeyFailureDto[]>(response.Payload)!).IsEmpty();
     }
 
-    // ---------------------------------------------------------------------- диагностика
-
-    [Test]
-    public async Task DumpCaptures_CreatesTheFolderAndAnswersWithItsPath()
-    {
-        using var harness = new IpcDispatcherHarness();
-
-        var response = await harness.DispatchAsync(IpcMessageTypes.DumpCaptures);
-
-        await Assert.That(response.Ok).IsTrue();
-        var folder = IpcJson.Read<string>(response.Payload)!;
-        await Assert.That(folder).IsEqualTo(harness.Captures.FolderPath);
-        await Assert.That(Directory.Exists(folder)).IsTrue();
-    }
+    // ------------------------------------------------------------------ жизненный цикл
 
     [Test]
     public async Task RequestActivate_BroadcastsActivateWindow_ToEveryClient()

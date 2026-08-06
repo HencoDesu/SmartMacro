@@ -190,22 +190,6 @@
     <value>{0} опознано · {1} без тегов</value>
     <comment>она же, когда часть окон без тегов; {0} = опознано, {1} = без тегов</comment>
   </data>
-  <data name="Windows_Header_IdentifyAll" xml:space="preserve">
-    <value>Опознать все</value>
-    <comment>кнопка в шапке; гаснет, когда макроса pw-identify в библиотеке нет</comment>
-  </data>
-  <data name="Windows_Header_IdentifyAllTip" xml:space="preserve">
-    <value>Запустить макрос pw-identify по всем окнам</value>
-    <comment>подсказка к ней; имя макроса зашито в оболочке (ShellViewModel.IdentifyMacroName)</comment>
-  </data>
-  <data name="Windows_Header_Dump" xml:space="preserve">
-    <value>Дамп</value>
-    <comment>кнопка в шапке: снять debug/*.png со всех окон</comment>
-  </data>
-  <data name="Windows_Header_DumpTip" xml:space="preserve">
-    <value>Сохранить снимки окон в debug/ для настройки регионов</value>
-    <comment>подсказка к ней</comment>
-  </data>
 
   <!-- ======== Режим «Окна» — строка окна ======== -->
   <data name="Windows_Row_RemoveTag" xml:space="preserve">

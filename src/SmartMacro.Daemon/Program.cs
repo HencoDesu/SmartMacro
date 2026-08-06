@@ -337,7 +337,6 @@ internal static class Program
         // модульными тестами без живого движка, а не потому, что есть вторая реализация.
         services.AddSingleton<IMacroRunner>(sp => sp.GetRequiredService<Orchestrator>());
         services.AddSingleton<IHotkeyRegistration>(sp => sp.GetRequiredService<HotkeyListener>());
-        services.AddSingleton<CaptureDumpService>();
         services.AddSingleton<IpcRequestDispatcher>();
         services.AddSingleton<IpcServer>();
         // Рассылка событий как отдельная возможность — ради трейного сценария «панель уже

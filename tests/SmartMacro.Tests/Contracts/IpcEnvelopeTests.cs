@@ -75,7 +75,9 @@ public class IpcEnvelopeTests
     [Test]
     public async Task Response_Ok_WithScalarPayload_RoundTrips()
     {
-        // DumpCaptures отвечает голой строкой JSON, а не объектом.
+        // Голый скаляр — законная нагрузка конверта, и проверяется он здесь, а не через
+        // конкретный запрос: сегодня скалярных ответов в каталоге нет, но формат обязан их
+        // пережить, иначе первый же новый такой запрос будет чинить сериализацию, а не себя.
         var reloaded = RoundTrip(new IpcResponse(3, Ok: true, IpcJson.Write(@"C:\captures\2026-08-02")));
 
         await Assert.That(IpcJson.Read<string>(reloaded.Payload)).IsEqualTo(@"C:\captures\2026-08-02");

@@ -74,8 +74,7 @@ internal sealed class AppServices : IAsyncDisposable
             CreateWorkspaceViewModel(),
             CreateMacroEditorViewModel(),
             CreateLogViewModel(),
-            CreateSettingsViewModel(),
-            MacroLauncher);
+            CreateSettingsViewModel());
 
     /// <summary>Собирает view-model окон и прогонов саму по себе (нужно пути дизайнера).</summary>
     public WorkspaceViewModel CreateWorkspaceViewModel() => new(Client, Dispatcher);

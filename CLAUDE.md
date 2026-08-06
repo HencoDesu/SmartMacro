@@ -16,7 +16,18 @@ The refactoring plan that got us here was **deleted** once it was done — not o
 
 ⚠️ **§13.1 is gone, and that is the point.** It was the `.hsm` decision written up as something not yet built, and it survived three waves as a to-do. With F4 the format is finished, so its contents moved into the sections that describe what exists — the bundle layout and the library in §5.7, templates inside the macro in §8, submacros in §5.1, the panel's authorship in §5.7 and §6.1 — and the reasoning became rows in §14. Do not recreate a "planned format" section.
 
-Gate: `dotnet run --project tests/SmartMacro.Tests` — **847 tests**, and they are expected green before anything is committed.
+Gate: `dotnet run --project tests/SmartMacro.Tests` — **849 tests**, and they are expected green before anything is committed.
+
+### The «Окна» header has no actions (issue #25, closing #6)
+
+**«Опознать все» and «Дамп захватов» are gone, and with them the whole `DumpCaptures` path** — the button, the handler, the catalogue constant, the dispatcher `case`, `CaptureDumpService` and its DI line. Two separate reasons that landed on one strip:
+
+- «Опознать все» ran a macro **by the hard-coded name `pw-identify`**, and the seeding of the `pw-*` examples had been deleted a wave earlier — so `CanIdentifyAll` was false on every install in existence and the button was dead for everyone. Tagging and recognition are what a macro is *for*; a button above the window list that starts one particular macro is the engine knowing a macro's name.
+- `DumpCaptures` had **exactly one caller**, that button. Keeping the request without one would have given `Shutdown` a companion in `IpcCatalogTests.KnownGaps`, and a second entry is how such a list stops being read.
+
+⚠️ **`IGameWindow.CaptureScreenshot` / `INativeWindow.CapturePng` were NOT touched** — vision runs on them (`MacroPrimitives`), and the future region-picker dialog will too. **`IClassMatcher.DebugBinarizeClassRegion` is now callerless** and was deliberately left in place: removing it cascades into `ClassMatcherSettings.Region`/`LuminanceThreshold` and the settings validator, which is a separate decision.
+
+The header keeps `MinHeight="24"` where the buttons used to set it. Modes switch by *visibility* inside one panel, so without it the «Окна» header would sit 7 px shorter than «Прогоны» and «Лог» and the content would jump on every mode change.
 
 The sections below are the constraints that are load-bearing — the things that look arbitrary, are not, and will be "simplified" back into bugs by anyone who does not know why they are there. Wave tags (D4, D3b, …) survive only because commit messages reference them.
 
@@ -437,7 +448,7 @@ one path for the whole install:
 ```
 SmartMacro/
   SmartMacro.exe      the panel, single-file — THE ONLY thing visible at the root
-  macros/  settings.json  logs/  debug/
+  macros/  settings.json  logs/
   daemon/
     SmartMacro.Daemon.exe + runtime + appsettings.json + Assets/ + its own logs/
 ```
@@ -496,7 +507,7 @@ and one folder**, which is as close to the point of the layout as it gets.
   There is no global tree to lift any more; a `Move` that matches nothing would be a build error
   over nothing.
 - **`Publish` always cleans first**, so `dist/` is a BUILD OUTPUT, not an install: run from there and
-  `macros/`, `logs/`, `debug/` and `settings.json` are gone on the next publish.
+  `macros/`, `logs/` and `settings.json` are gone on the next publish.
 - **`VerifyNoClobber` and `build/publish-file-list.targets` are gone** with the shared folder — two
   different `PublishDir`s cannot put a file on top of a file. The
   `Microsoft.Extensions.Configuration.Binder` pin in `SmartMacro.App.csproj` stays as hygiene, not
@@ -523,7 +534,7 @@ probed**: the installation root (user data) and the daemon's own folder (`logs/`
 logger touches); in the dev tree they are the same path and the duplicate is dropped by comparison.
 Both ACL bits are checked (`FILE_ADD_FILE` and `FILE_ADD_SUBDIRECTORY`); the probe name carries the
 pid; it cleans up after itself. **Failure is fatal — there is no read-only mode.** A resident daemon
-exists in order to write (macro library, log, capture dumps), and a live tray icon over an engine
+exists in order to write (macro library, log), and a live tray icon over an engine
 that cannot save a line is a promise it will not keep. The channel is a native message box
 (`Native/Dialogs/Win32MessageBox` — a WinExe has no console and the logger does not exist yet) and
 the exit code is `2`. The panel has no probe (no shared assembly will take it: Contracts forbids
@@ -534,7 +545,7 @@ process silently.
 
 ### Runtime state files (in the installation ROOT, gitignored)
 
-`settings.json` (all engine knobs — see «Settings» above), `macros/*.hsm` (one bundle per macro, templates inside it) and `debug/` all live in the installation ROOT — the folder the panel sits in, one level above the daemon (see «The shipped layout»). The daemon's own `logs/smartmacro-*.log` is the exception: it stays in `daemon/`, next to the exe whose `appsettings.json` names it. `MacroGraphStore` loads on ctor → immutable snapshot → a debounced `FileSystemWatcher` raises `MacrosChanged` → subscribers (`HotkeyListener`, `MacroTemplateCache`, and the panel via the push) re-register live. Since F3 the watcher is the *only* source of change, because the daemon never writes; own-write suppression is gone with the writing. An unparseable file is skipped and logged, never fatal to the load — and shown as a row by the panel, which reads the same folder itself.
+`settings.json` (all engine knobs — see «Settings» above), and `macros/*.hsm` (one bundle per macro, templates inside it) both live in the installation ROOT — the folder the panel sits in, one level above the daemon (see «The shipped layout»). The daemon's own `logs/smartmacro-*.log` is the exception: it stays in `daemon/`, next to the exe whose `appsettings.json` names it. `MacroGraphStore` loads on ctor → immutable snapshot → a debounced `FileSystemWatcher` raises `MacrosChanged` → subscribers (`HotkeyListener`, `MacroTemplateCache`, and the panel via the push) re-register live. Since F3 the watcher is the *only* source of change, because the daemon never writes; own-write suppression is gone with the writing. An unparseable file is skipped and logged, never fatal to the load — and shown as a row by the panel, which reads the same folder itself.
 
 The panel writes `logs/smartmacro-ui-*.log` into the root as well, at an absolute path computed in code — in the dev tree the root IS the daemon's output folder, so both logs share one `logs/` there. The panel has no configuration file at all; an optional `appsettings.panel.json` next to the exe overrides the built-in Serilog defaults if the user drops one in. Every engine knob (`Agent`, `ProcessProfiles`, `Vision:*`) is the daemon's, and lives in `settings.json`.
 
@@ -548,7 +559,6 @@ The panel writes `logs/smartmacro-ui-*.log` into the root as well, at an absolut
 - Engine knobs live in `settings.json` next to the daemon, owned by `SettingsStore`, and are read through `ISettingsSource.Current` **at the point of use** — never cached in a field, or the knob stops being live. `IOptions<T>` and the `Config/` folder that held `AgentOptions` / `ProcessProfileOptions` / `ClassMatcherOptions` / `WindowVisionOptions` are gone. `appsettings.json` configures Serilog and nothing else. Coordinates, regions, templates, keys and timeouts belong in macro nodes, NOT in settings.
 - `ScreenPoint` / `ScreenRect` record structs (in `Native`) for all pixel coordinates — bind from JSON as `{ "X": .., "Y": .. }` objects.
 - Coordinate discovery workflow: user hovers cursor in-game and triggers a macro; `CursorPositionProvider` logs the client-space point it seeds the `cursor` variable with, which then goes into a node.
-- "Dump captures" in the «Окна» mode header sends `DumpCaptures` (with a generous timeout — it screenshots every client) and opens the folder the daemon replies with: per-agent `debug/*-full.png` and `*-class-bin.png` for tuning vision regions.
 - View-models take `IIpcClient` + `IUiDispatcher` and nothing Avalonia-shaped, so every one of them is exercised headlessly against `FakeIpcClient` (`tests/SmartMacro.Tests/Ipc/`), whose canned answers go through the real `IpcJson` round trip.
 - **Comments and xmldoc are in Russian** — the whole tree was translated once, deliberately as the last step of the refactor so the next wave would not re-import English. New code follows: comments, xmldoc, `[LoggerMessage]` templates, validator and abort messages, everything a human reads. **Not** translated: identifiers, test names, and technical names inside a Russian sentence (`SendMessage`, `WM_ACTIVATEAPP`, `hwnd`, `single-flight`).
 - **The gate is build + tests, and it is not enough** — even now that `tests/SmartMacro.Tests/Ui/` takes back the measurable half (see «Headless layout sweeps» below). Around two dozen defects in this codebase were invisible to build and tests and found only by running the app and looking: a focus ring clipped to nothing, glyphs rendering as colour emoji and ignoring `Foreground`, a window that silently unmapped itself, a panel that would not start at all, text with its descenders sheared off. If a change touches the UI, run it and look at it — and if you could not, say so instead of implying you did. **Both exes are `requireAdministrator`, but the manifest binds to the apphost, so `dotnet SmartMacro.Daemon.dll` / `dotnet SmartMacro.dll` from an unelevated shell runs them both** (the panel's assembly is `SmartMacro.dll`, not `SmartMacro.App.dll` — its `AssemblyName` is `SmartMacro`). Screenshot with `PrintWindow`, click with `mouse_event`; "I could not start it" is almost never true.

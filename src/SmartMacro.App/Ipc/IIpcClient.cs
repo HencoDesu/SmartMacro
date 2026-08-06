@@ -50,7 +50,7 @@ public interface IIpcClient : IAsyncDisposable
     /// </summary>
     /// <param name="type">Одна из констант-запросов <see cref="IpcMessageTypes"/>.</param>
     /// <param name="payload">Типизированная нагрузка запроса либо <c>null</c> для запросов без аргументов.</param>
-    /// <param name="timeout">Перекрывает значение по умолчанию у клиента; для <c>DumpCaptures</c> берите с запасом.</param>
+    /// <param name="timeout">Перекрывает значение по умолчанию у клиента; для запроса, обходящего все окна, берите с запасом.</param>
     /// <param name="cancellationToken">
     /// Снимает с ожидания ответа нас, но не демона: отменённый запрос уже ушёл в трубу, и
     /// выполнить его демон вполне может — ровно как при <see cref="TimeoutException"/>.

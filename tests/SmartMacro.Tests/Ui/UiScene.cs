@@ -125,8 +125,7 @@ internal sealed class UiScene : IDisposable
             new WorkspaceViewModel(client, ImmediateUiDispatcher.Instance),
             new MacroEditorViewModel(client, library.Library, null, null, ImmediateUiDispatcher.Instance),
             new LogViewModel(client, ImmediateUiDispatcher.Instance),
-            new SettingsViewModel(client, ImmediateUiDispatcher.Instance),
-            null);
+            new SettingsViewModel(client, ImmediateUiDispatcher.Instance));
 
         var window = new MainWindow(shell) { Width = width, Height = height };
 
@@ -283,7 +282,8 @@ internal sealed class UiScene : IDisposable
     /// <summary>Пуши, которые демон шлёт сам: без них рейка и полоса прогона остались бы пустыми.</summary>
     private static void PushLiveState(FakeIpcClient client)
     {
-        client.RaiseEvent(IpcMessageTypes.WindowTagsChanged, new WindowDto(HwndArcher, "elementclient_64", ["Лучник", "мастер"]));
+        client.RaiseEvent(IpcMessageTypes.WindowTagsChanged,
+            new WindowDto(HwndArcher, "elementclient_64", ["Лучник", "мастер"]));
         client.RaiseEvent(IpcMessageTypes.LogEntries, new LogEntryBatch(
             [Log(5, LogLevelDto.Warning, "Шаблон classes/Лучник.png не найден в бандле «pw-boot»")], 0));
     }

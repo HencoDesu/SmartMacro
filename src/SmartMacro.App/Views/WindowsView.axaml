@@ -41,7 +41,16 @@
                 BorderBrush="{DynamicResource NocturneDividerBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="12,9">
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+            <!-- Действий в шапке нет: разметка тегов и распознавание — работа конкретного
+                 макроса, а не кнопки над списком окон. «Опознать все» звала макрос по жёстко
+                 прошитому имени, «Дамп захватов» была единственным вызовом снятого вместе с
+                 ней запроса.
+
+                 MinHeight остался от кнопок и убран быть не может: высоту этой шапки задавали
+                 они (24 px + отступы = 42), ровно как в «Прогонах» и «Логе». Без него шапка
+                 «Окон» усохла бы до высоты своей строки, и переключение режимов дёргало бы
+                 содержимое по вертикали — режимы переключаются видимостью в одной панели. -->
+            <Grid ColumnDefinitions="Auto,Auto,*" MinHeight="24">
                 <TextBlock Grid.Column="0"
                            Text="{x:Static res:Strings.Shell_Mode_Windows}"
                            FontSize="{DynamicResource NocturneFontSizeBody}"
@@ -54,19 +63,6 @@
                            FontFamily="{DynamicResource NocturneFontFamilyMono}"
                            Foreground="{DynamicResource NocturneNeutral600Brush}"
                            VerticalAlignment="Center" />
-                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6">
-                    <Button Content="{x:Static res:Strings.Windows_Header_IdentifyAll}"
-                            Height="24"
-                            Padding="10,0"
-                            IsEnabled="{Binding CanIdentifyAll}"
-                            ToolTip.Tip="{x:Static res:Strings.Windows_Header_IdentifyAllTip}"
-                            Click="OnIdentifyAllClicked" />
-                    <Button Content="{x:Static res:Strings.Windows_Header_Dump}"
-                            Height="24"
-                            Padding="10,0"
-                            ToolTip.Tip="{x:Static res:Strings.Windows_Header_DumpTip}"
-                            Click="OnDumpCapturesClicked" />
-                </StackPanel>
             </Grid>
         </Border>
 
