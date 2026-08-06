@@ -245,12 +245,18 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// Работать с правами администратора. Интерфейс обязан сказать про эту галочку две вещи, и
     /// говорит их прямо на экране: смена требует перезапуска демона, а снятие ломает ввод в окна
     /// игры, запущенной от администратора (UIPI).
+    ///
+    /// <b>Механизма на экране больше нет.</b> Раньше под галочками стояла строка «СПОСОБ»,
+    /// называвшая одно из четырёх: ничего / ключ <c>Run</c> / повышение при ручном старте / задача
+    /// в Планировщике. Половина исчезла вместе с Планировщиком, а оставшаяся половина — деталь
+    /// Windows, а не решение, которое пользователь принимает: галочка «запускать при входе» и есть
+    /// ключ реестра, галочка прав и есть запрос UAC при старте демона.
     /// </summary>
     public bool RunElevated
     {
         get => _runElevated;
-        // StartupMechanismText и ShowsElevationRestartNote поднимает RaiseDirty внутри SetEdited
-        // — вместе со всем остальным, что зависит от накопленных правок.
+        // ShowsElevationRestartNote поднимает RaiseDirty внутри SetEdited — вместе со всем
+        // остальным, что зависит от накопленных правок.
         set => SetEdited(ref _runElevated, value);
     }
 
@@ -263,15 +269,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     }
 
     // ---- производное --------------------------------------------------------------------------
-
-    /// <summary>Как приложение зарегистрирует автозапуск при текущих галочках.</summary>
-    public string StartupMechanismText => (_runAtLogon, _runElevated) switch
-    {
-        (false, false) => Strings.Settings_Startup_MechanismNone,
-        (true, false) => Strings.Settings_Startup_MechanismRunKey,
-        (false, true) => Strings.Settings_Startup_MechanismElevatedOnly,
-        (true, true) => Strings.Settings_Startup_MechanismTask,
-    };
 
     /// <summary><c>true</c>, когда галочка прав отличается от той, с которой демон запущен.</summary>
     public bool ShowsElevationRestartNote =>
@@ -745,7 +742,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsDirty));
         OnPropertyChanged(nameof(ChangeText));
         OnPropertyChanged(nameof(CanApply));
-        OnPropertyChanged(nameof(StartupMechanismText));
         OnPropertyChanged(nameof(ShowsElevationRestartNote));
     }
 

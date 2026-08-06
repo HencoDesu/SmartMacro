@@ -14,6 +14,8 @@ namespace SmartMacro.Tests.Daemon;
 // причине демон берёт мьютекс на своём потоке Main.
 public class SingleInstanceGuardTests
 {
+    private static readonly TimeSpan Ceiling = TimeSpan.FromSeconds(5);
+
     private static string UniqueName() => $@"Local\SmartMacro.Tests.{Guid.NewGuid():N}";
 
     private static SingleInstanceGuard? AcquireOnAnotherThread(string name)
@@ -76,6 +78,83 @@ public class SingleInstanceGuardTests
         guard?.Dispose();
 
         await Assert.That(guard).IsNotNull();
+    }
+
+    // ---- порядок перезапуска с повышением ------------------------------------------------------
+    //
+    // Три теста ниже пиннят ловушку, которую иначе поймал бы только живой UAC: повышенная копия
+    // берёт ТО ЖЕ имя, пока исходный процесс ещё жив. Отпустить замок надо ДО её запуска, а
+    // забрать обратно — если она не поднялась. См. ElevationRelaunch.
+
+    [Test]
+    public async Task Release_FreesTheNameWhileWeAreStillAlive()
+    {
+        var name = UniqueName();
+
+        var guard = SingleInstanceGuard.TryAcquire(name)!;
+        var whileHeld = SingleInstanceGuard.IsTaken(name);
+        var rivalBefore = AcquireOnAnotherThread(name);
+
+        guard.Release();
+
+        var afterRelease = SingleInstanceGuard.IsTaken(name);
+        var rivalAfter = AcquireOnAnotherThread(name);
+        guard.Dispose();
+
+        await Assert.That(whileHeld).IsTrue();
+        await Assert.That(rivalBefore).IsNull();
+        await Assert.That(afterRelease).IsFalse();
+        await Assert.That(rivalAfter).IsNotNull();
+    }
+
+    [Test]
+    public async Task TryReacquire_TakesTheNameBackWhenTheCopyNeverCame()
+    {
+        var name = UniqueName();
+
+        var guard = SingleInstanceGuard.TryAcquire(name)!;
+        guard.Release();
+        var reacquired = guard.TryReacquire();
+        // Замок снова наш — значит, рядом второй демон не встанет.
+        var rival = AcquireOnAnotherThread(name);
+        guard.Dispose();
+
+        await Assert.That(reacquired).IsTrue();
+        await Assert.That(rival).IsNull();
+    }
+
+    [Test]
+    public async Task TryReacquire_FailsWhenSomebodyElseTookTheNameMeanwhile()
+    {
+        var name = UniqueName();
+        var guard = SingleInstanceGuard.TryAcquire(name)!;
+        guard.Release();
+
+        // Соперник держит имя на СВОЁМ потоке (владение мьютексом Win32 привязано к потоку) и
+        // отпускает только по команде — иначе к моменту проверки имя снова было бы свободно.
+        // Ворота с потолком, как у HotkeyMonitorDispatchTests: сломанный тест обязан покраснеть,
+        // а не повиснуть, и не имеет права держать поток пула дольше своей секунды.
+        using var taken = new ManualResetEventSlim();
+        using var letGo = new ManualResetEventSlim();
+        var rival = new Thread(() =>
+        {
+            using var other = SingleInstanceGuard.TryAcquire(name);
+            taken.Set();
+            letGo.Wait(Ceiling);
+        })
+        {
+            IsBackground = true,
+        };
+
+        rival.Start();
+        var rivalReady = taken.Wait(Ceiling);
+        var reacquired = guard.TryReacquire();
+        letGo.Set();
+        rival.Join(Ceiling);
+        guard.Dispose();
+
+        await Assert.That(rivalReady).IsTrue();
+        await Assert.That(reacquired).IsFalse();
     }
 
     [Test]

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -18,6 +19,7 @@ using SmartMacro.Native.Tray;
 using SmartMacro.Orchestration;
 using SmartMacro.Presentation;
 using SmartMacro.ProcessMonitoring;
+using SmartMacro.Resources;
 using SmartMacro.Settings;
 using SmartMacro.Vision;
 using SmartMacro.Windows;
@@ -115,6 +117,35 @@ internal static class Program
             return 0;
         }
 
+        // Права администратора: ДО построения хоста и после мьютекса. Оба соседства несущие, и
+        // оба объяснены у ElevationRelaunch — коротко: спрашивать UAC ради копии, которая тут же
+        // упрётся в занятый замок, незачем, а гасить уже поднятый хост поздно.
+        //
+        // Манифест демона — asInvoker (см. app.manifest), поэтому проверка «есть ли у нас права»
+        // впервые что-то значит. Панель осталась requireAdministrator: PrintWindow в окно,
+        // запущенное от администратора, из непривилегированного процесса возвращает чёрный кадр.
+        switch (ElevationRelaunch.TryHandOver(installationRoot, instance,
+                    SingleInstanceGuard.DaemonMutexName, out var relaunchFailure))
+        {
+            case ElevationRelaunch.Outcome.HandedOver:
+                Log.CloseAndFlush();
+                return 0;
+
+            // Отказ и сбой ведут в одно и то же место — работу без прав, — но говорят о себе
+            // по-разному: пользователю предстоит либо повторить и согласиться, либо снять
+            // галочку, и он должен знать, какой из двух случаев перед ним.
+            case ElevationRelaunch.Outcome.Refused:
+                WarnInBackground(Strings.Startup_Elevation_Refused);
+                break;
+
+            case ElevationRelaunch.Outcome.Failed:
+                WarnInBackground(string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings.Startup_Elevation_Failed,
+                    relaunchFailure ?? Strings.Startup_WriteProbe_ReasonUnknown));
+                break;
+        }
+
         try
         {
             Log.Information("SmartMacro daemon starting");
@@ -180,6 +211,31 @@ internal static class Program
             Log.CloseAndFlush();
         }
     }
+
+    /// <summary>
+    /// Показывает предупреждение, НЕ задерживая старт.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Канал тот же, что у пробы пера, — нативное окно: у демона нет ни своего окна, ни консоли,
+    /// панель может быть не запущена сутками, а полосы проверки среды, которая раньше сообщала о
+    /// таком, больше нет. Строки в журнале мало по причине, записанной ещё в D4 у горячих клавиш:
+    /// пользователь поставил галочку, видит чистый интерфейс, и не происходит ничего.
+    /// </para>
+    /// <para>
+    /// ⚠️ Отдельный поток, и это не украшение. <c>MessageBoxW</c> крутит собственный модальный
+    /// цикл и вернётся только после щелчка; на пути автозапуска это означало бы демон, который не
+    /// поднимается, пока пользователь не заметит окно. Поток фоновый — висящее окно не имеет
+    /// права держать процесс живым после «Выхода» из трея. И не <c>Task.Run</c>: пул отдал бы под
+    /// это свой поток на неограниченное время.
+    /// </para>
+    /// </remarks>
+    private static void WarnInBackground(string text) =>
+        new Thread(() => Win32MessageBox.Warning("SmartMacro", text))
+        {
+            IsBackground = true,
+            Name = "smartmacro-warning",
+        }.Start();
 
     /// <summary>
     /// Каталоги, которые обязаны быть доступны на запись, без повторов: в дереве разработки

@@ -21,9 +21,12 @@ public static partial class Win32MessageBox
 {
     private const uint MbOk = 0x0000_0000;
     private const uint MbIconError = 0x0000_0010;
+    private const uint MbIconWarning = 0x0000_0030;
     private const uint MbSystemModal = 0x0000_1000;
     private const uint MbSetForeground = 0x0001_0000;
     private const uint MbTopMost = 0x0004_0000;
+
+    private const uint Common = MbOk | MbSystemModal | MbSetForeground | MbTopMost;
 
     /// <summary>
     /// Показывает окно с ошибкой и возвращает управление, когда пользователь его закрыл. Поверх
@@ -31,7 +34,24 @@ public static partial class Win32MessageBox
     /// бы как зависание.
     /// </summary>
     public static void Error(string caption, string text) =>
-        MessageBoxW(IntPtr.Zero, text, caption, MbOk | MbIconError | MbSystemModal | MbSetForeground | MbTopMost);
+        MessageBoxW(IntPtr.Zero, text, caption, Common | MbIconError);
+
+    /// <summary>
+    /// То же окно с восклицательным знаком вместо крестика: «программа работает, но не так, как
+    /// вы просили».
+    ///
+    /// Заведено под отказ от повышения прав. Строка в журнале там не годится по той же причине,
+    /// по которой не годилась у горячих клавиш в D4: пользователь ставит галочку, видит чистый
+    /// интерфейс, и не происходит ничего. Полосы проверки среды, которая раньше отвечала за
+    /// такие сообщения, больше нет, а до подключения панели демон может прожить сутки — значит,
+    /// канал обязан быть тем же, что у пробы пера: нативным окном.
+    ///
+    /// ⚠️ Вызов БЛОКИРУЕТ поток на всё время показа (<c>MessageBoxW</c> крутит собственный
+    /// модальный цикл). Вызывающий, которому нельзя стоять, обязан увести его в отдельный поток
+    /// сам — здесь этого не делается, чтобы фатальные сообщения оставались фатальными.
+    /// </summary>
+    public static void Warning(string caption, string text) =>
+        MessageBoxW(IntPtr.Zero, text, caption, Common | MbIconWarning);
 
     // Возврат отбрасываем сознательно: MessageBoxW отдаёт код нажатой кнопки, а с MB_OK кнопка
     // ровно одна, так что читать нечего. Ноль тоже не значит ошибку — его отдают и при нехватке
