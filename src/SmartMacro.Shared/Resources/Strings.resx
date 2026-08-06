@@ -133,7 +133,7 @@
     <comment>пятая строка рейки, под разделителем, с шестерёнкой; она же заголовок шапки режима</comment>
   </data>
   <data name="Shell_Rail_SettingsTip" xml:space="preserve">
-    <value>Настройки демона и диагностика среды</value>
+    <value>Настройки демона</value>
     <comment>подсказка строки «Настройки» в рейке</comment>
   </data>
 
