@@ -254,44 +254,79 @@ public class SettingsViewModelTests
     // ---- профили -----------------------------------------------------------------------------
 
     // Таблица известных сигналов применяется ПРИ СОЗДАНИИ и только к узнанному имени — именно это
-    // и позволило убрать число из интерфейса, не потеряв смысл его отсутствия.
+    // и позволило убрать скобку пробуждения из интерфейса, не потеряв смысл её отсутствия.
     [Test]
-    public async Task AddProfile_FillsTheWakeSignalOnlyForKnownNames()
+    public async Task AddProfile_CreatesTheHookOnlyForKnownNames()
     {
         var client = new FakeIpcClient();
-        using var vm = Create(client, Snapshot(AppSettings.Default with { Profiles = [] }));
+        using var vm = Create(client, Snapshot(new AppSettings()));
 
         vm.NewProfileName = "elementclient_64";
         vm.AddProfile();
         vm.NewProfileName = "notepad";
         vm.AddProfile();
 
-        await Assert.That(vm.Profiles[0].WakesWindows).IsTrue();
-        await Assert.That(vm.Profiles[0].WakeText).IsEqualTo("есть");
-        await Assert.That(vm.Profiles[1].WakesWindows).IsFalse();
-        await Assert.That(vm.Profiles[1].WakeText).IsEqualTo("не нужен");
-
         await vm.ApplyAsync();
 
         var sent = client.PayloadsOf<SaveSettingsRequest>(IpcMessageTypes.SaveSettings).Single().Settings!;
-        await Assert.That(sent.Profiles[0].ActivationLParam).IsEqualTo(37336u);
-        await Assert.That(sent.Profiles[1].ActivationLParam).IsNull();
+        await Assert.That(sent.Profiles.Select(p => p.ProcessName))
+            .IsEquivalentTo(new[] { "elementclient_64", "notepad" });
+        await Assert.That(sent.Hooks.Keys).IsEquivalentTo(new[] { "elementclient_64" });
+        await Assert.That(sent.Hooks["elementclient_64"].ActivationLParam).IsEqualTo(37336u);
+        await Assert.That(sent.Hooks["elementclient_64"].SettleMs).IsEqualTo(200);
+        await Assert.That(sent.Hooks["elementclient_64"].DeactivateMs).IsEqualTo(100);
     }
 
-    // Экран не показывает сигнал побудки числом и потому не имеет права им распоряжаться: правка
-    // любого другого поля строки обязана донести его нетронутым.
+    // Экран не показывает скобку пробуждения вовсе и потому не имеет права ею распоряжаться:
+    // правка любого поля строки обязана донести хук нетронутым — вместе с теми полями, которых
+    // панель не знает (набор On и Scope: Run).
     [Test]
-    public async Task EditingAProfile_CarriesTheWakeSignalThroughUntouched()
+    public async Task EditingAProfile_CarriesTheHookThroughUntouched()
+    {
+        var client = new FakeIpcClient();
+        var baseline = AppSettings.Default with
+        {
+            Hooks = new Dictionary<string, ProcessHookSettings>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["elementclient_64"] = new()
+                {
+                    ActivationLParam = 4242,
+                    SettleMs = 350,
+                    DeactivateMs = 111,
+                    On = [HookOn.Capture],
+                    Scope = HookLifetime.Run,
+                },
+            },
+        };
+        using var vm = Create(client, Snapshot(baseline));
+
+        vm.Profiles.Single().ProcessName = "elementclient_64_ptr";
+        await vm.ApplyAsync();
+
+        var sent = client.PayloadsOf<SaveSettingsRequest>(IpcMessageTypes.SaveSettings).Single().Settings!;
+        var hook = sent.Hooks["elementclient_64"];
+        await Assert.That(hook.ActivationLParam).IsEqualTo(4242u);
+        await Assert.That(hook.SettleMs).IsEqualTo(350);
+        await Assert.That(hook.DeactivateMs).IsEqualTo(111);
+        await Assert.That(hook.On).IsEquivalentTo(new[] { HookOn.Capture });
+        await Assert.That(hook.Scope).IsEqualTo(HookLifetime.Run);
+    }
+
+    // Снятый профиль хук за собой НЕ уносит. Число добыто реверсом и набрать его в панели негде,
+    // так что «удалил профиль, добавил обратно, окна перестали просыпаться» — ровно тот молчаливый
+    // отказ, ради которого блок и убран с экрана.
+    [Test]
+    public async Task RemoveProfile_LeavesItsHookInTheFile()
     {
         var client = new FakeIpcClient();
         using var vm = Create(client);
 
-        vm.Profiles.Single().SettleDelayMs = "350";
+        vm.RemoveProfile(vm.Profiles.Single());
         await vm.ApplyAsync();
 
         var sent = client.PayloadsOf<SaveSettingsRequest>(IpcMessageTypes.SaveSettings).Single().Settings!;
-        await Assert.That(sent.Profiles[0].ActivationLParam).IsEqualTo(37336u);
-        await Assert.That(sent.Profiles[0].SettleDelayMs).IsEqualTo(350);
+        await Assert.That(sent.Profiles).IsEmpty();
+        await Assert.That(sent.Hooks.Keys).IsEquivalentTo(new[] { "elementclient_64" });
     }
 
     [Test]

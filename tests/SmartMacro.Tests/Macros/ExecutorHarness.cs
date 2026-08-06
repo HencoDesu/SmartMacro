@@ -181,7 +181,8 @@ internal sealed class ExecutorHarness
         Action<string>? onNodeEntered = null,
         IMacroRunObserver? observer = null,
         Guid runId = default,
-        IMacroDebugger? debugger = null)
+        IMacroDebugger? debugger = null,
+        MacroRunHooks? hooks = null)
     {
         return new MacroRunContext
         {
@@ -195,6 +196,9 @@ internal sealed class ExecutorHarness
             Observer = observer,
             RunId = runId,
             Debugger = debugger,
+            // null — обычный случай: ни у одного окна нет хука со Scope: Run, и корзина ссылок
+            // прогону не нужна. В бою её ставит Orchestrator.RunAsync.
+            Hooks = hooks,
         };
     }
 

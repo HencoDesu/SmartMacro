@@ -21,6 +21,11 @@ public sealed partial class SettingsStore
         "Файл настроек {Path} не читается — оставляем прежние значения и НЕ переписываем его: почините файл, он перечитается сам")]
     partial void LogUnreadable(Exception ex, string path);
 
+    [LoggerMessage(LogLevel.Warning,
+        "В {Path} нет блока Hooks — скобки пробуждения собраны из старых полей профилей: {Count}. " +
+        "Файл не переписан; в новую форму он ляжет при первом сохранении из панели")]
+    partial void LogLegacyHooksAdopted(string path, int count);
+
     [LoggerMessage(LogLevel.Information, "Настройки сохранены в {Path}")]
     partial void LogSaved(string path);
 

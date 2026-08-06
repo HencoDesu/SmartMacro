@@ -208,9 +208,17 @@ public sealed partial class SettingsStore : ISettingsSource, IDisposable
         try
         {
             var text = File.ReadAllText(_path);
-            _current = AppSettingsJson.Deserialize(text);
+            _current = AppSettingsJson.Deserialize(text, out var adoptedHooks);
             _signature = File.GetLastWriteTimeUtc(_path);
             LogLoaded(_current.Profiles.Count, _path);
+
+            // Молчаливая миграция здесь недопустима: она меняет смысл файла, который пользователь
+            // правил руками, — и как раз тем, что ФАЙЛ ПРИ ЭТОМ НЕ ТРОГАЕТ. Не сказав об этом,
+            // мы оставили бы человека с настройками, которых он в файле не видит.
+            if (adoptedHooks > 0)
+            {
+                LogLegacyHooksAdopted(_path, adoptedHooks);
+            }
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {

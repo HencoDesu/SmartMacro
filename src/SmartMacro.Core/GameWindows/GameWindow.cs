@@ -12,7 +12,7 @@ using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 namespace SmartMacro.GameWindows;
 
 [SupportedOSPlatform("windows")]
-public sealed partial class GameWindow : IGameWindow
+public sealed partial class GameWindow : IGameWindow, IWindowHookHolder
 {
     private readonly KeyboardInputResolver _keyboard;
     private readonly IMouseInput _mouse;
@@ -21,28 +21,54 @@ public sealed partial class GameWindow : IGameWindow
 
     private readonly INativeWindow _nativeWindow;
 
-    // ПРОФИЛЬ ЗАПЕЧЁН ПРИ СОЗДАНИИ, и это осознанно, в отличие от порогов и способа ввода ниже.
-    // Профиль описывает, КАК будить именно это окно; смени его на лету — и окно, чей профиль
-    // пользователь удалил или переименовал посреди прогона, молча стало бы «обычным процессом»,
-    // то есть перестало бы просыпаться, не сказав ни слова. Правка профиля применяется к окнам,
-    // появившимся после неё; клиент для этого достаточно переоткрыть.
+    // ХУК ЗАПЕЧЁН ПРИ СОЗДАНИИ, и это осознанно, в отличие от порогов и способа ввода ниже. Хук
+    // описывает, КАК будить именно это окно; смени его на лету — и окно, чей хук пользователь
+    // удалил или переименовал посреди прогона, молча стало бы «обычным процессом», то есть
+    // перестало бы просыпаться, не сказав ни слова. Правка хука применяется к окнам, появившимся
+    // после неё; клиент для этого достаточно переоткрыть.
     //
-    // Null = процесс с простым вводом (профиля нет либо ActivationLParam не настроен): вся
-    // пляска «побудка через WM_ACTIVATEAPP — деактивация» пропускается.
-    private readonly uint? _activationLParam;
-    private readonly int _settleDelayMs;
-    private readonly int _deactivationDelayMs;
+    // Null = процесс с простым вводом (записи в Hooks нет): вся пляска «побудка через
+    // WM_ACTIVATEAPP — деактивация» пропускается.
+    private readonly ProcessHookSettings? _hook;
     private readonly ILogger<GameWindow> _logger;
+
+    // ---- счётчик областей пробуждения -------------------------------------------------------
+    //
+    // СЧЁТЧИК НА ОКНО: первый вход будит, последний выход замораживает. Заведён потому, что одно
+    // окно могут захотеть двое — демон во время прогона и панель во время снимка, — а ещё потому,
+    // что Scope: Run держит ссылку на весь прогон, пока ноды открывают и закрывают свои.
+    // Та же фигура, что у аренды хоткеев (HotkeyListener) и у счёта отладчиков
+    // (MacroDebugSession): считаем держателей, а не флаг.
+    //
+    // ⚠️ ЗЕРНИСТОСТЬ ОТ СЧЁТЧИКА НЕ МЕНЯЕТСЯ. Последовательные ноды входят и выходят полностью
+    // (0→1→0), так что цикл пробуждения остаётся один на ноду — ровно как было. Счётчик меняет
+    // поведение только там, где области ВЛОЖЕНЫ, а вложенности до этой волны не существовало.
+    private readonly Lock _hookLock = new();
+    private int _hookDepth;
+
+    // Был ли внутри нынешней побудки ввод. От этого зависит ПАУЗА НА СЛИВ при заморозке: она
+    // существует ради того, что PostMessage положил в очередь цели, а захват кадра не кладёт туда
+    // ничего. Так сегодня и устроено — CaptureFreshAsync/CaptureScreenshot замораживают без слива,
+    // а входной путь со сливом, — и волна обязана повторить это дословно.
+    private bool _inputSinceWake;
+
+    // Цепочка переходов окна: побудка и заморозка идут строго по очереди. Без неё счётчик завёл бы
+    // новую беду вместо старой — область, пришедшая ровно в паузу слива предыдущей, разбудила бы
+    // окно, а заканчивающаяся заморозка тут же уложила бы его обратно, и держащий область писал бы
+    // в замороженный клиент. Вторая половина того же: вошедший ВТОРЫМ обязан дождаться чужой паузы
+    // устаканивания, иначе «первый вход будит» превращается в «второй пишет в ещё не проснувшееся
+    // окно».
+    private Task _transition = Task.CompletedTask;
 
     /// <summary>Боевой конструктор: окно открывается по дескриптору главного окна процесса.</summary>
     public GameWindow(
         ProcessInfo info,
-        ProcessProfileSettings profile,
+        ProcessHookSettings? hook,
         KeyboardInputResolver keyboard,
         IMouseInput mouse,
         ISettingsSource settings,
         ILogger<GameWindow> logger)
-        : this(Open(info), info.ProcessName, profile, keyboard, mouse, settings, logger)
+        : this(Open(info), info.ProcessName, hook, keyboard, mouse, settings, logger)
     {
     }
 
@@ -58,7 +84,7 @@ public sealed partial class GameWindow : IGameWindow
     public GameWindow(
         INativeWindow nativeWindow,
         string processName,
-        ProcessProfileSettings profile,
+        ProcessHookSettings? hook,
         KeyboardInputResolver keyboard,
         IMouseInput mouse,
         ISettingsSource settings,
@@ -69,9 +95,7 @@ public sealed partial class GameWindow : IGameWindow
         _settings = settings;
         _processName = processName;
         _nativeWindow = nativeWindow;
-        _activationLParam = profile.ActivationLParam;
-        _settleDelayMs = profile.SettleDelayMs;
-        _deactivationDelayMs = profile.DeactivationDelayMs;
+        _hook = hook;
         _logger = logger;
     }
 
@@ -115,54 +139,242 @@ public sealed partial class GameWindow : IGameWindow
         }
     }
 
-    // ПАРА «ПОБУДКА → ЗАМОРОЗКА ОБРАТНО» ЗАКРЫВАЕТСЯ ВСЕГДА, И ЭТО try/finally, А НЕ ПОРЯДОК
-    // СТРОК. На этом держатся два записанных в другом месте обоснования: затвор отладчика стоит
-    // между нодами потому, что «к моменту возврата управления в MacroExecutor ни одно игровое окно
-    // не остаётся разбуженным», и Orchestrator.StopAsync обещает, что «ни один прогон не бросают
-    // посреди активации, оставив клиент разбуженным». Структурно скобка и правда живёт целиком
-    // внутри примитивов — но пока её вторая половина стояла просто следующей строкой, её
-    // выполнение ничем не было гарантировано: между половинами бросают двое — Task.Delay паузы
-    // устаканивания (отмена: «■ Стоп», выключение демона) и CapturePng (нулевая клиентская
-    // область, отказ PrintWindow). Веер даёт до десяти тиков зрения разом, то есть до десяти
-    // клиентов PW, оставшихся рендерить в фоне; починить их некому — обход-то отменён, — и само
-    // это проходит только от настоящей смены фокуса пользователем. Образец лежит рядом и в этом же
-    // проекте: AgentInputDispatcher держит свою пару в try/finally.
+    // ==== СКОБКА ПРОБУЖДЕНИЯ =================================================================
     //
-    // ТОКЕН В ЗАМОРОЗКУ НЕ ПРОБРАСЫВАЕТСЯ — ни здесь, ни у вызывающих, и это не упущение.
-    // Заморозка есть уборка за побудкой, а отменять уборку по тому же токену, который её и
-    // вызвал, значит не делать её ровно в том случае, ради которого она и нужна. Поэтому
-    // AgentInputDispatcher зовёт DeactivateAsync() без аргумента, а здесь правило поддержано
-    // устройством: SendDeactivationSignal синхронен и токена не принимает вовсе, а единственное
-    // ожидание на этом пути — пауза на слив — вынесено в try, так что даже отменённый слив
-    // заканчивается заморозкой.
+    // СКОБКА — ЭТО ОБЛАСТЬ, А НЕ ПАРА ВЫЗОВОВ, и это главное, что здесь надо знать. На её
+    // закрытии держатся два записанных в другом месте обоснования: затвор отладчика стоит между
+    // нодами потому, что «к моменту возврата управления в MacroExecutor ни одно игровое окно не
+    // остаётся разбуженным», и Orchestrator.StopAsync обещает, что «ни один прогон не бросают
+    // посреди активации, оставив клиент разбуженным». Пока вторая половина была отдельным
+    // вызовом, её выполнение держалось на внимательности вызывающего: между половинами бросают
+    // двое — Task.Delay паузы устаканивания (отмена: «■ Стоп», выключение демона) и CapturePng
+    // (нулевая клиентская область, отказ PrintWindow), — и ревью нашло четыре скобки без
+    // try/finally. Веер даёт до десяти тиков зрения разом, то есть до десяти клиентов PW,
+    // оставшихся рендерить в фоне; починить их некому — обход-то отменён, — и само это проходит
+    // только от настоящей смены фокуса пользователем. Теперь скобку закрывает компилятор:
+    // `await using var scope = await window.EnterHookAsync(...)`.
+    //
+    // ТОКЕН В ЗАМОРОЗКУ НЕ ПРОБРАСЫВАЕТСЯ, и это не упущение. Заморозка есть уборка за побудкой,
+    // а отменять уборку по тому же токену, который её и вызвал, значит не делать её ровно в том
+    // случае, ради которого она и нужна. Теперь правило поддержано устройством, а не памятью:
+    // у закрытия области токена нет в сигнатуре (IWindowHookHolder.ExitHookAsync), передать его
+    // туда нечем.
+
+    /// <inheritdoc />
+    public ValueTask<WindowHookScope> EnterHookAsync(HookOn on, CancellationToken cancellationToken = default)
+    {
+        if (!Applies(on))
+        {
+            return ValueTask.FromResult(default(WindowHookScope));
+        }
+
+        Task wake;
+        lock (_hookLock)
+        {
+            if (on == HookOn.Input)
+            {
+                _inputSinceWake = true;
+            }
+
+            // Побудку заводит ПЕРВЫЙ, остальные ждут её же задачу. Именно поэтому WakeAsync
+            // запускается прямо под замком: до первого настоящего await он успевает послать
+            // WM_ACTIVATEAPP, так что «сигнал ушёл» и «счётчик поднят» неразделимы. Цена названа:
+            // сигнал побудки уходит блокирующим SendMessage, то есть замок этого окна на время
+            // отправки занят. Зависший клиент и так вешает свой обход намертво (у SendMessage нет
+            // таймаута) — новое здесь только то, что вместе с ним встанут области ТОГО ЖЕ окна;
+            // окна с другими дескрипторами держат каждое свой замок и не задеты.
+            if (_hookDepth++ == 0)
+            {
+                _transition = WakeAsync(_transition, cancellationToken);
+            }
+
+            wake = _transition;
+        }
+
+        return Enter(this, wake);
+
+        static async ValueTask<WindowHookScope> Enter(GameWindow window, Task wake)
+        {
+            try
+            {
+                await wake.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Побудка не удалась — обычно это отмена в паузе устаканивания. Окно она
+                // заморозила обратно сама (см. ActivateAsync), а нам остаётся не оставить
+                // счётчик поднятым: области, которая его опустила бы, не будет.
+                window.RollBackEntry();
+                throw;
+            }
+
+            return new WindowHookScope(window);
+        }
+    }
+
+    /// <inheritdoc />
+    public WindowHookScope EnterHook(HookOn on)
+    {
+        if (!Applies(on))
+        {
+            return default;
+        }
+
+        Task wake;
+        lock (_hookLock)
+        {
+            if (on == HookOn.Input)
+            {
+                _inputSinceWake = true;
+            }
+
+            if (_hookDepth++ == 0)
+            {
+                _transition = WakeAsync(_transition, CancellationToken.None);
+            }
+
+            wake = _transition;
+        }
+
+        try
+        {
+            // Блокирующее ожидание — то же, чем была Thread.Sleep на этом пути: API синхронный
+            // потому, что его дёргают одноразовые пути UI («Дамп захватов», диалог метки), и им
+            // незачем согласовываться с более широкой сессией ввода. Контекста синхронизации у
+            // демона нет, так что взаимной блокировки здесь взяться неоткуда.
+            wake.GetAwaiter().GetResult();
+        }
+        catch
+        {
+            RollBackEntry();
+            throw;
+        }
+
+        return new WindowHookScope(this);
+    }
+
+    /// <inheritdoc />
+    public bool WakesForWholeRun(HookOn on) => _hook is { Scope: HookLifetime.Run } hook && hook.Fires(on);
+
+    /// <inheritdoc />
+    ValueTask IWindowHookHolder.ExitHookAsync() => new(Leave());
+
+    /// <inheritdoc />
+    void IWindowHookHolder.ExitHook() => Leave().GetAwaiter().GetResult();
+
+    // Есть ли вокруг этой операции скобка вообще. Отсутствие хука — рабочая семантика «обычный
+    // процесс», пустой набор On — «хук есть, числа сохранены, не срабатывает нигде»; для окна это
+    // одно и то же, и различает их только файл настроек.
+    private bool Applies(HookOn on) => _hook is { } hook && hook.Fires(on);
+
+    private void RollBackEntry()
+    {
+        lock (_hookLock)
+        {
+            if (--_hookDepth <= 0)
+            {
+                _hookDepth = 0;
+                _inputSinceWake = false;
+            }
+        }
+    }
+
+    // Выход одной области. Последний выход и есть заморозка; лишний (двойной Dispose копии
+    // структуры) не уводит счётчик в минус — по тем же соображениям, по каким этого не делает
+    // HotkeyListener.ResumeAsync.
+    private Task Leave()
+    {
+        lock (_hookLock)
+        {
+            if (_hookDepth == 0)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (--_hookDepth > 0)
+            {
+                return Task.CompletedTask;
+            }
+
+            var drain = _inputSinceWake;
+            _inputSinceWake = false;
+            _transition = FreezeAsync(_transition, drain);
+            return _transition;
+        }
+    }
+
+    private async Task WakeAsync(Task previous, CancellationToken cancellationToken)
+    {
+        await Settled(previous).ConfigureAwait(false);
+        await ActivateAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task FreezeAsync(Task previous, bool drain)
+    {
+        await Settled(previous).ConfigureAwait(false);
+        if (drain)
+        {
+            await DeactivateAsync().ConfigureAwait(false);
+        }
+        else
+        {
+            // Захват ничего не клал в очередь цели, сливать нечего — замораживаем сразу. Ровно
+            // так вели себя оба пути захвата до этой волны.
+            Refreeze();
+        }
+    }
+
+    // Дождаться предыдущего перехода, чем бы он ни кончился. Уже завершённый (обычный случай)
+    // отдаётся как CompletedTask, чтобы продолжение пошло СИНХРОННО: иначе WM_ACTIVATEAPP уехал
+    // бы из-под замка, и «сигнал ушёл раньше, чем второй вошедший увидел счётчик» перестало бы
+    // быть правдой.
+    private static Task Settled(Task previous) => previous.IsCompleted ? Task.CompletedTask : Swallow(previous);
+
+    private static async Task Swallow(Task previous)
+    {
+        try
+        {
+            await previous.ConfigureAwait(false);
+        }
+        catch
+        {
+            // Чужой отказ — не наше дело: тот, кто его получил, уже откатил счётчик и (если
+            // надо) заморозил окно. Нам важен только порядок переходов.
+        }
+    }
+
+    // ---- половины скобки --------------------------------------------------------------------
+    //
+    // ⚠️ ВЫЗЫВАТЬ НАПРЯМУЮ НЕЛЬЗЯ, кроме одного места: GameWindowActivationTests пиннит ими
+    // поведение скобки счётом и порядком обращений к Win32, и ради этого обе остались публичными
+    // на КЛАССЕ, но ушли из IGameWindow. Счётчика они не трогают: считает область.
 
     // PW замораживает неактивные клиенты (встают и ввод, и отрисовка). Activate отправляет
     // будящий сигнал WM_ACTIVATEAPP, чтобы последующий ввод был обработан; пауза на
     // устаканивание даёт движку действительно вернуться в строй до того, как мы начнём слать
-    // ввод. Процессы с простым вводом (без ActivationLParam в профиле) сигнал не шлют вовсе.
+    // ввод. Процессы без хука сигнал не шлют вовсе.
     public async Task ActivateAsync(CancellationToken cancellationToken = default)
     {
-        if (_activationLParam is not { } lParam)
+        if (_hook is not { } hook)
         {
             return;
         }
 
-        _nativeWindow.SendActivationSignal(lParam);
-        if (_settleDelayMs <= 0)
+        _nativeWindow.SendActivationSignal(hook.ActivationLParam);
+        if (hook.SettleMs <= 0)
         {
             return;
         }
 
         try
         {
-            await Task.Delay(_settleDelayMs, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(hook.SettleMs, cancellationToken).ConfigureAwait(false);
         }
         catch
         {
-            // Асимметрия намеренная: на успешном пути заморозка — дело вызывающего (он держит
-            // сессию ввода и закроет её своим finally), а на неуспешном закрыть скобку некому.
-            // Вызов ActivateAsync у него стоит ПЕРЕД try — иначе в finally нечего было бы
-            // деактивировать, — так что бросок отсюда уносит управление мимо этого finally.
+            // Асимметрия намеренная: на успешном пути заморозка — дело области (она закроется и
+            // всё уберёт), а на неуспешном закрывать нечего — области ещё нет. Бросок отсюда
+            // уносит управление мимо всякого using, так что убрать за собой обязаны мы сами.
             Refreeze();
             throw;
         }
@@ -177,7 +389,7 @@ public sealed partial class GameWindow : IGameWindow
     // активным, чтобы не вырывать у него фокус.
     public async Task DeactivateAsync(CancellationToken cancellationToken = default)
     {
-        if (_activationLParam is null)
+        if (_hook is not { } hook)
         {
             // Окно с простым вводом — мы его и не активировали, так что нечего ни сливать, ни
             // укладывать обратно спать.
@@ -186,9 +398,9 @@ public sealed partial class GameWindow : IGameWindow
 
         try
         {
-            if (_deactivationDelayMs > 0)
+            if (hook.DeactivateMs > 0)
             {
-                await Task.Delay(_deactivationDelayMs, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(hook.DeactivateMs, cancellationToken).ConfigureAwait(false);
             }
         }
         finally
@@ -224,36 +436,17 @@ public sealed partial class GameWindow : IGameWindow
     public Task DoubleClickAsync(ScreenPoint point, CancellationToken cancellationToken = default) =>
         _mouse.DoubleClickAsync(Handle, point.X, point.Y, cancellationToken);
 
-    // Самодостаточен — распоряжается активацией и деактивацией сам, потому что это синхронный
-    // API, который дёргают одноразовые пути UI (диалог метки, «Дамп захватов»), и им незачем
-    // согласовываться с более широкой сессией ввода. Thread.Sleep вместо Task.Delay сохраняет
-    // API синхронным; пауза на устаканивание достаточно короткая (по умолчанию 20 мс), чтобы
-    // краткая блокировка вызывающего потока была незаметной.
+    // Самодостаточен — открывает область сам, потому что это синхронный API, который дёргают
+    // одноразовые пути UI (диалог метки, «Дамп захватов»), и им незачем согласовываться с более
+    // широкой сессией ввода.
+    //
+    // CapturePng бросает на нулевой клиентской области и на отказе PrintWindow, а «Дамп захватов»
+    // проходит по всем клиентам разом — без закрытия скобки один свёрнутый клиент оставался бы
+    // разбуженным. Закрывает её здесь `using`, а не finally.
     public byte[] CaptureScreenshot()
     {
-        if (_activationLParam is not { } lParam)
-        {
-            // Окно с простым вводом: будить нечего, а значит, и замораживать потом нечего.
-            return _nativeWindow.CapturePng();
-        }
-
-        _nativeWindow.SendActivationSignal(lParam);
-        try
-        {
-            if (_settleDelayMs > 0)
-            {
-                Thread.Sleep(_settleDelayMs);
-            }
-
-            return _nativeWindow.CapturePng();
-        }
-        finally
-        {
-            // CapturePng бросает на нулевой клиентской области и на отказе PrintWindow, а зовут
-            // этот метод в том числе одноразовые пути UI («Дамп захватов» проходит по всем
-            // клиентам разом) — без finally один свёрнутый клиент оставался бы разбуженным.
-            Refreeze();
-        }
+        using var scope = EnterHook(HookOn.Capture);
+        return _nativeWindow.CapturePng();
     }
 
     public bool SetIconFromFile(string imagePath) => _nativeWindow.SetIconFromFile(imagePath);
@@ -343,32 +536,15 @@ public sealed partial class GameWindow : IGameWindow
     // на устаканивание, захватывает кадр и замораживает обратно (если только это окно САМО не
     // на переднем плане — тогда оно и так остаётся активным). Используется одноразовым
     // сопоставлением и циклом опроса.
+    //
+    // Самый дорогой из путей: тик зрения, и тиков этих в веере до десяти разом. Отмена приходит
+    // прямо в паузу устаканивания («■ Стоп» или выключение демона), а CapturePng бросает сам по
+    // себе, — без закрытия скобки оба случая оставляли бы клиента размороженным, причём чинить
+    // его было бы уже некому: обход отменён.
     private async Task<byte[]> CaptureFreshAsync(CancellationToken cancellationToken)
     {
-        if (_activationLParam is not { } lParam)
-        {
-            // Окно с простым вводом: будить нечего, а значит, и замораживать потом нечего.
-            return _nativeWindow.CapturePng();
-        }
-
-        _nativeWindow.SendActivationSignal(lParam);
-        try
-        {
-            if (_settleDelayMs > 0)
-            {
-                await Task.Delay(_settleDelayMs, cancellationToken).ConfigureAwait(false);
-            }
-
-            return _nativeWindow.CapturePng();
-        }
-        finally
-        {
-            // Самый дорогой из трёх путей: тик зрения, и тиков этих в веере до десяти разом.
-            // Отмена приходит сюда прямо в паузу устаканивания («■ Стоп» или выключение демона),
-            // а CapturePng бросает сам по себе, — без finally оба случая оставляли бы клиента
-            // размороженным, причём чинить его было бы уже некому: обход отменён.
-            Refreeze();
-        }
+        await using var scope = await EnterHookAsync(HookOn.Capture, cancellationToken).ConfigureAwait(false);
+        return _nativeWindow.CapturePng();
     }
 
     // Один проход сопоставления. `center` — центр лучшего совпадения в КЛИЕНТСКИХ координатах:

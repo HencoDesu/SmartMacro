@@ -47,6 +47,47 @@ public class SettingsStoreTests
         }
     }
 
+    // Файл СТАРОЙ формы: скобка пробуждения лежала полями профиля. Без разового чтения она стала
+    // бы неизвестными членами — а их System.Text.Json молча пропускает, — и у всех, кто уже
+    // пользуется программой, окна перестали бы просыпаться при первом сохранении из панели.
+    //
+    // ⚠️ Файл при этом НЕ ПЕРЕПИСЫВАЕТСЯ: инвариант «существующий файл конструктор не трогает»
+    // сильнее удобства, а миграция живёт в памяти до первого сохранения.
+    [Test]
+    public async Task Constructor_AdoptsTheWakeBracketFromAnOldFileWithoutRewritingIt()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, SettingsStore.FileName);
+            const string legacy = """
+                {
+                  "Profiles": [
+                    {
+                      "ProcessName": "elementclient_64",
+                      "ActivationLParam": 37336,
+                      "SettleDelayMs": 200,
+                      "DeactivationDelayMs": 100
+                    }
+                  ]
+                }
+                """;
+            File.WriteAllText(path, legacy);
+
+            using var store = Open(directory);
+
+            var hook = store.Current.FindHook("elementclient_64")!;
+            await Assert.That(hook.ActivationLParam).IsEqualTo(37336u);
+            await Assert.That(hook.SettleMs).IsEqualTo(200);
+            await Assert.That(hook.DeactivateMs).IsEqualTo(100);
+            await Assert.That(File.ReadAllText(path)).IsEqualTo(legacy);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Test]
     public async Task Constructor_ReadsAnExistingFileAndDoesNotTouchIt()
     {

@@ -1708,25 +1708,13 @@
     <value>Профили процессов</value>
     <comment>заголовок плитки</comment>
   </data>
-  <data name="Settings_Profiles_Subtitle" xml:space="preserve">
-    <value>за кем следить и как будить окна перед вводом</value>
-    <comment>приписка рядом с заголовком</comment>
+  <data name="Settings_Profiles_Caption" xml:space="preserve">
+    <value>за кем следить и чем вводить</value>
+    <comment>приписка рядом с заголовком плитки; скобка пробуждения уехала в хук процесса и на экране её больше нет</comment>
   </data>
   <data name="Settings_Profiles_ColProcess" xml:space="preserve">
     <value>ПРОЦЕСС</value>
     <comment>шапка таблицы, звёздная колонка</comment>
-  </data>
-  <data name="Settings_Profiles_ColWake" xml:space="preserve">
-    <value>ПОБУДКА</value>
-    <comment>шапка таблицы, колонка 86 px</comment>
-  </data>
-  <data name="Settings_Profiles_ColSettle" xml:space="preserve">
-    <value>ОСЕДАНИЕ</value>
-    <comment>шапка таблицы, колонка 74 px</comment>
-  </data>
-  <data name="Settings_Profiles_ColDeactivate" xml:space="preserve">
-    <value>ДЕАКТИВ.</value>
-    <comment>шапка таблицы, колонка 74 px; сокращено именно из-за неё</comment>
   </data>
   <data name="Settings_Profiles_ColInput" xml:space="preserve">
     <value>ВВОД</value>
@@ -1735,30 +1723,6 @@
   <data name="Settings_Profiles_NameWatermark" xml:space="preserve">
     <value>имя процесса без .exe</value>
     <comment>водяной знак поля имени в строке профиля</comment>
-  </data>
-  <data name="Settings_Profiles_WakeYes" xml:space="preserve">
-    <value>есть</value>
-    <comment>колонка «ПОБУДКА»: у процесса есть сигнал пробуждения. Само ЧИСЛО сигнала в интерфейс не выводится — это добытый реверсом костыль под одну игру, а не настройка</comment>
-  </data>
-  <data name="Settings_Profiles_WakeNo" xml:space="preserve">
-    <value>не нужен</value>
-    <comment>колонка «ПОБУДКА»: обычный процесс, пробуждение пропускается</comment>
-  </data>
-  <data name="Settings_Profiles_WakeTooltipYes" xml:space="preserve">
-    <value>Окна этого процесса замораживаются в фоне, и перед вводом им уходит WM_ACTIVATEAPP с магическим значением. Значение добыто реверсом клиента и проставлено по имени процесса; править его — только в settings.json, и только если у вашей сборки игры оно другое.</value>
-    <comment>подсказка колонки «ПОБУДКА» у процесса с сигналом</comment>
-  </data>
-  <data name="Settings_Profiles_WakeTooltipNo" xml:space="preserve">
-    <value>Обычный процесс: пробуждение пропускается, ввод уходит сразу. Так и должно быть у всего, кроме клиентов игры.</value>
-    <comment>подсказка той же колонки у процесса без сигнала</comment>
-  </data>
-  <data name="Settings_Profiles_SettleTip" xml:space="preserve">
-    <value>Пауза после сигнала побудки, мс. Ниже 150 PW начинает терять ввод.</value>
-    <comment>подсказка поля «ОСЕДАНИЕ»</comment>
-  </data>
-  <data name="Settings_Profiles_DeactivateTip" xml:space="preserve">
-    <value>Пауза перед деактивацией, мс — время на разбор очереди ввода.</value>
-    <comment>подсказка поля «ДЕАКТИВ.»</comment>
   </data>
   <data name="Settings_Profiles_Remove" xml:space="preserve">
     <value>Убрать профиль — за окнами этого процесса демон следить перестанет</value>
@@ -1775,18 +1739,6 @@
   <data name="Settings_Profiles_AddHint" xml:space="preserve">
     <value>узнанному имени сигнал побудки проставится сам</value>
     <comment>приписка справа; обрезается многоточием</comment>
-  </data>
-  <data name="Settings_Profiles_SettleName" xml:space="preserve">
-    <value>Оседание</value>
-    <comment>имя поля в сообщении об ошибке ввода — подставляется в Settings_Profiles_BadNumber</comment>
-  </data>
-  <data name="Settings_Profiles_DeactivateName" xml:space="preserve">
-    <value>Деактивация</value>
-    <comment>то же для второго поля</comment>
-  </data>
-  <data name="Settings_Profiles_BadNumber" xml:space="preserve">
-    <value>{0} у профиля «{1}»: «{2}» — это не целое число.</value>
-    <comment>замечание в полосе «Не применено»; {0} = имя поля, {1} = процесс, {2} = набранное значение</comment>
   </data>
 
   <!-- ======== Режим «Настройки» — плитка «Ввод по умолчанию» ======== -->

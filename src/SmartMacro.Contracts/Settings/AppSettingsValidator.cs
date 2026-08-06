@@ -41,14 +41,16 @@ public static class AppSettingsValidator
     /// <summary>Верхняя граница интервала опроса машинного зрения.</summary>
     public const int MaxVisionPollMs = 10_000;
 
-    /// <summary>Верхняя граница пауз активации и деактивации.</summary>
-    public const int MaxDelayMs = 10_000;
-
     /// <summary>
-    /// Ниже этой паузы после сигнала побудки PW начинает терять ввод. НЕ ошибка — подсказка
-    /// рядом с полем; порог живёт здесь, чтобы текст подсказки и это число не разъехались.
+    /// Верхняя граница пауз побудки и деактивации — теперь у хука процесса.
+    ///
+    /// Рядом жил <c>RecommendedMinSettleMs</c> = 150 («ниже этого PW начинает терять ввод»): он
+    /// существовал ровно затем, чтобы не разъехаться с подсказкой у поля «ОСЕДАНИЕ». Поля на
+    /// экране больше нет, подсказки тоже — и константа осталась бы кодом без читателя. Само число
+    /// никуда не делось: оно записано у <see cref="ProcessHookSettings.SettleMs"/>, там, где
+    /// теперь живёт и сама пауза.
     /// </summary>
-    public const int RecommendedMinSettleMs = 150;
+    public const int MaxDelayMs = 10_000;
 
     /// <summary>Проверяет настройки целиком.</summary>
     /// <param name="settings">Проверяемый снимок.</param>
@@ -77,7 +79,34 @@ public static class AppSettingsValidator
             (int)settings.Vision.ClassMatcher.LuminanceThreshold, 0, 255, string.Empty);
 
         ValidateProfiles(settings, issues);
+        ValidateHooks(settings, issues);
         return issues;
+    }
+
+    /// <summary>
+    /// Границы пауз переехали сюда вместе с самими паузами: скобка пробуждения живёт в
+    /// <see cref="AppSettings.Hooks"/>, а не полями профиля.
+    ///
+    /// Экран этих полей не показывает, так что ошибка здесь может приехать только из файла,
+    /// правленного руками, — и приедет она в полосу «Не применено», без подсветки строки. Это
+    /// правильный размен: пропустить в движок паузу устаканивания в десять минут хуже, чем
+    /// сказать про поле, которого нет на экране. Путь поля называет имя процесса, чтобы в файле
+    /// было понятно, куда смотреть.
+    /// </summary>
+    private static void ValidateHooks(AppSettings settings, List<SettingsIssue> issues)
+    {
+        // По алфавиту: порядок словаря зависит от порядка в файле, а список отказов, меняющий
+        // порядок от перестановки строк в JSON, читается как случайный.
+        foreach (var name in settings.Hooks.Keys.OrderBy(key => key, StringComparer.OrdinalIgnoreCase))
+        {
+            var hook = settings.Hooks[name];
+            var prefix = string.Create(CultureInfo.InvariantCulture, $"Hooks[{name}]");
+
+            Range(issues, $"{prefix}.SettleMs", Strings.Settings_Engine_Field_SettleDelay,
+                hook.SettleMs, 0, MaxDelayMs, Strings.Settings_Engine_Unit_Milliseconds);
+            Range(issues, $"{prefix}.DeactivateMs", Strings.Settings_Engine_Field_DeactivationDelay,
+                hook.DeactivateMs, 0, MaxDelayMs, Strings.Settings_Engine_Unit_Milliseconds);
+        }
     }
 
     private static void ValidateProfiles(AppSettings settings, List<SettingsIssue> issues)
@@ -116,11 +145,6 @@ public static class AppSettingsValidator
                         profile.ProcessName)));
                 }
             }
-
-            Range(issues, $"{prefix}.SettleDelayMs", Strings.Settings_Engine_Field_SettleDelay,
-                profile.SettleDelayMs, 0, MaxDelayMs, Strings.Settings_Engine_Unit_Milliseconds);
-            Range(issues, $"{prefix}.DeactivationDelayMs", Strings.Settings_Engine_Field_DeactivationDelay,
-                profile.DeactivationDelayMs, 0, MaxDelayMs, Strings.Settings_Engine_Unit_Milliseconds);
         }
     }
 

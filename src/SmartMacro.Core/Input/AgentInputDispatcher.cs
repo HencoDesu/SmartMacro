@@ -1,23 +1,27 @@
 using Microsoft.Extensions.Logging;
+using SmartMacro.Contracts.Settings;
 using SmartMacro.GameWindows;
 using SmartMacro.Native;
 
 namespace SmartMacro.Input;
 
-// Оборачивает жизненный цикл активации вокруг каждой отправки ввода в игровое окно. Слой
-// примитивов макроса делегирует сюда любое нажатие клавиши и любой клик — так walker занят
-// обходом графа, а не заботами вида «разбуди окно, отправь, дай очереди слиться, уложи обратно
-// спать».
+// Оборачивает скобку пробуждения вокруг каждой отправки ввода в игровое окно. Слой примитивов
+// макроса делегирует сюда любое нажатие клавиши и любой клик — так walker занят обходом графа, а
+// не заботами вида «разбуди окно, отправь, дай очереди слиться, уложи обратно спать».
 //
 // Все методы устроены одинаково:
-//   1. ActivateAsync (разбудить замороженное фоновое окно)
-//   2. отправить ввод примитивами через PostMessage
-//   3. DeactivateAsync (пауза на слив + уложить окно обратно спать, если оно не на переднем
-//      плане)
+//   await using var scope = await window.EnterHookAsync(HookOn.Input);   // разбудить
+//   await window.PressKeyAsync(...);                                     // отправить
+//   // закрытие области: пауза на слив + уложить обратно спать, если окно не на переднем плане
 //
-// Безопасно к исключениям: try/finally гарантирует, что Deactivate отработает, даже если
-// внутренняя отправка бросила, а сбои отправки пишутся в лог, а не пробрасываются — одно
-// недостижимое окно не должно обрывать макрос, который законно нацелился ещё на восемь.
+// Раньше здесь стояла пара ActivateAsync/try/finally/DeactivateAsync, и этот класс был
+// единственным из пяти мест, который держал её правильно. Теперь правило держит компилятор, а не
+// внимательность: почему именно область — написано у WindowHookScope. Токена в закрытие не
+// уходит по-прежнему (отменённая заморозка — это клиент, оставшийся рендерить в фоне), только
+// теперь это не соглашение, а сигнатура.
+//
+// Сбои отправки пишутся в лог, а не пробрасываются: одно недостижимое окно не должно обрывать
+// макрос, который законно нацелился ещё на восемь.
 //
 // Логирование выстроено вокруг метки действия, которую передаёт вызывающий («Key(F8)»,
 // «Click»), чтобы оператор мог грепать строки лога по конкретному действию.
@@ -45,14 +49,12 @@ public sealed partial class AgentInputDispatcher
         try
         {
             LogActionFiring(key, agentName);
-            await window.ActivateAsync().ConfigureAwait(false);
-            try
+
+            // Область закрывается ЗДЕСЬ, до строки «отправлено — OK»: порядок тот же, что был у
+            // try/finally, и строка лога по-прежнему означает «окно уже уложено обратно».
+            await using (var scope = await window.EnterHookAsync(HookOn.Input).ConfigureAwait(false))
             {
                 await window.PressKeyAsync(key).ConfigureAwait(false);
-            }
-            finally
-            {
-                await window.DeactivateAsync().ConfigureAwait(false);
             }
 
             LogActionFired(key, agentName);
@@ -72,8 +74,7 @@ public sealed partial class AgentInputDispatcher
     {
         try
         {
-            await window.ActivateAsync().ConfigureAwait(false);
-            try
+            await using (var scope = await window.EnterHookAsync(HookOn.Input).ConfigureAwait(false))
             {
                 if (doubleClick)
                 {
@@ -83,10 +84,6 @@ public sealed partial class AgentInputDispatcher
                 {
                     await window.ClickAsync(point).ConfigureAwait(false);
                 }
-            }
-            finally
-            {
-                await window.DeactivateAsync().ConfigureAwait(false);
             }
         }
         catch (Exception ex)

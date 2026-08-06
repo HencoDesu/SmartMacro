@@ -131,6 +131,16 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private readonly IIpcClient _client;
     private readonly IUiDispatcher _dispatcher;
 
+    // Скобки пробуждения по имени процесса. Экран их НЕ ПОКАЗЫВАЕТ и потому не имеет права ими
+    // распоряжаться — проносит нетронутыми, ровно как непоказываемые поля Vision. Единственная
+    // правка, которую панель себе позволяет, — добавить хук новому профилю с узнанным именем
+    // (см. AddProfile): это и есть правило «таблица известных сигналов применяется ПРИ СОЗДАНИИ».
+    //
+    // Снятый профиль хук за собой НЕ уносит: число добыто реверсом, набрать его в панели негде, а
+    // «удалил профиль, добавил обратно, окна перестали просыпаться» — ровно тот молчаливый отказ,
+    // от которого этот блок и убран с экрана.
+    private readonly Dictionary<string, ProcessHookSettings> _hooks = new(StringComparer.OrdinalIgnoreCase);
+
     private SettingsSnapshotDto? _snapshot;
     private bool _loading;
 
@@ -586,10 +596,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// Добавляет профиль по имени из <see cref="NewProfileName"/>.
     ///
     /// <b>Здесь и только здесь применяется таблица известных сигналов побудки.</b> Узнанному
-    /// имени (<c>elementclient_64</c>) значение проставляется само, вместе с паузами, которые без
-    /// него не нужны; <c>notepad</c> остаётся без сигнала, и это рабочая семантика «обычный
-    /// процесс, пробуждение пропускается», а не незаполненное поле. В интерфейсе числа нет вовсе:
-    /// это добытый реверсом костыль под одну игру, и правят его, если уж совсем припёрло, в файле.
+    /// имени (<c>elementclient_64</c>) заводится хук — сигнал и обе паузы, которые без него не
+    /// нужны; <c>notepad</c> остаётся без хука, и это рабочая семантика «обычный процесс,
+    /// пробуждение пропускается», а не незаполненное поле. В интерфейсе хука нет вовсе: это
+    /// добытый реверсом костыль под одну игру, и правят его, если уж совсем припёрло, в файле.
+    ///
+    /// Существующий хук НЕ перезаписывается: у того, кто уже поправил число под свою сборку игры,
+    /// оно не имеет права взяться «само» обратно.
     /// </summary>
     public void AddProfile()
     {
@@ -599,7 +612,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var row = new ProcessProfileRowViewModel(KnownActivationSignals.NewProfile(name), ProfileInputChoices);
+        if (!_hooks.ContainsKey(name) && KnownActivationSignals.NewHook(name) is { } hook)
+        {
+            _hooks[name] = hook;
+        }
+
+        var row = new ProcessProfileRowViewModel(new ProcessProfileSettings { ProcessName = name },
+            ProfileInputChoices);
         row.Changed += RaiseDirty;
         Profiles.Add(row);
         NewProfileName = string.Empty;
@@ -690,6 +709,14 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 row.Changed += RaiseDirty;
                 Profiles.Add(row);
             }
+
+            // Хуки перекладываются целиком и без разбора: экран их не показывает, так что
+            // «правка» здесь может быть только одна — та, что придёт из файла.
+            _hooks.Clear();
+            foreach (var (name, hook) in settings.Hooks)
+            {
+                _hooks[name] = hook;
+            }
         }
         finally
         {
@@ -722,13 +749,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         var profiles = new List<ProcessProfileSettings>(Profiles.Count);
         foreach (var row in Profiles)
         {
-            if (!row.TryBuild(out var profile, out var error))
-            {
-                Issues.Add(error);
-                return false;
-            }
-
-            profiles.Add(profile);
+            profiles.Add(row.Build());
         }
 
         var baseline = _snapshot.Settings;
@@ -746,6 +767,9 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             Vision = baseline.Vision with { MatchThreshold = _matchThreshold },
             Startup = new StartupSettings { RunAtLogon = _runAtLogon, RunElevated = _runElevated },
             Profiles = profiles,
+            // Копия, а не baseline.Hooks: AddProfile мог завести запись новому профилю. Всё
+            // остальное здесь — то, что прочиталось из файла, слово в слово.
+            Hooks = new Dictionary<string, ProcessHookSettings>(_hooks, StringComparer.OrdinalIgnoreCase),
         };
         return true;
     }

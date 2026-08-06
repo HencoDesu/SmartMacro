@@ -34,30 +34,24 @@ public class GameWindowActivationTests
 
     private const uint ActivationLParam = 37336;
 
-    /// <summary>Профиль игрового клиента: побудка нужна, обе паузы ненулевые.</summary>
-    private static ProcessProfileSettings GameProfile => new()
+    /// <summary>Хук игрового клиента: побудка нужна, обе паузы ненулевые.</summary>
+    private static ProcessHookSettings GameHook => new()
     {
-        ProcessName = "elementclient_64",
         ActivationLParam = ActivationLParam,
-        SettleDelayMs = 50,
-        DeactivationDelayMs = 20,
+        SettleMs = 50,
+        DeactivateMs = 20,
     };
 
-    /// <summary>Профиль обычного процесса: <c>ActivationLParam</c> нет — вся пляска пропускается.</summary>
-    private static ProcessProfileSettings PlainProfile => new()
-    {
-        ProcessName = "notepad",
-        SettleDelayMs = 50,
-        DeactivationDelayMs = 20,
-    };
+    /// <summary>Обычный процесс: хука НЕТ — вся пляска пропускается.</summary>
+    private static ProcessHookSettings? PlainHook => null;
 
-    private static GameWindow Window(FakeNativeWindow native, ProcessProfileSettings profile)
+    private static GameWindow Window(FakeNativeWindow native, ProcessHookSettings? hook)
     {
         var settings = new FakeSettingsSource();
         return new GameWindow(
             native,
-            profile.ProcessName,
-            profile,
+            "elementclient_64",
+            hook,
             new KeyboardInputResolver(settings, NullLogger<KeyboardInputResolver>.Instance),
             new PostMessageMouseInput(),
             settings,
@@ -70,7 +64,7 @@ public class GameWindowActivationTests
     public async Task ACancelledVisionTickStillRefreezesTheClient()
     {
         var native = new FakeNativeWindow(Handle);
-        var window = Window(native, GameProfile);
+        var window = Window(native, GameHook);
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
@@ -93,7 +87,7 @@ public class GameWindowActivationTests
         native.OnCapture = cts.Cancel;
         native.CaptureFault = () => new InvalidOperationException("PrintWindow отказал");
 
-        var window = Window(native, GameProfile);
+        var window = Window(native, GameHook);
 
         await Assert.That(async () =>
                 await window.WaitForElementAsync([1, 2, 3], default, TimeSpan.FromMinutes(1), null, cts.Token))
@@ -113,7 +107,7 @@ public class GameWindowActivationTests
             // PrintWindow — второй из двух бросающих на этом пути.
             CaptureFault = () => new InvalidOperationException("PrintWindow отказал"),
         };
-        var window = Window(native, GameProfile);
+        var window = Window(native, GameHook);
 
         await Assert.That(() => window.CaptureScreenshot()).Throws<InvalidOperationException>();
         await Assert.That(native.Calls).IsEquivalentTo(new[] { "activate", "capture", "deactivate" });
@@ -125,7 +119,7 @@ public class GameWindowActivationTests
     public async Task ACancelledDrainStillRefreezesTheClient()
     {
         var native = new FakeNativeWindow(Handle);
-        var window = Window(native, GameProfile);
+        var window = Window(native, GameHook);
         using var cts = new CancellationTokenSource();
 
         await window.ActivateAsync();
@@ -143,7 +137,7 @@ public class GameWindowActivationTests
     public async Task ACancelledActivationRefreezesItselfBecauseNobodyElseWill()
     {
         var native = new FakeNativeWindow(Handle);
-        var window = Window(native, GameProfile);
+        var window = Window(native, GameHook);
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
@@ -165,7 +159,7 @@ public class GameWindowActivationTests
         {
             CaptureFault = () => new InvalidOperationException("PrintWindow отказал"),
         };
-        var window = Window(native, PlainProfile);
+        var window = Window(native, PlainHook);
 
         await Assert.That(() => window.CaptureScreenshot()).Throws<InvalidOperationException>();
 
