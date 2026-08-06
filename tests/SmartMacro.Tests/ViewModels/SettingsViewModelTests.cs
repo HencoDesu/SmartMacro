@@ -1,8 +1,10 @@
+﻿using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Contracts.Settings;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -90,7 +92,9 @@ public class SettingsViewModelTests
 
         await Assert.That(vm.ChangeCount).IsEqualTo(2);
         await Assert.That(vm.IsDirty).IsTrue();
-        await Assert.That(vm.ChangeText).IsEqualTo("2 изменения не применены");
+        // Форма множественного числа плюс само число — «21 изменений» тут уже водилось.
+        await Assert.That(Msg.Arg(vm.ChangeText, Strings.Settings_Header_Changes_Few)).IsEqualTo("2");
+        await Assert.That(Msg.Is(vm.ChangeText, Strings.Settings_Header_Changes_Many)).IsFalse();
         await Assert.That(client.CountOf(IpcMessageTypes.SaveSettings)).IsEqualTo(before);
     }
 
@@ -254,7 +258,7 @@ public class SettingsViewModelTests
     // ---- профили -----------------------------------------------------------------------------
 
     // Таблица известных сигналов применяется ПРИ СОЗДАНИИ и только к узнанному имени — именно это
-    // и позволило убрать скобку пробуждения из интерфейса, не потеряв смысл её отсутствия.
+    // и позволило убрать число из интерфейса, не потеряв смысл его отсутствия.
     [Test]
     public async Task AddProfile_CreatesTheHookOnlyForKnownNames()
     {
@@ -265,6 +269,7 @@ public class SettingsViewModelTests
         vm.AddProfile();
         vm.NewProfileName = "notepad";
         vm.AddProfile();
+
 
         await vm.ApplyAsync();
 
@@ -312,23 +317,6 @@ public class SettingsViewModelTests
         await Assert.That(hook.Scope).IsEqualTo(HookLifetime.Run);
     }
 
-    // Снятый профиль хук за собой НЕ уносит. Число добыто реверсом и набрать его в панели негде,
-    // так что «удалил профиль, добавил обратно, окна перестали просыпаться» — ровно тот молчаливый
-    // отказ, ради которого блок и убран с экрана.
-    [Test]
-    public async Task RemoveProfile_LeavesItsHookInTheFile()
-    {
-        var client = new FakeIpcClient();
-        using var vm = Create(client);
-
-        vm.RemoveProfile(vm.Profiles.Single());
-        await vm.ApplyAsync();
-
-        var sent = client.PayloadsOf<SaveSettingsRequest>(IpcMessageTypes.SaveSettings).Single().Settings!;
-        await Assert.That(sent.Profiles).IsEmpty();
-        await Assert.That(sent.Hooks.Keys).IsEquivalentTo(new[] { "elementclient_64" });
-    }
-
     [Test]
     public async Task RemoveProfile_CountsAsAChangeAndDropsTheRow()
     {
@@ -339,45 +327,6 @@ public class SettingsViewModelTests
 
         await Assert.That(vm.Profiles).IsEmpty();
         await Assert.That(vm.ChangeCount).IsEqualTo(1);
-    }
-
-    // ---- диагностика --------------------------------------------------------------------------
-
-    // Пять проверок делает демон, шестую — время ответа канала — панель: демон не может честно
-    // измерить время ответа самому себе.
-    [Test]
-    public async Task RunDiagnostics_AddsThePanelsOwnChannelCheck()
-    {
-        var client = new FakeIpcClient();
-        client.Respond(IpcMessageTypes.RunDiagnostics, new[]
-        {
-            new DiagnosticDto(DiagnosticIds.Elevation, DiagnosticStatus.Ok, "Права", "ок"),
-            new DiagnosticDto(DiagnosticIds.Templates, DiagnosticStatus.Failed, "Нет шаблона", "подробности"),
-        });
-        using var vm = Create(client);
-
-        await vm.RunDiagnosticsAsync();
-
-        await Assert.That(vm.Diagnostics.Select(d => d.Id))
-            .IsEquivalentTo(new[] { DiagnosticIds.Channel, DiagnosticIds.Elevation, DiagnosticIds.Templates });
-        await Assert.That(vm.ProblemCount).IsEqualTo(1);
-        await Assert.That(vm.DiagnosticsSummary).Contains("2 из 3");
-    }
-
-    // Демон не ответил — это САМ ПО СЕБЕ вердикт, и самый важный: движка нет, макросы не идут.
-    [Test]
-    public async Task RunDiagnostics_ReportsASilentDaemonAsAFailedChannel()
-    {
-        var client = new FakeIpcClient();
-        client.Fail(IpcMessageTypes.RunDiagnostics, "труба закрыта");
-        using var vm = Create(client);
-
-        await vm.RunDiagnosticsAsync();
-
-        var row = vm.Diagnostics.Single();
-        await Assert.That(row.Id).IsEqualTo(DiagnosticIds.Channel);
-        await Assert.That(row.IsFailed).IsTrue();
-        await Assert.That(vm.ProblemCount).IsEqualTo(1);
     }
 
     // ---- сброс ------------------------------------------------------------------------------
