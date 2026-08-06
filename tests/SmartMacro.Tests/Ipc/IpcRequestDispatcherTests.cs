@@ -470,7 +470,8 @@ public class IpcRequestDispatcherTests
         var response = await harness.DispatchAsync("TeleportPlayer");
 
         await Assert.That(response.Ok).IsFalse();
-        await Assert.That(response.Error).IsEqualTo("unknown request type: TeleportPlayer");
+        await Assert.That(Msg.Arg(response.Error, Strings.Ipc_Rejected_UnknownType))
+            .IsEqualTo("TeleportPlayer");
         await Assert.That(response.Id).IsEqualTo(1);
     }
 

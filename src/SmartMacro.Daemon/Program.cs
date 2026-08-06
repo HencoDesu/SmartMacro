@@ -148,7 +148,7 @@ internal static class Program
 
         try
         {
-            Log.Information("SmartMacro daemon starting");
+            Log.Information("Демон SmartMacro запускается");
 
             // ОБЯЗАТЕЛЬНАЯ строка, а не украшение диагностики. Ошибка в вычислении корня —
             // молчаливая и дорогая: демон заведёт себе macros\ рядом с собой, панель будет
@@ -176,10 +176,11 @@ internal static class Program
                 // — иначе построение логгера потребовало бы логгера. Это же и есть первый срез
                 // защиты от рекурсии; см. IpcLogSink и LogEventPublisher.
                 //
-                // Записи, сделанные до сборки хоста (строка «daemon starting» и отказ второго
-                // экземпляра), уходят в bootstrap-логгер, у которого этого стока ещё нет, и в
-                // ленту не попадают — проверено глазами, лента начинается со следующей строки,
-                // «Composition root built». Их видно в консоли и в файле, где им и место: панель
+                // Записи, сделанные до сборки хоста (строка «Демон SmartMacro запускается» и
+                // отказ второго экземпляра), уходят в bootstrap-логгер, у которого этого стока
+                // ещё нет, и в ленту не попадают — проверено глазами, лента начинается со
+                // следующей строки, «Корень композиции собран». Их видно в консоли и в файле,
+                // где им и место: панель
                 // не может быть подключена к демону, который ещё не поднял канал.
                 .WriteTo.Sink(new IpcLogSink(sp.GetRequiredService<LogEventPublisher>()))
                 // ПОСЛЕ ReadFrom.Configuration, и порядок здесь значим: тот вызов уже выставил
@@ -196,9 +197,9 @@ internal static class Program
 
             using var host = builder.Build();
 
-            Log.Information("Composition root built, running host");
+            Log.Information("Корень композиции собран, запускаем хост");
             host.RunAsync().GetAwaiter().GetResult();
-            Log.Information("SmartMacro daemon stopped");
+            Log.Information("Демон SmartMacro остановлен");
             return 0;
         }
         catch (Exception ex)

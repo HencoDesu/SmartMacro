@@ -414,7 +414,8 @@ public sealed partial class IpcRequestDispatcher
 
             default:
                 LogUnknownType(request.Type, request.Id);
-                return Fail(request, $"unknown request type: {request.Type}");
+                return Fail(request, string.Format(
+                    CultureInfo.CurrentCulture, Strings.Ipc_Rejected_UnknownType, request.Type));
         }
     }
 
@@ -490,7 +491,8 @@ public sealed partial class IpcRequestDispatcher
     private static T Require<T>(IpcRequest request)
         where T : class =>
         IpcJson.Read<T>(request.Payload)
-        ?? throw new IpcRequestRejectedException($"{request.Type} requires a payload.");
+        ?? throw new IpcRequestRejectedException(string.Format(
+            CultureInfo.CurrentCulture, Strings.Ipc_Rejected_PayloadRequired, request.Type));
 }
 
 /// <summary>

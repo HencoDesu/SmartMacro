@@ -7,7 +7,6 @@ using Serilog.Settings.Configuration;
 using SmartMacro.App.Ipc;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Native.Dialogs;
-
 using SmartMacro.Resources;
 
 namespace SmartMacro.App;
@@ -116,7 +115,7 @@ internal static class Program
                 return ActivateRunningPanel();
             }
 
-            Log.Information("SmartMacro UI starting");
+            Log.Information("Панель SmartMacro запускается");
 
             var client = new IpcClient();
             if (!ConnectToDaemon(client))
@@ -133,7 +132,7 @@ internal static class Program
             }
             finally
             {
-                Log.Information("Avalonia exited, closing the daemon connection");
+                Log.Information("Avalonia завершилась, закрываем соединение с демоном");
                 var services = Services;
                 Services = null;
                 services.DisposeAsync().AsTask().GetAwaiter().GetResult();
