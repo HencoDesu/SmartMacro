@@ -18,7 +18,7 @@ public abstract class MacroVariableException : Exception
 public sealed class MacroVariableNotFoundException : MacroVariableException
 {
     public MacroVariableNotFoundException(string name)
-        : base(string.Format(CultureInfo.CurrentCulture, Strings_Engine.Run_Variable_NotDefined, name))
+        : base(string.Format(CultureInfo.CurrentCulture, Strings.Run_Variable_NotDefined, name))
     {
         Name = name;
     }
@@ -39,7 +39,7 @@ public sealed class MacroVariableTypeMismatchException : MacroVariableException
     public MacroVariableTypeMismatchException(string name, string expected, VariableValue actual)
         : base(string.Format(
             CultureInfo.CurrentCulture,
-            Strings_Engine.Run_Variable_TypeMismatch,
+            Strings.Run_Variable_TypeMismatch,
             name,
             expected,
             actual.DisplayString))

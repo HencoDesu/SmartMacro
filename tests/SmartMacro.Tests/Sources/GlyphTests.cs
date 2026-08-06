@@ -7,6 +7,18 @@ namespace SmartMacro.Tests.Sources;
 /// <summary>
 /// «Подпись кнопки — сам символ» и цветной эмодзи вместо него.
 ///
+/// ⚠️ <b>Проверка читает ТРИ источника, и это не расширение ради расширения.</b> Раньше сканер
+/// смотрел только <c>*.axaml</c>, и ровно поэтому глиф <c>⚑</c>, живший в C#
+/// (<c>SettingsViewModel.Glyph</c>), проезжал мимо неё — нашли его глазами на ревью. А вынос
+/// подписей в <c>Strings.resx</c> увёл бы под тот же ковёр ВСЕ глифы разом: подпись
+/// «■ Стоп» — это одна строка ресурса, и в разметке от неё не остаётся ничего. Поэтому здесь
+/// разметка, ресурсы и код C#, а не одна разметка.
+///
+/// Комментарии не читаются ни в одном из трёх: половина ловушек этого проекта описана в
+/// комментариях ИМЕНЕМ И ЗНАКОМ («D1 напоролась на U+25B6 ▶»), так что проверка по сырому тексту
+/// падала бы первым делом на собственной документации. В resx это <c>&lt;comment&gt;</c>, в
+/// C# — <c>//</c> и <c>///</c>, в разметке — узлы-комментарии XML.
+///
 /// Ловушка описана в <c>Themes/Tokens.axaml</c> и стоила трёх заходов: D1 напоролась на
 /// <c>U+25B6 ▶</c> (белый треугольник внутри кнопки с акцентным контуром — какое семейство
 /// шрифтов ни проси), D4 на <c>U+26A0 ⚠</c>, D5 поймала <c>U+23F8 ⏸</c> уже по опыту. Механизм
@@ -32,7 +44,7 @@ namespace SmartMacro.Tests.Sources;
 /// цепочки шрифтов, в DirectWrite, и headless-Skia этого не воспроизводит. Табличная проверка
 /// по кодовым точкам поэтому остаётся главной, а растровая — дополнением.
 /// </summary>
-public class AxamlGlyphTests
+public class GlyphTests
 {
     /// <summary>
     /// Кодовые точки BMP со свойством <c>Emoji</c> из <c>emoji-data.txt</c> — те, что Windows
@@ -174,7 +186,11 @@ public class AxamlGlyphTests
         // и в seguiemj.ttf такой кодовой точки нет вовсе (проверено по cmap) — то есть подать её
         // из шрифта эмодзи Windows просто неоткуда. Рисует её Segoe UI Symbol, одноцветно.
         // Читаемость при кегле 10 таким способом не проверяется — на это нужны глаза.
-        "⤓";
+        "⤓" +
+        // ⚑ флажок предупреждения на карточке диагностики среды. Взят вместо ⚠ U+26A0 ровно
+        // потому, что у того есть свойство Emoji (ловушка D4); у U+2691 его нет, и в
+        // seguiemj.ttf такой точки нет вовсе. Жил в C# и до расширения сканера сюда не попадал.
+        "⚑";
 
     [Test]
     public async Task AGlyphWithAnEmojiPresentationNeverReachesMarkup()
@@ -184,7 +200,7 @@ public class AxamlGlyphTests
         if (found.Length > 0)
         {
             Assert.Fail(
-                "В разметке кодовая точка с эмодзи-представлением. Windows подаст такой символ из " +
+                "В разметке, ресурсах или коде — кодовая точка с эмодзи-представлением. Windows подаст такой символ из " +
                 "Segoe UI Emoji, а его глифы полноцветные и Foreground игнорируют начисто — " +
                 "цепочка шрифтов от этого не спасает, подмена происходит ниже неё." + NL + NL +
                 "На эту ловушку наступали трижды: D1 — U+25B6 ▶ (белый треугольник в кнопке с " +
@@ -209,7 +225,7 @@ public class AxamlGlyphTests
         if (found.Length > 0)
         {
             Assert.Fail(
-                "В разметке символ, которого нет ни в таблице эмодзи, ни в списке проверенных. " +
+                "В разметке, ресурсах или коде — символ, которого нет ни в таблице эмодзи, ни в списке проверенных. " +
                 "Это не приговор глифу — это значит, что на него никто не смотрел." + NL + NL +
                 "Собрать и прогнать тесты недостаточно: и цветной эмодзи вместо белого " +
                 "треугольника, и глиф, которого нет ни в одном шрифте цепочки, собираются без " +
@@ -243,14 +259,11 @@ public class AxamlGlyphTests
     /// <summary>Один найденный символ вместе с тем, где он лежит.</summary>
     private readonly record struct Symbol(string Where, int CodePoint, string Text, string Owner);
 
-    /// <summary>
-    /// Все символы разметки: значения атрибутов и текст элементов; комментарии — нет.
-    ///
-    /// Комментарии исключены не для скорости: половина ловушек этого проекта описана в
-    /// комментариях ИМЕНЕМ И ЗНАКОМ («D1 напоролась на U+25B6 ▶»), так что проверка по сырому
-    /// тексту падала бы первым делом на собственной документации.
-    /// </summary>
-    private static IEnumerable<Symbol> Symbols()
+    /// <summary>Всё, что человек может увидеть: разметка, ресурсы и код.</summary>
+    private static IEnumerable<Symbol> Symbols() => [.. Markup(), .. Resources(), .. Code()];
+
+    /// <summary>Символы разметки: значения атрибутов и текст элементов; комментарии — нет.</summary>
+    private static IEnumerable<Symbol> Markup()
     {
         foreach (var file in RepositorySources.AxamlFiles)
         {
@@ -274,6 +287,59 @@ public class AxamlGlyphTests
             {
                 var owner = text.Parent is { } parent ? $"текст <{parent.Name.LocalName}>" : "текст";
                 foreach (var symbol in SymbolsOf(text.Value, RepositorySources.Where(file, text), owner))
+                {
+                    yield return symbol;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Символы значений ресурсов. <c>&lt;comment&gt;</c> НЕ читается — он для человека, который
+    /// вычитывает формулировки, и в нём ловушки описаны по именам и знакам, ровно как в
+    /// комментариях кода.
+    /// </summary>
+    private static IEnumerable<Symbol> Resources()
+    {
+        foreach (var file in RepositorySources.ResxFiles)
+        {
+            var document = XDocument.Parse(File.ReadAllText(file), LoadOptions.SetLineInfo);
+            foreach (var data in document.Root?.Elements("data") ?? [])
+            {
+                if (data.Element("value") is not { } value)
+                {
+                    continue;
+                }
+
+                var key = data.Attribute("name")?.Value ?? "?";
+                foreach (var symbol in SymbolsOf(value.Value, RepositorySources.Where(file, value), $"ресурс {key}"))
+                {
+                    yield return symbol;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Символы кода C#. Комментарии вычищены
+    /// (<see cref="RepositorySources.StripCommentsFromCSharp"/>), строковые литералы — нет: они
+    /// и есть то, ради чего проверка сюда пришла.
+    ///
+    /// Границы литералов отдельно не разбираются, и это не небрежность: идентификаторы в этом
+    /// дереве латиницей по соглашению, а операторы C# — ASCII, так что за пределами литералов
+    /// символ категории «знак» взяться неоткуда. Если он всё же там заведётся, показать его
+    /// — правильное поведение, а не ложная тревога.
+    /// </summary>
+    private static IEnumerable<Symbol> Code()
+    {
+        foreach (var file in RepositorySources.AllCSharpFiles)
+        {
+            var stripped = RepositorySources.StripCommentsFromCSharp(File.ReadAllText(file));
+            var lines = stripped.Split('\n');
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var where = $"{RepositorySources.Relative(file)}:{i + 1}";
+                foreach (var symbol in SymbolsOf(lines[i], where, "строка кода"))
                 {
                     yield return symbol;
                 }

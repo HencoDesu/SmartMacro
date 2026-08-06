@@ -199,7 +199,7 @@ public sealed partial class IpcRequestDispatcher
                     if (_macros.TryGet(payload.Name) is null)
                     {
                         throw new IpcRequestRejectedException(string.Format(
-                            CultureInfo.CurrentCulture, Strings_Engine.Ipc_Rejected_MacroNotFound, payload.Name));
+                            CultureInfo.CurrentCulture, Strings.Ipc_Rejected_MacroNotFound, payload.Name));
                     }
                 }
 
@@ -225,7 +225,7 @@ public sealed partial class IpcRequestDispatcher
                 var payload = Require<SubscribeRunEventsRequest>(request);
                 var connection = session
                                  ?? throw new IpcRequestRejectedException(
-                                     Strings_Engine.Ipc_Rejected_RunEventsNeedConnection);
+                                     Strings.Ipc_Rejected_RunEventsNeedConnection);
                 connection.SetRunEventSubscription(payload.Enabled);
 
                 // Живые обходы — чтобы панель, пришедшая посреди прогона, вообще узнала, что
@@ -267,7 +267,7 @@ public sealed partial class IpcRequestDispatcher
                 if (session is not { WantsRunEvents: true })
                 {
                     throw new IpcRequestRejectedException(
-                        Strings_Engine.Ipc_Rejected_DebuggerNeedsSubscription);
+                        Strings.Ipc_Rejected_DebuggerNeedsSubscription);
                 }
 
                 return Ok(request, IpcJson.Write(_debug.Command(payload.WalkId, payload.Command, payload.NodeId)));
@@ -285,7 +285,7 @@ public sealed partial class IpcRequestDispatcher
             {
                 var connection = session
                                  ?? throw new IpcRequestRejectedException(
-                                     Strings_Engine.Ipc_Rejected_HotkeySuspensionNeedsConnection);
+                                     Strings.Ipc_Rejected_HotkeySuspensionNeedsConnection);
                 await connection.SetHotkeySuspensionAsync(true, cancellationToken).ConfigureAwait(false);
                 return Ok(request);
             }
@@ -294,7 +294,7 @@ public sealed partial class IpcRequestDispatcher
             {
                 var connection = session
                                  ?? throw new IpcRequestRejectedException(
-                                     Strings_Engine.Ipc_Rejected_HotkeySuspensionNeedsConnection);
+                                     Strings.Ipc_Rejected_HotkeySuspensionNeedsConnection);
                 await connection.SetHotkeySuspensionAsync(false, cancellationToken).ConfigureAwait(false);
                 return Ok(request);
             }
@@ -313,7 +313,7 @@ public sealed partial class IpcRequestDispatcher
                 var payload = Require<SubscribeLogRequest>(request);
                 var connection = session
                                  ?? throw new IpcRequestRejectedException(
-                                     Strings_Engine.Ipc_Rejected_LogNeedsConnection);
+                                     Strings.Ipc_Rejected_LogNeedsConnection);
 
                 // ПОРЯДОК ЗДЕСЬ ЗНАЧИМ. Сперва включаем ленту, и только потом снимаем
                 // предысторию: в обратном порядке между снимком и подпиской образовалась бы
@@ -337,7 +337,7 @@ public sealed partial class IpcRequestDispatcher
                 var payload = Require<SaveSettingsRequest>(request);
                 var settings = payload.Settings
                                ?? throw new IpcRequestRejectedException(
-                                   Strings_Engine.Ipc_Rejected_SaveSettingsWithoutPayload);
+                                   Strings.Ipc_Rejected_SaveSettingsWithoutPayload);
 
                 // Пустой список = записано; непустой = НЕ записано, вот причины. Договорённость
                 // дословно та же, что у SaveMacro. Проверяет хранилище — там же, где пишет, —
@@ -388,7 +388,7 @@ public sealed partial class IpcRequestDispatcher
                 // вести здесь учёт клиентов.
                 var broadcaster = _broadcaster
                                   ?? throw new IpcRequestRejectedException(
-                                      Strings_Engine.Ipc_Rejected_NoBroadcaster);
+                                      Strings.Ipc_Rejected_NoBroadcaster);
                 broadcaster.Broadcast(new IpcEvent(IpcMessageTypes.ActivateWindow));
                 return Ok(request);
             }

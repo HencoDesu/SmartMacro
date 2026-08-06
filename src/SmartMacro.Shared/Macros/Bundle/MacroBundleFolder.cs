@@ -123,7 +123,7 @@ public enum MacroSaveTarget
 public sealed class MacroNameTakenException : IOException
 {
     public MacroNameTakenException(string name, string path)
-        : base(string.Format(CultureInfo.CurrentCulture, Strings_Engine.Bundle_NameTaken, name))
+        : base(string.Format(CultureInfo.CurrentCulture, Strings.Bundle_NameTaken, name))
     {
         Name = name;
         Path = path;
@@ -150,9 +150,9 @@ public sealed class MacroBundleUnreadableException : IOException
     public MacroBundleUnreadableException(string path, MacroBundleFault fault, string? verdict)
         : base(string.Format(
             CultureInfo.CurrentCulture,
-            Strings_Engine.Bundle_Unreadable_Overwrite,
+            Strings.Bundle_Unreadable_Overwrite,
             path,
-            verdict ?? Strings_Engine.Bundle_Unreadable_ReasonUnknown))
+            verdict ?? Strings.Bundle_Unreadable_ReasonUnknown))
     {
         Path = path;
         Fault = fault;
@@ -238,29 +238,29 @@ public static class MacroBundleFolder
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            return Strings_Engine.Bundle_Name_Empty;
+            return Strings.Bundle_Name_Empty;
         }
 
         if (name.Length > MaxNameLength)
         {
-            return string.Format(CultureInfo.CurrentCulture, Strings_Engine.Bundle_Name_TooLong, MaxNameLength);
+            return string.Format(CultureInfo.CurrentCulture, Strings.Bundle_Name_TooLong, MaxNameLength);
         }
 
         var invalid = name.IndexOfAny(System.IO.Path.GetInvalidFileNameChars());
         if (invalid >= 0)
         {
             return string.Format(
-                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Name_InvalidCharacter, name[invalid]);
+                CultureInfo.CurrentCulture, Strings.Bundle_Name_InvalidCharacter, name[invalid]);
         }
 
         if (name.EndsWith('.') || name.EndsWith(' '))
         {
-            return Strings_Engine.Bundle_Name_TrailingDotOrSpace;
+            return Strings.Bundle_Name_TrailingDotOrSpace;
         }
 
         if (IsReservedDeviceName(name))
         {
-            return string.Format(CultureInfo.CurrentCulture, Strings_Engine.Bundle_Name_ReservedDevice, name);
+            return string.Format(CultureInfo.CurrentCulture, Strings.Bundle_Name_ReservedDevice, name);
         }
 
         return null;
@@ -576,7 +576,7 @@ public static class MacroBundleFolder
         {
             throw new ArgumentException(
                 metadata.Message ?? string.Format(
-                    CultureInfo.CurrentCulture, Strings_Engine.Bundle_Import_NotABundle, sourcePath),
+                    CultureInfo.CurrentCulture, Strings.Bundle_Import_NotABundle, sourcePath),
                 nameof(sourcePath));
         }
 

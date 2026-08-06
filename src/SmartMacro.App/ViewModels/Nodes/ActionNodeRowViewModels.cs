@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.Diagnostics.CodeAnalysis;
 using System.Collections.ObjectModel;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels.Nodes;
 
@@ -13,7 +15,7 @@ namespace SmartMacro.App.ViewModels.Nodes;
 public abstract class ActionNodeRowViewModel : NodeRowViewModel
 {
     protected ActionNodeRowViewModel(MacroNode node, TargetSelectorViewModel? target, Guid? next)
-        : base(node, target, new NodeEdgeViewModel("Далее", next))
+        : base(node, target, new NodeEdgeViewModel(Strings.Node_Edge_Next, next))
     {
     }
 
@@ -32,7 +34,7 @@ public sealed class KeyPressNodeRowViewModel : ActionNodeRowViewModel
         _keyName = node.Key.ToString();
     }
 
-    public override string TypeLabel => "Нажать клавишу";
+    public override string TypeLabel => Strings.Node_Type_KeyPress;
 
     public override string Summary => _keyName;
 
@@ -65,7 +67,7 @@ public sealed class KeyPressNodeRowViewModel : ActionNodeRowViewModel
     {
         if (!Enum.TryParse<VirtualKey>(_keyName, out var key) || key == 0)
         {
-            yield return $"[{DisplayName}] клавиша не задана.";
+            yield return string.Format(CultureInfo.CurrentCulture, Strings.Node_Error_KeyMissing, DisplayName);
         }
     }
 
@@ -97,7 +99,7 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
         _doubleClick = node.DoubleClick;
     }
 
-    public override string TypeLabel => "Клик";
+    public override string TypeLabel => Strings.Node_Type_Click;
 
     public override string Summary =>
         (_useVariable ? $"{{{_pointVar}}}" : $"{_xText}, {_yText}") + (_doubleClick ? " ×2" : string.Empty);
@@ -162,7 +164,7 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
         {
             if (string.IsNullOrWhiteSpace(_pointVar))
             {
-                yield return $"[{DisplayName}] имя переменной не задано.";
+                yield return string.Format(CultureInfo.CurrentCulture, Strings.Node_Error_PointVarMissing, DisplayName);
             }
 
             yield break;
@@ -170,12 +172,12 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
 
         if (NodeInput.ParseInt(_xText) is null)
         {
-            yield return $"[{DisplayName}] X: «{_xText}» — не целое число.";
+            yield return string.Format(CultureInfo.CurrentCulture, Strings.Node_Error_ClickX, DisplayName, _xText);
         }
 
         if (NodeInput.ParseInt(_yText) is null)
         {
-            yield return $"[{DisplayName}] Y: «{_yText}» — не целое число.";
+            yield return string.Format(CultureInfo.CurrentCulture, Strings.Node_Error_ClickY, DisplayName, _yText);
         }
     }
 }
@@ -196,9 +198,10 @@ public sealed class DelayNodeRowViewModel : ActionNodeRowViewModel
         _secondsText = NodeInput.FormatSeconds(node.Ms);
     }
 
-    public override string TypeLabel => "Пауза";
+    public override string TypeLabel => Strings.Node_Type_Delay;
 
-    public override string Summary => $"{_secondsText} с";
+    public override string Summary =>
+        string.Format(CultureInfo.CurrentCulture, Strings.Node_Summary_Seconds, _secondsText);
 
     /// <summary>Задержка в секундах, как её набрали; при сохранении переводится в миллисекунды.</summary>
     public string SecondsText
@@ -220,7 +223,7 @@ public sealed class DelayNodeRowViewModel : ActionNodeRowViewModel
     {
         if (NodeInput.ParseSecondsToMs(_secondsText) is null)
         {
-            yield return $"[{DisplayName}] пауза: «{_secondsText}» — не неотрицательное число секунд.";
+            yield return string.Format(CultureInfo.CurrentCulture, Strings.Node_Error_Delay, DisplayName, _secondsText);
         }
     }
 }
@@ -250,7 +253,7 @@ public abstract class TagNodeRowViewModel : ActionNodeRowViewModel
     {
         if (string.IsNullOrWhiteSpace(_tag))
         {
-            yield return $"[{DisplayName}] тег не задан.";
+            yield return string.Format(CultureInfo.CurrentCulture, Strings.Node_Error_TagMissing, DisplayName);
         }
     }
 }
@@ -263,7 +266,7 @@ public sealed class AddTagNodeRowViewModel : TagNodeRowViewModel
     {
     }
 
-    public override string TypeLabel => "Добавить тег";
+    public override string TypeLabel => Strings.Node_Type_AddTag;
 
     public override MacroNode ToNode() => new AddTagNode
     {
@@ -284,7 +287,7 @@ public sealed class RemoveTagNodeRowViewModel : TagNodeRowViewModel
     {
     }
 
-    public override string TypeLabel => "Снять тег";
+    public override string TypeLabel => Strings.Node_Type_RemoveTag;
 
     public override MacroNode ToNode() => new RemoveTagNode
     {
@@ -308,7 +311,7 @@ public sealed class SetIconNodeRowViewModel : ActionNodeRowViewModel
         _iconPath = node.IconPath;
     }
 
-    public override string TypeLabel => "Сменить иконку";
+    public override string TypeLabel => Strings.Node_Type_SetIcon;
 
     public override string Summary => _iconPath;
 
@@ -334,7 +337,7 @@ public sealed class SetIconNodeRowViewModel : ActionNodeRowViewModel
     {
         if (string.IsNullOrWhiteSpace(_iconPath))
         {
-            yield return $"[{DisplayName}] путь к иконке не задан.";
+            yield return string.Format(CultureInfo.CurrentCulture, Strings.Node_Error_IconMissing, DisplayName);
         }
     }
 }
@@ -363,9 +366,9 @@ public sealed class RunSubmacroNodeRowViewModel : ActionNodeRowViewModel
     // типа печатают ДВОЕ: шапка коробки шириной 210px и заголовок инспектора, у которого справа
     // стоит подсказка «двойной клик — правка на месте». Найдено глазами: длинный вариант въезжал
     // в неё вплотную, без единого пикселя зазора.
-    public override string TypeLabel => "Под-макрос";
+    public override string TypeLabel => Strings.Node_Type_RunSubmacro;
 
-    public override string Summary => Join(SubmacroLabel, _await ? "ждать" : null);
+    public override string Summary => Join(SubmacroLabel, _await ? Strings.Node_Summary_Await : null);
 
     /// <summary>
     /// Личность вызываемого под-макроса. Сеттер игнорирует <see cref="Guid.Empty"/>, потому что
@@ -440,7 +443,7 @@ public sealed class RunSubmacroNodeRowViewModel : ActionNodeRowViewModel
     {
         if (_submacroId == Guid.Empty)
         {
-            yield return $"[{DisplayName}] не выбран под-макрос.";
+            yield return string.Format(CultureInfo.CurrentCulture, Strings.Node_Error_SubmacroMissing, DisplayName);
         }
     }
 }

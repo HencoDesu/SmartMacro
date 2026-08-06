@@ -6,6 +6,7 @@ using SmartMacro.App.Mvvm;
 using SmartMacro.Macros.Analysis;
 using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -23,7 +24,7 @@ public sealed class TemplateRowViewModel : ObservableObject
         IsDecodable = file.Size is { Width: > 0, Height: > 0 };
         SizeText = IsDecodable
             ? string.Create(CultureInfo.InvariantCulture, $"{file.Size.Width}×{file.Size.Height}")
-            : "не PNG";
+            : Strings.Editor_Templates_NotPng;
         BytesText = TemplateFormat.Bytes(file.Bytes);
         UsedBy = usedBy;
     }
@@ -55,7 +56,7 @@ public sealed class TemplateRowViewModel : ObservableObject
     public IReadOnlyList<TemplateReference> UsedBy { get; }
 
     /// <summary>«3 ноды» либо «не используется». Второе — не ошибка, просто факт.</summary>
-    public string UsageText => UsedBy.Count == 0 ? "не используется" : Plural(UsedBy.Count);
+    public string UsageText => UsedBy.Count == 0 ? Strings.Editor_Templates_Unused : Plural(UsedBy.Count);
 
     /// <summary><c>true</c>, когда на шаблон не ссылается ни одна нода, — строка рисуется приглушённо.</summary>
     public bool IsUnused => UsedBy.Count == 0;
@@ -70,12 +71,13 @@ public sealed class TemplateRowViewModel : ObservableObject
     /// <summary>«classes / Лучник» либо просто «ServerSelectButton» — заголовок панели превью.</summary>
     public string FullName => Set is null ? Name : $"{Set} / {Name}";
 
-    internal static string Plural(int nodes) => (nodes % 10, nodes % 100) switch
-    {
-        (1, not 11) => string.Create(CultureInfo.CurrentCulture, $"{nodes} нода"),
-        (2 or 3 or 4, not (12 or 13 or 14)) => string.Create(CultureInfo.CurrentCulture, $"{nodes} ноды"),
-        _ => string.Create(CultureInfo.CurrentCulture, $"{nodes} нод"),
-    };
+    // Третья копия разбора по %10 из тех, что жили порознь; теперь форму выбирает общий
+    // PluralForms, а сами формы — явные ключи ресурсов.
+    internal static string Plural(int nodes) => PluralForms.Format(
+        nodes,
+        Strings.Editor_Templates_UsedBy_One,
+        Strings.Editor_Templates_UsedBy_Few,
+        Strings.Editor_Templates_UsedBy_Many);
 }
 
 /// <summary>Раздел списка: одиночные шаблоны либо один набор.</summary>
@@ -87,7 +89,7 @@ public sealed class TemplateGroupViewModel
         Rows = rows;
         // «одиночные» — не имя папки, а роль: это файлы в корне, и называет их не
         // RecognizeTag целиком, а Find/Wait поимённо.
-        Title = set ?? "одиночные";
+        Title = set ?? Strings.Editor_Templates_GroupSingles;
         CountText = rows.Count.ToString(CultureInfo.InvariantCulture);
         IsSet = set is not null;
     }
@@ -265,8 +267,9 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     public string SelectedUsageHeader => _selected is null
         ? string.Empty
         : SelectedUsages.Count == 0
-            ? "НА НЕГО НИКТО НЕ ССЫЛАЕТСЯ"
-            : string.Create(CultureInfo.CurrentCulture, $"ССЫЛАЮТСЯ · {SelectedUsages.Count}");
+            ? Strings.Editor_Templates_NoUsages
+            : string.Format(CultureInfo.CurrentCulture, Strings.Editor_Templates_Usages,
+                SelectedUsages.Count);
 
     /// <summary>
     /// Байты выбранного шаблона либо <c>null</c>, пока их нет. Именно байты, а не
@@ -410,7 +413,8 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
         var name = Path.GetFileNameWithoutExtension(fileName);
         if (string.IsNullOrWhiteSpace(name))
         {
-            ImportProblem = $"«{fileName}» — не годится как имя шаблона.";
+            ImportProblem = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Templates_BadName, fileName);
             return false;
         }
 
@@ -419,13 +423,15 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
         {
             if (!_library.AddTemplate(macroName, set, name, png))
             {
-                ImportProblem = $"Не удалось добавить «{name}»: бандл макроса не читается.";
+                ImportProblem = string.Format(CultureInfo.CurrentCulture,
+                    Strings.Editor_Templates_AddFailedUnreadable, name);
                 return false;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            ImportProblem = $"Не удалось добавить шаблон: {ex.Message}";
+            ImportProblem = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Templates_AddFailed, ex.Message);
             return false;
         }
 
@@ -452,7 +458,8 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ImportProblem = $"Не удалось удалить шаблон: {ex.Message}";
+            ImportProblem = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Templates_DeleteFailed, ex.Message);
             return;
         }
 
@@ -487,7 +494,7 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
 
         if (!row.IsDecodable)
         {
-            PreviewProblem = "Файл не разобрался как PNG — показывать нечего.";
+            PreviewProblem = Strings.Editor_Templates_PreviewNotPng;
             return;
         }
 
@@ -495,7 +502,11 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
         {
             // Размер файла уже есть в списке, так что читать его ради отказа не надо.
             PreviewProblem =
-                $"{row.BytesText} — больше потолка превью в {TemplateFormat.Bytes(MaxPreviewBytes)}.";
+                string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings.Editor_Templates_PreviewTooBig,
+                    row.BytesText,
+                    TemplateFormat.Bytes(MaxPreviewBytes));
             return;
         }
 
@@ -507,14 +518,15 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Log.Warning(ex, "Шаблон '{Template}' макроса '{Macro}' не прочитан", row.FullName, macroName);
-            PreviewProblem = $"Не удалось прочитать шаблон: {ex.Message}";
+            PreviewProblem = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Templates_PreviewFailed, ex.Message);
             return;
         }
 
         if (png is null)
         {
             // Список устарел: бандл сменился между перечислением и чтением.
-            PreviewProblem = "Шаблона в бандле больше нет.";
+            PreviewProblem = Strings.Editor_Templates_PreviewGone;
             return;
         }
 
@@ -589,8 +601,14 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
 internal static class TemplateFormat
 {
     public static string Bytes(long bytes) => bytes < 1024
-        ? string.Create(CultureInfo.CurrentCulture, $"{bytes} Б")
+        ? string.Format(CultureInfo.CurrentCulture, Strings.Editor_Templates_Bytes, bytes)
         : bytes < 1024 * 1024
-            ? string.Create(CultureInfo.CurrentCulture, $"{bytes / 1024.0:0.#} КБ")
-            : string.Create(CultureInfo.CurrentCulture, $"{bytes / (1024.0 * 1024.0):0.#} МБ");
+            ? string.Format(
+                CultureInfo.CurrentCulture,
+                Strings.Editor_Templates_Kilobytes,
+                (bytes / 1024.0).ToString("0.#", CultureInfo.CurrentCulture))
+            : string.Format(
+                CultureInfo.CurrentCulture,
+                Strings.Editor_Templates_Megabytes,
+                (bytes / (1024.0 * 1024.0)).ToString("0.#", CultureInfo.CurrentCulture));
 }

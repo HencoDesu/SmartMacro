@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.Contracts.Settings;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -99,15 +100,12 @@ public sealed class ProcessProfileRowViewModel : ObservableObject
     public bool WakesWindows => _activationLParam is not null;
 
     /// <summary>Что стоит в колонке «сигнал побудки». Числа здесь нет намеренно — см. заметку у класса.</summary>
-    public string WakeText => WakesWindows ? "есть" : "не нужен";
+    public string WakeText => WakesWindows ? Strings.Settings_Profiles_WakeYes : Strings.Settings_Profiles_WakeNo;
 
     /// <summary>Подсказка к той же колонке: что этот сигнал делает и почему его не показывают числом.</summary>
     public string WakeTooltip => WakesWindows
-        ? "Окна этого процесса замораживаются в фоне, и перед вводом им уходит WM_ACTIVATEAPP с магическим "
-          + "значением. Значение добыто реверсом клиента и проставлено по имени процесса; править его — только "
-          + "в settings.json, и только если у вашей сборки игры оно другое."
-        : "Обычный процесс: пробуждение пропускается, ввод уходит сразу. Так и должно быть у всего, кроме "
-          + "клиентов игры.";
+        ? Strings.Settings_Profiles_WakeTooltipYes
+        : Strings.Settings_Profiles_WakeTooltipNo;
 
     /// <summary>Собирает профиль обратно.</summary>
     /// <param name="profile">Собранный профиль.</param>
@@ -118,8 +116,8 @@ public sealed class ProcessProfileRowViewModel : ObservableObject
         profile = null;
         var name = _processName.Trim();
 
-        if (!TryParse(_settleDelay, "Оседание", name, out var settle, out error)
-            || !TryParse(_deactivationDelay, "Деактивация", name, out var deactivation, out error))
+        if (!TryParse(_settleDelay, Strings.Settings_Profiles_SettleName, name, out var settle, out error)
+            || !TryParse(_deactivationDelay, Strings.Settings_Profiles_DeactivateName, name, out var deactivation, out error))
         {
             return false;
         }
@@ -154,7 +152,8 @@ public sealed class ProcessProfileRowViewModel : ObservableObject
             return true;
         }
 
-        error = $"{title} у профиля «{process}»: «{text}» — это не целое число.";
+        error = string.Format(CultureInfo.CurrentCulture,
+            Strings.Settings_Profiles_BadNumber, title, process, text);
         return false;
     }
 

@@ -223,10 +223,10 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
     // панели инструментов, а какая из четырёх причин сработала, знает только демон.
     private static string Describe(DebugPauseReason reason) => reason switch
     {
-        DebugPauseReason.Breakpoint => Strings_Engine.Run_PauseReason_Breakpoint,
-        DebugPauseReason.Step => Strings_Engine.Run_PauseReason_Step,
-        DebugPauseReason.Cursor => Strings_Engine.Run_PauseReason_UntilCursor,
-        _ => Strings_Engine.Run_PauseReason_Paused,
+        DebugPauseReason.Breakpoint => Strings.Run_PauseReason_Breakpoint,
+        DebugPauseReason.Step => Strings.Run_PauseReason_Step,
+        DebugPauseReason.Cursor => Strings.Run_PauseReason_UntilCursor,
+        _ => Strings.Run_PauseReason_Paused,
     };
 
     // ------------------------------------------------------------------------ насос

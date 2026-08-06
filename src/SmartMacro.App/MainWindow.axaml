@@ -34,6 +34,7 @@
         xmlns:vm="using:SmartMacro.App.ViewModels"
         xmlns:views="using:SmartMacro.App.Views"
         xmlns:conv="using:SmartMacro.App.Converters"
+        xmlns:res="using:SmartMacro.Resources"
         x:Class="SmartMacro.App.MainWindow"
         x:DataType="vm:ShellViewModel"
         x:Name="Root"
@@ -162,9 +163,9 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <Button Classes="caption" Content="—" ToolTip.Tip="Свернуть" Click="OnMinimiseClicked" />
-                    <Button Classes="caption" Content="▢" ToolTip.Tip="Развернуть" Click="OnMaximiseClicked" />
-                    <Button Classes="caption close" Content="✕" ToolTip.Tip="Закрыть" Click="OnCloseClicked" />
+                    <Button Classes="caption" Content="—" ToolTip.Tip="{x:Static res:Strings.Shell_Caption_Minimize}" Click="OnMinimiseClicked" />
+                    <Button Classes="caption" Content="▢" ToolTip.Tip="{x:Static res:Strings.Shell_Caption_Maximize}" Click="OnMaximiseClicked" />
+                    <Button Classes="caption close" Content="✕" ToolTip.Tip="{x:Static res:Strings.Shell_Caption_Close}" Click="OnCloseClicked" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -218,7 +219,7 @@
                          должны — поэтому это отдельная кнопка, а выбор рейки при переходе сюда
                          обнуляется. -->
                     <StackPanel Grid.Row="2" Margin="0,0,0,0"><StackPanel Margin="12,10,12,8" Spacing="6">
-                        <TextBlock Classes="eyebrow" Text="ТЕГИ" />
+                        <TextBlock Classes="eyebrow" Text="{x:Static res:Strings.Shell_Tags_Header}" />
                         <ItemsControl ItemsSource="{Binding TagSummary}" IsVisible="{Binding HasTagSummary}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -248,7 +249,7 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <TextBlock Text="ни одного окна не опознано"
+                        <TextBlock Text="{x:Static res:Strings.Shell_Tags_Empty}"
                                    FontSize="{DynamicResource NocturneFontSizeMicro}"
                                    TextWrapping="Wrap"
                                    Foreground="{DynamicResource NocturneTextGhostBrush}"
@@ -266,7 +267,7 @@
                             <ToggleButton Classes="railitem"
                                           IsChecked="{Binding SettingsMode.IsSelected, Mode=OneWay}"
                                           Click="OnSettingsClicked"
-                                          ToolTip.Tip="Настройки демона и диагностика среды">
+                                          ToolTip.Tip="{x:Static res:Strings.Shell_Rail_SettingsTip}">
                                 <Grid ColumnDefinitions="Auto,*,Auto" Height="30">
                                     <!-- Шестерёнка. Не глиф из шрифта: у ⚙ есть эмодзи-вариант,
                                          который Windows подаёт из Segoe UI Emoji полноцветным и
@@ -280,7 +281,7 @@
                                           Data="M8,5.6 A2.4,2.4 0 1 1 8,10.4 A2.4,2.4 0 1 1 8,5.6 M8,1.5 L8,3.5 M8,12.5 L8,14.5 M1.5,8 L3.5,8 M12.5,8 L14.5,8 M3.4,3.4 L4.8,4.8 M11.2,11.2 L12.6,12.6 M12.6,3.4 L11.2,4.8 M4.8,11.2 L3.4,12.6" />
                                     <TextBlock Grid.Column="1"
                                                Margin="9,0,0,0"
-                                               Text="Настройки"
+                                               Text="{x:Static res:Strings.Shell_Mode_Settings}"
                                                FontSize="{DynamicResource NocturneFontSizeBody}"
                                                VerticalAlignment="Center" />
                                     <!-- Красная точка на месте счётчика: проваленная проверка
@@ -292,7 +293,7 @@
                                             VerticalAlignment="Center"
                                             Background="{DynamicResource NocturneDangerBrush}"
                                             IsVisible="{Binding HasEnvironmentProblems}"
-                                            ToolTip.Tip="Проверка среды нашла проблему" />
+                                            ToolTip.Tip="{x:Static res:Strings.Shell_Rail_DiagnosticsDot}" />
                                 </Grid>
                             </ToggleButton>
                         </Border>
@@ -362,7 +363,7 @@
                                    Foreground="{DynamicResource NocturneAccent400Brush}"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
-                                   ToolTip.Tip="Текущая нода"
+                                   ToolTip.Tip="{x:Static res:Strings.Shell_RunBar_CurrentNodeTip}"
                                    IsVisible="{Binding HasRuns}"
                                    Text="{Binding PrimaryRun.CurrentNodeText, StringFormat='▸ {0}'}" />
                         <TextBlock Grid.Column="4"
@@ -371,7 +372,7 @@
                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                    Foreground="{DynamicResource NocturneTextFaintBrush}"
                                    VerticalAlignment="Center"
-                                   ToolTip.Tip="Ещё прогоны — весь список в режиме «Прогоны»"
+                                   ToolTip.Tip="{x:Static res:Strings.Shell_RunBar_OtherRunsTip}"
                                    IsVisible="{Binding HasOtherRuns}"
                                    Text="{Binding OtherRunsText}" />
 
@@ -384,13 +385,13 @@
                                    Text="{Binding IdleText}" />
 
                         <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
-                            <Button Content="Стоп"
+                            <Button Content="{x:Static res:Strings.Shell_RunBar_Stop}"
                                     Height="21"
                                     Padding="10,0"
                                     IsEnabled="{Binding HasRuns}"
-                                    ToolTip.Tip="Остановить прогон, названный в полосе"
+                                    ToolTip.Tip="{x:Static res:Strings.Shell_RunBar_StopTip}"
                                     Click="OnStopPrimaryRunClicked" />
-                            <Button Content="Стоп всё"
+                            <Button Content="{x:Static res:Strings.Shell_RunBar_StopAll}"
                                     Classes="danger"
                                     Height="21"
                                     Padding="10,0"

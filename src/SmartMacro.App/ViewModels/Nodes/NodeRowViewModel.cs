@@ -5,6 +5,7 @@ using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels.Canvas;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels.Nodes;
 
@@ -98,7 +99,9 @@ public sealed class NodeEdgeViewModel : ObservableObject
     public bool IsEnd => _targetId is null;
 
     /// <summary>Подпись строки порта на свёрнутой коробке: «нашёл» или «таймаут → конец».</summary>
-    public string BoxLabel => IsEnd ? $"{ShortLabel} → конец" : ShortLabel;
+    public string BoxLabel => IsEnd
+        ? string.Format(CultureInfo.CurrentCulture, Strings.Node_Edge_BoxLabelEnd, ShortLabel)
+        : ShortLabel;
 
     /// <summary>
     /// Живой список нод, доступных для выбора: им владеет редактор, а делят его все рёбра, так
@@ -207,7 +210,9 @@ public sealed class RegionEditorViewModel : ObservableObject
         {
             if (NodeInput.ParseInt(text) is null)
             {
-                yield return $"[{nodeName}] регион {label}: «{text}» — не целое число.";
+                yield return string.Format(
+                    CultureInfo.CurrentCulture, Strings.Node_Error_Region,
+                    nodeName, label, text);
             }
         }
     }
@@ -781,15 +786,15 @@ public abstract class NodeRowViewModel : ObservableObject
     /// <summary>Пункты меню «добавить ноду» во всплывающем списке, в порядке каталога.</summary>
     public static IReadOnlyList<MacroNodeKindOption> Kinds { get; } =
     [
-        new(MacroNodeKind.KeyPress, "Нажать клавишу"),
-        new(MacroNodeKind.Click, "Клик"),
-        new(MacroNodeKind.Delay, "Пауза"),
-        new(MacroNodeKind.AddTag, "Добавить тег"),
-        new(MacroNodeKind.RemoveTag, "Снять тег"),
-        new(MacroNodeKind.SetIcon, "Сменить иконку"),
-        new(MacroNodeKind.RunSubmacro, "Запустить под-макрос"),
-        new(MacroNodeKind.FindElement, "Найти элемент"),
-        new(MacroNodeKind.WaitForElement, "Ждать элемент"),
-        new(MacroNodeKind.RecognizeTag, "Распознать тег"),
+        new(MacroNodeKind.KeyPress, Strings.Node_Type_KeyPress),
+        new(MacroNodeKind.Click, Strings.Node_Type_Click),
+        new(MacroNodeKind.Delay, Strings.Node_Type_Delay),
+        new(MacroNodeKind.AddTag, Strings.Node_Type_AddTag),
+        new(MacroNodeKind.RemoveTag, Strings.Node_Type_RemoveTag),
+        new(MacroNodeKind.SetIcon, Strings.Node_Type_SetIcon),
+        new(MacroNodeKind.RunSubmacro, Strings.Node_Type_RunSubmacroMenu),
+        new(MacroNodeKind.FindElement, Strings.Node_Type_FindElement),
+        new(MacroNodeKind.WaitForElement, Strings.Node_Type_WaitForElement),
+        new(MacroNodeKind.RecognizeTag, Strings.Node_Type_RecognizeTag),
     ];
 }

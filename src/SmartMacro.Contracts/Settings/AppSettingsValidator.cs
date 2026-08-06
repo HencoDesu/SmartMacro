@@ -58,22 +58,22 @@ public static class AppSettingsValidator
         ArgumentNullException.ThrowIfNull(settings);
         var issues = new List<SettingsIssue>();
 
-        Range(issues, "Watch.ProcessPollIntervalSeconds", Strings_Engine.Settings_Engine_Field_ProcessPollInterval,
+        Range(issues, "Watch.ProcessPollIntervalSeconds", Strings.Settings_Engine_Field_ProcessPollInterval,
             settings.Watch.ProcessPollIntervalSeconds, MinPollSeconds, MaxPollSeconds,
-            Strings_Engine.Settings_Engine_Unit_Seconds);
-        Range(issues, "Watch.WindowPollIntervalSeconds", Strings_Engine.Settings_Engine_Field_WindowPollInterval,
+            Strings.Settings_Engine_Unit_Seconds);
+        Range(issues, "Watch.WindowPollIntervalSeconds", Strings.Settings_Engine_Field_WindowPollInterval,
             settings.Watch.WindowPollIntervalSeconds, MinPollSeconds, MaxPollSeconds,
-            Strings_Engine.Settings_Engine_Unit_Seconds);
+            Strings.Settings_Engine_Unit_Seconds);
 
-        Threshold(issues, "Vision.MatchThreshold", Strings_Engine.Settings_Engine_Field_MatchThreshold,
+        Threshold(issues, "Vision.MatchThreshold", Strings.Settings_Engine_Field_MatchThreshold,
             settings.Vision.MatchThreshold);
-        Range(issues, "Vision.PollIntervalMs", Strings_Engine.Settings_Engine_Field_VisionPollInterval,
+        Range(issues, "Vision.PollIntervalMs", Strings.Settings_Engine_Field_VisionPollInterval,
             settings.Vision.PollIntervalMs, MinVisionPollMs, MaxVisionPollMs,
-            Strings_Engine.Settings_Engine_Unit_Milliseconds);
+            Strings.Settings_Engine_Unit_Milliseconds);
 
-        Threshold(issues, "Vision.ClassMatcher.MatchThreshold", Strings_Engine.Settings_Engine_Field_ClassMatchThreshold,
+        Threshold(issues, "Vision.ClassMatcher.MatchThreshold", Strings.Settings_Engine_Field_ClassMatchThreshold,
             settings.Vision.ClassMatcher.MatchThreshold);
-        Range(issues, "Vision.ClassMatcher.LuminanceThreshold", Strings_Engine.Settings_Engine_Field_LuminanceThreshold,
+        Range(issues, "Vision.ClassMatcher.LuminanceThreshold", Strings.Settings_Engine_Field_LuminanceThreshold,
             (int)settings.Vision.ClassMatcher.LuminanceThreshold, 0, 255, string.Empty);
 
         ValidateProfiles(settings, issues);
@@ -92,7 +92,7 @@ public static class AppSettingsValidator
             if (string.IsNullOrWhiteSpace(profile.ProcessName))
             {
                 issues.Add(new SettingsIssue($"{prefix}.ProcessName",
-                    Strings_Engine.Settings_Engine_Issue_ProcessNameEmpty));
+                    Strings.Settings_Engine_Issue_ProcessNameEmpty));
             }
             else
             {
@@ -103,7 +103,7 @@ public static class AppSettingsValidator
                 {
                     issues.Add(new SettingsIssue($"{prefix}.ProcessName", string.Format(
                         CultureInfo.CurrentCulture,
-                        Strings_Engine.Settings_Engine_Issue_ProcessNameHasExtension,
+                        Strings.Settings_Engine_Issue_ProcessNameHasExtension,
                         profile.ProcessName,
                         profile.ProcessName[..^4])));
                 }
@@ -112,15 +112,15 @@ public static class AppSettingsValidator
                 {
                     issues.Add(new SettingsIssue($"{prefix}.ProcessName", string.Format(
                         CultureInfo.CurrentCulture,
-                        Strings_Engine.Settings_Engine_Issue_ProcessNameDuplicate,
+                        Strings.Settings_Engine_Issue_ProcessNameDuplicate,
                         profile.ProcessName)));
                 }
             }
 
-            Range(issues, $"{prefix}.SettleDelayMs", Strings_Engine.Settings_Engine_Field_SettleDelay,
-                profile.SettleDelayMs, 0, MaxDelayMs, Strings_Engine.Settings_Engine_Unit_Milliseconds);
-            Range(issues, $"{prefix}.DeactivationDelayMs", Strings_Engine.Settings_Engine_Field_DeactivationDelay,
-                profile.DeactivationDelayMs, 0, MaxDelayMs, Strings_Engine.Settings_Engine_Unit_Milliseconds);
+            Range(issues, $"{prefix}.SettleDelayMs", Strings.Settings_Engine_Field_SettleDelay,
+                profile.SettleDelayMs, 0, MaxDelayMs, Strings.Settings_Engine_Unit_Milliseconds);
+            Range(issues, $"{prefix}.DeactivationDelayMs", Strings.Settings_Engine_Field_DeactivationDelay,
+                profile.DeactivationDelayMs, 0, MaxDelayMs, Strings.Settings_Engine_Unit_Milliseconds);
         }
     }
 
@@ -135,7 +135,7 @@ public static class AppSettingsValidator
         var suffix = unit.Length == 0 ? string.Empty : " " + unit;
         issues.Add(new SettingsIssue(field, string.Format(
             CultureInfo.CurrentCulture,
-            Strings_Engine.Settings_Engine_Issue_OutOfRange,
+            Strings.Settings_Engine_Issue_OutOfRange,
             title,
             value,
             suffix,
@@ -152,7 +152,7 @@ public static class AppSettingsValidator
 
         issues.Add(new SettingsIssue(field, string.Format(
             CultureInfo.CurrentCulture,
-            Strings_Engine.Settings_Engine_Issue_ThresholdOutOfRange,
+            Strings.Settings_Engine_Issue_ThresholdOutOfRange,
             title,
             value,
             MinMatchThreshold)));

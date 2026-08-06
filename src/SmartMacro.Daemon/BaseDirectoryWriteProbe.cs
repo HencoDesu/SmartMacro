@@ -90,7 +90,7 @@ public static class BaseDirectoryWriteProbe
     public static string DescribeFailure(string directory, string? failure) =>
         string.Format(
             CultureInfo.CurrentCulture,
-            Strings_Engine.Startup_WriteProbe_Failed,
+            Strings.Startup_WriteProbe_Failed,
             directory,
-            failure ?? Strings_Engine.Startup_WriteProbe_ReasonUnknown);
+            failure ?? Strings.Startup_WriteProbe_ReasonUnknown);
 }

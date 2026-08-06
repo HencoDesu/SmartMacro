@@ -29,6 +29,7 @@
              xmlns:nodes="using:SmartMacro.App.ViewModels.Nodes"
              xmlns:conv="using:SmartMacro.App.Converters"
              xmlns:controls="using:SmartMacro.App.Controls"
+             xmlns:res="using:SmartMacro.Resources"
              x:Class="SmartMacro.App.Views.MacrosView"
              x:DataType="vm:MacroEditorViewModel">
 
@@ -385,7 +386,7 @@
                             FontSize="8"
                             Padding="2,0"
                             VerticalAlignment="Center"
-                            ToolTip.Tip="Убрать тег"
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Targets_RemoveTag}"
                             Click="OnRemoveSelectorTagClicked" />
                 </StackPanel>
             </Border>
@@ -414,7 +415,7 @@
             <Button Classes="ghost"
                     Padding="0"
                     HorizontalAlignment="Left"
-                    ToolTip.Tip="Кто попадёт под этот селектор прямо сейчас">
+                    ToolTip.Tip="{x:Static res:Strings.Editor_Targets_BadgeTip}">
                 <Button.Flyout>
                     <!-- Выровнено по правому краю, а не по центру: бейдж стоит у правой кромки
                          308-пиксельного инспектора, и popup шириной 322px, размещённый снизу,
@@ -434,7 +435,7 @@
                                          оставляют меньше места, чем нужно строке в 11px, и у
                                          букв сбривает выносные элементы. -->
                                     <Button Grid.Column="0"
-                                            Content="контекст-окно"
+                                            Content="{x:Static res:Strings.Editor_Targets_ModeContext}"
                                             Padding="8,3"
                                             Margin="0,0,3,0"
                                             HorizontalAlignment="Stretch"
@@ -442,7 +443,7 @@
                                             Classes.accent="{Binding !UseSelector}"
                                             Click="OnTargetContextClicked" />
                                     <Button Grid.Column="1"
-                                            Content="по тегам"
+                                            Content="{x:Static res:Strings.Editor_Targets_ModeTags}"
                                             Padding="8,3"
                                             Margin="3,0,0,0"
                                             HorizontalAlignment="Stretch"
@@ -452,7 +453,7 @@
                                 </Grid>
 
                                 <Grid ColumnDefinitions="60,*" IsVisible="{Binding UseSelector}">
-                                    <TextBlock Grid.Column="0" Classes="label" VerticalAlignment="Top" Margin="0,5,0,0" Text="нужны" />
+                                    <TextBlock Grid.Column="0" Classes="label" VerticalAlignment="Top" Margin="0,5,0,0" Text="{x:Static res:Strings.Node_Target_Require}" />
                                     <Border Grid.Column="1"
                                             MinHeight="26"
                                             Padding="6,3"
@@ -474,7 +475,7 @@
                                                      Padding="0"
                                                      MinHeight="18"
                                                      FontSize="{DynamicResource NocturneFontSizeMicro}"
-                                                     Watermark="+ тег"
+                                                     Watermark="{x:Static res:Strings.Editor_Targets_AddTagWatermark}"
                                                      Text="{Binding NewRequireTag, Mode=TwoWay}"
                                                      KeyDown="OnRequireTagKeyDown" />
                                         </StackPanel>
@@ -482,7 +483,7 @@
                                 </Grid>
 
                                 <Grid ColumnDefinitions="60,*" IsVisible="{Binding UseSelector}">
-                                    <TextBlock Grid.Column="0" Classes="label" VerticalAlignment="Top" Margin="0,5,0,0" Text="исключить" />
+                                    <TextBlock Grid.Column="0" Classes="label" VerticalAlignment="Top" Margin="0,5,0,0" Text="{x:Static res:Strings.Node_Target_Exclude}" />
                                     <Border Grid.Column="1"
                                             MinHeight="26"
                                             Padding="6,3"
@@ -504,7 +505,7 @@
                                                      Padding="0"
                                                      MinHeight="18"
                                                      FontSize="{DynamicResource NocturneFontSizeMicro}"
-                                                     Watermark="+ тег"
+                                                     Watermark="{x:Static res:Strings.Editor_Targets_AddTagWatermark}"
                                                      Text="{Binding NewExcludeTag, Mode=TwoWay}"
                                                      KeyDown="OnExcludeTagKeyDown" />
                                         </StackPanel>
@@ -514,7 +515,7 @@
                                 <TextBlock Classes="hint"
                                            TextWrapping="Wrap"
                                            IsVisible="{Binding !UseSelector}"
-                                           Text="Селектор пуст — действие уйдёт в окно, из которого запущен макрос." />
+                                           Text="{x:Static res:Strings.Editor_Targets_EmptyHint}" />
                             </StackPanel>
 
                             <!-- Состав. Только при маршрутизации по тегам: в режиме контекста
@@ -528,7 +529,7 @@
                                     Padding="10,7">
                                 <StackPanel Spacing="5">
                                     <StackPanel Orientation="Horizontal" Spacing="7">
-                                        <TextBlock Classes="eyebrow" Text="СЕЙЧАС ПОПАДАЕТ" />
+                                        <TextBlock Classes="eyebrow" Text="{x:Static res:Strings.Editor_Targets_HitsHeader}" />
                                         <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
                                                    VerticalAlignment="Center"
                                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
@@ -589,7 +590,7 @@
                 <Border Grid.Column="1"
                         Classes="port"
                         Classes.loose="{Binding IsEnd}"
-                        ToolTip.Tip="Потяните, чтобы связать с нодой; бросьте на пустое место — конец прогона"
+                        ToolTip.Tip="{x:Static res:Strings.Editor_Canvas_PortTip}"
                         PointerPressed="OnPortPressed" />
             </Grid>
         </DataTemplate>
@@ -721,7 +722,7 @@
                     <!-- развёрнутое тело (1e): коробка становится редактором самой себя -->
                     <StackPanel Grid.Row="1" Margin="9,8,9,4" Spacing="5.6" IsVisible="{Binding IsExpanded}">
                         <Grid ColumnDefinitions="64,*">
-                            <TextBlock Grid.Column="0" Classes="label" Text="имя" />
+                            <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Name}" />
                             <TextBox Grid.Column="1"
                                      Classes="mono"
                                      Text="{Binding DisplayName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
@@ -751,7 +752,7 @@
                     <Border Grid.Row="0" Grid.RowSpan="3"
                             Classes="breakpointBar"
                             IsVisible="{Binding HasBreakpoint}"
-                            ToolTip.Tip="Брейкпоинт: прогон встанет ПЕРЕД этой нодой" />
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Canvas_BreakpointTip}" />
 
                     <!-- Только пока обход действительно исполняет эту ноду: ПРИПАРКОВАННОМУ
                          достаётся вместо этого статичная тревожная кромка, потому что
@@ -770,15 +771,15 @@
 
         <DataTemplate DataType="{x:Type nodes:TargetSelectorViewModel}" x:DataType="nodes:TargetSelectorViewModel">
             <StackPanel Spacing="2.8">
-                <CheckBox Content="Цели по тегам (выкл. — контекст-окно)"
+                <CheckBox Content="{x:Static res:Strings.Node_Target_UseSelector}"
                           IsChecked="{Binding UseSelector, Mode=TwoWay}" />
                 <Grid ColumnDefinitions="64,*" IsVisible="{Binding UseSelector}" Margin="0,2.8,0,0">
-                    <TextBlock Grid.Column="0" Classes="label" Text="нужны" />
-                    <TextBox Grid.Column="1" Watermark="через запятую" Text="{Binding RequireText, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Target_Require}" />
+                    <TextBox Grid.Column="1" Watermark="{x:Static res:Strings.Node_Target_TagsWatermark}" Text="{Binding RequireText, Mode=TwoWay}" />
                 </Grid>
                 <Grid ColumnDefinitions="64,*" IsVisible="{Binding UseSelector}">
-                    <TextBlock Grid.Column="0" Classes="label" Text="исключить" />
-                    <TextBox Grid.Column="1" Watermark="через запятую" Text="{Binding ExcludeText, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Target_Exclude}" />
+                    <TextBox Grid.Column="1" Watermark="{x:Static res:Strings.Node_Target_TagsWatermark}" Text="{Binding ExcludeText, Mode=TwoWay}" />
                 </Grid>
             </StackPanel>
         </DataTemplate>
@@ -786,7 +787,7 @@
         <DataTemplate DataType="{x:Type nodes:RegionEditorViewModel}" x:DataType="nodes:RegionEditorViewModel">
             <StackPanel>
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="регион" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Region}" />
                     <Grid Grid.Column="1" ColumnDefinitions="*,*,*,*">
                         <TextBox Grid.Column="0" Classes="numeric" Margin="0,0,2,0" Text="{Binding XText, Mode=TwoWay}" />
                         <TextBox Grid.Column="1" Classes="numeric" Margin="2,0" Text="{Binding YText, Mode=TwoWay}" />
@@ -798,8 +799,8 @@
                     <Grid Grid.Column="1" ColumnDefinitions="*,*,*,*">
                         <TextBlock Grid.Column="0" Classes="hint" HorizontalAlignment="Center" Text="X" />
                         <TextBlock Grid.Column="1" Classes="hint" HorizontalAlignment="Center" Text="Y" />
-                        <TextBlock Grid.Column="2" Classes="hint" HorizontalAlignment="Center" Text="Ш" />
-                        <TextBlock Grid.Column="3" Classes="hint" HorizontalAlignment="Center" Text="В" />
+                        <TextBlock Grid.Column="2" Classes="hint" HorizontalAlignment="Center" Text="{x:Static res:Strings.Node_Field_RegionWidth}" />
+                        <TextBlock Grid.Column="3" Classes="hint" HorizontalAlignment="Center" Text="{x:Static res:Strings.Node_Field_RegionHeight}" />
                     </Grid>
                 </Grid>
             </StackPanel>
@@ -809,7 +810,7 @@
 
         <DataTemplate DataType="{x:Type nodes:KeyPressNodeRowViewModel}" x:DataType="nodes:KeyPressNodeRowViewModel">
             <Grid ColumnDefinitions="64,*">
-                <TextBlock Grid.Column="0" Classes="label" Text="клавиша" />
+                <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Key}" />
                 <controls:KeyBindingPicker Grid.Column="1"
                                            HorizontalAlignment="Stretch"
                                            CaptureModifiers="False"
@@ -820,19 +821,19 @@
         <DataTemplate DataType="{x:Type nodes:ClickNodeRowViewModel}" x:DataType="nodes:ClickNodeRowViewModel">
             <StackPanel Spacing="5.6">
                 <Grid ColumnDefinitions="64,*" IsVisible="{Binding UseLiteralPoint}">
-                    <TextBlock Grid.Column="0" Classes="label" Text="точка" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Point}" />
                     <Grid Grid.Column="1" ColumnDefinitions="*,*">
                         <TextBox Grid.Column="0" Classes="numeric" Margin="0,0,2,0" Text="{Binding XText, Mode=TwoWay}" />
                         <TextBox Grid.Column="1" Classes="numeric" Margin="2,0,0,0" Text="{Binding YText, Mode=TwoWay}" />
                     </Grid>
                 </Grid>
                 <Grid ColumnDefinitions="64,*" IsVisible="{Binding UseVariable}">
-                    <TextBlock Grid.Column="0" Classes="label" Text="из перем." />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_PointVar}" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="cursor" Text="{Binding PointVar, Mode=TwoWay}" />
                 </Grid>
                 <StackPanel Orientation="Horizontal" Spacing="11.2">
-                    <CheckBox Content="из переменной" IsChecked="{Binding UseVariable, Mode=TwoWay}" />
-                    <CheckBox Content="двойной" IsChecked="{Binding DoubleClick, Mode=TwoWay}" />
+                    <CheckBox Content="{x:Static res:Strings.Node_Click_UseVariable}" IsChecked="{Binding UseVariable, Mode=TwoWay}" />
+                    <CheckBox Content="{x:Static res:Strings.Node_Click_Double}" IsChecked="{Binding DoubleClick, Mode=TwoWay}" />
                 </StackPanel>
             </StackPanel>
         </DataTemplate>
@@ -840,26 +841,26 @@
         <DataTemplate DataType="{x:Type nodes:DelayNodeRowViewModel}" x:DataType="nodes:DelayNodeRowViewModel">
             <StackPanel Spacing="2.8">
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="пауза" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Delay}" />
                     <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
                         <TextBox Grid.Column="0" Classes="mono" Text="{Binding SecondsText, Mode=TwoWay}" />
-                        <TextBlock Grid.Column="1" Classes="hint" Margin="5.6,0,0,0" Text="сек" />
+                        <TextBlock Grid.Column="1" Classes="hint" Margin="5.6,0,0,0" Text="{x:Static res:Strings.Node_Field_Seconds}" />
                     </Grid>
                 </Grid>
-                <TextBlock Classes="hint" Text="дробное — можно: 1.5 = 1500 мс" Margin="64,0,0,0" />
+                <TextBlock Classes="hint" Text="{x:Static res:Strings.Node_Delay_Hint}" Margin="64,0,0,0" />
             </StackPanel>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:TagNodeRowViewModel}" x:DataType="nodes:TagNodeRowViewModel">
             <Grid ColumnDefinitions="64,*">
-                <TextBlock Grid.Column="0" Classes="label" Text="тег" />
-                <TextBox Grid.Column="1" Watermark="имя тега или {переменная}" Text="{Binding Tag, Mode=TwoWay}" />
+                <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Tag}" />
+                <TextBox Grid.Column="1" Watermark="{x:Static res:Strings.Node_Tag_Watermark}" Text="{Binding Tag, Mode=TwoWay}" />
             </Grid>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:SetIconNodeRowViewModel}" x:DataType="nodes:SetIconNodeRowViewModel">
             <Grid ColumnDefinitions="64,*">
-                <TextBlock Grid.Column="0" Classes="label" Text="иконка" />
+                <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Icon}" />
                 <TextBox Grid.Column="1"
                          Classes="mono"
                          Watermark="Assets/ClassIcons/{tag}.png"
@@ -870,13 +871,13 @@
         <DataTemplate DataType="{x:Type nodes:RunSubmacroNodeRowViewModel}" x:DataType="nodes:RunSubmacroNodeRowViewModel">
             <StackPanel Spacing="5.6">
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="функция" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Submacro}" />
                     <ComboBox Grid.Column="1"
                               HorizontalAlignment="Stretch"
                               ItemsSource="{Binding SubmacroChoices}"
                               SelectedItem="{Binding Submacro, Mode=TwoWay}" />
                 </Grid>
-                <CheckBox Content="ждать завершения" IsChecked="{Binding Await, Mode=TwoWay}" Margin="64,0,0,0" />
+                <CheckBox Content="{x:Static res:Strings.Node_Submacro_Await}" IsChecked="{Binding Await, Mode=TwoWay}" Margin="64,0,0,0" />
                 <!-- Переменные подпрогону достаются КОПИЕЙ, и обратно ничего не возвращается.
                      Сказано здесь, а не только предупреждением валидатора: предупреждение
                      появляется, когда ловушка уже сработала, а эта строка стоит там, где
@@ -884,26 +885,26 @@
                 <TextBlock Classes="hint"
                            Margin="64,0,0,0"
                            TextWrapping="Wrap"
-                           Text="под-макрос получает копию переменных — то, что он в них запишет, наружу не вернётся" />
+                           Text="{x:Static res:Strings.Node_Submacro_VariablesHint}" />
             </StackPanel>
         </DataTemplate>
 
         <DataTemplate DataType="{x:Type nodes:FindElementNodeRowViewModel}" x:DataType="nodes:FindElementNodeRowViewModel">
             <StackPanel Spacing="5.6">
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="шаблон" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="имя файла без .png" Text="{Binding Template, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Template}" />
+                    <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_Template_Watermark}" Text="{Binding Template, Mode=TwoWay}" />
                 </Grid>
                 <ContentControl Content="{Binding Region}" />
-                <TextBlock Classes="hint" Text="Ш или В = 0 — искать по всему окну" Margin="64,0,0,0" />
+                <TextBlock Classes="hint" Text="{x:Static res:Strings.Node_Find_RegionHint}" Margin="64,0,0,0" />
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="порог" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="из настроек" Text="{Binding MatchThresholdText, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Threshold}" />
+                    <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_Threshold_Watermark}" Text="{Binding MatchThresholdText, Mode=TwoWay}" />
                 </Grid>
-                <TextBlock Classes="hint" Text="пусто — порог из настроек (Vision)" Margin="64,0,0,0" />
+                <TextBlock Classes="hint" Text="{x:Static res:Strings.Node_Threshold_Hint}" Margin="64,0,0,0" />
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="точка →" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="переменная (необяз.)" Text="{Binding FoundPointVar, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_FoundPointVar}" />
+                    <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_FoundPointVar_Watermark}" Text="{Binding FoundPointVar, Mode=TwoWay}" />
                 </Grid>
             </StackPanel>
         </DataTemplate>
@@ -911,25 +912,25 @@
         <DataTemplate DataType="{x:Type nodes:WaitForElementNodeRowViewModel}" x:DataType="nodes:WaitForElementNodeRowViewModel">
             <StackPanel Spacing="5.6">
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="шаблон" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="имя файла без .png" Text="{Binding Template, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Template}" />
+                    <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_Template_Watermark}" Text="{Binding Template, Mode=TwoWay}" />
                 </Grid>
                 <ContentControl Content="{Binding Region}" />
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="таймаут" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Timeout}" />
                     <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
                         <TextBox Grid.Column="0" Classes="mono" Text="{Binding TimeoutMsText, Mode=TwoWay}" />
-                        <TextBlock Grid.Column="1" Classes="hint" Margin="5.6,0,0,0" Text="мс" />
+                        <TextBlock Grid.Column="1" Classes="hint" Margin="5.6,0,0,0" Text="{x:Static res:Strings.Node_Field_Milliseconds}" />
                     </Grid>
                 </Grid>
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="порог" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="из настроек" Text="{Binding MatchThresholdText, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Threshold}" />
+                    <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_Threshold_Watermark}" Text="{Binding MatchThresholdText, Mode=TwoWay}" />
                 </Grid>
-                <TextBlock Classes="hint" Text="пусто — порог из настроек (Vision)" Margin="64,0,0,0" />
+                <TextBlock Classes="hint" Text="{x:Static res:Strings.Node_Threshold_Hint}" Margin="64,0,0,0" />
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="точка →" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="переменная (необяз.)" Text="{Binding FoundPointVar, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_FoundPointVar}" />
+                    <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_FoundPointVar_Watermark}" Text="{Binding FoundPointVar, Mode=TwoWay}" />
                 </Grid>
             </StackPanel>
         </DataTemplate>
@@ -937,20 +938,21 @@
         <DataTemplate DataType="{x:Type nodes:RecognizeTagNodeRowViewModel}" x:DataType="nodes:RecognizeTagNodeRowViewModel">
             <StackPanel Spacing="5.6">
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="набор" />
+                    <TextBlock Grid.Column="0" Classes="label"
+                               Text="{x:Static res:Strings.Node_Field_TemplateSet}" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="classes" Text="{Binding TemplateSet, Mode=TwoWay}" />
                 </Grid>
                 <ContentControl Content="{Binding Region}" />
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="порог" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="из настроек" Text="{Binding MatchThresholdText, Mode=TwoWay}" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Threshold}" />
+                    <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_Threshold_Watermark}" Text="{Binding MatchThresholdText, Mode=TwoWay}" />
                 </Grid>
-                <TextBlock Classes="hint" Text="пусто — порог из настроек (Vision)" Margin="64,0,0,0" />
+                <TextBlock Classes="hint" Text="{x:Static res:Strings.Node_Threshold_Hint}" Margin="64,0,0,0" />
                 <Grid ColumnDefinitions="64,*">
-                    <TextBlock Grid.Column="0" Classes="label" Text="результат" />
+                    <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_ResultVar}" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="tag" Text="{Binding ResultVar, Mode=TwoWay}" />
                 </Grid>
-                <CheckBox Content="вешать тег на окно" IsChecked="{Binding ApplyTag, Mode=TwoWay}" Margin="64,0,0,0" />
+                <CheckBox Content="{x:Static res:Strings.Node_Recognize_ApplyTag}" IsChecked="{Binding ApplyTag, Mode=TwoWay}" Margin="64,0,0,0" />
             </StackPanel>
         </DataTemplate>
 
@@ -979,13 +981,13 @@
                             Height="24"
                             Margin="5.6,0,0,0"
                             HorizontalContentAlignment="Center"
-                            ToolTip.Tip="Убрать триггер (Del в ловушке — очистить сочетание)"
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Triggers_RemoveHotkey}"
                             Click="OnRemoveTriggerClicked" />
                 </Grid>
                 <StackPanel Margin="0,4,0,0" Spacing="2" IsVisible="{Binding #Picker.IsCapturing}">
                     <TextBlock Classes="hint"
                                TextWrapping="Wrap"
-                               Text="Esc — отмена · Del — очистить · ловятся и боковые кнопки мыши" />
+                               Text="{x:Static res:Strings.Editor_Triggers_CaptureHint}" />
                     <!-- Grid, а не горизонтальный StackPanel: StackPanel меряет детей с
                          бесконечной шириной, поэтому TextWrapping не срабатывает никогда, и
                          строка просто обрезается по краю панели. -->
@@ -1005,7 +1007,7 @@
                                    VerticalAlignment="Center"
                                    TextWrapping="Wrap"
                                    Foreground="{DynamicResource NocturneWarningBrush}"
-                                   Text="глобальные хоткеи приостановлены, пока открыт редактор" />
+                                   Text="{x:Static res:Strings.Editor_Triggers_SuspendedHint}" />
                     </Grid>
                 </StackPanel>
             </StackPanel>
@@ -1021,7 +1023,7 @@
                         Content="×"
                         Classes="ghost"
                         Margin="5.6,0,0,0"
-                        ToolTip.Tip="Убрать триггер"
+                        ToolTip.Tip="{x:Static res:Strings.Editor_Triggers_RemoveProcess}"
                         Click="OnRemoveTriggerClicked" />
             </Grid>
         </DataTemplate>
@@ -1068,7 +1070,7 @@
                              FontSize="{DynamicResource NocturneFontSizeBody}"
                              IsVisible="{Binding !IsSubmacroOpen}"
                              IsEnabled="{Binding HasOpenMacro}"
-                             ToolTip.Tip="Имя макроса = имя файла"
+                             ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_MacroNameTip}"
                              Text="{Binding MacroName, Mode=TwoWay}" />
 
                     <Button Classes="ghost"
@@ -1076,7 +1078,7 @@
                             Padding="6,0"
                             FontSize="{DynamicResource NocturneFontSizeSmall}"
                             IsVisible="{Binding IsSubmacroOpen}"
-                            ToolTip.Tip="Вернуться к макросу"
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_BackToMacroTip}"
                             Content="{Binding MacroName}"
                             Click="OnOpenParentGraphClicked" />
                     <TextBlock VerticalAlignment="Center"
@@ -1091,14 +1093,14 @@
                              FontWeight="Medium"
                              FontSize="{DynamicResource NocturneFontSizeBody}"
                              IsVisible="{Binding IsSubmacroOpen}"
-                             ToolTip.Tip="Подпись под-макроса. На него ссылаются по Guid, так что переименование ничего не ломает."
+                             ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_SubmacroNameTip}"
                              Text="{Binding SubmacroName, Mode=TwoWay}" />
                 </StackPanel>
 
                 <Border Grid.Column="1" Width="1" Height="18" Margin="10,0"
                         Background="{DynamicResource NocturneDividerStrongBrush}" />
 
-                <TextBlock Grid.Column="2" Classes="label" Text="старт" Margin="0,0,5.6,0" />
+                <TextBlock Grid.Column="2" Classes="label" Text="{x:Static res:Strings.Editor_Toolbar_StartNode}" Margin="0,0,5.6,0" />
                 <ComboBox Grid.Column="3"
                           MinWidth="150"
                           IsEnabled="{Binding HasOpenMacro}"
@@ -1113,7 +1115,7 @@
 
                 <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" Margin="10,0,0,0">
                     <Button x:Name="AddNodeButton"
-                            Content="+ Нода"
+                            Content="{x:Static res:Strings.Editor_Toolbar_AddNode}"
                             Height="26"
                             IsEnabled="{Binding HasOpenMacro}">
                         <Button.Flyout>
@@ -1139,10 +1141,10 @@
                          на вопрос «откуда в библиотеке берётся МАКРОС», а под-макрос берётся из
                          того макроса, который открыт. Гаснет внутри функции — под-макросы
                          плоские. -->
-                    <Button Content="+ Под-макрос"
+                    <Button Content="{x:Static res:Strings.Editor_Toolbar_AddSubmacro}"
                             Height="26"
                             IsEnabled="{Binding ShowsTriggers}"
-                            ToolTip.Tip="Завести пустую функцию внутри этого макроса"
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_AddSubmacroTip}"
                             Click="OnAddSubmacroClicked" />
 
                     <!-- Появляется только когда есть что извлекать: кнопка, которая почти всегда
@@ -1151,7 +1153,7 @@
                             Classes="accent"
                             Height="26"
                             IsVisible="{Binding CanExtractSubmacro}"
-                            ToolTip.Tip="Вынести отмеченные ноды (Ctrl+клик) в новый под-макрос"
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_ExtractTip}"
                             Click="OnExtractSubmacroClicked" />
                 </StackPanel>
 
@@ -1179,27 +1181,27 @@
                          U+25B6, а D4 с U+26A0. Проверено, что текстом рисуются U+25B8 и
                          U+25A0, — их и взяли. -->
                     <Button Height="26"
-                            Content="Пауза"
+                            Content="{x:Static res:Strings.Editor_Debug_Pause}"
                             IsVisible="{Binding !SelectedRunIsPaused}"
                             IsEnabled="{Binding CanPause}"
-                            ToolTip.Tip="Встать на паузу перед следующей нодой этого обхода"
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Debug_PauseTip}"
                             Click="OnDebugPauseClicked" />
                     <Button Height="26"
                             Classes="accent"
-                            Content="&#x25B8; Дальше"
+                            Content="{x:Static res:Strings.Editor_Debug_Resume}"
                             IsVisible="{Binding SelectedRunIsPaused}"
                             IsEnabled="{Binding CanResume}"
-                            ToolTip.Tip="Снять обход с паузы"
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Debug_ResumeTip}"
                             Click="OnDebugResumeClicked" />
                     <Button Height="26"
-                            Content="Шаг"
+                            Content="{x:Static res:Strings.Editor_Debug_Step}"
                             IsEnabled="{Binding CanResume}"
-                            ToolTip.Tip="Выполнить одну ноду и встать снова"
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Debug_StepTip}"
                             Click="OnDebugStepClicked" />
                     <Button Height="26"
-                            Content="До курсора"
+                            Content="{x:Static res:Strings.Editor_Debug_RunToCursor}"
                             IsEnabled="{Binding CanRunToCursor}"
-                            ToolTip.Tip="Идти до ноды, выбранной на canvas, и встать перед ней"
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Debug_RunToCursorTip}"
                             Click="OnDebugRunToCursorClicked" />
                     <Button Height="26"
                             Classes="danger"
@@ -1219,7 +1221,7 @@
                             Background="{DynamicResource NocturneSurfaceInsetBrush}"
                             BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
                             BorderThickness="1"
-                            ToolTip.Tip="Пройдено нод / всего в графе · время обхода">
+                            ToolTip.Tip="{x:Static res:Strings.Editor_Debug_ProgressTip}">
                         <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                             <TextBlock FontSize="10.5"
                                        VerticalAlignment="Center"
@@ -1241,8 +1243,8 @@
                                Foreground="{DynamicResource NocturneWarningBrush}"
                                TextTrimming="CharacterEllipsis"
                                IsVisible="{Binding ChangedOnDisk}"
-                               ToolTip.Tip="«Перечитать» — взять версию с диска, «Сохранить» — затереть её"
-                               Text="Макрос изменён на диске, а здесь есть несохранённые правки." />
+                               ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_ChangedOnDiskTip}"
+                               Text="{x:Static res:Strings.Editor_Toolbar_ChangedOnDisk}" />
                     <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
                                Foreground="{DynamicResource NocturneDangerBrush}"
                                TextTrimming="CharacterEllipsis"
@@ -1256,26 +1258,26 @@
                 </StackPanel>
 
                 <Button Grid.Column="7"
-                        Content="Папка макросов"
+                        Content="{x:Static res:Strings.Editor_Toolbar_OpenFolder}"
                         Height="26"
                         ToolTip.Tip="{Binding FolderPath}"
                         Click="OnOpenFolderClicked" />
                 <Button Grid.Column="8"
-                        Content="Перечитать"
+                        Content="{x:Static res:Strings.Editor_Toolbar_Reload}"
                         Height="26"
                         Margin="6,0,0,0"
                         IsEnabled="{Binding HasOpenMacro}"
-                        ToolTip.Tip="Отбросить правки и взять версию с диска"
+                        ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_ReloadTip}"
                         Click="OnReloadClicked" />
                 <Button Grid.Column="9"
-                        Content="Авто-раскладка"
+                        Content="{x:Static res:Strings.Editor_Toolbar_AutoLayout}"
                         Height="26"
                         Margin="6,0,0,0"
                         IsEnabled="{Binding HasOpenMacro}"
-                        ToolTip.Tip="Разложить граф строками с переносом от стартовой ноды"
+                        ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_AutoLayoutTip}"
                         Click="OnAutoLayoutClicked" />
                 <Button Grid.Column="10"
-                        Content="Сохранить"
+                        Content="{x:Static res:Strings.Editor_Toolbar_Save}"
                         Classes="accent"
                         Height="26"
                         Padding="16,0"
@@ -1300,7 +1302,7 @@
                              Height="24"
                              Padding="8,0"
                              VerticalContentAlignment="Center"
-                             Watermark="поиск…"
+                             Watermark="{x:Static res:Strings.Macros_Library_SearchWatermark}"
                              Text="{Binding LibrarySearch, Mode=TwoWay}" />
 
                     <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
@@ -1411,27 +1413,27 @@
                                                                         Classes="ghost"
                                                                         Padding="4,0"
                                                                         FontSize="10"
-                                                                        ToolTip.Tip="Запустить"
+                                                                        ToolTip.Tip="{x:Static res:Strings.Macros_Row_Run}"
                                                                         IsEnabled="{Binding CanRun}"
                                                                         Click="OnRunMacroClicked" />
                                                                 <Button Content="■"
                                                                         Classes="ghost"
                                                                         Padding="4,0"
                                                                         FontSize="9"
-                                                                        ToolTip.Tip="Остановить"
+                                                                        ToolTip.Tip="{x:Static res:Strings.Macros_Row_Stop}"
                                                                         IsEnabled="{Binding IsRunning}"
                                                                         Click="OnStopMacroClicked" />
                                                                 <Button Content="⤓"
                                                                         Classes="ghost"
                                                                         Padding="4,0"
                                                                         FontSize="10"
-                                                                        ToolTip.Tip="Экспорт — отдать файл .hsm как есть"
+                                                                        ToolTip.Tip="{x:Static res:Strings.Macros_Row_Export}"
                                                                         Click="OnExportMacroClicked" />
                                                                 <Button Content="×"
                                                                         Classes="ghost"
                                                                         Padding="4,0"
                                                                         FontSize="11"
-                                                                        ToolTip.Tip="Удалить"
+                                                                        ToolTip.Tip="{x:Static res:Strings.Macros_Row_Delete}"
                                                                         Click="OnDeleteMacroClicked" />
                                                             </StackPanel>
                                                         </Grid>
@@ -1477,7 +1479,7 @@
                                                                            VerticalAlignment="Center"
                                                                            Foreground="{DynamicResource NocturneDangerBrush}"
                                                                            IsVisible="{Binding HasErrors}"
-                                                                           ToolTip.Tip="В графе под-макроса есть ошибка — макрос не вооружён"
+                                                                           ToolTip.Tip="{x:Static res:Strings.Macros_SubmacroRow_ErrorTip}"
                                                                            Text="!" />
                                                             </StackPanel>
                                                             <Button Grid.Column="2"
@@ -1486,7 +1488,7 @@
                                                                     Padding="4,0"
                                                                     FontSize="11"
                                                                     VerticalAlignment="Center"
-                                                                    ToolTip.Tip="Удалить под-макрос"
+                                                                    ToolTip.Tip="{x:Static res:Strings.Macros_SubmacroRow_Delete}"
                                                                     Click="OnDeleteSubmacroClicked" />
                                                         </Grid>
                                                     </Border>
@@ -1508,18 +1510,18 @@
                              он всегда про конкретный файл. -->
                         <Grid ColumnDefinitions="*,Auto">
                             <Button Grid.Column="0"
-                                    Content="+ Новый макрос"
+                                    Content="{x:Static res:Strings.Macros_Library_New}"
                                     Classes="accent"
                                     Height="26"
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Center"
                                     Click="OnNewMacroClicked" />
                             <Button Grid.Column="1"
-                                    Content="Импорт…"
+                                    Content="{x:Static res:Strings.Macros_Library_Import}"
                                     Height="26"
                                     Padding="10,0"
                                     Margin="6,0,0,0"
-                                    ToolTip.Tip="Скопировать чужой .hsm в папку макросов"
+                                    ToolTip.Tip="{x:Static res:Strings.Macros_Library_ImportTip}"
                                     Click="OnImportMacroClicked" />
                         </Grid>
                     </Border>
@@ -1589,7 +1591,7 @@
                         <TextBlock FontSize="{DynamicResource NocturneFontSizeTitle}"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource NocturneTextMutedBrush}"
-                                   Text="Выберите макрос слева или создайте новый." />
+                                   Text="{x:Static res:Strings.Macros_PickMacro_Title}" />
                         <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                    Foreground="{DynamicResource NocturneTextGhostBrush}"
@@ -1610,13 +1612,13 @@
                         <TextBlock FontSize="{DynamicResource NocturneFontSizeTitle}"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource NocturneTextMutedBrush}"
-                                   Text="Библиотека пуста." />
+                                   Text="{x:Static res:Strings.Macros_EmptyLibrary_Title}" />
                         <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
                                    HorizontalAlignment="Center"
                                    TextAlignment="Center"
                                    TextWrapping="Wrap"
                                    Foreground="{DynamicResource NocturneTextFaintBrush}"
-                                   Text="Создайте макрос кнопкой слева внизу. Готовый .hsm, положенный в эту папку, тоже подхватится сам — перезапускать ничего не надо. Шаблоны едут внутри файла, так что чужой макрос работает как есть." />
+                                   Text="{x:Static res:Strings.Macros_EmptyLibrary_Hint}" />
                         <TextBlock FontSize="{DynamicResource NocturneFontSizeSmall}"
                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                    Foreground="{DynamicResource NocturneTextGhostBrush}"
@@ -1639,15 +1641,15 @@
                             BorderThickness="1"
                             IsVisible="{Binding HasOpenMacro}">
                         <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                            <Button Content="−" Classes="ghost" Padding="6,0" ToolTip.Tip="Мельче" Click="OnZoomOutClicked" />
-                            <Button Classes="ghost" Padding="4,0" ToolTip.Tip="Сбросить масштаб" Click="OnZoomResetClicked">
+                            <Button Content="−" Classes="ghost" Padding="6,0" ToolTip.Tip="{x:Static res:Strings.Editor_Canvas_ZoomOut}" Click="OnZoomOutClicked" />
+                            <Button Classes="ghost" Padding="4,0" ToolTip.Tip="{x:Static res:Strings.Editor_Canvas_ZoomReset}" Click="OnZoomResetClicked">
                                 <TextBlock FontSize="10.5"
                                            FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                            MinWidth="34"
                                            TextAlignment="Center"
                                            Text="{Binding ZoomText}" />
                             </Button>
-                            <Button Content="+" Classes="ghost" Padding="6,0" ToolTip.Tip="Крупнее" Click="OnZoomInClicked" />
+                            <Button Content="+" Classes="ghost" Padding="6,0" ToolTip.Tip="{x:Static res:Strings.Editor_Canvas_ZoomIn}" Click="OnZoomInClicked" />
                         </StackPanel>
                     </Border>
 
@@ -1669,22 +1671,22 @@
                                         RenderTransform="rotate(45deg)"
                                         BorderThickness="1"
                                         BorderBrush="{DynamicResource NocturneAccentBrush}" />
-                                <TextBlock Classes="hint" Text="условие" />
+                                <TextBlock Classes="hint" Text="{x:Static res:Strings.Editor_Canvas_LegendConditional}" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="5">
                                 <Border Width="7" Height="7"
                                         CornerRadius="2"
                                         VerticalAlignment="Center"
                                         Background="{DynamicResource NocturneTextFaintBrush}" />
-                                <TextBlock Classes="hint" Text="действие" />
+                                <TextBlock Classes="hint" Text="{x:Static res:Strings.Editor_Canvas_LegendAction}" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="5">
                                 <Border Width="12" Height="1"
                                         VerticalAlignment="Center"
                                         Background="{DynamicResource NocturneVariableBrush}" />
-                                <TextBlock Classes="hint" Text="переменная" />
+                                <TextBlock Classes="hint" Text="{x:Static res:Strings.Editor_Canvas_LegendVariable}" />
                             </StackPanel>
-                            <TextBlock Classes="hint" Text="СКМ или пустое место — панорама · колесо — зум" />
+                            <TextBlock Classes="hint" Text="{x:Static res:Strings.Editor_Canvas_LegendPan}" />
                         </StackPanel>
                     </Border>
                 </Panel>
@@ -1705,7 +1707,7 @@
                                            FontWeight="Medium"
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource NocturneNeutral300Brush}"
-                                           Text="Лог прогона" />
+                                           Text="{x:Static res:Strings.Editor_RunLog_Title}" />
 
                                 <!-- Переключатель прогонов. По одному графу могут идти десять
                                      окон разом, поэтому полоса и подсветка на canvas следуют за
@@ -1732,11 +1734,11 @@
                                          приезжают белыми, начисто игнорируя Foreground. -->
                                     <Button Classes="ghost" Padding="5,0" FontSize="11"
                                             Content="&#x25C2;"
-                                            ToolTip.Tip="Предыдущий прогон"
+                                            ToolTip.Tip="{x:Static res:Strings.Editor_RunLog_PreviousRun}"
                                             Click="OnPreviousRunClicked" />
                                     <Button Classes="ghost" Padding="5,0" FontSize="11"
                                             Content="&#x25B8;"
-                                            ToolTip.Tip="Следующий прогон"
+                                            ToolTip.Tip="{x:Static res:Strings.Editor_RunLog_NextRun}"
                                             Click="OnNextRunClicked" />
                                 </StackPanel>
 
@@ -1786,14 +1788,14 @@
                                            Margin="10,0,0,0"
                                            TextTrimming="CharacterEllipsis"
                                            IsVisible="{Binding !SelectedRunPauseVisible}"
-                                           Text="нода · исход · деталь · длительность" />
+                                           Text="{x:Static res:Strings.Editor_RunLog_Columns}" />
 
                                 <Button Grid.Column="4"
                                         Classes="ghost"
                                         Padding="6,0"
                                         FontSize="10"
-                                        Content="очистить"
-                                        ToolTip.Tip="Забыть записанные прогоны"
+                                        Content="{x:Static res:Strings.Editor_RunLog_Clear}"
+                                        ToolTip.Tip="{x:Static res:Strings.Editor_RunLog_ClearTip}"
                                         IsVisible="{Binding HasRuns}"
                                         Click="OnClearRunLogClicked" />
                             </Grid>
@@ -1869,7 +1871,7 @@
                             <TextBlock Grid.Column="2"
                                        Classes="hint"
                                        IsVisible="{Binding HasSelectedNode}"
-                                       Text="двойной клик — правка на месте" />
+                                       Text="{x:Static res:Strings.Editor_Inspector_DoubleClickHint}" />
                         </Grid>
                     </Border>
 
@@ -1880,10 +1882,10 @@
                             <StackPanel IsVisible="{Binding HasSelectedNode}">
                                 <StackPanel Margin="12,9" Spacing="5.6">
                                     <Grid ColumnDefinitions="64,*">
-                                        <TextBlock Grid.Column="0" Classes="label" Text="имя" />
+                                        <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Name}" />
                                         <TextBox Grid.Column="1"
                                                  Classes="mono"
-                                                 ToolTip.Tip="Подпись ноды: видна в логе прогона и в замечаниях валидатора. Рёбра ссылаются не на неё, так что переименование графа не трогает."
+                                                 ToolTip.Tip="{x:Static res:Strings.Editor_Inspector_NodeNameTip}"
                                                  Text="{Binding SelectedNode.DisplayName, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                     </Grid>
                                     <ContentControl Content="{Binding SelectedNode}" />
@@ -1895,7 +1897,7 @@
                                         IsVisible="{Binding SelectedNode.HasTarget}">
                                     <StackPanel Spacing="5.6">
                                         <Grid ColumnDefinitions="Auto,*">
-                                            <TextBlock Grid.Column="0" Classes="eyebrow" Text="ЦЕЛИ" />
+                                            <TextBlock Grid.Column="0" Classes="eyebrow" Text="{x:Static res:Strings.Editor_Inspector_TargetsHeader}" />
                                             <!-- Бейдж вместе со своим разворотом (1g). Здесь, а
                                                  не на коробке canvas, потому что Popup над
                                                  масштабированной и сдвинутой поверхностью
@@ -1913,19 +1915,19 @@
                                         BorderBrush="{DynamicResource NocturnePanelDeepDividerBrush}"
                                         Padding="12,9">
                                     <StackPanel Spacing="5.6">
-                                        <TextBlock Classes="eyebrow" Text="ВЫХОДЫ" />
+                                        <TextBlock Classes="eyebrow" Text="{x:Static res:Strings.Editor_Inspector_OutcomesHeader}" />
                                         <ItemsControl ItemsSource="{Binding SelectedNode.Edges}"
                                                       ItemTemplate="{StaticResource EdgeEditorTemplate}" />
                                         <TextBlock Classes="hint"
                                                    TextWrapping="Wrap"
-                                                   Text="«— конец —» — прогон заканчивается на этом исходе. Это не ошибка и не отдельная нода." />
+                                                   Text="{x:Static res:Strings.Editor_Inspector_EndHint}" />
                                         <!-- Макет 1d кладёт галочку точки останова сюда, в
                                              подвал блока исходов. Частью графа она НЕ является:
                                              уходит в сеанс демона и в файл макроса не попадает
                                              никогда. -->
                                         <CheckBox Margin="0,4,0,0"
-                                                  Content="Брейкпоинт на этой ноде"
-                                                  ToolTip.Tip="Прогон встанет ПЕРЕД этой нодой. Хранится в демоне, не в файле макроса."
+                                                  Content="{x:Static res:Strings.Editor_Inspector_Breakpoint}"
+                                                  ToolTip.Tip="{x:Static res:Strings.Editor_Inspector_BreakpointTip}"
                                                   IsChecked="{Binding SelectedNode.HasBreakpoint, Mode=TwoWay}" />
                                     </StackPanel>
                                 </Border>
@@ -1933,7 +1935,7 @@
                                 <Border BorderThickness="0,1,0,0"
                                         BorderBrush="{DynamicResource NocturnePanelDeepDividerBrush}"
                                         Padding="12,9">
-                                    <Button Content="Удалить ноду"
+                                    <Button Content="{x:Static res:Strings.Editor_Inspector_DeleteNode}"
                                             Classes="danger"
                                             HorizontalAlignment="Stretch"
                                             HorizontalContentAlignment="Center"
@@ -1948,11 +1950,11 @@
                                 <TextBlock Classes="hint"
                                            TextWrapping="Wrap"
                                            IsVisible="{Binding HasOpenMacro}"
-                                           Text="Кликните бокс, чтобы править его здесь. Двойной клик разворачивает бокс на месте." />
+                                           Text="{x:Static res:Strings.Editor_Inspector_NoSelection}" />
                                 <TextBlock Classes="hint"
                                            TextWrapping="Wrap"
                                            IsVisible="{Binding !HasOpenMacro}"
-                                           Text="Макрос не открыт." />
+                                           Text="{x:Static res:Strings.Editor_Inspector_NoMacro}" />
                             </StackPanel>
 
                             <!-- Раздел целиком прячется, когда на канве под-макрос: триггеров у
@@ -1964,13 +1966,13 @@
                                     IsVisible="{Binding ShowsTriggers}">
                                 <StackPanel Spacing="5.6">
                                     <Grid ColumnDefinitions="*,Auto,Auto">
-                                        <TextBlock Grid.Column="0" Classes="eyebrow" Text="ТРИГГЕРЫ" />
+                                        <TextBlock Grid.Column="0" Classes="eyebrow" Text="{x:Static res:Strings.Editor_Triggers_Header}" />
                                         <Button Grid.Column="1"
-                                                Content="+ хоткей"
+                                                Content="{x:Static res:Strings.Editor_Triggers_AddHotkey}"
                                                 Classes="ghost"
                                                 Click="OnAddHotkeyTriggerClicked" />
                                         <Button Grid.Column="2"
-                                                Content="+ процесс"
+                                                Content="{x:Static res:Strings.Editor_Triggers_AddProcess}"
                                                 Classes="ghost"
                                                 Click="OnAddProcessTriggerClicked" />
                                     </Grid>
@@ -1997,7 +1999,7 @@
                                     IsVisible="{Binding HasOpenMacro}">
                                 <StackPanel Spacing="8.4">
                                     <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Grid.Column="0" Classes="eyebrow" Text="ПЕРЕМЕННЫЕ МАКРОСА" />
+                                        <TextBlock Grid.Column="0" Classes="eyebrow" Text="{x:Static res:Strings.Editor_Variables_Header}" />
                                         <TextBlock Grid.Column="1" Classes="hint" Text="{Binding VariableCountText}" />
                                     </Grid>
 
@@ -2040,7 +2042,7 @@
                                                             </Grid>
                                                         </Border>
                                                         <Grid ColumnDefinitions="46,*" Margin="8,4,8,0">
-                                                            <TextBlock Grid.Column="0" Classes="hint" Text="пишет" />
+                                                            <TextBlock Grid.Column="0" Classes="hint" Text="{x:Static res:Strings.Editor_Variables_WrittenBy}" />
                                                             <TextBlock Grid.Column="1"
                                                                        FontSize="10.5"
                                                                        FontFamily="{DynamicResource NocturneFontFamilyMono}"
@@ -2050,7 +2052,7 @@
                                                         </Grid>
                                                         <Grid ColumnDefinitions="46,*" Margin="8,1,8,5"
                                                               ToolTip.Tip="{Binding ReadDetail}">
-                                                            <TextBlock Grid.Column="0" Classes="hint" Text="читает" />
+                                                            <TextBlock Grid.Column="0" Classes="hint" Text="{x:Static res:Strings.Editor_Variables_ReadBy}" />
                                                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                                                                 <TextBlock FontSize="10.5"
                                                                            FontFamily="{DynamicResource NocturneFontFamilyMono}"
@@ -2068,7 +2070,7 @@
                                                                    TextWrapping="Wrap"
                                                                    IsVisible="{Binding IsUndefined}"
                                                                    Foreground="{DynamicResource NocturneDangerBrush}"
-                                                                   Text="никто не пишет — прогон прервётся на первом чтении" />
+                                                                   Text="{x:Static res:Strings.Editor_Variables_Undefined}" />
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>
@@ -2077,7 +2079,7 @@
 
                                     <TextBlock Classes="hint"
                                                TextWrapping="Wrap"
-                                               Text="Наведение подсвечивает на canvas ноду-источник и потребителей и рисует между ними пунктир." />
+                                               Text="{x:Static res:Strings.Editor_Variables_HoverHint}" />
                                 </StackPanel>
                             </Border>
 
@@ -2097,16 +2099,16 @@
                                     IsVisible="{Binding HasOpenMacro}">
                                 <StackPanel Spacing="7" DataContext="{Binding Templates}">
                                     <Grid ColumnDefinitions="Auto,*,Auto">
-                                        <TextBlock Grid.Column="0" Classes="eyebrow" Text="ШАБЛОНЫ" />
+                                        <TextBlock Grid.Column="0" Classes="eyebrow" Text="{x:Static res:Strings.Editor_Templates_Header}" />
                                         <TextBlock Grid.Column="1"
                                                    Margin="7,0,0,0"
                                                    Classes="hint"
                                                    Text="{Binding CountText}" />
                                         <Button Grid.Column="2"
-                                                Content="+ файл…"
+                                                Content="{x:Static res:Strings.Editor_Templates_Add}"
                                                 Classes="ghost"
                                                 IsEnabled="{Binding HasMacro}"
-                                                ToolTip.Tip="Положить PNG в бандл этого макроса"
+                                                ToolTip.Tip="{x:Static res:Strings.Editor_Templates_AddTip}"
                                                 Click="OnAddTemplateClicked" />
                                     </Grid>
 
@@ -2117,20 +2119,21 @@
                                          в общем дереве. Padding + VerticalContentAlignment — та
                                          же ловушка жёсткой высоты, что у поля имени макроса. -->
                                     <Grid ColumnDefinitions="46,*" IsVisible="{Binding HasMacro}">
-                                        <TextBlock Grid.Column="0" Classes="label" Text="набор" />
+                                        <TextBlock Grid.Column="0" Classes="label"
+                                                   Text="{x:Static res:Strings.Editor_Templates_Set}" />
                                         <TextBox Grid.Column="1"
                                                  Height="24"
                                                  Padding="8,0"
                                                  VerticalContentAlignment="Center"
                                                  Classes="mono"
-                                                 Watermark="пусто — одиночный"
+                                                 Watermark="{x:Static res:Strings.Editor_Templates_SetWatermark}"
                                                  Text="{Binding ImportSet, Mode=TwoWay}" />
                                     </Grid>
 
                                     <TextBlock Classes="hint"
                                                TextWrapping="Wrap"
                                                IsVisible="{Binding !HasMacro}"
-                                               Text="Черновик ещё не сохранён — бандла, в который класть шаблон, пока нет." />
+                                               Text="{x:Static res:Strings.Editor_Templates_NoBundle}" />
 
                                     <TextBlock TextWrapping="Wrap"
                                                FontSize="10.5"
@@ -2141,7 +2144,7 @@
                                     <TextBlock Classes="hint"
                                                TextWrapping="Wrap"
                                                IsVisible="{Binding IsEmpty}"
-                                               Text="Шаблонов в макросе нет. Ноды Find/Wait/Recognize без них всегда уходят по «не найдено»." />
+                                               Text="{x:Static res:Strings.Editor_Templates_Empty}" />
 
                                     <ItemsControl ItemsSource="{Binding Groups}">
                                         <ItemsControl.ItemTemplate>
@@ -2180,7 +2183,7 @@
                                                                                 Classes="ghost"
                                                                                 Padding="4,0"
                                                                                 FontSize="11"
-                                                                                ToolTip.Tip="Убрать из бандла"
+                                                                                ToolTip.Tip="{x:Static res:Strings.Editor_Templates_Delete}"
                                                                                 Click="OnDeleteTemplateClicked" />
                                                                     </Grid>
                                                                 </Border>

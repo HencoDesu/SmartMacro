@@ -30,7 +30,8 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:controls="using:SmartMacro.App.Controls"
-                    xmlns:conv="using:SmartMacro.App.Converters">
+                    xmlns:conv="using:SmartMacro.App.Converters"
+                    xmlns:res="using:SmartMacro.Resources">
 
     <!-- ================================================================
          ФОКУС
@@ -219,15 +220,15 @@
          ================================================================ -->
 
     <MenuFlyout x:Key="NocturneTextBoxContextFlyout">
-        <MenuItem Header="Вырезать"
+        <MenuItem Header="{x:Static res:Strings.Shell_TextBox_Cut}"
                   Command="{Binding $parent[TextBox].Cut}"
                   IsEnabled="{Binding $parent[TextBox].CanCut}"
                   InputGesture="{x:Static TextBox.CutGesture}" />
-        <MenuItem Header="Копировать"
+        <MenuItem Header="{x:Static res:Strings.Shell_TextBox_Copy}"
                   Command="{Binding $parent[TextBox].Copy}"
                   IsEnabled="{Binding $parent[TextBox].CanCopy}"
                   InputGesture="{x:Static TextBox.CopyGesture}" />
-        <MenuItem Header="Вставить"
+        <MenuItem Header="{x:Static res:Strings.Shell_TextBox_Paste}"
                   Command="{Binding $parent[TextBox].Paste}"
                   IsEnabled="{Binding $parent[TextBox].CanPaste}"
                   InputGesture="{x:Static TextBox.PasteGesture}" />

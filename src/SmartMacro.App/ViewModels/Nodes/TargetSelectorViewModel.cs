@@ -4,6 +4,7 @@ using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Macros.Model;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels.Nodes;
 
@@ -140,17 +141,19 @@ public sealed class TargetSelectorViewModel : ObservableObject
         {
             if (!_useSelector)
             {
-                return "контекст-окно";
+                return Strings.Editor_Targets_TextContext;
             }
 
             var require = _requireText.Trim();
             var exclude = _excludeText.Trim();
             return (require.Length, exclude.Length) switch
             {
-                (0, 0) => "все окна",
+                (0, 0) => Strings.Editor_Targets_TextAll,
                 (_, 0) => require,
-                (0, _) => $"кроме {exclude}",
-                _ => $"{require} · кроме {exclude}",
+                (0, _) => string.Format(CultureInfo.CurrentCulture,
+                    Strings.Editor_Targets_TextExcludeOnly, exclude),
+                _ => string.Format(CultureInfo.CurrentCulture,
+                    Strings.Editor_Targets_TextRequireExclude, require, exclude),
             };
         }
     }
@@ -167,23 +170,26 @@ public sealed class TargetSelectorViewModel : ObservableObject
         {
             if (!_useSelector)
             {
-                return "1 окно · контекст";
+                return Strings.Editor_Targets_CountContext;
             }
 
             if (TotalCount == 0)
             {
-                return "нет окон";
+                return Strings.Editor_Targets_CountNoWindows;
             }
 
-            var count = string.Create(CultureInfo.CurrentCulture, $"{MatchCount} {Plural(MatchCount)}");
+            var count = WindowCount(MatchCount);
             var require = _requireText.Trim();
             var exclude = _excludeText.Trim();
             return (require.Length, exclude.Length) switch
             {
                 (0, 0) => count,
-                (_, 0) => $"{count} · {require}",
-                (0, _) => $"{count} · кроме {exclude}",
-                _ => $"{count} · {require} · кроме {exclude}",
+                (_, 0) => string.Format(CultureInfo.CurrentCulture,
+                    Strings.Editor_Targets_CountRequire, count, require),
+                (0, _) => string.Format(CultureInfo.CurrentCulture,
+                    Strings.Editor_Targets_CountExclude, count, exclude),
+                _ => string.Format(CultureInfo.CurrentCulture,
+                    Strings.Editor_Targets_CountRequireExclude, count, require, exclude),
             };
         }
     }
@@ -203,15 +209,15 @@ public sealed class TargetSelectorViewModel : ObservableObject
         {
             if (!_useSelector)
             {
-                return "контекст";
+                return Strings.Editor_Targets_CompactContext;
             }
 
             if (TotalCount == 0)
             {
-                return "нет окон";
+                return Strings.Editor_Targets_CountNoWindows;
             }
 
-            return string.Create(CultureInfo.CurrentCulture, $"{MatchCount} {Plural(MatchCount)}");
+            return WindowCount(MatchCount);
         }
     }
 
@@ -257,8 +263,9 @@ public sealed class TargetSelectorViewModel : ObservableObject
 
     /// <summary>«8 из 11» в подвале развёрнутого popup.</summary>
     public string HitText => TotalCount == 0
-        ? "нет окон под управлением"
-        : string.Create(CultureInfo.CurrentCulture, $"{MatchCount} из {TotalCount}");
+        ? Strings.Editor_Targets_HitsNoWindows
+        : string.Format(CultureInfo.CurrentCulture, Strings.Editor_Targets_HitsCount,
+            MatchCount, TotalCount);
 
     /// <summary>До <see cref="MaxNamedWindows"/> окон, по которым ударит прогон, — хэндлом и тегами.</summary>
     public ObservableCollection<TargetWindowChip> HitWindows { get; } = [];
@@ -415,7 +422,7 @@ public sealed class TargetSelectorViewModel : ObservableObject
             ? string.Create(CultureInfo.InvariantCulture, $"+{overflow}")
             : string.Empty;
         UntaggedText = untaggedMisses > 0
-            ? string.Create(CultureInfo.CurrentCulture, $"{untaggedMisses} без тегов")
+            ? string.Format(CultureInfo.CurrentCulture, Strings.Editor_Targets_Untagged, untaggedMisses)
             : string.Empty;
 
         base.OnPropertyChanged(nameof(BadgeText));
@@ -518,21 +525,12 @@ public sealed class TargetSelectorViewModel : ObservableObject
     private static string JoinTags(IReadOnlyList<string>? tags) =>
         tags is null || tags.Count == 0 ? string.Empty : string.Join(", ", tags);
 
-    // окно / окна / окон. Расписано руками, а не взято из библиотеки склонений, потому что
-    // слово одно, а UI всё равно только русский.
-    private static string Plural(int count)
-    {
-        var mod100 = count % 100;
-        if (mod100 is >= 11 and <= 14)
-        {
-            return "окон";
-        }
-
-        return (count % 10) switch
-        {
-            1 => "окно",
-            2 or 3 or 4 => "окна",
-            _ => "окон",
-        };
-    }
+    // «7 окон». Форму выбирает общий PluralForms: копия разбора по %10 жила здесь, вторая —
+    // в ленте журнала, третья — у строки шаблона, а ещё в двух местах согласования не было
+    // вовсе. Теперь правило одно на дерево, а формы — явные ключи ресурсов.
+    private static string WindowCount(int count) => PluralForms.Format(
+        count,
+        Strings.Editor_Targets_WindowCount_One,
+        Strings.Editor_Targets_WindowCount_Few,
+        Strings.Editor_Targets_WindowCount_Many);
 }

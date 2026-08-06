@@ -29,6 +29,8 @@ internal static class RepositorySources
 
     private static string? _root;
     private static IReadOnlyList<string>? _axamlFiles;
+    private static IReadOnlyList<string>? _resxFiles;
+    private static IReadOnlyList<string>? _allCSharpFiles;
 
     /// <summary>Абсолютный путь к корню репозитория.</summary>
     public static string Root => _root ??= LocateRoot();
@@ -37,9 +39,22 @@ internal static class RepositorySources
     public static IReadOnlyList<string> AxamlFiles =>
         _axamlFiles ??= EnumerateSources(Path.Combine(Root, "src"), "*.axaml");
 
+    /// <summary>
+    /// Все файлы ресурсов в <c>src\</c>. Появились вместе с выносом подписей из разметки: текст,
+    /// который раньше стоял в <c>*.axaml</c>, лежит теперь здесь, и проверки, читающие ТО, ЧТО
+    /// ВИДИТ ЧЕЛОВЕК, обязаны смотреть в оба места. Иначе вынос строки в ресурсы молча уводит её
+    /// из-под проверки.
+    /// </summary>
+    public static IReadOnlyList<string> ResxFiles =>
+        _resxFiles ??= EnumerateSources(Path.Combine(Root, "src"), "*.resx");
+
     /// <summary>Исходники C# одного проекта; <paramref name="projectFolder"/> — имя папки в <c>src\</c>.</summary>
     public static IReadOnlyList<string> CSharpFiles(string projectFolder) =>
         EnumerateSources(Path.Combine(Root, "src", projectFolder), "*.cs");
+
+    /// <summary>Весь C# дерева <c>src\</c> — для проверок, которым не важно, чей это проект.</summary>
+    public static IReadOnlyList<string> AllCSharpFiles =>
+        _allCSharpFiles ??= EnumerateSources(Path.Combine(Root, "src"), "*.cs");
 
     /// <summary>Путь относительно корня — в сообщении об ошибке абсолютный только мешает.</summary>
     public static string Relative(string absolutePath) => Path.GetRelativePath(Root, absolutePath);

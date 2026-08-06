@@ -295,7 +295,7 @@ public static class MacroBundleReader
                 metadata,
                 null,
                 metadata.Fault,
-                string.Format(CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_GraphNotRead, Lower(metadata.Message)),
+                string.Format(CultureInfo.CurrentCulture, Strings.Bundle_Read_GraphNotRead, Lower(metadata.Message)),
                 [],
                 [],
                 []);
@@ -346,12 +346,12 @@ public static class MacroBundleReader
             catch (JsonException ex)
             {
                 faults.Add(string.Format(
-                    CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_SubmacroMalformed, relativePath, ex.Message));
+                    CultureInfo.CurrentCulture, Strings.Bundle_Read_SubmacroMalformed, relativePath, ex.Message));
             }
             catch (Exception ex) when (ex is IOException or InvalidDataException)
             {
                 faults.Add(string.Format(
-                    CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_SubmacroUnreadable, relativePath, ex.Message));
+                    CultureInfo.CurrentCulture, Strings.Bundle_Read_SubmacroUnreadable, relativePath, ex.Message));
             }
         }
 
@@ -369,7 +369,7 @@ public static class MacroBundleReader
                 MacroBundleFault.EntryMissing,
                 string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Bundle_Read_MetadataEntryMissing,
+                    Strings.Bundle_Read_MetadataEntryMissing,
                     MacroBundleFormat.MetadataEntry));
         }
 
@@ -384,7 +384,7 @@ public static class MacroBundleReader
                 MacroBundleFault.NotAnArchive,
                 string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Bundle_Read_MetadataUnreadable,
+                    Strings.Bundle_Read_MetadataUnreadable,
                     MacroBundleFormat.MetadataEntry,
                     ex.Message));
         }
@@ -404,7 +404,7 @@ public static class MacroBundleReader
                     MacroBundleFault.Malformed,
                     string.Format(
                         CultureInfo.CurrentCulture,
-                        Strings_Engine.Bundle_Read_MetadataNoVersionField,
+                        Strings.Bundle_Read_MetadataNoVersionField,
                         MacroBundleFormat.MetadataEntry,
                         nameof(MacroBundleMetadata.FormatVersion)));
             }
@@ -415,7 +415,7 @@ public static class MacroBundleReader
                 MacroBundleFault.Malformed,
                 string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Bundle_Read_MetadataNotJson,
+                    Strings.Bundle_Read_MetadataNotJson,
                     MacroBundleFormat.MetadataEntry,
                     ex.Message));
         }
@@ -423,13 +423,13 @@ public static class MacroBundleReader
         if (version != MacroBundleFormat.CurrentVersion)
         {
             var relation = version > MacroBundleFormat.CurrentVersion
-                ? Strings_Engine.Bundle_Read_VersionNewer
-                : Strings_Engine.Bundle_Read_VersionOlder;
+                ? Strings.Bundle_Read_VersionNewer
+                : Strings.Bundle_Read_VersionOlder;
             return MacroBundleMetadataResult.Failed(
                 MacroBundleFault.UnsupportedVersion,
                 string.Format(
                     CultureInfo.InvariantCulture,
-                    Strings_Engine.Bundle_Read_VersionMismatch,
+                    Strings.Bundle_Read_VersionMismatch,
                     relation,
                     version,
                     MacroBundleFormat.CurrentVersion),
@@ -446,7 +446,7 @@ public static class MacroBundleReader
                 MacroBundleFault.Malformed,
                 string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Bundle_Read_MetadataMalformed,
+                    Strings.Bundle_Read_MetadataMalformed,
                     MacroBundleFormat.MetadataEntry,
                     ex.Message),
                 version);
@@ -459,7 +459,7 @@ public static class MacroBundleReader
         if (entry is null)
         {
             return (null, MacroBundleFault.EntryMissing, string.Format(
-                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_GraphEntryMissing, MacroBundleFormat.GraphEntry));
+                CultureInfo.CurrentCulture, Strings.Bundle_Read_GraphEntryMissing, MacroBundleFormat.GraphEntry));
         }
 
         try
@@ -470,7 +470,7 @@ public static class MacroBundleReader
         {
             return (null, MacroBundleFault.Malformed, string.Format(
                 CultureInfo.CurrentCulture,
-                Strings_Engine.Bundle_Read_GraphMalformed,
+                Strings.Bundle_Read_GraphMalformed,
                 MacroBundleFormat.GraphEntry,
                 ex.Message));
         }
@@ -478,7 +478,7 @@ public static class MacroBundleReader
         {
             return (null, MacroBundleFault.NotAnArchive, string.Format(
                 CultureInfo.CurrentCulture,
-                Strings_Engine.Bundle_Read_GraphUnreadable,
+                Strings.Bundle_Read_GraphUnreadable,
                 MacroBundleFormat.GraphEntry,
                 ex.Message));
         }
@@ -608,19 +608,19 @@ public static class MacroBundleReader
         catch (FileNotFoundException)
         {
             return onFailure((MacroBundleFault.Missing, string.Format(
-                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_FileMissing, path)));
+                CultureInfo.CurrentCulture, Strings.Bundle_Read_FileMissing, path)));
         }
         catch (DirectoryNotFoundException)
         {
             return onFailure((MacroBundleFault.Missing, string.Format(
-                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_FileMissing, path)));
+                CultureInfo.CurrentCulture, Strings.Bundle_Read_FileMissing, path)));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Занятый или недоступный файл — история ВРЕМЕННАЯ, и отличать её от порчи важно:
             // хранилище на порче отодвигает файл в сторону, а на этом — не должно.
             return onFailure((MacroBundleFault.NotAnArchive, string.Format(
-                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_FileNotOpened, path, ex.Message)));
+                CultureInfo.CurrentCulture, Strings.Bundle_Read_FileNotOpened, path, ex.Message)));
         }
 
         using (stream)
@@ -642,12 +642,12 @@ public static class MacroBundleReader
         catch (Exception ex) when (ex is InvalidDataException or IOException)
         {
             return onFailure((MacroBundleFault.NotAnArchive, string.Format(
-                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_NotAnArchive, ex.Message)));
+                CultureInfo.CurrentCulture, Strings.Bundle_Read_NotAnArchive, ex.Message)));
         }
     }
 
     private static string Lower(string? message) =>
         string.IsNullOrEmpty(message)
-            ? Strings_Engine.Bundle_Read_MetadataNotRead
+            ? Strings.Bundle_Read_MetadataNotRead
             : char.ToLowerInvariant(message[0]) + message[1..];
 }

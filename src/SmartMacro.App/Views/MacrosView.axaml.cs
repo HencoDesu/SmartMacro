@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -10,6 +11,7 @@ using Serilog;
 using SmartMacro.App.ViewModels;
 using SmartMacro.App.ViewModels.Canvas;
 using SmartMacro.App.ViewModels.Nodes;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.Views;
 
@@ -200,9 +202,9 @@ public partial class MacrosView : UserControl
         {
             picked = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = "Импорт макроса",
+                Title = Strings.Dialog_ImportMacro_Title,
                 AllowMultiple = true,
-                FileTypeFilter = [new FilePickerFileType("Макрос SmartMacro") { Patterns = ["*.hsm"] }],
+                FileTypeFilter = [new FilePickerFileType(Strings.Dialog_MacroFileType) { Patterns = ["*.hsm"] }],
             });
         }
         catch (Exception ex)
@@ -225,7 +227,8 @@ public partial class MacrosView : UserControl
             }
             else
             {
-                vm.ErrorMessage = $"«{file.Name}» лежит не на диске — импортировать нечего.";
+                vm.ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                    Strings.Editor_Status_ImportNotOnDisk, file.Name);
             }
         }
     }
@@ -242,7 +245,8 @@ public partial class MacrosView : UserControl
 
         if (vm.ExportPath(item) is not { } source)
         {
-            vm.ErrorMessage = $"Файл макроса «{item.Name}» не найден.";
+            vm.ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Status_ExportFileMissing, item.Name);
             return;
         }
 
@@ -250,21 +254,23 @@ public partial class MacrosView : UserControl
         {
             var target = await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
             {
-                Title = "Экспорт макроса",
+                Title = Strings.Dialog_ExportMacro_Title,
                 SuggestedFileName = item.Name + ".hsm",
                 DefaultExtension = "hsm",
-                FileTypeChoices = [new FilePickerFileType("Макрос SmartMacro") { Patterns = ["*.hsm"] }],
+                FileTypeChoices = [new FilePickerFileType(Strings.Dialog_MacroFileType) { Patterns = ["*.hsm"] }],
             });
 
             if (target?.TryGetLocalPath() is { Length: > 0 } destination)
             {
                 File.Copy(source, destination, overwrite: true);
-                vm.StatusMessage = $"«{item.Name}» экспортирован.";
+                vm.StatusMessage = string.Format(CultureInfo.CurrentCulture,
+                    Strings.Editor_Status_Exported, item.Name);
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            vm.ErrorMessage = $"Экспорт не удался: {ex.Message}";
+            vm.ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Status_ExportFailed, ex.Message);
             Log.Warning(ex, "Экспорт макроса '{Macro}' не выполнен", item.Name);
         }
     }
@@ -310,7 +316,7 @@ public partial class MacrosView : UserControl
         {
             picked = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = "Шаблон машинного зрения",
+                Title = Strings.Dialog_ImportTemplate_Title,
                 AllowMultiple = true,
                 FileTypeFilter = [new FilePickerFileType("PNG") { Patterns = ["*.png"] }],
             });
@@ -559,7 +565,8 @@ public partial class MacrosView : UserControl
         }
         catch (Exception ex)
         {
-            vm.ErrorMessage = $"Не удалось открыть папку: {ex.Message}";
+            vm.ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Status_OpenFolderFailed, ex.Message);
         }
     }
 

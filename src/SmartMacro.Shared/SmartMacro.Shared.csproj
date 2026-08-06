@@ -35,62 +35,45 @@
   </ItemGroup>
 
   <!--
-    ВЕСЬ ТЕКСТ ДВИЖКА, КОТОРЫЙ ВИДИТ ЧЕЛОВЕК, ЛЕЖИТ В Resources\Strings.Engine.resx, и лежит
-    он в Shared по той же причине, по которой здесь валидатор: замечания судят бандл ОБА
-    процесса, и разъехаться их формулировкам негде — источник один. Правила сборки это не
-    нарушает: resx — это данные, ни файлов, ни OpenCV он сюда не тащит.
+    ТЕКСТЫ ИНТЕРФЕЙСА. Причина, по которой они здесь, а не в App: сборку видят обе стороны, а
+    пользовательские тексты валидатора тут уже лежали.
 
-    Класс доступа ПОРОЖДАЕТСЯ НА КАЖДОЙ СБОРКЕ, а не лежит в дереве .Designer.cs, и это
-    решение, а не экономия. Файл строк — рабочий документ для вычитки: формулировки в нём
-    правят и УДАЛЯЮТ. Сверстанный руками класс-спутник на удаление записи не реагирует —
-    ResourceManager вернул бы null, и на экране появилась бы пустота там, где была фраза.
-    Порождение из самого resx даёт обратное: снятая запись исчезает как член класса, и
-    компилятор перечисляет все места, где она печаталась. Штатного генератора у SDK нет
-    (GenerateResxSource — из Arcade, не отсюда), а ResXFileCodeGenerator — это средство IDE и
-    в `dotnet build` не участвует; XmlPeek + WriteLinesToFile обходятся без обоих.
+    Класс-обёртку генерирует MSBuild (задача GenerateResource), а НЕ студийный ResXFileCodeGenerator:
+    гейт этого проекта — dotnet build, и «сгенерируется, когда кто-нибудь откроет решение в Visual
+    Studio» здесь не работает. Метаданные Generator/LastGenOutput оставлены только затем, чтобы
+    студия не пыталась сгенерировать второй, конфликтующий файл.
 
-    Порождённый файл лежит в obj\ — его не видят ни глоб исходников, ни тесты папки Sources,
-    которые читают дерево. Имя ресурса («SmartMacro.Resources.Strings.Engine») складывается из
-    RootNamespace и пути к resx; менять путь, не поменяв строку в цели, нельзя — тесты
-    EngineStringsTests ловят это сразу и целиком.
+    StronglyTypedFileName ведёт в obj\: порождённый код не должен попадаться ни на глаза, ни
+    сканерам исходников из tests/Sources (они пропускают bin и obj по имени папки).
+
+    PublicClass=true обязателен: класс читают из ДРУГИХ сборок — из App и из разметки Avalonia
+    через {x:Static}. Умолчание у задачи — internal, и с ним всё это не собралось бы.
+
+    ⚠️ LogicalName — не украшение, а единственное, что здесь вообще работает. Имя ресурса в
+    манифесте по умолчанию берётся из ПУТИ файла (Resources\Strings.resx при
+    RootNamespace=SmartMacro даёт SmartMacro.Resources.Strings), а имя, которое порождённый
+    класс передаёт в ResourceManager, — из ИМЕНИ КЛАССА (SmartMacro.Resources.Strings). Точка
+    против подчёркивания: имена не совпадают, сборка проходит молча, а первое же чтение строки
+    падает в рантайме MissingManifestResourceException — то есть на живой панели и мимо всех
+    тестов. LogicalName выравнивает их, задавая имя в манифесте напрямую.
+
+    Соседний рычаг StronglyTypedManifestPrefix для этого НЕ годится, и это проверено: задача
+    склеивает его с именем класса через точку, так что «SmartMacro.Resources» превращается в
+    «SmartMacro.Resources.Strings» (то есть в умолчание), а попытка задать полный путь даёт
+    «SmartMacro.Resources.Strings.Strings». Совпасть с путём файла, в котором есть точка,
+    им нельзя в принципе.
   -->
   <ItemGroup>
-    <EmbeddedResource Update="Resources\Strings.Engine.resx" />
+    <EmbeddedResource Update="Resources\Strings.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Strings.Designer.cs</LastGenOutput>
+      <StronglyTypedFileName>$(IntermediateOutputPath)Strings.Designer.cs</StronglyTypedFileName>
+      <StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
+      <StronglyTypedNamespace>SmartMacro.Resources</StronglyTypedNamespace>
+      <StronglyTypedClassName>Strings</StronglyTypedClassName>
+      <LogicalName>SmartMacro.Resources.Strings.resources</LogicalName>
+      <PublicClass>true</PublicClass>
+    </EmbeddedResource>
   </ItemGroup>
-
-  <Target Name="GenerateEngineStrings"
-          Inputs="Resources\Strings.Engine.resx"
-          Outputs="$(IntermediateOutputPath)Strings.Engine.g.cs">
-    <XmlPeek XmlInputPath="Resources\Strings.Engine.resx" Query="/root/data/@name">
-      <Output TaskParameter="Result" ItemName="EngineStringKey" />
-    </XmlPeek>
-
-    <ItemGroup>
-      <EngineStringsLine Include="// &lt;auto-generated /&gt; Порождено целью GenerateEngineStrings из Resources\Strings.Engine.resx." />
-      <EngineStringsLine Include="#nullable enable" />
-      <EngineStringsLine Include="namespace SmartMacro.Resources%3B" />
-      <EngineStringsLine Include="/// &lt;summary&gt;Тексты движка, обращённые к человеку. Правятся в Strings.Engine.resx.&lt;/summary&gt;" />
-      <EngineStringsLine Include="public static class Strings_Engine" />
-      <EngineStringsLine Include="{" />
-      <EngineStringsLine Include="    /// &lt;summary&gt;Читатель ресурсов сборки.&lt;/summary&gt;" />
-      <EngineStringsLine Include="    public static global::System.Resources.ResourceManager ResourceManager { get%3B } = new(&quot;SmartMacro.Resources.Strings.Engine&quot;, typeof(Strings_Engine).Assembly)%3B" />
-      <EngineStringsLine Include="    /// &lt;summary&gt;Язык. &lt;c&gt;null&lt;/c&gt; — язык системы%3B здесь будет переключатель, когда появится перевод.&lt;/summary&gt;" />
-      <EngineStringsLine Include="    public static global::System.Globalization.CultureInfo? Culture { get%3B set%3B }" />
-      <EngineStringsLine Include="@(EngineStringKey->'    public static string %(Identity) =&gt; ResourceManager.GetString(&quot;%(Identity)&quot;, Culture)!%3B')" />
-      <EngineStringsLine Include="}" />
-    </ItemGroup>
-
-    <WriteLinesToFile File="$(IntermediateOutputPath)Strings.Engine.g.cs"
-                      Lines="@(EngineStringsLine)"
-                      Overwrite="true"
-                      WriteOnlyWhenDifferent="true"
-                      Encoding="utf-8" />
-  </Target>
-
-  <Target Name="IncludeEngineStrings" BeforeTargets="CoreCompile" DependsOnTargets="GenerateEngineStrings">
-    <ItemGroup>
-      <Compile Include="$(IntermediateOutputPath)Strings.Engine.g.cs" />
-    </ItemGroup>
-  </Target>
 
 </Project>

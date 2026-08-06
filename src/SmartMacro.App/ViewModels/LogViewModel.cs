@@ -6,6 +6,7 @@ using SmartMacro.App.Ipc;
 using SmartMacro.App.Mvvm;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -194,11 +195,11 @@ public sealed class LogViewModel : ObservableObject, IDisposable
     /// </summary>
     public IReadOnlyList<LogLevelOption> LevelOptions { get; } =
     [
-        new(LogLevelDto.Verbose, "все записи"),
-        new(LogLevelDto.Debug, "отладка и выше"),
-        new(LogLevelDto.Information, "информация и выше"),
-        new(LogLevelDto.Warning, "предупреждения и выше"),
-        new(LogLevelDto.Error, "только ошибки"),
+        new(LogLevelDto.Verbose, Strings.Log_Level_All),
+        new(LogLevelDto.Debug, Strings.Log_Level_Debug),
+        new(LogLevelDto.Information, Strings.Log_Level_Information),
+        new(LogLevelDto.Warning, Strings.Log_Level_Warning),
+        new(LogLevelDto.Error, Strings.Log_Level_Error),
     ];
 
     /// <summary>Выбранный порог. Присвоение пересобирает <see cref="Rows"/>.</summary>
@@ -261,7 +262,7 @@ public sealed class LogViewModel : ObservableObject, IDisposable
 
     /// <summary>«пропущено записей: 12» — прямо в шапке, а не в подсказке.</summary>
     public string GapText =>
-        string.Create(CultureInfo.CurrentCulture, $"пропущено записей: {_dropped}");
+        string.Format(CultureInfo.CurrentCulture, Strings.Log_Gap_Count, _dropped);
 
     /// <summary><c>true</c>, пока в ленте нет ни одной записи, — пустое состояние режима.</summary>
     public bool IsEmpty => _all.Count == 0;
@@ -277,8 +278,8 @@ public sealed class LogViewModel : ObservableObject, IDisposable
 
     /// <summary>Пояснение под заголовком пустого состояния — своё для каждой из двух пустот.</summary>
     public string EmptyHint => WasCleared
-        ? "Журнал демона это не тронуло — там всё на месте. Следующая запись появится здесь, а всё, что было, лежит файлами в logs/ рядом с SmartMacro.Daemon.exe."
-        : "Лента показывает последнюю тысячу строк журнала демона и всё, что он пишет дальше. Тот же журнал целиком лежит файлами в logs/ рядом с SmartMacro.Daemon.exe.";
+        ? Strings.Log_Cleared_Hint
+        : Strings.Log_Empty_Hint;
 
     /// <summary><c>true</c>, когда записи есть, но ни одна не прошла фильтр.</summary>
     public bool IsFilteredOut => _all.Count > 0 && Rows.Count == 0;
@@ -290,18 +291,18 @@ public sealed class LogViewModel : ObservableObject, IDisposable
         {
             if (_all.Count == 0)
             {
-                return "лента пуста";
+                return Strings.Log_Header_Empty;
             }
 
             var text = EntriesWord(_all.Count);
             if (Rows.Count != _all.Count)
             {
-                text += string.Create(CultureInfo.CurrentCulture, $" · показано {Rows.Count}");
+                text += string.Format(CultureInfo.CurrentCulture, Strings.Log_Header_Shown, Rows.Count);
             }
 
             return _problems == 0
                 ? text
-                : text + string.Create(CultureInfo.CurrentCulture, $" · проблем: {_problems}");
+                : text + string.Format(CultureInfo.CurrentCulture, Strings.Log_Header_Problems, _problems);
         }
     }
 
@@ -514,10 +515,11 @@ public sealed class LogViewModel : ObservableObject, IDisposable
         LogChanged?.Invoke();
     }
 
-    private static string EntriesWord(int count) => (count % 10, count % 100) switch
-    {
-        (1, not 11) => string.Create(CultureInfo.CurrentCulture, $"{count} запись"),
-        (2 or 3 or 4, not (12 or 13 or 14)) => string.Create(CultureInfo.CurrentCulture, $"{count} записи"),
-        _ => string.Create(CultureInfo.CurrentCulture, $"{count} записей"),
-    };
+    // Разбор по %10/%100 лежал здесь копией; теперь форму выбирает общий PluralForms, а
+    // сами формы — три явных ключа ресурсов.
+    private static string EntriesWord(int count) => PluralForms.Format(
+        count,
+        Strings.Log_Header_Entries_One,
+        Strings.Log_Header_Entries_Few,
+        Strings.Log_Header_Entries_Many);
 }

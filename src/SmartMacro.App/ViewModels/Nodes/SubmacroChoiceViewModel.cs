@@ -1,4 +1,5 @@
 using SmartMacro.App.Mvvm;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels.Nodes;
 
@@ -41,7 +42,7 @@ public sealed class SubmacroChoiceViewModel : ObservableObject
     /// удаление функции мимо редактора. Остаётся выбираемым намеренно: редактор обязан показывать
     /// правду, чтобы валидатор мог на неё пожаловаться, а не тихо обнулять ссылку.
     /// </summary>
-    public static SubmacroChoiceViewModel Missing(Guid id) => new(id, "(под-макроса нет в бандле)");
+    public static SubmacroChoiceViewModel Missing(Guid id) => new(id, Strings.Node_Submacro_Missing);
 
     public override string ToString() => _display;
 }

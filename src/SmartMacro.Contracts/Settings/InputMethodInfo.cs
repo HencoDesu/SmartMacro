@@ -34,20 +34,20 @@ public sealed record InputMethodInfo(
     [
         new(InputMethod.SendMessage,
             "SendMessage",
-            Strings_Engine.Settings_Engine_InputMethod_SendMessage_Badge,
-            Strings_Engine.Settings_Engine_InputMethod_SendMessage_Detail,
+            Strings.Settings_Engine_InputMethod_SendMessage_Badge,
+            Strings.Settings_Engine_InputMethod_SendMessage_Detail,
             IsAvailable: true),
 
         new(InputMethod.PostMessage,
             "PostMessage",
-            Strings_Engine.Settings_Engine_InputMethod_PostMessage_Badge,
-            Strings_Engine.Settings_Engine_InputMethod_PostMessage_Detail,
+            Strings.Settings_Engine_InputMethod_PostMessage_Badge,
+            Strings.Settings_Engine_InputMethod_PostMessage_Detail,
             IsAvailable: true),
 
         new(InputMethod.SendInput,
             "SendInput",
-            Strings_Engine.Settings_Engine_InputMethod_SendInput_Badge,
-            Strings_Engine.Settings_Engine_InputMethod_SendInput_Detail,
+            Strings.Settings_Engine_InputMethod_SendInput_Badge,
+            Strings.Settings_Engine_InputMethod_SendInput_Detail,
             IsAvailable: false),
     ];
 

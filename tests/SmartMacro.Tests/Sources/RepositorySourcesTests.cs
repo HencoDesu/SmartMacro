@@ -50,6 +50,28 @@ public class RepositorySourcesTests
     }
 
     [Test]
+    public async Task TheResourceInventoryIsNotEmpty()
+    {
+        // Страховка от тихого сужения: проверка глифов читает разметку, РЕСУРСЫ и код, и
+        // сломать её теперь можно, не трогая саму проверку, — достаточно чтобы перечисление
+        // перестало что-либо находить. Тогда вынесенная в resx подпись снова поедет мимо.
+        var files = RepositorySources.ResxFiles;
+
+        await Assert.That(files.Count).IsGreaterThan(0);
+        await Assert.That(files.All(File.Exists)).IsTrue();
+    }
+
+    [Test]
+    public async Task TheWholeTreeOfCSharpIsWiderThanOneProject()
+    {
+        var all = RepositorySources.AllCSharpFiles;
+        var app = RepositorySources.CSharpFiles("SmartMacro.App");
+
+        await Assert.That(all.Count).IsGreaterThan(app.Count);
+        await Assert.That(app.All(all.Contains)).IsTrue();
+    }
+
+    [Test]
     public async Task LineAndBlockCommentsGoAway()
     {
         var stripped = RepositorySources.StripCommentsFromCSharp(

@@ -55,9 +55,9 @@ public static class AppSettingsJson
         }
         catch (NotSupportedException ex)
         {
-            throw new JsonException(Strings_Engine.Settings_Engine_Json_NotParsed, ex);
+            throw new JsonException(Strings.Settings_Engine_Json_NotParsed, ex);
         }
 
-        return settings ?? throw new JsonException(Strings_Engine.Settings_Engine_Json_LiteralNull);
+        return settings ?? throw new JsonException(Strings.Settings_Engine_Json_LiteralNull);
     }
 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Microsoft.Extensions.Configuration;
 using Serilog;
@@ -6,6 +7,8 @@ using Serilog.Settings.Configuration;
 using SmartMacro.App.Ipc;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Native.Dialogs;
+
+using SmartMacro.Resources;
 
 namespace SmartMacro.App;
 
@@ -88,11 +91,10 @@ internal static class Program
         {
             Win32MessageBox.Error(
                 "SmartMacro",
-                "Не удалось поднять журнал панели.\n\n" +
-                $"{ex.Message}\n\n" +
-                "Чаще всего это каталог программы, недоступный для записи: SmartMacro хранит " +
-                "журналы и макросы рядом со своим исполняемым файлом. Распакуйте папку туда, " +
-                "куда можно писать, и запустите ещё раз.");
+                string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings.Dialog_Startup_LoggerFailed,
+                    ex.Message));
             return 1;
         }
 
@@ -120,11 +122,7 @@ internal static class Program
             if (!ConnectToDaemon(client))
             {
                 client.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                Win32MessageBox.Error(
-                    "SmartMacro",
-                    "Не удалось подключиться к службе SmartMacro.\n\n" +
-                    "Запустите daemon\\SmartMacro.Daemon.exe вручную и откройте панель ещё раз.\n" +
-                    "Подробности — в logs/smartmacro-ui-*.log.");
+                Win32MessageBox.Error("SmartMacro", Strings.Dialog_Startup_NoDaemon);
                 return 1;
             }
 

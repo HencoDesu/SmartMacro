@@ -181,7 +181,7 @@ public sealed partial class MacroExecutor
             {
                 throw new MacroRunAbortException(string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Run_Abort_DuplicateNodeId,
+                    Strings.Run_Abort_DuplicateNodeId,
                     macro.Name,
                     MacroNodeNames.Display(node)));
             }
@@ -206,7 +206,7 @@ public sealed partial class MacroExecutor
             if (!nodesById.TryGetValue(id, out var node))
             {
                 throw new MacroRunAbortException(string.Format(
-                    CultureInfo.CurrentCulture, Strings_Engine.Run_Abort_EdgeToMissingNode, macro.Name));
+                    CultureInfo.CurrentCulture, Strings.Run_Abort_EdgeToMissingNode, macro.Name));
             }
 
             context.OnNodeEntered?.Invoke(MacroNodeNames.Display(node));
@@ -332,7 +332,7 @@ public sealed partial class MacroExecutor
                 return NodeStep.Done(n.Next, DetailIfTracing(trace, () => Fanout(
                     n.DoubleClick
                         ? string.Format(
-                            CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_ClickDouble, point.X, point.Y)
+                            CultureInfo.CurrentCulture, Strings.Run_Detail_ClickDouble, point.X, point.Y)
                         : $"{point.X},{point.Y}",
                     targets.Count)));
             }
@@ -344,7 +344,7 @@ public sealed partial class MacroExecutor
                 }
 
                 return NodeStep.Done(n.Next, DetailIfTracing(trace, () => string.Format(
-                    CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_Delay, n.Ms)));
+                    CultureInfo.CurrentCulture, Strings.Run_Detail_Delay, n.Ms)));
             }
             case AddTagNode n:
             {
@@ -385,7 +385,7 @@ public sealed partial class MacroExecutor
                 {
                     return new NodeStep(n.NotFound, RunOutcomes.NotFound,
                         DetailIfTracing(trace, () => string.Format(
-                            CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_TemplateNotInMacro, n.Template)));
+                            CultureInfo.CurrentCulture, Strings.Run_Detail_TemplateNotInMacro, n.Template)));
                 }
 
                 var found = await _primitives.FindElementAsync(hwnd, template, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
@@ -409,7 +409,7 @@ public sealed partial class MacroExecutor
                 {
                     return new NodeStep(n.Timeout, RunOutcomes.Timeout,
                         DetailIfTracing(trace, () => string.Format(
-                            CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_TemplateNotInMacro, n.Template)));
+                            CultureInfo.CurrentCulture, Strings.Run_Detail_TemplateNotInMacro, n.Template)));
                 }
 
                 var found = await _primitives.WaitForElementAsync(hwnd, template, n.Region, n.TimeoutMs, n.MatchThreshold, ct)
@@ -427,7 +427,7 @@ public sealed partial class MacroExecutor
 
                 return new NodeStep(n.Timeout, RunOutcomes.Timeout,
                     DetailIfTracing(trace, () => string.Format(
-                        CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_WaitTimedOut, n.Template, n.TimeoutMs)));
+                        CultureInfo.CurrentCulture, Strings.Run_Detail_WaitTimedOut, n.Template, n.TimeoutMs)));
             }
             case RecognizeTagNode n:
             {
@@ -437,7 +437,7 @@ public sealed partial class MacroExecutor
                 {
                     return new NodeStep(n.NotMatched, RunOutcomes.NotMatched,
                         DetailIfTracing(trace, () => string.Format(
-                            CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_TemplateNotInMacro, n.TemplateSet)));
+                            CultureInfo.CurrentCulture, Strings.Run_Detail_TemplateNotInMacro, n.TemplateSet)));
                 }
 
                 var tag = await _primitives.RecognizeAsync(hwnd, set, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
@@ -458,7 +458,7 @@ public sealed partial class MacroExecutor
             default:
                 throw new MacroRunAbortException(string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Run_Abort_UnsupportedNodeType,
+                    Strings.Run_Abort_UnsupportedNodeType,
                     macro.Name,
                     MacroNodeNames.Display(node),
                     node.GetType().Name));
@@ -570,13 +570,13 @@ public sealed partial class MacroExecutor
         if (context.SubmacroId is not null)
         {
             throw new MacroRunAbortException(string.Format(
-                CultureInfo.CurrentCulture, Strings_Engine.Run_Abort_NestedSubmacro, macroName, macro.Name));
+                CultureInfo.CurrentCulture, Strings.Run_Abort_NestedSubmacro, macroName, macro.Name));
         }
 
         var subMacro = context.Submacros?.GetValueOrDefault(node.SubmacroId)
                        ?? throw new MacroRunAbortException(string.Format(
                            CultureInfo.CurrentCulture,
-                           Strings_Engine.Run_Abort_SubmacroNotFound,
+                           Strings.Run_Abort_SubmacroNotFound,
                            macroName,
                            MacroNodeNames.Display(node)));
 
@@ -615,7 +615,7 @@ public sealed partial class MacroExecutor
                 {
                     throw new MacroRunAbortException(string.Format(
                         CultureInfo.CurrentCulture,
-                        Strings_Engine.Run_Abort_SubmacroAborted,
+                        Strings.Run_Abort_SubmacroAborted,
                         macroName,
                         name,
                         result.Error));
@@ -630,7 +630,7 @@ public sealed partial class MacroExecutor
         return NodeStep.Done(node.Next, DetailIfTracing(trace, () => Fanout(
             node.Await
                 ? name
-                : string.Format(CultureInfo.CurrentCulture, Strings_Engine.Run_Detail_SubmacroDetached, name),
+                : string.Format(CultureInfo.CurrentCulture, Strings.Run_Detail_SubmacroDetached, name),
             childContexts.Count)));
     }
 
@@ -706,7 +706,7 @@ public sealed partial class MacroExecutor
 
             throw new MacroRunAbortException(string.Format(
                 CultureInfo.CurrentCulture,
-                Strings_Engine.Run_Abort_NodeNeedsTargetOrContext,
+                Strings.Run_Abort_NodeNeedsTargetOrContext,
                 MacroNodeNames.Display(node)));
         }
 
@@ -719,7 +719,7 @@ public sealed partial class MacroExecutor
         return context.ContextWindow
                ?? throw new MacroRunAbortException(string.Format(
                    CultureInfo.CurrentCulture,
-                   Strings_Engine.Run_Abort_NodeNeedsContextWindow,
+                   Strings.Run_Abort_NodeNeedsContextWindow,
                    MacroNodeNames.Display(node)));
     }
 
@@ -731,7 +731,7 @@ public sealed partial class MacroExecutor
             (null, { } pointVar) => variables.GetPoint(pointVar),
             _ => throw new MacroRunAbortException(string.Format(
                 CultureInfo.CurrentCulture,
-                Strings_Engine.Run_Abort_ClickNeedsExactlyOnePoint,
+                Strings.Run_Abort_ClickNeedsExactlyOnePoint,
                 MacroNodeNames.Display(node))),
         };
     }

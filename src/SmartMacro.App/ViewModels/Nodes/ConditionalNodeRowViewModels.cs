@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Diagnostics.CodeAnalysis;
 using SmartMacro.Macros.Model;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels.Nodes;
 
@@ -55,14 +57,19 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
 
     /// <summary>Кусочек сводки коробки: «порог 0.85», когда он задан, иначе ничего.</summary>
     protected string? DescribeThreshold =>
-        MatchThresholdOrNull is { } value ? $"порог {NodeInput.FormatThreshold(value)}" : null;
+        MatchThresholdOrNull is { } value
+            ? string.Format(CultureInfo.CurrentCulture, Strings.Node_Summary_Threshold,
+                NodeInput.FormatThreshold(value))
+            : null;
 
     /// <summary>Претензии к полю порога. Диапазон проверяет валидатор графа — здесь только разбор.</summary>
     protected IEnumerable<string> GetThresholdErrors()
     {
         if (!NodeInput.TryParseThreshold(_matchThresholdText, out _))
         {
-            yield return $"[{DisplayName}] порог: «{_matchThresholdText}» — не число.";
+            yield return string.Format(
+                CultureInfo.CurrentCulture, Strings.Node_Error_Threshold,
+                DisplayName, _matchThresholdText);
         }
     }
 
@@ -82,7 +89,7 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
     {
         var rect = region.ToRect();
         return rect.Width <= 0 || rect.Height <= 0
-            ? "всё окно"
+            ? Strings.Node_Summary_WholeWindow
             : $"{rect.Width}×{rect.Height}";
     }
 }
@@ -94,7 +101,7 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
     private string _foundPointVar;
 
     public FindElementNodeRowViewModel(FindElementNode node)
-        : base(node, node.MatchThreshold, "Найдено", node.Found, "Не найдено", node.NotFound)
+        : base(node, node.MatchThreshold, Strings.Node_Edge_Found, node.Found, Strings.Node_Edge_NotFound, node.NotFound)
     {
         _template = node.Template;
         _foundPointVar = node.FoundPointVar ?? string.Empty;
@@ -102,7 +109,7 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
         TrackRegion(Region);
     }
 
-    public override string TypeLabel => "Найти элемент";
+    public override string TypeLabel => Strings.Node_Type_FindElement;
 
     public override string Summary => Join(_template, DescribeRegion(Region), DescribeThreshold);
 
@@ -142,7 +149,8 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
     {
         if (string.IsNullOrWhiteSpace(_template))
         {
-            yield return $"[{DisplayName}] шаблон не задан.";
+            yield return string.Format(
+                CultureInfo.CurrentCulture, Strings.Node_Error_TemplateMissing, DisplayName);
         }
 
         foreach (var error in Region.GetInputErrors(DisplayName))
@@ -165,7 +173,7 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
     private string _foundPointVar;
 
     public WaitForElementNodeRowViewModel(WaitForElementNode node)
-        : base(node, node.MatchThreshold, "Найдено", node.Found, "Таймаут", node.Timeout)
+        : base(node, node.MatchThreshold, Strings.Node_Edge_Found, node.Found, Strings.Node_Edge_Timeout, node.Timeout)
     {
         _template = node.Template;
         // Миллисекунды, а не секунды: отведённое на ожидание время — это технический таймаут
@@ -177,10 +185,13 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
         TrackRegion(Region);
     }
 
-    public override string TypeLabel => "Ждать элемент";
+    public override string TypeLabel => Strings.Node_Type_WaitForElement;
 
     public override string Summary =>
-        Join(_template, $"{NodeInput.FormatSeconds(NodeInput.ParseInt(_timeoutMsText) ?? 0)} с", DescribeThreshold);
+        Join(_template, string.Format(
+            CultureInfo.CurrentCulture,
+            Strings.Node_Summary_Seconds,
+            NodeInput.FormatSeconds(NodeInput.ParseInt(_timeoutMsText) ?? 0)), DescribeThreshold);
 
     [AllowNull]
     public string Template
@@ -223,12 +234,15 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
     {
         if (string.IsNullOrWhiteSpace(_template))
         {
-            yield return $"[{DisplayName}] шаблон не задан.";
+            yield return string.Format(
+                CultureInfo.CurrentCulture, Strings.Node_Error_TemplateMissing, DisplayName);
         }
 
         if (NodeInput.ParseInt(_timeoutMsText) is null)
         {
-            yield return $"[{DisplayName}] таймаут: «{_timeoutMsText}» — не целое число миллисекунд.";
+            yield return string.Format(
+                CultureInfo.CurrentCulture, Strings.Node_Error_Timeout,
+                DisplayName, _timeoutMsText);
         }
 
         foreach (var error in Region.GetInputErrors(DisplayName))
@@ -255,7 +269,7 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
     private bool _applyTag;
 
     public RecognizeTagNodeRowViewModel(RecognizeTagNode node)
-        : base(node, node.MatchThreshold, "Распознано", node.Matched, "Не распознано", node.NotMatched)
+        : base(node, node.MatchThreshold, Strings.Node_Edge_Matched, node.Matched, Strings.Node_Edge_NotMatched, node.NotMatched)
     {
         _templateSet = node.TemplateSet;
         _resultVar = node.ResultVar;
@@ -264,10 +278,12 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
         TrackRegion(Region);
     }
 
-    public override string TypeLabel => "Распознать тег";
+    public override string TypeLabel => Strings.Node_Type_RecognizeTag;
 
     public override string Summary =>
-        Join(_templateSet.Length > 0 ? $"набор {_templateSet}" : null, DescribeRegion(Region), DescribeThreshold);
+        Join(_templateSet.Length > 0
+                ? string.Format(CultureInfo.CurrentCulture, Strings.Node_Summary_TemplateSet, _templateSet)
+                : null, DescribeRegion(Region), DescribeThreshold);
 
     /// <summary>Имя набора шаблонов; основа имени каждого файла в наборе — кандидат в теги.</summary>
     [AllowNull]
@@ -313,12 +329,14 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
     {
         if (string.IsNullOrWhiteSpace(_templateSet))
         {
-            yield return $"[{DisplayName}] набор шаблонов не задан.";
+            yield return string.Format(
+                CultureInfo.CurrentCulture, Strings.Node_Error_TemplateSetMissing, DisplayName);
         }
 
         if (string.IsNullOrWhiteSpace(_resultVar))
         {
-            yield return $"[{DisplayName}] имя переменной результата не задано.";
+            yield return string.Format(
+                CultureInfo.CurrentCulture, Strings.Node_Error_ResultVarMissing, DisplayName);
         }
 
         foreach (var error in Region.GetInputErrors(DisplayName))

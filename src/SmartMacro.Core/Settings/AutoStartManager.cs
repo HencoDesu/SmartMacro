@@ -179,10 +179,10 @@ public sealed partial class AutoStartManager
         ArgumentNullException.ThrowIfNull(startup);
         return (startup.RunAtLogon, startup.RunElevated) switch
         {
-            (false, false) => Strings_Engine.Settings_Engine_AutoStart_Off,
-            (true, false) => Strings_Engine.Settings_Engine_AutoStart_RunKey,
-            (false, true) => Strings_Engine.Settings_Engine_AutoStart_ElevateOnManualStart,
-            (true, true) => Strings_Engine.Settings_Engine_AutoStart_ScheduledTask,
+            (false, false) => Strings.Settings_Engine_AutoStart_Off,
+            (true, false) => Strings.Settings_Engine_AutoStart_RunKey,
+            (false, true) => Strings.Settings_Engine_AutoStart_ElevateOnManualStart,
+            (true, true) => Strings.Settings_Engine_AutoStart_ScheduledTask,
         };
     }
 

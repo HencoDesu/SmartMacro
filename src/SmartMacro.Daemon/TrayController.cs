@@ -56,11 +56,11 @@ internal sealed partial class TrayController : IHostedService, IDisposable
     {
         _tray.ItemClicked += OnItemClicked;
         _tray.Start(
-            Strings_Engine.Tray_Tooltip,
+            Strings.Tray_Tooltip,
             Path.Combine(AppContext.BaseDirectory, IconRelativePath),
             [
-                new TrayMenuItem(OpenPanelItemId, Strings_Engine.Tray_MenuItem_OpenPanel, IsDefault: true),
-                new TrayMenuItem(ExitItemId, Strings_Engine.Tray_MenuItem_Exit),
+                new TrayMenuItem(OpenPanelItemId, Strings.Tray_MenuItem_OpenPanel, IsDefault: true),
+                new TrayMenuItem(ExitItemId, Strings.Tray_MenuItem_Exit),
             ]);
         return Task.CompletedTask;
     }

@@ -25,6 +25,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SmartMacro.App.ViewModels"
              xmlns:conv="using:SmartMacro.App.Converters"
+             xmlns:res="using:SmartMacro.Resources"
              x:Class="SmartMacro.App.Views.LogView"
              x:DataType="vm:LogViewModel">
 
@@ -74,7 +75,7 @@
                 Padding="12,9">
             <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto">
                 <TextBlock Grid.Column="0"
-                           Text="Лог"
+                           Text="{x:Static res:Strings.Shell_Mode_Log}"
                            FontSize="{DynamicResource NocturneFontSizeBody}"
                            FontWeight="Medium"
                            VerticalAlignment="Center" />
@@ -92,7 +93,7 @@
                           VerticalAlignment="Center"
                           ItemsSource="{Binding LevelOptions}"
                           SelectedItem="{Binding LevelFilter, Mode=TwoWay}"
-                          ToolTip.Tip="Фильтр на стороне панели. Ниже уровня, заданного в appsettings.json демона, записи сюда просто не приходят.">
+                          ToolTip.Tip="{x:Static res:Strings.Log_Header_LevelFilterTip}">
                     <ComboBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:LogLevelOption">
                             <TextBlock Text="{Binding Title}"
@@ -119,24 +120,24 @@
                          VerticalAlignment="Center"
                          VerticalContentAlignment="Center"
                          FontSize="{DynamicResource NocturneFontSizeSmall}"
-                         Watermark="поиск по строке"
+                         Watermark="{x:Static res:Strings.Log_Header_SearchWatermark}"
                          Text="{Binding Search, Mode=TwoWay}"
-                         ToolTip.Tip="Ищет в сообщении, источнике и тексте исключения; регистр не важен" />
+                         ToolTip.Tip="{x:Static res:Strings.Log_Header_SearchTip}" />
 
                 <CheckBox Grid.Column="5"
                           Margin="10,0,0,0"
                           VerticalAlignment="Center"
                           IsChecked="{Binding AutoScroll, Mode=TwoWay}"
-                          ToolTip.Tip="Держать ленту на последней записи. Снимите, чтобы читать: на живом демоне она едет сама.">
-                    <TextBlock Text="автопрокрутка" FontSize="{DynamicResource NocturneFontSizeSmall}" />
+                          ToolTip.Tip="{x:Static res:Strings.Log_Header_AutoScrollTip}">
+                    <TextBlock Text="{x:Static res:Strings.Log_Header_AutoScroll}" FontSize="{DynamicResource NocturneFontSizeSmall}" />
                 </CheckBox>
 
                 <Button Grid.Column="6"
                         Margin="10,0,0,0"
-                        Content="Очистить"
+                        Content="{x:Static res:Strings.Log_Header_Clear}"
                         Height="24"
                         Padding="10,0"
-                        ToolTip.Tip="Убирает то, что накопила панель. Журнал демона не трогается — переподключение принесёт его обратно."
+                        ToolTip.Tip="{x:Static res:Strings.Log_Header_ClearTip}"
                         Click="OnClearClicked" />
             </Grid>
         </Border>
@@ -156,7 +157,7 @@
                            FontSize="{DynamicResource NocturneFontSizeSmall}"
                            Foreground="{DynamicResource NocturneWarningBrush}"
                            VerticalAlignment="Center" />
-                <TextBlock Text="очередь демона переполнялась — в ленте пропуск; полный журнал в logs/ рядом с SmartMacro.Daemon.exe"
+                <TextBlock Text="{x:Static res:Strings.Log_Gap_Hint}"
                            FontSize="{DynamicResource NocturneFontSizeSmall}"
                            Foreground="{DynamicResource NocturneTextFaintBrush}"
                            TextTrimming="CharacterEllipsis"
@@ -211,7 +212,7 @@
                                         HorizontalAlignment="Left"
                                         IsVisible="{Binding HasException}"
                                         Click="OnToggleExceptionClicked"
-                                        ToolTip.Tip="Показать стек">
+                                        ToolTip.Tip="{x:Static res:Strings.Log_Row_ExpandTip}">
                                     <Panel>
                                         <TextBlock Text="▸" IsVisible="{Binding !IsExpanded}" />
                                         <TextBlock Text="▾" IsVisible="{Binding IsExpanded}" />
@@ -256,12 +257,12 @@
                         HorizontalAlignment="Center"
                         Spacing="8"
                         IsVisible="{Binding IsEmpty}">
-                <TextBlock Text="Демон пока ничего не записал."
+                <TextBlock Text="{x:Static res:Strings.Log_Empty_Title}"
                            FontSize="{DynamicResource NocturneFontSizeTitle}"
                            HorizontalAlignment="Center"
                            Foreground="{DynamicResource NocturneTextMutedBrush}"
                            IsVisible="{Binding !WasCleared}" />
-                <TextBlock Text="Лента очищена."
+                <TextBlock Text="{x:Static res:Strings.Log_Cleared_Title}"
                            FontSize="{DynamicResource NocturneFontSizeTitle}"
                            HorizontalAlignment="Center"
                            Foreground="{DynamicResource NocturneTextMutedBrush}"
@@ -281,7 +282,7 @@
                         HorizontalAlignment="Center"
                         Spacing="6"
                         IsVisible="{Binding IsFilteredOut}">
-                <TextBlock Text="Под фильтр не попала ни одна запись."
+                <TextBlock Text="{x:Static res:Strings.Log_FilteredOut_Title}"
                            FontSize="{DynamicResource NocturneFontSizeTitle}"
                            HorizontalAlignment="Center"
                            Foreground="{DynamicResource NocturneTextMutedBrush}" />

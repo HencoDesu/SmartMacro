@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.Services;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -182,15 +183,15 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         // — теперь этого числа не существует, есть только «сколько их у ЭТОГО макроса».
         Modes =
         [
-            new ShellModeViewModel(ShellMode.Windows, "Окна"),
-            new ShellModeViewModel(ShellMode.Macros, "Макросы"),
-            new ShellModeViewModel(ShellMode.Runs, "Прогоны"),
-            new ShellModeViewModel(ShellMode.Log, "Лог"),
+            new ShellModeViewModel(ShellMode.Windows, Strings.Shell_Mode_Windows),
+            new ShellModeViewModel(ShellMode.Macros, Strings.Shell_Mode_Macros),
+            new ShellModeViewModel(ShellMode.Runs, Strings.Shell_Mode_Runs),
+            new ShellModeViewModel(ShellMode.Log, Strings.Shell_Mode_Log),
         ];
 
         // Настройки — отдельная строка, а не шестой элемент Modes: она рисуется под
         // разделителем, у неё нет счётчика, и выделяться две строки одновременно не должны.
-        SettingsMode = new ShellModeViewModel(ShellMode.Settings, "Настройки");
+        SettingsMode = new ShellModeViewModel(ShellMode.Settings, Strings.Shell_Mode_Settings);
 
         _selectedMode = Modes[0];
         _selectedMode.IsSelected = true;
@@ -352,7 +353,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     public bool HasRuns => Workspace.Runs.Count > 0;
 
     /// <summary>Что говорит полоса, когда ничего не идёт. Схлопываться она не умеет.</summary>
-    public string IdleText => "нет активных прогонов";
+    public string IdleText => Strings.Shell_RunBar_Idle;
 
     /// <summary>«+2», когда прогонов в полёте больше, чем полоса способна назвать; иначе пусто.</summary>
     public string OtherRunsText => Workspace.Runs.Count > 1

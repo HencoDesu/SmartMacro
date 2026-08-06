@@ -102,20 +102,20 @@ public static class MacroExtraction
         var inside = selection.Where(byId.ContainsKey).ToHashSet();
         if (inside.Count == 0)
         {
-            return MacroExtractionResult.No(Strings_Engine.Extraction_Refused_NothingSelected);
+            return MacroExtractionResult.No(Strings.Extraction_Refused_NothingSelected);
         }
 
         if (inside.Count == graph.Nodes.Count)
         {
             // Родитель остался бы из одной ноды вызова — то есть макрос, который только зовёт
             // свою же единственную функцию. Это не извлечение, а лишний уровень вложенности.
-            return MacroExtractionResult.No(Strings_Engine.Extraction_Refused_WholeGraph);
+            return MacroExtractionResult.No(Strings.Extraction_Refused_WholeGraph);
         }
 
         if (inside.Any(id => byId[id] is RunSubmacroNode))
         {
             // Плоскость (см. MacroSubmacro): под-макрос не зовёт никого.
-            return MacroExtractionResult.No(Strings_Engine.Extraction_Refused_ContainsCall);
+            return MacroExtractionResult.No(Strings.Extraction_Refused_ContainsCall);
         }
 
         if (FindEntry(graph, byId, inside) is not { } entry)
@@ -259,7 +259,7 @@ public static class MacroExtraction
         {
             return string.Format(
                 CultureInfo.CurrentCulture,
-                Strings_Engine.Extraction_Refused_ManyEntries,
+                Strings.Extraction_Refused_ManyEntries,
                 entries.Count,
                 Names(byId, entries));
         }
@@ -270,10 +270,10 @@ public static class MacroExtraction
             .ToList();
 
         return heads.Count == 0
-            ? Strings_Engine.Extraction_Refused_NoEntryClosedLoop
+            ? Strings.Extraction_Refused_NoEntryClosedLoop
             : string.Format(
                 CultureInfo.CurrentCulture,
-                Strings_Engine.Extraction_Refused_NoEntryFromOutside,
+                Strings.Extraction_Refused_NoEntryFromOutside,
                 Names(byId, heads));
     }
 
@@ -324,8 +324,8 @@ public static class MacroExtraction
         return string.Format(
             CultureInfo.CurrentCulture,
             outside.Count > 1
-                ? Strings_Engine.Extraction_Refused_ManyExits
-                : Strings_Engine.Extraction_Refused_MixedExits,
+                ? Strings.Extraction_Refused_ManyExits
+                : Strings.Extraction_Refused_MixedExits,
             Names(byId, outside));
     }
 
@@ -340,5 +340,5 @@ public static class MacroExtraction
     /// свободный.
     /// </summary>
     public static string FreeName(IEnumerable<string> existing) =>
-        MacroNodeNames.Generate(Strings_Engine.Extraction_DefaultSubmacroNamePrefix, existing);
+        MacroNodeNames.Generate(Strings.Extraction_DefaultSubmacroNamePrefix, existing);
 }

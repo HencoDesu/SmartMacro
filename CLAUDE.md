@@ -16,7 +16,7 @@ The refactoring plan that got us here was **deleted** once it was done — not o
 
 ⚠️ **§13.1 is gone, and that is the point.** It was the `.hsm` decision written up as something not yet built, and it survived three waves as a to-do. With F4 the format is finished, so its contents moved into the sections that describe what exists — the bundle layout and the library in §5.7, templates inside the macro in §8, submacros in §5.1, the panel's authorship in §5.7 and §6.1 — and the reasoning became rows in §14. Do not recreate a "planned format" section.
 
-Gate: `dotnet run --project tests/SmartMacro.Tests` — **838 tests**, and they are expected green before anything is committed.
+Gate: `dotnet run --project tests/SmartMacro.Tests` — **847 tests**, and they are expected green before anything is committed.
 
 The sections below are the constraints that are load-bearing — the things that look arbitrary, are not, and will be "simplified" back into bugs by anyone who does not know why they are there. Wave tags (D4, D3b, …) survive only because commit messages reference them.
 

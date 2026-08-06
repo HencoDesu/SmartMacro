@@ -108,11 +108,11 @@ public static class MacroGraphValidator
         {
             if (node.SubmacroId == Guid.Empty)
             {
-                issues.Add(Error(node, Strings_Engine.Validation_Submacro_NotSelected));
+                issues.Add(Error(node, Strings.Validation_Submacro_NotSelected));
             }
             else if (!known.Contains(node.SubmacroId))
             {
-                issues.Add(Error(node, Strings_Engine.Validation_Submacro_NotFound));
+                issues.Add(Error(node, Strings.Validation_Submacro_NotFound));
             }
         }
 
@@ -131,7 +131,7 @@ public static class MacroGraphValidator
                     ValidationSeverity.Error,
                     null,
                     null,
-                    string.Format(CultureInfo.CurrentCulture, Strings_Engine.Validation_Submacro_HasTrigger, submacro.Name),
+                    string.Format(CultureInfo.CurrentCulture, Strings.Validation_Submacro_HasTrigger, submacro.Name),
                     submacro.Id));
             }
 
@@ -141,7 +141,7 @@ public static class MacroGraphValidator
                     ValidationSeverity.Error,
                     node.Id,
                     MacroNodeNames.Display(node),
-                    Strings_Engine.Validation_Submacro_NestedCall,
+                    Strings.Validation_Submacro_NestedCall,
                     submacro.Id));
             }
         }
@@ -175,7 +175,7 @@ public static class MacroGraphValidator
         {
             if (!byId.TryAdd(node.Id, node))
             {
-                issues.Add(Error(node, Strings_Engine.Validation_Node_DuplicateId));
+                issues.Add(Error(node, Strings.Validation_Node_DuplicateId));
             }
         }
 
@@ -187,7 +187,7 @@ public static class MacroGraphValidator
             foreach (var node in group)
             {
                 issues.Add(Warning(node, string.Format(
-                    CultureInfo.CurrentCulture, Strings_Engine.Validation_Node_DuplicateName, group.Key)));
+                    CultureInfo.CurrentCulture, Strings.Validation_Node_DuplicateName, group.Key)));
             }
         }
 
@@ -196,7 +196,7 @@ public static class MacroGraphValidator
         if (!startIsValid)
         {
             issues.Add(new ValidationIssue(ValidationSeverity.Error, null, null,
-                Strings_Engine.Validation_Graph_StartNodeMissing));
+                Strings.Validation_Graph_StartNodeMissing));
         }
 
         // Сломанные рёбра. Целевой id не называем: ноды с таким id в графе нет, а голый guid
@@ -208,7 +208,7 @@ public static class MacroGraphValidator
                 if (targetId is { } target && !byId.ContainsKey(target))
                 {
                     issues.Add(Error(node, string.Format(
-                        CultureInfo.CurrentCulture, Strings_Engine.Validation_Node_EdgeToMissingNode, edgeName)));
+                        CultureInfo.CurrentCulture, Strings.Validation_Node_EdgeToMissingNode, edgeName)));
                 }
             }
         }
@@ -218,7 +218,7 @@ public static class MacroGraphValidator
         {
             if (node.Point is null == node.PointVar is null)
             {
-                issues.Add(Error(node, Strings_Engine.Validation_Node_ClickNeedsExactlyOnePoint));
+                issues.Add(Error(node, Strings.Validation_Node_ClickNeedsExactlyOnePoint));
             }
         }
 
@@ -230,7 +230,7 @@ public static class MacroGraphValidator
             {
                 issues.Add(Error(node, string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Validation_Node_MatchThresholdOutOfRange,
+                    Strings.Validation_Node_MatchThresholdOutOfRange,
                     threshold.ToString("0.###", CultureInfo.InvariantCulture))));
             }
         }
@@ -261,8 +261,8 @@ public static class MacroGraphValidator
                         string.Format(
                             CultureInfo.CurrentCulture,
                             usage.IsSet
-                                ? Strings_Engine.Validation_Node_TemplateSetMissing
-                                : Strings_Engine.Validation_Node_TemplateMissing,
+                                ? Strings.Validation_Node_TemplateSetMissing
+                                : Strings.Validation_Node_TemplateMissing,
                             usage.Name)));
                 }
             }
@@ -281,12 +281,12 @@ public static class MacroGraphValidator
                 switch (byId[id])
                 {
                     case FindElementNode or WaitForElementNode or RecognizeTagNode:
-                        issues.Add(Error(byId[id], Strings_Engine.Validation_Node_ConditionalNeedsContextWindow));
+                        issues.Add(Error(byId[id], Strings.Validation_Node_ConditionalNeedsContextWindow));
                         break;
                     case KeyPressNode { Target: null } or ClickNode { Target: null } or AddTagNode { Target: null }
                         or RemoveTagNode { Target: null } or SetIconNode { Target: null }
                         or RunSubmacroNode { Target: null }:
-                        issues.Add(Error(byId[id], Strings_Engine.Validation_Node_ActionNeedsContextWindow));
+                        issues.Add(Error(byId[id], Strings.Validation_Node_ActionNeedsContextWindow));
                         break;
                 }
             }
@@ -297,7 +297,7 @@ public static class MacroGraphValidator
         {
             if (!reachable.Contains(id))
             {
-                issues.Add(Warning(node, Strings_Engine.Validation_Node_Unreachable));
+                issues.Add(Warning(node, Strings.Validation_Node_Unreachable));
             }
         }
 
@@ -316,7 +316,7 @@ public static class MacroGraphValidator
                 var names = component.Select(id => MacroNodeNames.Display(byId[id]));
                 issues.Add(Warning(byId[component[0]], string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Validation_Graph_LoopWithoutDelay,
+                    Strings.Validation_Graph_LoopWithoutDelay,
                     string.Join(" → ", names))));
             }
         }
@@ -388,10 +388,10 @@ public static class MacroGraphValidator
             var name = submacros.First(submacro => submacro.Id == call.SubmacroId).Name;
             issues.Add(Warning(call, lost.Count == 1
                 ? string.Format(
-                    CultureInfo.CurrentCulture, Strings_Engine.Validation_Submacro_VariableLost_One, name, lost[0])
+                    CultureInfo.CurrentCulture, Strings.Validation_Submacro_VariableLost_Single, name, lost[0])
                 : string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Validation_Submacro_VariableLost_Many,
+                    Strings.Validation_Submacro_VariableLost_Several,
                     name,
                     string.Join(", ", lost.Select(variable => $"«{variable}»")))));
         }

@@ -1,4 +1,5 @@
 using SmartMacro.App.Mvvm;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels.Nodes;
 
@@ -31,7 +32,7 @@ public sealed class NodeChoiceViewModel : ObservableObject
     /// значение, а не пустота, — потому и подписан словами: пустая строка в списке читалась бы
     /// как «ещё не заполнено».
     /// </summary>
-    public static NodeChoiceViewModel End { get; } = new(null, "— конец —");
+    public static NodeChoiceViewModel End { get; } = new(null, Strings.Node_Edge_End);
 
     /// <summary>Нода, на которую указывает выбор, либо <c>null</c> у <see cref="End"/>.</summary>
     public Guid? Id { get; }
@@ -54,7 +55,7 @@ public sealed class NodeChoiceViewModel : ObservableObject
     /// файл. Остаётся выбираемым намеренно: редактор обязан показывать правду, чтобы валидатор
     /// мог на неё пожаловаться, а не тихо переписывать битое ребро в «конец прогона».
     /// </summary>
-    public static NodeChoiceViewModel Dangling(Guid id) => new(id, "(ноды нет в графе)");
+    public static NodeChoiceViewModel Dangling(Guid id) => new(id, Strings.Node_Edge_Dangling);
 
     public override string ToString() => _display;
 }

@@ -1,6 +1,7 @@
 using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.Macros.Analysis;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels.Canvas;
 
@@ -32,17 +33,17 @@ public sealed class MacroVariableRowViewModel : ObservableObject
         Name = string.Create(CultureInfo.InvariantCulture, $"{{{info.Name}}}");
         KindText = info.Kind switch
         {
-            VariableKind.Point => "точка",
-            VariableKind.Text => "строка",
-            _ => "значение",
+            VariableKind.Point => Strings.Editor_Variables_KindPoint,
+            VariableKind.Text => Strings.Editor_Variables_KindText,
+            _ => Strings.Editor_Variables_KindAny,
         };
         WrittenBy = info.SeededByTrigger && info.Writes.Count == 0
-            ? "триггер (сид)"
+            ? Strings.Editor_Variables_SeededByTrigger
             : info.Writes.Count == 0
-                ? "никто"
+                ? Strings.Editor_Variables_Nobody
                 : string.Join(", ", info.Writes.Select(w => w.NodeName));
         ReadBy = info.Reads.Count == 0
-            ? "никто"
+            ? Strings.Editor_Variables_Nobody
             : string.Join(", ", info.Reads.Select(r => r.NodeName));
         // Хвостовое «в пути к иконке» печатается, только если ВСЕ читатели читают переменную в
         // одном и том же поле. При разных слотах однострочная форма была прямо неверной —
@@ -115,11 +116,11 @@ public sealed class MacroVariableRowViewModel : ObservableObject
     /// <summary>Русское название для <see cref="VariableSlot"/> — то самое «в пути к иконке» с макета.</summary>
     public static string Describe(VariableSlot slot) => slot switch
     {
-        VariableSlot.FoundPointVar => "точка находки",
-        VariableSlot.ResultVar => "результат распознавания",
-        VariableSlot.PointVar => "в точке клика",
-        VariableSlot.Tag => "в теге",
-        VariableSlot.IconPath => "в пути к иконке",
+        VariableSlot.FoundPointVar => Strings.Editor_Variables_SlotFoundPoint,
+        VariableSlot.ResultVar => Strings.Editor_Variables_SlotResult,
+        VariableSlot.PointVar => Strings.Editor_Variables_SlotPoint,
+        VariableSlot.Tag => Strings.Editor_Variables_SlotTag,
+        VariableSlot.IconPath => Strings.Editor_Variables_SlotIcon,
         _ => string.Empty,
     };
 }

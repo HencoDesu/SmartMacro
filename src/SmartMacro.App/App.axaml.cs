@@ -8,6 +8,8 @@ using SmartMacro.App.Ipc;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Native.Dialogs;
 
+using SmartMacro.Resources;
+
 namespace SmartMacro.App;
 
 /// <summary>
@@ -120,10 +122,7 @@ public partial class App : Application
 
         Dispatcher.UIThread.Post(() =>
         {
-            Win32MessageBox.Error(
-                "SmartMacro",
-                "Служба SmartMacro остановлена — панель будет закрыта.\n\n" +
-                "Запустите SmartMacro.Daemon.exe и откройте панель заново.");
+            Win32MessageBox.Error("SmartMacro", Strings.Dialog_DaemonLost);
             _desktop?.Shutdown();
         });
     }

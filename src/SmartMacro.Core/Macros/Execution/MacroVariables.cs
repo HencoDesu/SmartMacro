@@ -90,7 +90,7 @@ public sealed class MacroVariables
         var value = Get(name);
         return value is PointValue point
             ? point.Value
-            : throw new MacroVariableTypeMismatchException(name, Strings_Engine.Run_VariableType_Point, value);
+            : throw new MacroVariableTypeMismatchException(name, Strings.Run_VariableType_Point, value);
     }
 
     /// <summary>

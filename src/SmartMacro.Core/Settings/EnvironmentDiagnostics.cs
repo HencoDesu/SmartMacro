@@ -89,18 +89,18 @@ public sealed class EnvironmentDiagnostics
         if (await _autoStart.IsRegisteredAsync(_settings.Current, cancellationToken).ConfigureAwait(false))
         {
             return new DiagnosticDto(DiagnosticIds.AutoStart, DiagnosticStatus.Ok,
-                Strings_Engine.Diag_AutoStart_Ok_Title, mechanism);
+                Strings.Diag_AutoStart_Ok_Title, mechanism);
         }
 
         return new DiagnosticDto(DiagnosticIds.AutoStart, DiagnosticStatus.Failed,
-            Strings_Engine.Diag_AutoStart_Failed_Title,
+            Strings.Diag_AutoStart_Failed_Title,
             string.Format(
                 CultureInfo.CurrentCulture,
-                Strings_Engine.Diag_AutoStart_Failed_Detail,
+                Strings.Diag_AutoStart_Failed_Detail,
                 mechanism,
                 startup is { RunAtLogon: true, RunElevated: true }
-                    ? Strings_Engine.Diag_AutoStart_Failed_NeedAdmin
-                    : Strings_Engine.Diag_AutoStart_Failed_SeeLog));
+                    ? Strings.Diag_AutoStart_Failed_NeedAdmin
+                    : Strings.Diag_AutoStart_Failed_SeeLog));
     }
 
     /// <summary>
@@ -129,10 +129,10 @@ public sealed class EnvironmentDiagnostics
         if (blocked > 0)
         {
             return new DiagnosticDto(DiagnosticIds.Elevation, DiagnosticStatus.Failed,
-                Strings_Engine.Diag_Elevation_Blocked_Title,
+                Strings.Diag_Elevation_Blocked_Title,
                 string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Diag_Elevation_Blocked_Detail,
+                    Strings.Diag_Elevation_Blocked_Detail,
                     blocked,
                     WindowsWord(windows.Count)));
         }
@@ -144,30 +144,30 @@ public sealed class EnvironmentDiagnostics
         {
             return elevated
                 ? new DiagnosticDto(DiagnosticIds.Elevation, DiagnosticStatus.Ok,
-                    Strings_Engine.Diag_Elevation_NoWindows_Ok_Title,
-                    Strings_Engine.Diag_Elevation_NoWindows_Ok_Detail)
+                    Strings.Diag_Elevation_NoWindows_Ok_Title,
+                    Strings.Diag_Elevation_NoWindows_Ok_Detail)
                 : new DiagnosticDto(DiagnosticIds.Elevation, DiagnosticStatus.Warning,
-                    Strings_Engine.Diag_Elevation_NoWindows_Warning_Title,
-                    Strings_Engine.Diag_Elevation_NoWindows_Warning_Detail);
+                    Strings.Diag_Elevation_NoWindows_Warning_Title,
+                    Strings.Diag_Elevation_NoWindows_Warning_Detail);
         }
 
         return new DiagnosticDto(DiagnosticIds.Elevation, DiagnosticStatus.Ok,
-            Strings_Engine.Diag_Elevation_Ok_Title,
+            Strings.Diag_Elevation_Ok_Title,
             string.Format(
                 CultureInfo.CurrentCulture,
-                Strings_Engine.Diag_Elevation_Ok_Detail,
+                Strings.Diag_Elevation_Ok_Detail,
                 WindowsWord(windows.Count),
-                elevated ? Strings_Engine.Diag_Elevation_Ok_ElevatedSuffix : string.Empty));
+                elevated ? Strings.Diag_Elevation_Ok_ElevatedSuffix : string.Empty));
     }
 
     // «1 окно», «2 окна», «11 окон». Найдено глазами: на одном клиенте строка читалась как
     // «1 окон» — мелочь, но такие мелочи и создают ощущение, что текст никто не вычитывал.
     private static string WindowsWord(int count) => (count % 10, count % 100) switch
     {
-        (1, not 11) => string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_Windows_One, count),
+        (1, not 11) => string.Format(CultureInfo.CurrentCulture, Strings.Diag_Windows_One, count),
         (2 or 3 or 4, not (12 or 13 or 14)) =>
-            string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_Windows_Few, count),
-        _ => string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_Windows_Many, count),
+            string.Format(CultureInfo.CurrentCulture, Strings.Diag_Windows_Few, count),
+        _ => string.Format(CultureInfo.CurrentCulture, Strings.Diag_Windows_Many, count),
     };
 
     /// <summary>
@@ -199,7 +199,7 @@ public sealed class EnvironmentDiagnostics
                 {
                     missing.Add(string.Format(
                         CultureInfo.CurrentCulture,
-                        usage.IsSet ? Strings_Engine.Diag_Templates_Ref_Set : Strings_Engine.Diag_Templates_Ref_Single,
+                        usage.IsSet ? Strings.Diag_Templates_Ref_Set : Strings.Diag_Templates_Ref_Single,
                         entry.Name,
                         usage.Name));
                 }
@@ -209,24 +209,24 @@ public sealed class EnvironmentDiagnostics
         if (missing.Count == 0)
         {
             return new DiagnosticDto(DiagnosticIds.Templates, DiagnosticStatus.Ok,
-                Strings_Engine.Diag_Templates_Ok_Title,
+                Strings.Diag_Templates_Ok_Title,
                 string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Diag_Templates_Ok_Detail,
+                    Strings.Diag_Templates_Ok_Detail,
                     files,
                     _macros.Entries.Count));
         }
 
         var detail = string.Format(
-            CultureInfo.CurrentCulture, Strings_Engine.Diag_Templates_Missing_Detail, missing[0]);
+            CultureInfo.CurrentCulture, Strings.Diag_Templates_Missing_Detail, missing[0]);
         if (missing.Count > 1)
         {
             detail += string.Format(
-                CultureInfo.CurrentCulture, Strings_Engine.Diag_Templates_Missing_More, missing.Count - 1);
+                CultureInfo.CurrentCulture, Strings.Diag_Templates_Missing_More, missing.Count - 1);
         }
 
         return new DiagnosticDto(DiagnosticIds.Templates, DiagnosticStatus.Failed,
-            Strings_Engine.Diag_Templates_Missing_Title, detail);
+            Strings.Diag_Templates_Missing_Title, detail);
     }
 
     /// <summary>
@@ -241,11 +241,11 @@ public sealed class EnvironmentDiagnostics
         var scale = EnvironmentProbe.DisplayScalePercent();
         return scale == BaselineScalePercent
             ? new DiagnosticDto(DiagnosticIds.DisplayScale, DiagnosticStatus.Ok,
-                Strings_Engine.Diag_DisplayScale_Ok_Title,
-                Strings_Engine.Diag_DisplayScale_Ok_Detail)
+                Strings.Diag_DisplayScale_Ok_Title,
+                Strings.Diag_DisplayScale_Ok_Detail)
             : new DiagnosticDto(DiagnosticIds.DisplayScale, DiagnosticStatus.Warning,
-                string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_DisplayScale_Warning_Title, scale),
-                Strings_Engine.Diag_DisplayScale_Warning_Detail);
+                string.Format(CultureInfo.CurrentCulture, Strings.Diag_DisplayScale_Warning_Title, scale),
+                Strings.Diag_DisplayScale_Warning_Detail);
     }
 
     /// <summary>
@@ -276,8 +276,8 @@ public sealed class EnvironmentDiagnostics
             // не поломка, и снимется она, как только редактор закроют. Но зелёной карточки здесь
             // быть не может: клавиши прямо сейчас молчат.
             return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Warning,
-                Strings_Engine.Diag_Hotkeys_Suspended_Title,
-                Strings_Engine.Diag_Hotkeys_Suspended_Detail);
+                Strings.Diag_Hotkeys_Suspended_Title,
+                Strings.Diag_Hotkeys_Suspended_Detail);
         }
 
         var bound = _macros.All.Sum(macro => macro.Triggers.OfType<Macros.Model.HotkeyTrigger>().Count());
@@ -288,8 +288,8 @@ public sealed class EnvironmentDiagnostics
         if (failures.Count == 0 && broken.Count == 0)
         {
             return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Ok,
-                Strings_Engine.Diag_Hotkeys_Ok_Title,
-                string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_Hotkeys_Ok_Detail, bound));
+                Strings.Diag_Hotkeys_Ok_Title,
+                string.Format(CultureInfo.CurrentCulture, Strings.Diag_Hotkeys_Ok_Detail, bound));
         }
 
         if (failures.Count == 0)
@@ -298,10 +298,10 @@ public sealed class EnvironmentDiagnostics
             // «…не найдена в графе.. По клавише» — нашлось глазами на экране. Это правило живёт в
             // самой строке Diag_Hotkeys_BrokenGraph_Detail и в пояснении к ней.
             return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Failed,
-                Strings_Engine.Diag_Hotkeys_BrokenGraph_Title,
+                Strings.Diag_Hotkeys_BrokenGraph_Title,
                 string.Format(
                     CultureInfo.CurrentCulture,
-                    Strings_Engine.Diag_Hotkeys_BrokenGraph_Detail,
+                    Strings.Diag_Hotkeys_BrokenGraph_Detail,
                     broken.Count,
                     broken[0].Name,
                     broken[0].FirstError));
@@ -309,18 +309,18 @@ public sealed class EnvironmentDiagnostics
 
         var detail = string.Format(
             CultureInfo.CurrentCulture,
-            Strings_Engine.Diag_Hotkeys_Taken_Detail,
+            Strings.Diag_Hotkeys_Taken_Detail,
             failures.Count,
             bound,
             failures[0].MacroName);
         if (broken.Count > 0)
         {
             detail += string.Format(
-                CultureInfo.CurrentCulture, Strings_Engine.Diag_Hotkeys_Taken_AlsoBroken, broken.Count);
+                CultureInfo.CurrentCulture, Strings.Diag_Hotkeys_Taken_AlsoBroken, broken.Count);
         }
 
         return new DiagnosticDto(DiagnosticIds.Hotkeys, DiagnosticStatus.Failed,
-            Strings_Engine.Diag_Hotkeys_Taken_Title, detail);
+            Strings.Diag_Hotkeys_Taken_Title, detail);
     }
 
     /// <summary>
@@ -333,9 +333,9 @@ public sealed class EnvironmentDiagnostics
         var folder = _settings.FolderPath;
         return EnvironmentProbe.IsFolderWritable(folder)
             ? new DiagnosticDto(DiagnosticIds.FolderWritable, DiagnosticStatus.Ok,
-                Strings_Engine.Diag_Folder_Ok_Title, folder)
+                Strings.Diag_Folder_Ok_Title, folder)
             : new DiagnosticDto(DiagnosticIds.FolderWritable, DiagnosticStatus.Failed,
-                Strings_Engine.Diag_Folder_Failed_Title,
-                string.Format(CultureInfo.CurrentCulture, Strings_Engine.Diag_Folder_Failed_Detail, folder));
+                Strings.Diag_Folder_Failed_Title,
+                string.Format(CultureInfo.CurrentCulture, Strings.Diag_Folder_Failed_Detail, folder));
     }
 }
