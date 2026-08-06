@@ -1621,7 +1621,32 @@
                        PointerMoved="OnViewportMoved"
                        PointerReleased="OnViewportReleased"
                        PointerWheelChanged="OnViewportWheel"
-                       KeyDown="OnViewportKeyDown">
+                       KeyDown="OnViewportKeyDown"
+                       ContextRequested="OnViewportContextRequested">
+
+                    <!-- Правая кнопка по пустому месту: нода появляется В ТОЧКЕ КЛИКА. В этом
+                         весь смысл меню — иначе оно было бы второй копией кнопки «+ Нода», а
+                         нода всё равно вставала бы туда, куда решит раскладка. Каталог видов
+                         тот же самый (NodeKinds): второй список разъехался бы с первым при
+                         добавлении первой же ноды. -->
+                    <Panel.ContextFlyout>
+                        <Flyout Placement="Pointer">
+                            <ItemsControl ItemsSource="{Binding NodeKinds}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="nodes:MacroNodeKindOption">
+                                        <Button Content="{Binding Label}"
+                                                Classes="ghost"
+                                                Padding="{DynamicResource NocturneInsetField}"
+                                                MinWidth="180"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Left"
+                                                Click="OnAddNodeHereClicked" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Flyout>
+                    </Panel.ContextFlyout>
+
 
                     <controls:CanvasBackdrop Zoom="{Binding Zoom}"
                                              OffsetX="{Binding PanX}"

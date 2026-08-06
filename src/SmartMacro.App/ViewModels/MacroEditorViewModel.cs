@@ -1798,13 +1798,28 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// <summary>Убирает строку триггера.</summary>
     public void RemoveTrigger(TriggerRowViewModel row) => Triggers.Remove(row);
 
-    /// <summary>Дописывает ноду заданного вида со свежесгенерированным id.</summary>
-    public NodeRowViewModel AddNode(MacroNodeKind kind)
+    /// <summary>
+    /// Дописывает ноду заданного вида со свежесгенерированным id.
+    /// </summary>
+    /// <param name="kind">Вид ноды.</param>
+    /// <param name="at">
+    /// Куда её поставить, В КООРДИНАТАХ ГРАФА. <c>null</c> — «куда встанет», то есть в первую
+    /// свободную клетку сетки: так работает кнопка «+ Нода» в тулбаре, которой неоткуда взять
+    /// осмысленное место. Точку передаёт контекстное меню канвы, и в этом весь его смысл: нода
+    /// появляется там, куда человек смотрел, а не там, где решит раскладка.
+    ///
+    /// ⚠️ Координата ждётся именно графовая. Перевод из экранной — дело представления
+    /// (<c>MacrosView.ToCanvas</c>, единственная точка перевода в панели); передать сюда
+    /// экранную значит промахнуться на всём, кроме масштаба 100 % и нулевой панорамы.
+    /// </param>
+    public NodeRowViewModel AddNode(MacroNodeKind kind, (double X, double Y)? at = null)
     {
         var row = NodeRowViewModel.Create(kind, Nodes.Select(node => node.DisplayName));
         // Размещаем до того, как она попадёт в список, — так поиск свободного места не увидит
         // саму себя.
-        var (x, y) = MacroGraphLayout.NextFreeSlot(Nodes);
+        var (x, y) = at is { } point
+            ? (Math.Max(0, point.X), Math.Max(0, point.Y))
+            : MacroGraphLayout.NextFreeSlot(Nodes);
         row.SetPosition(x, y);
         AttachNode(row);
         Nodes.Add(row);

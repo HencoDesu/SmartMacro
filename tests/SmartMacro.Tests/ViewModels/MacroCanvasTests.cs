@@ -194,6 +194,53 @@ public class MacroCanvasTests
         await Assert.That(y).IsEqualTo(CanvasMetrics.RowPitch * 3);
     }
 
+    // ---- добавление ноды ----------------------------------------------------------------------
+
+    // Контекстное меню канвы: нода встаёт ТУДА, ГДЕ ЩЁЛКНУЛИ, а не в первую свободную клетку.
+    // Если бы она вставала по раскладке, меню было бы просто второй копией кнопки «+ Нода».
+    [Test]
+    public async Task AddNode_AtAPoint_PutsTheBoxThere_NotInTheNextFreeSlot()
+    {
+        using var vm = CreateEditor();
+        vm.LoadGraph(BootLike());
+        var (slotX, slotY) = MacroGraphLayout.NextFreeSlot(vm.Nodes);
+
+        var row = vm.AddNode(MacroNodeKind.Delay, (740.5, 415.25));
+
+        await Assert.That(row.X).IsEqualTo(740.5);
+        await Assert.That(row.Y).IsEqualTo(415.25);
+        // И это действительно НЕ то место, куда её положила бы раскладка, — иначе тест зелен зря.
+        await Assert.That((slotX, slotY)).IsNotEqualTo((740.5, 415.25));
+    }
+
+    // Точка приходит из перевода экранных координат и при панораме у левого края может выйти
+    // слегка отрицательной. Коробка за краем поверхности недостижима, поэтому ноль — предел.
+    [Test]
+    public async Task AddNode_AtANegativePoint_ClampsToTheSurface()
+    {
+        using var vm = CreateEditor();
+        vm.LoadGraph(BootLike());
+
+        var row = vm.AddNode(MacroNodeKind.Delay, (-30, -4));
+
+        await Assert.That(row.X).IsEqualTo(0d);
+        await Assert.That(row.Y).IsEqualTo(0d);
+    }
+
+    // Кнопка тулбара точки не знает и знать не может: ей неоткуда взять осмысленное место.
+    [Test]
+    public async Task AddNode_WithoutAPoint_StillUsesTheLayout()
+    {
+        using var vm = CreateEditor();
+        vm.LoadGraph(BootLike());
+        var (slotX, slotY) = MacroGraphLayout.NextFreeSlot(vm.Nodes);
+
+        var row = vm.AddNode(MacroNodeKind.Delay);
+
+        await Assert.That(row.X).IsEqualTo(slotX);
+        await Assert.That(row.Y).IsEqualTo(slotY);
+    }
+
     // ---- прокладка рёбер ---------------------------------------------------------------------
 
     [Test]

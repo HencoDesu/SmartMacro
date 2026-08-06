@@ -60,6 +60,13 @@ public partial class MacrosView : UserControl
     private Bitmap? _templatePreview;
 
     /// <summary>
+    /// Место, где вызвали контекстное меню канвы, в координатах ГРАФА. Запоминается на открытии
+    /// меню, а не читается на выборе пункта: к моменту клика по пункту указатель уже над
+    /// всплывающим окном, и «где сейчас курсор» означало бы совсем другую точку.
+    /// </summary>
+    private Point? _canvasMenuPoint;
+
+    /// <summary>
     /// Подгоняет «0:12.4» у отладчика.
     ///
     /// Часы живут ЗДЕСЬ, а не во view-model, потому что <c>DispatcherTimer</c> — тип Avalonia, а
@@ -500,6 +507,46 @@ public partial class MacrosView : UserControl
             vm.AddNode(option.Kind);
             AddNodeButton.Flyout?.Hide();
         }
+    }
+
+    /// <summary>
+    /// Правая кнопка над канвой. Запоминает точку В КООРДИНАТАХ ГРАФА — её и получит новая нода.
+    ///
+    /// <b>Перевод обязателен, и делает его <see cref="ToCanvas"/>, а не арифметика на месте.</b>
+    /// Указатель приходит в пикселях области просмотра, а канва масштабируется и панорамируется;
+    /// без перевода нода на любом масштабе, кроме 100 %, легла бы мимо курсора — промах, которого
+    /// не видно ни сборке, ни тестам, потому что арифметика везде верна и не сходится только
+    /// система координат.
+    ///
+    /// Меню не открывается в двух случаях. Макрос не открыт — ноду некуда класть. Под указателем
+    /// коробка — правая кнопка по ноде обещает действия НАД НОДОЙ, а «добавить сюда» поверх уже
+    /// существующей коробки было бы и неправдой, и наложением.
+    /// </summary>
+    private void OnViewportContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        _canvasMenuPoint = null;
+
+        if (Vm is not { HasOpenMacro: true }
+            || !e.TryGetPosition(Viewport, out var screen)
+            || NodeAt(ToCanvas(screen)) is not null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        _canvasMenuPoint = ToCanvas(screen);
+    }
+
+    private void OnAddNodeHereClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm
+            && sender is Button { DataContext: MacroNodeKindOption option }
+            && _canvasMenuPoint is { } point)
+        {
+            vm.AddNode(option.Kind, (point.X, point.Y));
+        }
+
+        Viewport.ContextFlyout?.Hide();
     }
 
     private void OnDeleteNodeClicked(object? sender, RoutedEventArgs e)
