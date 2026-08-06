@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using SmartMacro.Contracts.Settings;
 using SmartMacro.Native.Diagnostics;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Settings;
 
@@ -178,10 +179,10 @@ public sealed partial class AutoStartManager
         ArgumentNullException.ThrowIfNull(startup);
         return (startup.RunAtLogon, startup.RunElevated) switch
         {
-            (false, false) => "автозапуск выключен",
-            (true, false) => "ключ Run в HKCU",
-            (false, true) => "автозапуска нет; повышение запрашивается при ручном старте",
-            (true, true) => "задача в Планировщике, наивысшие права",
+            (false, false) => Strings_Engine.Settings_Engine_AutoStart_Off,
+            (true, false) => Strings_Engine.Settings_Engine_AutoStart_RunKey,
+            (false, true) => Strings_Engine.Settings_Engine_AutoStart_ElevateOnManualStart,
+            (true, true) => Strings_Engine.Settings_Engine_AutoStart_ScheduledTask,
         };
     }
 

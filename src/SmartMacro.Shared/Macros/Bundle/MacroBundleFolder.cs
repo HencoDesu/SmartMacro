@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Text;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Macros.Bundle;
 
@@ -121,7 +123,7 @@ public enum MacroSaveTarget
 public sealed class MacroNameTakenException : IOException
 {
     public MacroNameTakenException(string name, string path)
-        : base($"Макрос «{name}» в библиотеке уже есть.")
+        : base(string.Format(CultureInfo.CurrentCulture, Strings_Engine.Bundle_NameTaken, name))
     {
         Name = name;
         Path = path;
@@ -146,8 +148,11 @@ public sealed class MacroNameTakenException : IOException
 public sealed class MacroBundleUnreadableException : IOException
 {
     public MacroBundleUnreadableException(string path, MacroBundleFault fault, string? verdict)
-        : base($"Бандл «{path}» не читается, а перезапись уничтожила бы его содержимое. " +
-               (verdict ?? "Причина неизвестна."))
+        : base(string.Format(
+            CultureInfo.CurrentCulture,
+            Strings_Engine.Bundle_Unreadable_Overwrite,
+            path,
+            verdict ?? Strings_Engine.Bundle_Unreadable_ReasonUnknown))
     {
         Path = path;
         Fault = fault;
@@ -191,6 +196,13 @@ public static class MacroBundleFolder
     public const string FolderName = "macros";
 
     /// <summary>
+    /// Предел длины имени макроса. Названо константой, а не числом в двух местах: предел
+    /// упоминается и в проверке, и в тексте отказа (<c>Bundle_Name_TooLong</c>), и разъехаться
+    /// им нельзя — иначе правка текста при вычитке молча соврала бы про поведение.
+    /// </summary>
+    public const int MaxNameLength = 100;
+
+    /// <summary>
     /// Маска бандлов — она же фильтр наблюдателя у обоих владельцев. Временный файл атомарной
     /// записи (<c>{имя}.hsm.tmp</c>) под неё не попадает ни длинным именем, ни коротким 8.3
     /// («FOOHSM~1.TMP»: 8.3 берёт первые три символа ПОСЛЕДНЕГО расширения) — см.
@@ -226,28 +238,29 @@ public static class MacroBundleFolder
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            return "Имя макроса не может быть пустым.";
+            return Strings_Engine.Bundle_Name_Empty;
         }
 
-        if (name.Length > 100)
+        if (name.Length > MaxNameLength)
         {
-            return "Имя макроса должно быть не длиннее 100 символов.";
+            return string.Format(CultureInfo.CurrentCulture, Strings_Engine.Bundle_Name_TooLong, MaxNameLength);
         }
 
         var invalid = name.IndexOfAny(System.IO.Path.GetInvalidFileNameChars());
         if (invalid >= 0)
         {
-            return $"Имя макроса не может содержать «{name[invalid]}».";
+            return string.Format(
+                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Name_InvalidCharacter, name[invalid]);
         }
 
         if (name.EndsWith('.') || name.EndsWith(' '))
         {
-            return "Имя макроса не может заканчиваться точкой или пробелом.";
+            return Strings_Engine.Bundle_Name_TrailingDotOrSpace;
         }
 
         if (IsReservedDeviceName(name))
         {
-            return $"«{name}» — зарезервированное имя устройства Windows.";
+            return string.Format(CultureInfo.CurrentCulture, Strings_Engine.Bundle_Name_ReservedDevice, name);
         }
 
         return null;
@@ -562,7 +575,9 @@ public static class MacroBundleFolder
             or MacroBundleFault.EntryMissing)
         {
             throw new ArgumentException(
-                metadata.Message ?? $"«{sourcePath}» — не бандл SmartMacro.", nameof(sourcePath));
+                metadata.Message ?? string.Format(
+                    CultureInfo.CurrentCulture, Strings_Engine.Bundle_Import_NotABundle, sourcePath),
+                nameof(sourcePath));
         }
 
         var name = targetName ?? System.IO.Path.GetFileNameWithoutExtension(sourcePath);

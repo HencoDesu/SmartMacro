@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Contracts.Settings;
 
@@ -54,9 +55,9 @@ public static class AppSettingsJson
         }
         catch (NotSupportedException ex)
         {
-            throw new JsonException("Файл настроек не разбирается.", ex);
+            throw new JsonException(Strings_Engine.Settings_Engine_Json_NotParsed, ex);
         }
 
-        return settings ?? throw new JsonException("Файл настроек содержит литеральный 'null'.");
+        return settings ?? throw new JsonException(Strings_Engine.Settings_Engine_Json_LiteralNull);
     }
 }

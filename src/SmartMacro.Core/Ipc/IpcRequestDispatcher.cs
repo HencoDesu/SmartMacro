@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SmartMacro.Contracts.Dto;
@@ -7,6 +8,7 @@ using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Storage;
 using SmartMacro.Contracts.Settings;
 using SmartMacro.Orchestration;
+using SmartMacro.Resources;
 using SmartMacro.Settings;
 using SmartMacro.Vision;
 using SmartMacro.Windows;
@@ -196,7 +198,8 @@ public sealed partial class IpcRequestDispatcher
                     _macros.Refresh();
                     if (_macros.TryGet(payload.Name) is null)
                     {
-                        throw new IpcRequestRejectedException($"Макрос '{payload.Name}' не найден.");
+                        throw new IpcRequestRejectedException(string.Format(
+                            CultureInfo.CurrentCulture, Strings_Engine.Ipc_Rejected_MacroNotFound, payload.Name));
                     }
                 }
 
@@ -222,7 +225,7 @@ public sealed partial class IpcRequestDispatcher
                 var payload = Require<SubscribeRunEventsRequest>(request);
                 var connection = session
                                  ?? throw new IpcRequestRejectedException(
-                                     "Подписка на события прогона возможна только по соединению.");
+                                     Strings_Engine.Ipc_Rejected_RunEventsNeedConnection);
                 connection.SetRunEventSubscription(payload.Enabled);
 
                 // Живые обходы — чтобы панель, пришедшая посреди прогона, вообще узнала, что
@@ -264,7 +267,7 @@ public sealed partial class IpcRequestDispatcher
                 if (session is not { WantsRunEvents: true })
                 {
                     throw new IpcRequestRejectedException(
-                        "Команды отладчика доступны только подписчику событий прогона.");
+                        Strings_Engine.Ipc_Rejected_DebuggerNeedsSubscription);
                 }
 
                 return Ok(request, IpcJson.Write(_debug.Command(payload.WalkId, payload.Command, payload.NodeId)));
@@ -282,7 +285,7 @@ public sealed partial class IpcRequestDispatcher
             {
                 var connection = session
                                  ?? throw new IpcRequestRejectedException(
-                                     "Приостановка хоткеев возможна только по соединению.");
+                                     Strings_Engine.Ipc_Rejected_HotkeySuspensionNeedsConnection);
                 await connection.SetHotkeySuspensionAsync(true, cancellationToken).ConfigureAwait(false);
                 return Ok(request);
             }
@@ -291,7 +294,7 @@ public sealed partial class IpcRequestDispatcher
             {
                 var connection = session
                                  ?? throw new IpcRequestRejectedException(
-                                     "Приостановка хоткеев возможна только по соединению.");
+                                     Strings_Engine.Ipc_Rejected_HotkeySuspensionNeedsConnection);
                 await connection.SetHotkeySuspensionAsync(false, cancellationToken).ConfigureAwait(false);
                 return Ok(request);
             }
@@ -310,7 +313,7 @@ public sealed partial class IpcRequestDispatcher
                 var payload = Require<SubscribeLogRequest>(request);
                 var connection = session
                                  ?? throw new IpcRequestRejectedException(
-                                     "Подписка на журнал возможна только по соединению.");
+                                     Strings_Engine.Ipc_Rejected_LogNeedsConnection);
 
                 // ПОРЯДОК ЗДЕСЬ ЗНАЧИМ. Сперва включаем ленту, и только потом снимаем
                 // предысторию: в обратном порядке между снимком и подпиской образовалась бы
@@ -333,7 +336,8 @@ public sealed partial class IpcRequestDispatcher
             {
                 var payload = Require<SaveSettingsRequest>(request);
                 var settings = payload.Settings
-                               ?? throw new IpcRequestRejectedException("SaveSettings: нагрузка без настроек.");
+                               ?? throw new IpcRequestRejectedException(
+                                   Strings_Engine.Ipc_Rejected_SaveSettingsWithoutPayload);
 
                 // Пустой список = записано; непустой = НЕ записано, вот причины. Договорённость
                 // дословно та же, что у SaveMacro. Проверяет хранилище — там же, где пишет, —
@@ -383,7 +387,8 @@ public sealed partial class IpcRequestDispatcher
                 // Отправить всем не стоит ничего (панель обычно ровно одна) и не требует
                 // вести здесь учёт клиентов.
                 var broadcaster = _broadcaster
-                                  ?? throw new IpcRequestRejectedException("Событие активации некому разослать.");
+                                  ?? throw new IpcRequestRejectedException(
+                                      Strings_Engine.Ipc_Rejected_NoBroadcaster);
                 broadcaster.Broadcast(new IpcEvent(IpcMessageTypes.ActivateWindow));
                 return Ok(request);
             }

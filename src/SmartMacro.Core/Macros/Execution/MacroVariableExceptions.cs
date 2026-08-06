@@ -1,3 +1,6 @@
+using System.Globalization;
+using SmartMacro.Resources;
+
 namespace SmartMacro.Macros.Execution;
 
 /// <summary>
@@ -15,7 +18,7 @@ public abstract class MacroVariableException : Exception
 public sealed class MacroVariableNotFoundException : MacroVariableException
 {
     public MacroVariableNotFoundException(string name)
-        : base($"Переменная «{name}» в этом прогоне не определена.")
+        : base(string.Format(CultureInfo.CurrentCulture, Strings_Engine.Run_Variable_NotDefined, name))
     {
         Name = name;
     }
@@ -34,7 +37,12 @@ public sealed class MacroVariableTypeMismatchException : MacroVariableException
     /// </param>
     /// <param name="actual">То, что в переменной лежит на самом деле.</param>
     public MacroVariableTypeMismatchException(string name, string expected, VariableValue actual)
-        : base($"Переменная «{name}» — не {expected} (текущее значение: {actual.DisplayString}).")
+        : base(string.Format(
+            CultureInfo.CurrentCulture,
+            Strings_Engine.Run_Variable_TypeMismatch,
+            name,
+            expected,
+            actual.DisplayString))
     {
         Name = name;
     }

@@ -1,3 +1,5 @@
+using SmartMacro.Resources;
+
 namespace SmartMacro.Contracts.Settings;
 
 /// <summary>
@@ -32,26 +34,20 @@ public sealed record InputMethodInfo(
     [
         new(InputMethod.SendMessage,
             "SendMessage",
-            "в фоне ✓ · Shift+1 ✕",
-            "Синхронно, по фоновым окнам. Ждёт ответа каждого окна: на десяти клиентах заметно "
-            + "медленнее. Модификаторы (Shift+1) не работают — PW читает их через GetKeyState, "
-            + "который межпоточный SendMessage не обновляет. Умолчание: именно на нём работает игра.",
+            Strings_Engine.Settings_Engine_InputMethod_SendMessage_Badge,
+            Strings_Engine.Settings_Engine_InputMethod_SendMessage_Detail,
             IsAvailable: true),
 
         new(InputMethod.PostMessage,
             "PostMessage",
-            "в фоне ✓ · Shift+1 ✕",
-            "Асинхронно, по фоновым окнам. Быстрее всех, но факт доставки не подтверждается: "
-            + "с ним 1–2 клиента из 11 периодически теряли широковещательное нажатие. "
-            + "Модификаторы (Shift+1) не работают.",
+            Strings_Engine.Settings_Engine_InputMethod_PostMessage_Badge,
+            Strings_Engine.Settings_Engine_InputMethod_PostMessage_Detail,
             IsAvailable: true),
 
         new(InputMethod.SendInput,
             "SendInput",
-            "в фоне ✕ · Shift+1 ✓",
-            "Через очередь ввода ОС. Единственный способ, который умеет сочетания с модификаторами, "
-            + "но требует переднего плана: SmartMacro отберёт фокус, а действия по десяти окнам "
-            + "пойдут по очереди. Пока не реализован.",
+            Strings_Engine.Settings_Engine_InputMethod_SendInput_Badge,
+            Strings_Engine.Settings_Engine_InputMethod_SendInput_Detail,
             IsAvailable: false),
     ];
 

@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using SmartMacro.Macros.Model;
+using SmartMacro.Resources;
 
 
 namespace SmartMacro.Macros.Bundle;
@@ -294,7 +295,7 @@ public static class MacroBundleReader
                 metadata,
                 null,
                 metadata.Fault,
-                $"Граф не читался: {Lower(metadata.Message)}",
+                string.Format(CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_GraphNotRead, Lower(metadata.Message)),
                 [],
                 [],
                 []);
@@ -344,11 +345,13 @@ public static class MacroBundleReader
             }
             catch (JsonException ex)
             {
-                faults.Add($"Под-макрос «{relativePath}» не разбирается: {ex.Message}");
+                faults.Add(string.Format(
+                    CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_SubmacroMalformed, relativePath, ex.Message));
             }
             catch (Exception ex) when (ex is IOException or InvalidDataException)
             {
-                faults.Add($"Под-макрос «{relativePath}» не читается: {ex.Message}");
+                faults.Add(string.Format(
+                    CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_SubmacroUnreadable, relativePath, ex.Message));
             }
         }
 
@@ -364,7 +367,10 @@ public static class MacroBundleReader
         {
             return MacroBundleMetadataResult.Failed(
                 MacroBundleFault.EntryMissing,
-                $"В бандле нет «{MacroBundleFormat.MetadataEntry}» — это не бандл SmartMacro.");
+                string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Bundle_Read_MetadataEntryMissing,
+                    MacroBundleFormat.MetadataEntry));
         }
 
         string text;
@@ -376,7 +382,11 @@ public static class MacroBundleReader
         {
             return MacroBundleMetadataResult.Failed(
                 MacroBundleFault.NotAnArchive,
-                $"Запись «{MacroBundleFormat.MetadataEntry}» не читается: {ex.Message}");
+                string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Bundle_Read_MetadataUnreadable,
+                    MacroBundleFormat.MetadataEntry,
+                    ex.Message));
         }
 
         // ВЕРСИЮ ДОСТАЁМ ПЕРВОЙ И ОТДЕЛЬНО, до разбора паспорта целиком. Иначе бандл чужой
@@ -392,24 +402,34 @@ public static class MacroBundleReader
             {
                 return MacroBundleMetadataResult.Failed(
                     MacroBundleFault.Malformed,
-                    $"В «{MacroBundleFormat.MetadataEntry}» нет поля «{nameof(MacroBundleMetadata.FormatVersion)}» — файл сделан не этой программой либо повреждён.");
+                    string.Format(
+                        CultureInfo.CurrentCulture,
+                        Strings_Engine.Bundle_Read_MetadataNoVersionField,
+                        MacroBundleFormat.MetadataEntry,
+                        nameof(MacroBundleMetadata.FormatVersion)));
             }
         }
         catch (JsonException ex)
         {
             return MacroBundleMetadataResult.Failed(
                 MacroBundleFault.Malformed,
-                $"«{MacroBundleFormat.MetadataEntry}» не разбирается как JSON: {ex.Message}");
+                string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Bundle_Read_MetadataNotJson,
+                    MacroBundleFormat.MetadataEntry,
+                    ex.Message));
         }
 
         if (version != MacroBundleFormat.CurrentVersion)
         {
-            var relation = version > MacroBundleFormat.CurrentVersion ? "более новой" : "более ранней";
+            var relation = version > MacroBundleFormat.CurrentVersion
+                ? Strings_Engine.Bundle_Read_VersionNewer
+                : Strings_Engine.Bundle_Read_VersionOlder;
             return MacroBundleMetadataResult.Failed(
                 MacroBundleFault.UnsupportedVersion,
                 string.Format(
                     CultureInfo.InvariantCulture,
-                    "Бандл сделан {0} версией формата (v{1}); эта сборка читает v{2}.",
+                    Strings_Engine.Bundle_Read_VersionMismatch,
                     relation,
                     version,
                     MacroBundleFormat.CurrentVersion),
@@ -424,7 +444,11 @@ public static class MacroBundleReader
         {
             return MacroBundleMetadataResult.Failed(
                 MacroBundleFault.Malformed,
-                $"«{MacroBundleFormat.MetadataEntry}» не разбирается: {ex.Message}",
+                string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_Engine.Bundle_Read_MetadataMalformed,
+                    MacroBundleFormat.MetadataEntry,
+                    ex.Message),
                 version);
         }
     }
@@ -434,7 +458,8 @@ public static class MacroBundleReader
         var entry = archive.GetEntry(MacroBundleFormat.GraphEntry);
         if (entry is null)
         {
-            return (null, MacroBundleFault.EntryMissing, $"В бандле нет «{MacroBundleFormat.GraphEntry}».");
+            return (null, MacroBundleFault.EntryMissing, string.Format(
+                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_GraphEntryMissing, MacroBundleFormat.GraphEntry));
         }
 
         try
@@ -443,11 +468,19 @@ public static class MacroBundleReader
         }
         catch (JsonException ex)
         {
-            return (null, MacroBundleFault.Malformed, $"«{MacroBundleFormat.GraphEntry}» не разбирается: {ex.Message}");
+            return (null, MacroBundleFault.Malformed, string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_Engine.Bundle_Read_GraphMalformed,
+                MacroBundleFormat.GraphEntry,
+                ex.Message));
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException)
         {
-            return (null, MacroBundleFault.NotAnArchive, $"Запись «{MacroBundleFormat.GraphEntry}» не читается: {ex.Message}");
+            return (null, MacroBundleFault.NotAnArchive, string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_Engine.Bundle_Read_GraphUnreadable,
+                MacroBundleFormat.GraphEntry,
+                ex.Message));
         }
     }
 
@@ -574,17 +607,20 @@ public static class MacroBundleReader
         }
         catch (FileNotFoundException)
         {
-            return onFailure((MacroBundleFault.Missing, $"Файла «{path}» нет."));
+            return onFailure((MacroBundleFault.Missing, string.Format(
+                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_FileMissing, path)));
         }
         catch (DirectoryNotFoundException)
         {
-            return onFailure((MacroBundleFault.Missing, $"Файла «{path}» нет."));
+            return onFailure((MacroBundleFault.Missing, string.Format(
+                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_FileMissing, path)));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Занятый или недоступный файл — история ВРЕМЕННАЯ, и отличать её от порчи важно:
             // хранилище на порче отодвигает файл в сторону, а на этом — не должно.
-            return onFailure((MacroBundleFault.NotAnArchive, $"Файл «{path}» не открывается: {ex.Message}"));
+            return onFailure((MacroBundleFault.NotAnArchive, string.Format(
+                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_FileNotOpened, path, ex.Message)));
         }
 
         using (stream)
@@ -605,12 +641,13 @@ public static class MacroBundleReader
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException)
         {
-            return onFailure((MacroBundleFault.NotAnArchive, $"Файл не открывается как бандл: {ex.Message}"));
+            return onFailure((MacroBundleFault.NotAnArchive, string.Format(
+                CultureInfo.CurrentCulture, Strings_Engine.Bundle_Read_NotAnArchive, ex.Message)));
         }
     }
 
     private static string Lower(string? message) =>
         string.IsNullOrEmpty(message)
-            ? "паспорт бандла не прочитан."
+            ? Strings_Engine.Bundle_Read_MetadataNotRead
             : char.ToLowerInvariant(message[0]) + message[1..];
 }

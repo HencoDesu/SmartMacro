@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Execution;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Ipc;
 
@@ -222,10 +223,10 @@ public sealed partial class RunEventPublisher : IMacroRunObserver, IHostedServic
     // панели инструментов, а какая из четырёх причин сработала, знает только демон.
     private static string Describe(DebugPauseReason reason) => reason switch
     {
-        DebugPauseReason.Breakpoint => "брейкпоинт",
-        DebugPauseReason.Step => "шаг",
-        DebugPauseReason.Cursor => "до курсора",
-        _ => "пауза",
+        DebugPauseReason.Breakpoint => Strings_Engine.Run_PauseReason_Breakpoint,
+        DebugPauseReason.Step => Strings_Engine.Run_PauseReason_Step,
+        DebugPauseReason.Cursor => Strings_Engine.Run_PauseReason_UntilCursor,
+        _ => Strings_Engine.Run_PauseReason_Paused,
     };
 
     // ------------------------------------------------------------------------ насос

@@ -1,4 +1,5 @@
 using System.Globalization;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Contracts.Settings;
 
@@ -57,18 +58,22 @@ public static class AppSettingsValidator
         ArgumentNullException.ThrowIfNull(settings);
         var issues = new List<SettingsIssue>();
 
-        Range(issues, "Watch.ProcessPollIntervalSeconds", "Поиск новых процессов",
-            settings.Watch.ProcessPollIntervalSeconds, MinPollSeconds, MaxPollSeconds, "с");
-        Range(issues, "Watch.WindowPollIntervalSeconds", "Проверка живости окон",
-            settings.Watch.WindowPollIntervalSeconds, MinPollSeconds, MaxPollSeconds, "с");
+        Range(issues, "Watch.ProcessPollIntervalSeconds", Strings_Engine.Settings_Engine_Field_ProcessPollInterval,
+            settings.Watch.ProcessPollIntervalSeconds, MinPollSeconds, MaxPollSeconds,
+            Strings_Engine.Settings_Engine_Unit_Seconds);
+        Range(issues, "Watch.WindowPollIntervalSeconds", Strings_Engine.Settings_Engine_Field_WindowPollInterval,
+            settings.Watch.WindowPollIntervalSeconds, MinPollSeconds, MaxPollSeconds,
+            Strings_Engine.Settings_Engine_Unit_Seconds);
 
-        Threshold(issues, "Vision.MatchThreshold", "Порог совпадения", settings.Vision.MatchThreshold);
-        Range(issues, "Vision.PollIntervalMs", "Интервал опроса распознавания",
-            settings.Vision.PollIntervalMs, MinVisionPollMs, MaxVisionPollMs, "мс");
+        Threshold(issues, "Vision.MatchThreshold", Strings_Engine.Settings_Engine_Field_MatchThreshold,
+            settings.Vision.MatchThreshold);
+        Range(issues, "Vision.PollIntervalMs", Strings_Engine.Settings_Engine_Field_VisionPollInterval,
+            settings.Vision.PollIntervalMs, MinVisionPollMs, MaxVisionPollMs,
+            Strings_Engine.Settings_Engine_Unit_Milliseconds);
 
-        Threshold(issues, "Vision.ClassMatcher.MatchThreshold", "Порог распознавания класса",
+        Threshold(issues, "Vision.ClassMatcher.MatchThreshold", Strings_Engine.Settings_Engine_Field_ClassMatchThreshold,
             settings.Vision.ClassMatcher.MatchThreshold);
-        Range(issues, "Vision.ClassMatcher.LuminanceThreshold", "Порог яркости",
+        Range(issues, "Vision.ClassMatcher.LuminanceThreshold", Strings_Engine.Settings_Engine_Field_LuminanceThreshold,
             (int)settings.Vision.ClassMatcher.LuminanceThreshold, 0, 255, string.Empty);
 
         ValidateProfiles(settings, issues);
@@ -86,7 +91,8 @@ public static class AppSettingsValidator
 
             if (string.IsNullOrWhiteSpace(profile.ProcessName))
             {
-                issues.Add(new SettingsIssue($"{prefix}.ProcessName", "Имя процесса не может быть пустым."));
+                issues.Add(new SettingsIssue($"{prefix}.ProcessName",
+                    Strings_Engine.Settings_Engine_Issue_ProcessNameEmpty));
             }
             else
             {
@@ -95,21 +101,26 @@ public static class AppSettingsValidator
                 // чем. Лучше отказать сразу, чем отдать пустой список окон.
                 if (profile.ProcessName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                 {
-                    issues.Add(new SettingsIssue($"{prefix}.ProcessName",
-                        $"«{profile.ProcessName}» — имя процесса пишется без расширения: "
-                        + $"«{profile.ProcessName[..^4]}»."));
+                    issues.Add(new SettingsIssue($"{prefix}.ProcessName", string.Format(
+                        CultureInfo.CurrentCulture,
+                        Strings_Engine.Settings_Engine_Issue_ProcessNameHasExtension,
+                        profile.ProcessName,
+                        profile.ProcessName[..^4])));
                 }
 
                 if (!seen.Add(profile.ProcessName))
                 {
-                    issues.Add(new SettingsIssue($"{prefix}.ProcessName",
-                        $"Профиль для «{profile.ProcessName}» уже есть — имена процессов не различаются регистром."));
+                    issues.Add(new SettingsIssue($"{prefix}.ProcessName", string.Format(
+                        CultureInfo.CurrentCulture,
+                        Strings_Engine.Settings_Engine_Issue_ProcessNameDuplicate,
+                        profile.ProcessName)));
                 }
             }
 
-            Range(issues, $"{prefix}.SettleDelayMs", "Оседание", profile.SettleDelayMs, 0, MaxDelayMs, "мс");
-            Range(issues, $"{prefix}.DeactivationDelayMs", "Деактивация", profile.DeactivationDelayMs, 0, MaxDelayMs,
-                "мс");
+            Range(issues, $"{prefix}.SettleDelayMs", Strings_Engine.Settings_Engine_Field_SettleDelay,
+                profile.SettleDelayMs, 0, MaxDelayMs, Strings_Engine.Settings_Engine_Unit_Milliseconds);
+            Range(issues, $"{prefix}.DeactivationDelayMs", Strings_Engine.Settings_Engine_Field_DeactivationDelay,
+                profile.DeactivationDelayMs, 0, MaxDelayMs, Strings_Engine.Settings_Engine_Unit_Milliseconds);
         }
     }
 
@@ -122,8 +133,14 @@ public static class AppSettingsValidator
         }
 
         var suffix = unit.Length == 0 ? string.Empty : " " + unit;
-        issues.Add(new SettingsIssue(field, string.Create(CultureInfo.CurrentCulture,
-            $"{title}: {value}{suffix} — допустимо от {min}{suffix} до {max}{suffix}.")));
+        issues.Add(new SettingsIssue(field, string.Format(
+            CultureInfo.CurrentCulture,
+            Strings_Engine.Settings_Engine_Issue_OutOfRange,
+            title,
+            value,
+            suffix,
+            min,
+            max)));
     }
 
     private static void Threshold(List<SettingsIssue> issues, string field, string title, double value)
@@ -133,7 +150,11 @@ public static class AppSettingsValidator
             return;
         }
 
-        issues.Add(new SettingsIssue(field, string.Create(CultureInfo.CurrentCulture,
-            $"{title}: {value:F2} — допустимо от {MinMatchThreshold:F2} до 1.00.")));
+        issues.Add(new SettingsIssue(field, string.Format(
+            CultureInfo.CurrentCulture,
+            Strings_Engine.Settings_Engine_Issue_ThresholdOutOfRange,
+            title,
+            value,
+            MinMatchThreshold)));
     }
 }

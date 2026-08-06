@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Ipc;
 using SmartMacro.Native.Tray;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Daemon;
 
@@ -25,7 +26,6 @@ internal sealed partial class TrayController : IHostedService, IDisposable
     private const string OpenPanelItemId = "open-panel";
     private const string ExitItemId = "exit";
 
-    private const string Tooltip = "SmartMacro";
     private const string IconRelativePath = @"Assets\icon.ico";
 
     private readonly Win32TrayIcon _tray;
@@ -56,11 +56,11 @@ internal sealed partial class TrayController : IHostedService, IDisposable
     {
         _tray.ItemClicked += OnItemClicked;
         _tray.Start(
-            Tooltip,
+            Strings_Engine.Tray_Tooltip,
             Path.Combine(AppContext.BaseDirectory, IconRelativePath),
             [
-                new TrayMenuItem(OpenPanelItemId, "Открыть панель", IsDefault: true),
-                new TrayMenuItem(ExitItemId, "Выход"),
+                new TrayMenuItem(OpenPanelItemId, Strings_Engine.Tray_MenuItem_OpenPanel, IsDefault: true),
+                new TrayMenuItem(ExitItemId, Strings_Engine.Tray_MenuItem_Exit),
             ]);
         return Task.CompletedTask;
     }

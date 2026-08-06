@@ -1,5 +1,6 @@
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Macros.Execution;
 
@@ -89,7 +90,7 @@ public sealed class MacroVariables
         var value = Get(name);
         return value is PointValue point
             ? point.Value
-            : throw new MacroVariableTypeMismatchException(name, "точка", value);
+            : throw new MacroVariableTypeMismatchException(name, Strings_Engine.Run_VariableType_Point, value);
     }
 
     /// <summary>
