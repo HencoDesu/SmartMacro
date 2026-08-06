@@ -227,20 +227,24 @@ public class IpcRequestDispatcherTests
         await Assert.That(KeyOf(resolved!)).IsEqualTo(VirtualKey.F9);
     }
 
-    // Обратная сторона: обычный путь в файловую систему НЕ ходит. Проверка стоит одной отметки
-    // времени именно затем, чтобы не платить разбором каждого бандла в macros/ за каждое нажатие
-    // ▸; выродись она в безусловный Refresh — этот тест краснеет. Файлу здесь искусственно
-    // состарена дата записи: так выглядит любой макрос, которого сегодня не касались.
+    // Обратная сторона: обычный путь в файловую систему за СОДЕРЖИМЫМ не ходит. Проверка стоит
+    // одной отметки времени именно затем, чтобы не платить разбором каждого бандла в macros/ за
+    // каждое нажатие ▸; выродись она в безусловный Refresh — этот тест краснеет.
+    //
+    // Отметка файла здесь возвращается к той, что была на момент чтения, а содержимое подменяется.
+    // Сочетание невозможное в жизни и взято намеренно: только так видно, что диспетчер верит
+    // ОТМЕТКЕ, а не перечитывает папку. Раньше тут стояло «состарить дату на час» — приём против
+    // прежней эвристики (возраст файла с окном в две секунды); точному сравнению он ничего не
+    // доказывает, потому что час назад — это тоже «не равно тому, что мы читали».
     [Test]
-    public async Task RunMacro_AMacroUntouchedForAges_DoesNotRereadTheFolder()
+    public async Task RunMacro_AMacroWhoseTimestampDidNotMove_DoesNotRereadTheFolder()
     {
         using var harness = new IpcDispatcherHarness();
         harness.WriteMacro(SimpleMacro("давнишний", VirtualKey.F1));
+        var readAt = File.GetLastWriteTimeUtc(harness.MacroFile("давнишний"));
 
-        // На диске лежит другая версия, но дата записи старая — значит, наблюдатель о ней давно
-        // рассказал бы, и заглядывать на диск не за чем.
         Overwrite(harness, SimpleMacro("давнишний", VirtualKey.F9));
-        File.SetLastWriteTimeUtc(harness.MacroFile("давнишний"), DateTime.UtcNow.AddHours(-1));
+        File.SetLastWriteTimeUtc(harness.MacroFile("давнишний"), readAt);
 
         MacroGraph? resolved = null;
         A.CallTo(() => harness.Runner.RunMacro("давнишний"))
@@ -250,6 +254,31 @@ public class IpcRequestDispatcherTests
 
         await Assert.That(response.Ok).IsTrue();
         await Assert.That(KeyOf(resolved!)).IsEqualTo(VirtualKey.F1);
+    }
+
+    // А вот правка ЧАСОВОЙ давности, о которой хранилище не знает, теперь подхватывается — и это
+    // разница между точным сравнением и прежним окном в две секунды. Такой файл существует не
+    // умозрительно: демон был выключен, пока панель (или проводник) правила библиотеку, и в снимок
+    // при следующем старте попадёт уже новая версия — но ровно тот же расклад получается, если
+    // наблюдатель пропустил событие. Прежняя эвристика звала бы такую правку «старой» и молча
+    // прогнала бы предыдущую версию по живым клиентам.
+    [Test]
+    public async Task RunMacro_AnOldEditTheStoreNeverSaw_IsStillPickedUp()
+    {
+        using var harness = new IpcDispatcherHarness();
+        harness.WriteMacro(SimpleMacro("пропущенный", VirtualKey.F1));
+
+        Overwrite(harness, SimpleMacro("пропущенный", VirtualKey.F9));
+        File.SetLastWriteTimeUtc(harness.MacroFile("пропущенный"), DateTime.UtcNow.AddHours(-1));
+
+        MacroGraph? resolved = null;
+        A.CallTo(() => harness.Runner.RunMacro("пропущенный"))
+            .Invokes(() => resolved = harness.Macros.TryGet("пропущенный"));
+
+        var response = await harness.DispatchAsync(IpcMessageTypes.RunMacro, new RunMacroRequest("пропущенный"));
+
+        await Assert.That(response.Ok).IsTrue();
+        await Assert.That(KeyOf(resolved!)).IsEqualTo(VirtualKey.F9);
     }
 
     /// <summary>Кладёт бандл поверх существующего мимо хранилища — так пишет панель.</summary>

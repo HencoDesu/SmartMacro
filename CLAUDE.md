@@ -16,7 +16,7 @@ The refactoring plan that got us here was **deleted** once it was done — not o
 
 ⚠️ **§13.1 is gone, and that is the point.** It was the `.hsm` decision written up as something not yet built, and it survived three waves as a to-do. With F4 the format is finished, so its contents moved into the sections that describe what exists — the bundle layout and the library in §5.7, templates inside the macro in §8, submacros in §5.1, the panel's authorship in §5.7 and §6.1 — and the reasoning became rows in §14. Do not recreate a "planned format" section.
 
-Gate: `dotnet run --project tests/SmartMacro.Tests` — **950 tests**, and they are expected green before anything is committed.
+Gate: `dotnet run --project tests/SmartMacro.Tests` — **951 tests**, and they are expected green before anything is committed.
 
 ### The «Окна» header has no actions (issue #25, closing #6)
 
@@ -224,6 +224,19 @@ raises `MacrosChanged` only when the snapshot actually changed (name + `Metadata
 the writer touches on every write, so a template edit counts). The watcher path raises
 unconditionally: its message is «I re-read», not «something differs».
 
+**The other half of that race is worse, and it is now decided EXACTLY.** «The macro is not there
+yet» answers with an error; «the macro is there, but last version» answers with nothing — the
+daemon quietly drives the previous edit across ten live clients, and the only symptom is «my change
+doesn't work». So `RunMacro` also re-reads when the bundle changed after the snapshot was taken.
+That used to be a *guess*: the file's AGE against a 2 s `WatcherLagWindow`, generous against the
+300 ms debounce. `MacroLibraryEntry.FileWrittenUtc` — the file's stamp **as of when the store read
+it** — replaces it with the question actually being asked, «did it move since», and the constant is
+gone. ⚠️ Do not "restore" it by comparing against `Metadata.Modified`: the passport is stamped
+before serialization, so those two marks belong to different instants of one write and the
+comparison would need a tolerance again — which is the window we just removed. The stamp is taken
+*after* the parse; a write landing in that gap records a fresh mark against old content, and the
+watcher's own reload 300 ms later is what repairs it.
+
 **An unreadable bundle stays in the panel's list**, with a red `!`, the reader's verdict in the
 tooltip, and a second line under the name. Before F3 such a file existed in the folder and appeared
 nowhere in the UI. The case the format was split for finally reaches the screen: **when
@@ -238,7 +251,7 @@ copy honestly answers to its new name.
 
 **There is no draft state: the panel saves by itself.** «+ Новый макрос» creates the file at once under a free name; `DraftName` is gone. Manual «Сохранить» stays, and is now the ONLY way to rename, to pick a side on a disk conflict, and to write immediately.
 
-- **Writes fire on 3 s of QUIESCENCE, never on a timer.** Every write wakes the daemon: it re-reads the folder, **re-registers every hotkey and drops the whole template cache**. On a timer that is dozens of wake-ups per editing session on an engine that may be driving a live game. 3 s is an order of magnitude above the daemon's 300 ms watcher debounce (so two writes are two events, not a smear), longer than any within-word typing pause, and longer than the 2 s `WatcherLagWindow` in `RunMacro`. The cost is named: a crash loses the last 3 s, where it used to lose everything since the last manual save.
+- **Writes fire on 3 s of QUIESCENCE, never on a timer.** Every write wakes the daemon: it re-reads the folder, **re-registers every hotkey and drops the whole template cache**. On a timer that is dozens of wake-ups per editing session on an engine that may be driving a live game. 3 s is an order of magnitude above the daemon's 300 ms watcher debounce (so two writes are two events, not a smear) and longer than any within-word typing pause. The cost is named: a crash loses the last 3 s, where it used to lose everything since the last manual save.
 - **Validation errors no longer block saving — manual or automatic.** That is a reversal of a documented rule, and the reason is that a graph is invalid exactly while it is being worked on. The safety net was already there and is not new: `MacroGraphStore.Armed` refuses to arm an invalid macro and the library row shows a red `!`. What DOES block a write is an **input** error (a field the row cannot turn into a node at all) and `ChangedOnDisk` — both visibly, with the toolbar saying which. ⚠️ Note the cost of the first: adding a `Find` node stops autosave until its template name is typed, because an empty field yields no *validation* error and the daemon would otherwise arm a half-built macro.
 - **Autosave never renames and never prompts.** It writes to `_loadedName` and substitutes it into the graph, so the reader never sees a stem-vs-`Name` mismatch. A modal «имя занято» every few seconds would be intolerable, so renaming is an explicit gesture — Enter, focus loss, or «Сохранить».
 - **The clock lives in the VIEW** (`MacrosView`, `DispatcherTimer` → `TickAutoSave()`), the same seam as the debugger's elapsed counter and for the same reason: every view-model here is exercised headless, and a test must not wait out real seconds. `MacrosView` starts it only under a classic desktop lifetime, so the headless sweeps never get a tick mid-measurement.

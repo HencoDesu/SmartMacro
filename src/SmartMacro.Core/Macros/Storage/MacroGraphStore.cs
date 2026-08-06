@@ -251,6 +251,12 @@ public sealed partial class MacroGraphStore : IDisposable
                 bundle.TemplatePaths,
                 bundle.Submacros,
                 bundle.Path,
+                // Отметка снимается ПОСЛЕ разбора, и это осознанно. Запись, попавшая ровно между
+                // разбором и этой строкой, дала бы запись со свежей отметкой и старым содержимым —
+                // но она же поднимает наблюдателя, и следующее перечитывание (через 300 мс) её
+                // исправит. Снимать отметку ДО разбора значило бы менять микросекундное окно на
+                // лишний Refresh при каждой правке, а такой обмен здесь не нужен.
+                ReadWriteTime(bundle.Path),
                 bundle.Validate());
 
             if (entry.HasErrors)
@@ -265,6 +271,24 @@ public sealed partial class MacroGraphStore : IDisposable
         _macros = [.. entries.Select(entry => entry.Graph)];
         _armed = [.. entries.Where(entry => !entry.HasErrors).Select(entry => entry.Graph)];
         LogLoaded(entries.Count, skipped, _directory);
+    }
+
+    /// <summary>
+    /// Отметка последней записи файла. Не бросает: файл, исчезнувший между перечислением папки и
+    /// этой строкой, получает <see cref="DateTime.MinValue"/> — то есть отметку, которая ни с чем
+    /// не совпадёт, и первое же ▸ по такому макросу перечитает папку. Ошибиться в сторону лишнего
+    /// чтения дёшево, в другую — нет.
+    /// </summary>
+    private static DateTime ReadWriteTime(string path)
+    {
+        try
+        {
+            return File.GetLastWriteTimeUtc(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return DateTime.MinValue;
+        }
     }
 
     // FileSystemWatcher стреляет с пула потоков, а замена файла даёт по нескольку событий на одну

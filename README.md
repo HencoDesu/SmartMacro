@@ -51,7 +51,7 @@
 dotnet build SmartMacro.slnx                  # всё решение
 dotnet run --project src/SmartMacro.Daemon    # движок — поднимать первым
 dotnet run --project src/SmartMacro.App       # панель
-dotnet run --project tests/SmartMacro.Tests   # ГЕЙТ: 950 тестов
+dotnet run --project tests/SmartMacro.Tests   # ГЕЙТ: 951 тест
 ```
 
 Поставка — zip с одной папкой: панель в корне, демон в подпапке рядом со своим окружением.
