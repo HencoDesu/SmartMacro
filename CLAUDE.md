@@ -16,7 +16,7 @@ The refactoring plan that got us here was **deleted** once it was done — not o
 
 ⚠️ **§13.1 is gone, and that is the point.** It was the `.hsm` decision written up as something not yet built, and it survived three waves as a to-do. With F4 the format is finished, so its contents moved into the sections that describe what exists — the bundle layout and the library in §5.7, templates inside the macro in §8, submacros in §5.1, the panel's authorship in §5.7 and §6.1 — and the reasoning became rows in §14. Do not recreate a "planned format" section.
 
-Gate: `dotnet run --project tests/SmartMacro.Tests` — **866 tests**, and they are expected green before anything is committed.
+Gate: `dotnet run --project tests/SmartMacro.Tests` — **884 tests**, and they are expected green before anything is committed.
 
 ### The «Окна» header has no actions (issue #25, closing #6)
 
@@ -165,6 +165,13 @@ the bundle: run through today's writer it would lose everything today's format v
 — the exact loss the format exists to prevent. The file stem wins over the `Name` inside, so the
 copy honestly answers to its new name.
 
+**There is no draft state: the panel saves by itself.** «+ Новый макрос» creates the file at once under a free name; `DraftName` is gone. Manual «Сохранить» stays, and is now the ONLY way to rename, to pick a side on a disk conflict, and to write immediately.
+
+- **Writes fire on 3 s of QUIESCENCE, never on a timer.** Every write wakes the daemon: it re-reads the folder, **re-registers every hotkey and drops the whole template cache**. On a timer that is dozens of wake-ups per editing session on an engine that may be driving a live game. 3 s is an order of magnitude above the daemon's 300 ms watcher debounce (so two writes are two events, not a smear), longer than any within-word typing pause, and longer than the 2 s `WatcherLagWindow` in `RunMacro`. The cost is named: a crash loses the last 3 s, where it used to lose everything since the last manual save.
+- **Validation errors no longer block saving — manual or automatic.** That is a reversal of a documented rule, and the reason is that a graph is invalid exactly while it is being worked on. The safety net was already there and is not new: `MacroGraphStore.Armed` refuses to arm an invalid macro and the library row shows a red `!`. What DOES block a write is an **input** error (a field the row cannot turn into a node at all) and `ChangedOnDisk` — both visibly, with the toolbar saying which. ⚠️ Note the cost of the first: adding a `Find` node stops autosave until its template name is typed, because an empty field yields no *validation* error and the daemon would otherwise arm a half-built macro.
+- **Autosave never renames and never prompts.** It writes to `_loadedName` and substitutes it into the graph, so the reader never sees a stem-vs-`Name` mismatch. A modal «имя занято» every few seconds would be intolerable, so renaming is an explicit gesture — Enter, focus loss, or «Сохранить».
+- **The clock lives in the VIEW** (`MacrosView`, `DispatcherTimer` → `TickAutoSave()`), the same seam as the debugger's elapsed counter and for the same reason: every view-model here is exercised headless, and a test must not wait out real seconds. `MacrosView` starts it only under a classic desktop lifetime, so the headless sweeps never get a tick mid-measurement.
+
 ⚠️ **A taken name ASKS — it does not resolve itself.** Import used to append `-2` silently and
 `Save` used to overwrite silently; the review found the second was destroying macros (rename onto an
 existing name produced one file with one macro's graph and another's templates, then deleted the
@@ -251,6 +258,13 @@ canvas; `_submacros` is the model; `_parkedParent` holds the top-level graph whi
 open. `CommitCanvasGraph` is the only place canvas content goes back into the model, and every graph
 switch must go through it. Dirty-tracking (`SerializeCurrent`) covers the WHOLE bundle — comparing
 one graph would call an edit to a function "no changes" until you walked back to the parent.
+⚠️ **That was the intent; it did not hold until autosave forced it out.** The baseline was reset on
+every canvas switch, not only on bundle load, so editing the parent and then stepping into a
+function declared the bundle saved — closing the editor lost the edit. Worse, `_diskJson` then held
+the FUNCTION's graph while `ApplyLibrary` compares the top-level one, so any watcher event with a
+function open read as a foreign edit and reloaded the whole bundle, discarding the function being
+edited. Rare enough to survive unnoticed by hand; autosave would have fired it routinely.
+`LoadCanvasGraph(graph, freshBundle:)` is the fix, with a regression test in `SubmacroEditorTests`.
 Multi-selection for extraction is `IsMarked`, deliberately separate from `IsSelected`: the latter
 drives the inspector (one node), the former is a set that must survive clicking a validation issue.
 
