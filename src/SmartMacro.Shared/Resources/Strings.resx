@@ -227,12 +227,12 @@
 
   <!-- ======== Режим «Окна» — пустое состояние ======== -->
   <data name="Windows_Empty_Title" xml:space="preserve">
-    <value>Демон не видит ни одного окна.</value>
-    <comment>заголовок пустого состояния по центру списка</comment>
+      <value>Сервис не видит ни одного окна.</value>
+      <comment>заголовок пустого состояния по центру списка</comment>
   </data>
   <data name="Windows_Empty_Hint" xml:space="preserve">
-    <value>Список наполняется сам, как только запустится процесс из ProcessProfiles.</value>
-    <comment>пояснение под ним</comment>
+      <value>Список наполняется сам, как только запустится процесс из списка отслеживания.</value>
+      <comment>пояснение под ним</comment>
   </data>
 
   <!-- ======== Режим «Макросы» — панель инструментов (верхняя полоса) ======== -->
@@ -265,8 +265,8 @@
     <comment>подсказка к ней</comment>
   </data>
   <data name="Editor_Toolbar_ExtractTip" xml:space="preserve">
-    <value>Вынести отмеченные ноды (Ctrl+клик) в новый под-макрос</value>
-    <comment>подсказка кнопки извлечения; сама кнопка называется Editor_Toolbar_Extract*</comment>
+      <value>Вынести отмеченные ноды (Ctrl+клик) в новый саб-макрос</value>
+      <comment>подсказка кнопки извлечения; сама кнопка называется Editor_Toolbar_Extract*</comment>
   </data>
   <data name="Editor_Toolbar_ChangedOnDiskTip" xml:space="preserve">
     <value>«Перечитать» — взять версию с диска, «Сохранить» — затереть её</value>
@@ -307,24 +307,24 @@
     <comment>кнопка отладчика; делит слот с «Дальше» — это взаимоисключающие состояния одного обхода</comment>
   </data>
   <data name="Editor_Debug_PauseTip" xml:space="preserve">
-    <value>Встать на паузу перед следующей нодой этого обхода</value>
-    <comment>подсказка к ней</comment>
+      <value>Встать на паузу перед следующим действием этого макроса</value>
+      <comment>подсказка к ней</comment>
   </data>
   <data name="Editor_Debug_Resume" xml:space="preserve">
     <value>▸ Дальше</value>
     <comment>кнопка отладчика на месте «Паузы», когда обход припаркован. Глиф U+25B8 — часть подписи; большой U+25B6 брать нельзя, он приезжает цветным эмодзи</comment>
   </data>
   <data name="Editor_Debug_ResumeTip" xml:space="preserve">
-    <value>Снять обход с паузы</value>
-    <comment>подсказка к ней</comment>
+      <value>Продолжить выполнение макроса</value>
+      <comment>подсказка к ней</comment>
   </data>
   <data name="Editor_Debug_Step" xml:space="preserve">
     <value>Шаг</value>
     <comment>кнопка отладчика: одна нода и снова пауза</comment>
   </data>
   <data name="Editor_Debug_StepTip" xml:space="preserve">
-    <value>Выполнить одну ноду и встать снова</value>
-    <comment>подсказка к ней</comment>
+      <value>Выполнить один узел и встать снова</value>
+      <comment>подсказка к ней</comment>
   </data>
   <data name="Editor_Debug_RunToCursor" xml:space="preserve">
     <value>До курсора</value>
@@ -335,8 +335,8 @@
     <comment>подсказка к ней</comment>
   </data>
   <data name="Editor_Debug_ProgressTip" xml:space="preserve">
-    <value>Пройдено нод / всего в графе · время обхода</value>
-    <comment>подсказка счётчика прогресса рядом с кнопками отладчика</comment>
+      <value>Пройдено нод / всего в графе · время выполнения</value>
+      <comment>подсказка счётчика прогресса рядом с кнопками отладчика</comment>
   </data>
 
   <!-- ======== Режим «Макросы» — отладчик: состояние выбранного обхода ======== -->
@@ -361,8 +361,8 @@
     <comment>красная пилюля в шапке полосы лога; {0} = причина паузы от демона, {1} = имя ноды</comment>
   </data>
   <data name="Editor_Debug_PauseRequested" xml:space="preserve">
-    <value>пауза запрошена — ждём конца ноды</value>
-    <comment>та же пилюля между нажатием «Пауза» и остановкой: гейт стоит между нодами, а не внутри</comment>
+      <value>пауза запрошена — ждём конца действия</value>
+      <comment>та же пилюля между нажатием «Пауза» и остановкой: гейт стоит между нодами, а не внутри</comment>
   </data>
   <data name="Editor_Debug_StateFinished" xml:space="preserve">
     <value>завершён</value>
@@ -389,28 +389,28 @@
     <comment>она же при веере: ■ отменяет ВЕСЬ прогон, а не один обход, и подпись обязана это сказать. {0} = сколько живых обходов</comment>
   </data>
   <data name="Editor_Debug_StopTip" xml:space="preserve">
-    <value>Остановить прогон</value>
-    <comment>подсказка к ней в одиночном случае</comment>
+      <value>Остановить выполнение</value>
+      <comment>подсказка к ней в одиночном случае</comment>
   </data>
   <data name="Editor_Debug_StopManyTip_One" xml:space="preserve">
-    <value>Остановить весь прогон целиком — весь {0} обход</value>
-    <comment>подсказка ■ при веере, форма для 1, 21, 31…</comment>
+      <value>Остановить выполнение макроса полностью</value>
+      <comment>подсказка ■ при веере, форма для 1, 21, 31…</comment>
   </data>
   <data name="Editor_Debug_StopManyTip_Few" xml:space="preserve">
-    <value>Остановить весь прогон целиком — все {0} обхода</value>
-    <comment>она же, форма для 2–4, 22–24…</comment>
+      <value>Остановить выполнение макроса полностью — все {0} выполнений</value>
+      <comment>она же, форма для 2–4, 22–24…</comment>
   </data>
   <data name="Editor_Debug_StopManyTip_Many" xml:space="preserve">
-    <value>Остановить весь прогон целиком — все {0} обходов</value>
-    <comment>она же, форма для 5–20, 25–30… ⚠️ до выноса согласования не было вовсе: печаталось «все 7 обхода»</comment>
+      <value>Остановить выполнение макроса полностью — все {0} выполнений</value>
+      <comment>она же, форма для 5–20, 25–30… ⚠️ до выноса согласования не было вовсе: печаталось «все 7 обхода»</comment>
   </data>
   <data name="Editor_Debug_CommandFailed" xml:space="preserve">
     <value>Отладчик: команда не прошла ({0}).</value>
     <comment>красная строка в панели инструментов; {0} = текст исключения от канала</comment>
   </data>
   <data name="Editor_Debug_WalkAlreadyFinished" xml:space="preserve">
-    <value>Обход уже завершился.</value>
-    <comment>статус: обход кончился между нажатием кнопки отладчика и запросом</comment>
+      <value>Выполнение уже завершено.</value>
+      <comment>статус: обход кончился между нажатием кнопки отладчика и запросом</comment>
   </data>
 
   <!-- ======== Режим «Макросы» — библиотека (левая колонка, 228 px) ======== -->
@@ -435,12 +435,12 @@
     <comment>подсказка кнопки × на строке макроса</comment>
   </data>
   <data name="Macros_SubmacroRow_ErrorTip" xml:space="preserve">
-    <value>В графе под-макроса есть ошибка — макрос не вооружён</value>
-    <comment>подсказка красного «!» на вложенной строке функции</comment>
+      <value>В саб-макросе есть ошибка — макрос не зарегистрирован</value>
+      <comment>подсказка красного «!» на вложенной строке функции</comment>
   </data>
   <data name="Macros_SubmacroRow_Delete" xml:space="preserve">
-    <value>Удалить под-макрос</value>
-    <comment>подсказка кнопки × на вложенной строке функции</comment>
+      <value>Удалить саб-макрос</value>
+      <comment>подсказка кнопки × на вложенной строке функции</comment>
   </data>
   <data name="Macros_Library_New" xml:space="preserve">
     <value>+ Новый макрос</value>
@@ -461,8 +461,8 @@
     <comment>начало подсказки строки библиотеки, когда у макроса нет ни хоткея, ни триггера на процесс</comment>
   </data>
   <data name="Macros_Row_Summary" xml:space="preserve">
-    <value>{0} · нод: {1}</value>
-    <comment>подсказка строки макроса целиком; {0} = перечень триггеров, {1} = сколько нод в графе</comment>
+      <value>{0} · действий: {1}</value>
+      <comment>подсказка строки макроса целиком; {0} = перечень триггеров, {1} = сколько нод в графе</comment>
   </data>
   <data name="Macros_Row_TriggerProcess" xml:space="preserve">
     <value>процесс</value>
@@ -473,20 +473,20 @@
     <comment>он же в подсказке — с именем процесса; {0} = имя без .exe</comment>
   </data>
   <data name="Macros_SubmacroRow_Summary" xml:space="preserve">
-    <value>под-макрос · нод: {0}</value>
-    <comment>подсказка вложенной строки функции; {0} = сколько нод в её графе</comment>
+      <value>саб-макрос · действий: {0}</value>
+      <comment>подсказка вложенной строки функции; {0} = сколько нод в её графе</comment>
   </data>
   <data name="Macros_Row_BrokenFallback" xml:space="preserve">
-    <value>Бандл не читается.</value>
-    <comment>красное «!» на строке: подсказка, когда читатель бандла не сказал ничего конкретнее</comment>
+      <value>Макрос не читается.</value>
+      <comment>красное «!» на строке: подсказка, когда читатель бандла не сказал ничего конкретнее</comment>
   </data>
   <data name="Macros_Row_BrokenNoPassport" xml:space="preserve">
-    <value>паспорт бандла тоже не прочитан</value>
-    <comment>вторая строка под именем, когда не прочитался и metadata.json</comment>
+      <value>информация о макросе тоже не прочитана</value>
+      <comment>вторая строка под именем, когда не прочитался и metadata.json</comment>
   </data>
   <data name="Macros_Row_HotkeyUnarmed" xml:space="preserve">
-    <value>хоткей не вооружён — в макросе ошибок: {0}</value>
-    <comment>подсказка красного ▲ рядом с аккордом; {0} = сколько ошибок нашёл валидатор</comment>
+      <value>хоткей не зарегистрирован — в макросе найдена одна или несколько ошибок: {0}</value>
+      <comment>подсказка красного ▲ рядом с аккордом; {0} = сколько ошибок нашёл валидатор</comment>
   </data>
   <data name="Macros_Row_HotkeyRefused" xml:space="preserve">
     <value>{0} не зарегистрирован — сочетание занято другим приложением</value>
@@ -503,8 +503,8 @@
     <comment>пустое состояние canvas на свежей установке</comment>
   </data>
   <data name="Macros_EmptyLibrary_Hint" xml:space="preserve">
-    <value>Создайте макрос кнопкой слева внизу. Готовый .hsm, положенный в эту папку, тоже подхватится сам — перезапускать ничего не надо. Шаблоны едут внутри файла, так что чужой макрос работает как есть.</value>
-    <comment>пояснение под ним; блок шириной 460 px, под ним печатается путь к папке</comment>
+      <value>Создайте макрос кнопкой слева внизу. Готовый .hsm, положенный в эту папку, тоже подхватится сам — перезапускать ничего не надо.</value>
+      <comment>пояснение под ним; блок шириной 460 px, под ним печатается путь к папке</comment>
   </data>
   <data name="Editor_Canvas_ZoomOut" xml:space="preserve">
     <value>Мельче</value>
@@ -535,12 +535,12 @@
     <comment>последняя строка легенды; ⚠️ при 1100 px легенда сталкивается с чипом масштаба (см. UiLayoutTests)</comment>
   </data>
   <data name="Editor_Canvas_PortTip" xml:space="preserve">
-    <value>Потяните, чтобы связать с нодой; бросьте на пустое место — конец прогона</value>
-    <comment>подсказка точки-порта на свёрнутой коробке ноды</comment>
+      <value>Потяните, чтобы связать с действием; бросьте на пустое место — конец макроса</value>
+      <comment>подсказка точки-порта на свёрнутой коробке ноды</comment>
   </data>
   <data name="Editor_Canvas_BreakpointTip" xml:space="preserve">
-    <value>Брейкпоинт: прогон встанет ПЕРЕД этой нодой</value>
-    <comment>подсказка красной полосы во всю высоту коробки</comment>
+      <value>Точка останова: прогон встанет ПЕРЕД этим действием</value>
+      <comment>подсказка красной полосы во всю высоту коробки</comment>
   </data>
 
   <!-- ======== Режим «Макросы» — лог прогона (нижняя полоса) ======== -->
@@ -629,8 +629,8 @@
     <comment>приписка справа в шапке инспектора; ⚠️ уже сталкивалась с подписью типа ноды «Запустить под-макрос» пиксель в пиксель</comment>
   </data>
   <data name="Editor_Inspector_NodeNameTip" xml:space="preserve">
-    <value>Подпись ноды: видна в логе прогона и в замечаниях валидатора. Рёбра ссылаются не на неё, так что переименование графа не трогает.</value>
-    <comment>подсказка поля имени ноды</comment>
+      <value>Подпись действия: видна в логе прогона и в замечаниях валидатора.</value>
+      <comment>подсказка поля имени ноды</comment>
   </data>
   <data name="Editor_Inspector_TargetsHeader" xml:space="preserve">
     <value>ЦЕЛИ</value>
@@ -641,24 +641,24 @@
     <comment>надзаголовок раздела исходов ноды</comment>
   </data>
   <data name="Editor_Inspector_EndHint" xml:space="preserve">
-    <value>«— конец —» — прогон заканчивается на этом исходе. Это не ошибка и не отдельная нода.</value>
-    <comment>пояснение под списком исходов; «— конец —» здесь обязано совпадать с Node_Edge_End</comment>
+      <value>«— конец —» — прогон заканчивается на этом исходе. Это не ошибка и не отдельное действие.</value>
+      <comment>пояснение под списком исходов; «— конец —» здесь обязано совпадать с Node_Edge_End</comment>
   </data>
   <data name="Editor_Inspector_Breakpoint" xml:space="preserve">
-    <value>Брейкпоинт на этой ноде</value>
-    <comment>галочка в подвале раздела исходов</comment>
+      <value>Точка останова на этом действии</value>
+      <comment>галочка в подвале раздела исходов</comment>
   </data>
   <data name="Editor_Inspector_BreakpointTip" xml:space="preserve">
-    <value>Прогон встанет ПЕРЕД этой нодой. Хранится в демоне, не в файле макроса.</value>
-    <comment>подсказка к ней</comment>
+      <value>Выполнение встанет ПЕРЕД этим действием.</value>
+      <comment>подсказка к ней</comment>
   </data>
   <data name="Editor_Inspector_DeleteNode" xml:space="preserve">
-    <value>Удалить ноду</value>
-    <comment>красная кнопка в самом низу инспектора ноды</comment>
+      <value>Удалить действие</value>
+      <comment>красная кнопка в самом низу инспектора ноды</comment>
   </data>
   <data name="Editor_Inspector_NoSelection" xml:space="preserve">
-    <value>Кликните бокс, чтобы править его здесь. Двойной клик разворачивает бокс на месте.</value>
-    <comment>инспектор, когда макрос открыт, но нода не выделена</comment>
+      <value>Кликните на действие, чтобы править его здесь. Двойной клик разворачивает бокс на месте.</value>
+      <comment>инспектор, когда макрос открыт, но нода не выделена</comment>
   </data>
   <data name="Editor_Inspector_NoMacro" xml:space="preserve">
     <value>Макрос не открыт.</value>
@@ -847,8 +847,8 @@
     <comment>галочка «ждать завершения» у той же ноды</comment>
   </data>
   <data name="Node_Submacro_VariablesHint" xml:space="preserve">
-    <value>под-макрос получает копию переменных — то, что он в них запишет, наружу не вернётся</value>
-    <comment>пояснение под выбором функции</comment>
+      <value>саб-макрос получает копию переменных — то, что он в них запишет, наружу не вернётся</value>
+      <comment>пояснение под выбором функции</comment>
   </data>
   <data name="Node_Field_Template" xml:space="preserve">
     <value>шаблон</value>
@@ -941,12 +941,12 @@
     <comment>то же для ноды распознавания набора шаблонов</comment>
   </data>
   <data name="Node_Type_RunSubmacroMenu" xml:space="preserve">
-    <value>Запустить под-макрос</value>
-    <comment>пункт меню «+ Нода» для ноды вызова функции — ПОЛНАЯ форма</comment>
+      <value>Запустить саб-макрос</value>
+      <comment>пункт меню «+ Нода» для ноды вызова функции — ПОЛНАЯ форма</comment>
   </data>
   <data name="Node_Type_RunSubmacro" xml:space="preserve">
-    <value>Под-макрос</value>
-    <comment>⚠️ короткая форма той же ноды — в шапке коробки и в заголовке инспектора. Полная «Запустить под-макрос» сталкивалась там с подсказкой «двойной клик — правка на месте» пиксель в пиксель, поэтому здесь она короче, чем в меню</comment>
+      <value>Саб-макрос</value>
+      <comment>⚠️ короткая форма той же ноды — в шапке коробки и в заголовке инспектора. Полная «Запустить под-макрос» сталкивалась там с подсказкой «двойной клик — правка на месте» пиксель в пиксель, поэтому здесь она короче, чем в меню</comment>
   </data>
   <data name="Node_Type_HotkeyTrigger" xml:space="preserve">
     <value>Хоткей</value>
@@ -987,12 +987,12 @@
     <comment>пункт выпадающего списка «этот исход завершает прогон»; совпадает с текстом Editor_Inspector_EndHint, где он процитирован</comment>
   </data>
   <data name="Node_Edge_Dangling" xml:space="preserve">
-    <value>(ноды нет в графе)</value>
-    <comment>пункт списка, когда ребро указывает на удалённую ноду</comment>
+      <value>(действия нет в макросе)</value>
+      <comment>пункт списка, когда ребро указывает на удалённую ноду</comment>
   </data>
   <data name="Node_Submacro_Missing" xml:space="preserve">
-    <value>(под-макроса нет в бандле)</value>
-    <comment>пункт списка функций, когда ссылка указывает на удалённую функцию</comment>
+      <value>(саб-макроса нет в файле)</value>
+      <comment>пункт списка функций, когда ссылка указывает на удалённую функцию</comment>
   </data>
   <data name="Node_Edge_BoxLabelEnd" xml:space="preserve">
     <value>{0} → конец</value>
@@ -1179,8 +1179,8 @@
     <comment>то же, когда вид неизвестен</comment>
   </data>
   <data name="Editor_Variables_SeededByTrigger" xml:space="preserve">
-    <value>триггер (сид)</value>
-    <comment>в строке «пишет», когда переменную засевает триггер, а не нода</comment>
+      <value>заполняется автоматически</value>
+      <comment>в строке «пишет», когда переменную засевает триггер, а не нода</comment>
   </data>
   <data name="Editor_Variables_Nobody" xml:space="preserve">
     <value>никто</value>
@@ -1217,8 +1217,8 @@
     <comment>кнопка импорта PNG в бандл макроса</comment>
   </data>
   <data name="Editor_Templates_AddTip" xml:space="preserve">
-    <value>Положить PNG в бандл этого макроса</value>
-    <comment>подсказка к ней</comment>
+      <value>Положить PNG в макрос</value>
+      <comment>подсказка к ней</comment>
   </data>
   <data name="Editor_Templates_Set" xml:space="preserve">
     <value>набор</value>
@@ -1229,12 +1229,12 @@
     <comment>водяной знак этого поля</comment>
   </data>
   <data name="Editor_Templates_NoBundle" xml:space="preserve">
-    <value>Черновик ещё не сохранён — бандла, в который класть шаблон, пока нет.</value>
-    <comment>вместо поля набора, пока макрос не сохранён ни разу</comment>
+      <value>Черновик ещё не сохранён — файла макроса, пока нет.</value>
+      <comment>вместо поля набора, пока макрос не сохранён ни разу</comment>
   </data>
   <data name="Editor_Templates_Empty" xml:space="preserve">
-    <value>Шаблонов в макросе нет. Ноды Find/Wait/Recognize без них всегда уходят по «не найдено».</value>
-    <comment>пустое состояние списка шаблонов</comment>
+      <value>Шаблонов в макросе нет. Действия Find/Wait/Recognize без них всегда уходят по «не найдено».</value>
+      <comment>пустое состояние списка шаблонов</comment>
   </data>
   <data name="Editor_Templates_Delete" xml:space="preserve">
     <value>Убрать из бандла</value>
@@ -1279,8 +1279,8 @@
     <comment>красная строка под кнопкой «+ файл…»; {0} = имя выбранного файла</comment>
   </data>
   <data name="Editor_Templates_AddFailedUnreadable" xml:space="preserve">
-    <value>Не удалось добавить «{0}»: бандл макроса не читается.</value>
-    <comment>красная строка; {0} = имя шаблона</comment>
+      <value>Не удалось добавить «{0}»: файл макроса не читается.</value>
+      <comment>красная строка; {0} = имя шаблона</comment>
   </data>
   <data name="Editor_Templates_AddFailed" xml:space="preserve">
     <value>Не удалось добавить шаблон: {0}</value>
@@ -1303,8 +1303,8 @@
     <comment>вместо картинки; {0} = сообщение файловой системы</comment>
   </data>
   <data name="Editor_Templates_PreviewGone" xml:space="preserve">
-    <value>Шаблона в бандле больше нет.</value>
-    <comment>вместо картинки: список устарел, бандл сменился между перечислением и чтением</comment>
+      <value>Шаблона в макросе больше нет.</value>
+      <comment>вместо картинки: список устарел, бандл сменился между перечислением и чтением</comment>
   </data>
   <data name="Editor_Templates_Bytes" xml:space="preserve">
     <value>{0} Б</value>
@@ -1361,32 +1361,32 @@
     <comment>красная строка: кнопку ▸ нажали, а шва запуска нет (панель собрана без него)</comment>
   </data>
   <data name="Editor_Status_SubmacroCreated" xml:space="preserve">
-    <value>Под-макрос «{0}» создан — не забудьте сохранить макрос.</value>
-    <comment>статус после «+ Под-макрос»; {0} = имя функции. Про сохранение сказано потому, что функция живёт внутри файла макроса</comment>
+      <value>Саб-макрос «{0}» создан</value>
+      <comment>статус после «+ Под-макрос»; {0} = имя функции. Про сохранение сказано потому, что функция живёт внутри файла макроса</comment>
   </data>
   <data name="Editor_Status_SubmacroInUse" xml:space="preserve">
-    <value>Под-макрос вызывают: {0}. Уберите эти ноды или перенацельте их, а потом удаляйте.</value>
-    <comment>красная строка при попытке удалить вызываемую функцию; {0} = перечень нод в кавычках</comment>
+      <value>Саб-макрос вызывают: {0}. Уберите эти действия или перенацельте их, а потом удаляйте.</value>
+      <comment>красная строка при попытке удалить вызываемую функцию; {0} = перечень нод в кавычках</comment>
   </data>
   <data name="Editor_Status_SubmacroDeleted" xml:space="preserve">
-    <value>Под-макрос «{0}» удалён — не забудьте сохранить макрос.</value>
-    <comment>статус после удаления функции; {0} = её имя</comment>
+      <value>Саб-макрос «{0}» удалён</value>
+      <comment>статус после удаления функции; {0} = её имя</comment>
   </data>
   <data name="Editor_Toolbar_Extract" xml:space="preserve">
-    <value>Выделить в под-макрос</value>
-    <comment>акцентная кнопка панели инструментов; видна, только когда есть что извлекать</comment>
+      <value>Выделить в саб-макрос</value>
+      <comment>акцентная кнопка панели инструментов; видна, только когда есть что извлекать</comment>
   </data>
   <data name="Editor_Toolbar_ExtractCount" xml:space="preserve">
-    <value>Выделить в под-макрос ({0})</value>
-    <comment>она же со счётчиком отмеченных нод; {0} = сколько отмечено Ctrl+кликом. ⚠️ длина этой подписи отбирает ширину у строки состояния слева</comment>
+      <value>Выделить в саб-макрос ({0})</value>
+      <comment>она же со счётчиком отмеченных нод; {0} = сколько отмечено Ctrl+кликом. ⚠️ длина этой подписи отбирает ширину у строки состояния слева</comment>
   </data>
   <data name="Editor_Status_ExtractInsideSubmacro" xml:space="preserve">
-    <value>Под-макросы плоские: выделять кусок можно только в самом макросе, не внутри функции.</value>
-    <comment>красная строка: извлечение запрошено, когда на канве уже функция</comment>
+      <value>Саб-макросы плоские: выделять кусок можно только в самом макросе, не внутри функции.</value>
+      <comment>красная строка: извлечение запрошено, когда на канве уже функция</comment>
   </data>
   <data name="Editor_Status_Extracted" xml:space="preserve">
-    <value>Выделено в под-макрос «{0}» — не забудьте сохранить макрос.</value>
-    <comment>статус после извлечения; {0} = имя новой функции</comment>
+      <value>Выделено в саб-макрос «{0}» — не забудьте сохранить макрос.</value>
+      <comment>статус после извлечения; {0} = имя новой функции</comment>
   </data>
   <data name="Editor_Status_SaveBlocked" xml:space="preserve">
     <value>Сохранение отменено: исправьте ошибки.</value>
@@ -1521,8 +1521,8 @@
     <comment>хвост сводки: предупреждений и хуже; {0} = сколько. Тоже начинается с пробела</comment>
   </data>
   <data name="Log_Header_LevelFilterTip" xml:space="preserve">
-    <value>Фильтр на стороне панели. Ниже уровня, заданного в appsettings.json демона, записи сюда просто не приходят.</value>
-    <comment>подсказка выпадающего списка уровня в шапке</comment>
+      <value>Фильтр на стороне панели. Ниже уровня, заданного в appsettings.json сервиса, записи сюда просто не приходят.</value>
+      <comment>подсказка выпадающего списка уровня в шапке</comment>
   </data>
   <data name="Log_Level_All" xml:space="preserve">
     <value>все записи</value>
@@ -1553,8 +1553,8 @@
     <comment>подсказка поля поиска</comment>
   </data>
   <data name="Log_Header_AutoScrollTip" xml:space="preserve">
-    <value>Держать ленту на последней записи. Снимите, чтобы читать: на живом демоне она едет сама.</value>
-    <comment>подсказка галочки автопрокрутки</comment>
+      <value>Держать ленту на последней записи. Снимите, чтобы читать: на живом сервисе она едет сама.</value>
+      <comment>подсказка галочки автопрокрутки</comment>
   </data>
   <data name="Log_Header_AutoScroll" xml:space="preserve">
     <value>автопрокрутка</value>
@@ -1565,8 +1565,8 @@
     <comment>кнопка в шапке: убрать то, что накопила панель</comment>
   </data>
   <data name="Log_Header_ClearTip" xml:space="preserve">
-    <value>Убирает то, что накопила панель. Журнал демона не трогается — переподключение принесёт его обратно.</value>
-    <comment>подсказка к ней</comment>
+      <value>Убирает то, что накопила панель. Журнал сервиса не трогается — переподключение принесёт его обратно.</value>
+      <comment>подсказка к ней</comment>
   </data>
 
   <!-- ======== Режим «Лог» — полоса пропуска и лента ======== -->
@@ -1575,8 +1575,8 @@
     <comment>жёлтая полоса под шапкой; {0} = сколько записей демон выбросил из-за переполнения очереди</comment>
   </data>
   <data name="Log_Gap_Hint" xml:space="preserve">
-    <value>очередь демона переполнялась — в ленте пропуск; полный журнал в logs/ рядом с SmartMacro.Daemon.exe</value>
-    <comment>пояснение рядом с ним в той же полосе; обрезается многоточием, а не переносится</comment>
+      <value>очередь сервиса переполнялась — в ленте пропуск; полный журнал в logs/ рядом с SmartMacro.Daemon.exe</value>
+      <comment>пояснение рядом с ним в той же полосе; обрезается многоточием, а не переносится</comment>
   </data>
   <data name="Log_Row_ExpandTip" xml:space="preserve">
     <value>Показать стек</value>
@@ -1585,20 +1585,20 @@
 
   <!-- ======== Режим «Лог» — пустые состояния ======== -->
   <data name="Log_Empty_Title" xml:space="preserve">
-    <value>Демон пока ничего не записал.</value>
-    <comment>заголовок пустоты, когда записей не было вовсе</comment>
+      <value>Сервис пока ничего не записал.</value>
+      <comment>заголовок пустоты, когда записей не было вовсе</comment>
   </data>
   <data name="Log_Cleared_Title" xml:space="preserve">
     <value>Лента очищена.</value>
     <comment>заголовок пустоты после кнопки «Очистить» — отдельный, потому что «ничего не записал» было бы враньём про демон</comment>
   </data>
   <data name="Log_Cleared_Hint" xml:space="preserve">
-    <value>Журнал демона это не тронуло — там всё на месте. Следующая запись появится здесь, а всё, что было, лежит файлами в logs/ рядом с SmartMacro.Daemon.exe.</value>
-    <comment>пояснение под заголовком «Лента очищена»; ширина блока 460 px</comment>
+      <value>Журнал сервиса это не тронуло — там всё на месте. Следующая запись появится здесь, а всё, что было, лежит файлами в logs/ рядом с SmartMacro.Daemon.exe.</value>
+      <comment>пояснение под заголовком «Лента очищена»; ширина блока 460 px</comment>
   </data>
   <data name="Log_Empty_Hint" xml:space="preserve">
-    <value>Лента показывает последнюю тысячу строк журнала демона и всё, что он пишет дальше. Тот же журнал целиком лежит файлами в logs/ рядом с SmartMacro.Daemon.exe.</value>
-    <comment>пояснение под заголовком «Демон пока ничего не записал»</comment>
+      <value>Лента показывает последнюю тысячу строк журнала сервиса и всё, что он пишет дальше. Тот же журнал целиком лежит файлами в logs/ рядом с SmartMacro.Daemon.exe.</value>
+      <comment>пояснение под заголовком «Демон пока ничего не записал»</comment>
   </data>
   <data name="Log_FilteredOut_Title" xml:space="preserve">
     <value>Под фильтр не попала ни одна запись.</value>
@@ -1639,16 +1639,16 @@
     <comment>кнопка в шапке</comment>
   </data>
   <data name="Settings_Header_ResetTip" xml:space="preserve">
-    <value>Перезапишет settings.json заводскими значениями. Макросы и шаблоны не тронет.</value>
-    <comment>подсказка к ней</comment>
+      <value>Перезапишет settings.json значениями по умолчанию. Библиотека макросов затронута не будет.</value>
+      <comment>подсказка к ней</comment>
   </data>
   <data name="Settings_Header_Revert" xml:space="preserve">
     <value>Отменить</value>
     <comment>кнопка в шапке: вернуть поля к тому, что сейчас в файле</comment>
   </data>
   <data name="Settings_Header_RevertTip" xml:space="preserve">
-    <value>Вернуть поля к тому, что сейчас у демона</value>
-    <comment>подсказка к ней</comment>
+      <value>Вернуть поля к тому, что сейчас у сервиса</value>
+      <comment>подсказка к ней</comment>
   </data>
   <data name="Settings_Header_Apply" xml:space="preserve">
     <value>Применить</value>
@@ -1695,12 +1695,12 @@
     <comment>приписка: единственная настройка экрана, которая не ждёт «Применить»</comment>
   </data>
   <data name="Settings_Log_LevelTip" xml:space="preserve">
-    <value>Минимальный уровень, ниже которого записи не покидают демон</value>
-    <comment>подсказка выпадающего списка уровня</comment>
+      <value>Минимальный уровень, ниже которого записи не покидают сервис</value>
+      <comment>подсказка выпадающего списка уровня</comment>
   </data>
   <data name="Settings_Log_Hint" xml:space="preserve">
-    <value>Живёт до перезапуска демона: постоянный уровень — в appsettings.json. Debug пишет каждое сообщение окну — это десятки МБ в час на десяти клиентах.</value>
-    <comment>пояснение под списком; оба факта названы прямо, потому что настройка, молча не пережившая перезапуск, читается как сломанная</comment>
+      <value>Живёт до перезапуска сервиса: постоянный уровень — в appsettings.json. Debug пишет каждое сообщение окну — это десятки МБ в час на десяти клиентах.</value>
+      <comment>пояснение под списком; оба факта названы прямо, потому что настройка, молча не пережившая перезапуск, читается как сломанная</comment>
   </data>
 
   <!-- ======== Режим «Настройки» — плитка «Профили процессов» ======== -->
@@ -1761,8 +1761,8 @@
     <comment>подсказка поля «ДЕАКТИВ.»</comment>
   </data>
   <data name="Settings_Profiles_Remove" xml:space="preserve">
-    <value>Убрать профиль — за окнами этого процесса демон следить перестанет</value>
-    <comment>подсказка крестика в конце строки профиля</comment>
+      <value>Убрать профиль — за окнами этого процесса сервис следить перестанет</value>
+      <comment>подсказка крестика в конце строки профиля</comment>
   </data>
   <data name="Settings_Profiles_NewWatermark" xml:space="preserve">
     <value>имя процесса, например elementclient_64</value>
@@ -1909,8 +1909,8 @@
     <comment>имя поля в замечании валидатора — подставляется в Settings_BadNumber</comment>
   </data>
   <data name="Settings_Field_WindowPoll" xml:space="preserve">
-    <value>Проверка живости окон</value>
-    <comment>то же для второго поля</comment>
+      <value>Проверка существования окон</value>
+      <comment>то же для второго поля</comment>
   </data>
   <data name="Settings_BadNumber" xml:space="preserve">
     <value>{0}: «{1}» — это не целое число.</value>
@@ -1931,12 +1931,12 @@
     <comment>она же после проверки; {0} = время, {1} = сколько в порядке, {2} = всего проверок</comment>
   </data>
   <data name="Settings_Diagnostics_ChannelTitle" xml:space="preserve">
-    <value>Канал с демоном</value>
-    <comment>название единственной проверки, которую делает сама панель: демон не может честно замерить своё же время ответа. Остальные шесть приезжают от демона. Два места</comment>
+      <value>Канал с сервисом</value>
+      <comment>название единственной проверки, которую делает сама панель: демон не может честно замерить своё же время ответа. Остальные шесть приезжают от демона. Два места</comment>
   </data>
   <data name="Settings_Diagnostics_ChannelFailed" xml:space="preserve">
-    <value>демон не ответил — движок не работает, макросы не запускаются</value>
-    <comment>деталь этой проверки при провале; карточка 416 px</comment>
+      <value>сервис не ответил — движок не работает, макросы не запускаются</value>
+      <comment>деталь этой проверки при провале; карточка 416 px</comment>
   </data>
   <data name="Settings_Diagnostics_ChannelOk" xml:space="preserve">
     <value>отвечает, {0} мс</value>
@@ -1973,8 +1973,8 @@
     <comment>она же при импорте</comment>
   </data>
   <data name="Dialog_NameConflict_LossUnreadable" xml:space="preserve">
-    <value>Его бандл не читается, так что неизвестно даже, что в нём: {0} Замена уничтожит файл целиком.</value>
-    <comment>красная плашка, когда существующий бандл не читается; {0} = вердикт читателя (он заканчивается точкой, поэтому пробел после — единственный разделитель)</comment>
+      <value>Макрос не читается, так что неизвестно даже, что в нём: {0} Замена уничтожит файл целиком.</value>
+      <comment>красная плашка, когда существующий бандл не читается; {0} = вердикт читателя (он заканчивается точкой, поэтому пробел после — единственный разделитель)</comment>
   </data>
   <data name="Dialog_NameConflict_Templates_One" xml:space="preserve">
     <value>{0} шаблон</value>
@@ -1989,20 +1989,20 @@
     <comment>она же, форма для 5–20, 25–30…</comment>
   </data>
   <data name="Dialog_NameConflict_Submacros_One" xml:space="preserve">
-    <value>{0} под-макрос</value>
-    <comment>то же для функций; форма для 1, 21…</comment>
+      <value>{0} саб-макрос</value>
+      <comment>то же для функций; форма для 1, 21…</comment>
   </data>
   <data name="Dialog_NameConflict_Submacros_Few" xml:space="preserve">
-    <value>{0} под-макроса</value>
-    <comment>она же, форма для 2–4, 22–24…</comment>
+      <value>{0} саб-макроса</value>
+      <comment>она же, форма для 2–4, 22–24…</comment>
   </data>
   <data name="Dialog_NameConflict_Submacros_Many" xml:space="preserve">
-    <value>{0} под-макросов</value>
-    <comment>она же, форма для 5–20, 25–30…</comment>
+      <value>{0} саб-макросов</value>
+      <comment>она же, форма для 5–20, 25–30…</comment>
   </data>
   <data name="Dialog_NameConflict_LossNothing" xml:space="preserve">
-    <value>Ни шаблонов, ни под-макросов в нём нет — потеряется только его граф.</value>
-    <comment>красная плашка, когда терять, кроме графа, нечего</comment>
+      <value>Ни шаблонов, ни саб-макросов в нём нет — потеряется только его содержимое.</value>
+      <comment>красная плашка, когда терять, кроме графа, нечего</comment>
   </data>
   <data name="Dialog_NameConflict_LossList" xml:space="preserve">
     <value>Будет потеряно: {0}.</value>
@@ -2114,76 +2114,76 @@ SmartMacro хранит макросы, настройки, журналы и с
        ================================================================================== -->
 
   <data name="Validation_Node_DuplicateId" xml:space="preserve">
-    <value>Дубликат id ноды: две ноды графа несут один и тот же идентификатор.</value>
-    <comment>ОШИБКА на ноде. Бывает только у файла, правленного руками: редактор одинаковых id не делает.</comment>
+      <value>Дубликат id действия: два действия имеют один и тот же идентификатор.</value>
+      <comment>ОШИБКА на ноде. Бывает только у файла, правленного руками: редактор одинаковых id не делает.</comment>
   </data>
   <data name="Validation_Node_DuplicateName" xml:space="preserve">
-    <value>Имя «{0}» носит больше одной ноды — в логе прогона их будет не различить.</value>
-    <comment>ПРЕДУПРЕЖДЕНИЕ, и оно вешается на ОБЕ ноды сразу: обвинить одну из пары значило бы выбрать наугад. {0} — совпавшая подпись.</comment>
+      <value>Имя «{0}» носит больше одного действия — в логе их будет не различить.</value>
+      <comment>ПРЕДУПРЕЖДЕНИЕ, и оно вешается на ОБЕ ноды сразу: обвинить одну из пары значило бы выбрать наугад. {0} — совпавшая подпись.</comment>
   </data>
   <data name="Validation_Graph_StartNodeMissing" xml:space="preserve">
-    <value>Стартовая нода не задана или не найдена в графе.</value>
-    <comment>ОШИБКА уровня графа (без ноды — подсвечивать нечего). Два разных случая в одной фразе: стартовая не выбрана вовсе и стартовая указывает на удалённую ноду.</comment>
+      <value>Стартовое действие не задано или не найдено в графе.</value>
+      <comment>ОШИБКА уровня графа (без ноды — подсвечивать нечего). Два разных случая в одной фразе: стартовая не выбрана вовсе и стартовая указывает на удалённую ноду.</comment>
   </data>
   <data name="Validation_Node_EdgeToMissingNode" xml:space="preserve">
-    <value>Ребро {0} ведёт в ноду, которой в графе нет.</value>
-    <comment>ОШИБКА на ноде-источнике. {0} — имя исхода латиницей, как в модели: Next, Found, NotFound, Timeout, Matched, NotMatched. Куда именно вело ребро, намеренно не называется: там оторванный guid, читателю он ничего не скажет.</comment>
+      <value>Ребро {0} ведёт в действие, которого в макросе нет.</value>
+      <comment>ОШИБКА на ноде-источнике. {0} — имя исхода латиницей, как в модели: Next, Found, NotFound, Timeout, Matched, NotMatched. Куда именно вело ребро, намеренно не называется: там оторванный guid, читателю он ничего не скажет.</comment>
   </data>
   <data name="Validation_Node_ClickNeedsExactlyOnePoint" xml:space="preserve">
-    <value>У ClickNode должно быть задано ровно одно из Point / PointVar.</value>
-    <comment>ОШИБКА на ноде клика: точка задаётся либо числами, либо именем переменной. Единственное замечание валидатора, где нода названа именем ТИПА (ClickNode), а не подписью.</comment>
+      <value>У Click должно быть задано ровно одно из Point / PointVar.</value>
+      <comment>ОШИБКА на ноде клика: точка задаётся либо числами, либо именем переменной. Единственное замечание валидатора, где нода названа именем ТИПА (ClickNode), а не подписью.</comment>
   </data>
   <data name="Validation_Node_MatchThresholdOutOfRange" xml:space="preserve">
     <value>Порог совпадения {0} вне диапазона (0; 1].</value>
     <comment>ОШИБКА на ноде зрения. {0} — само число, уже отформатированное как «0.###». Ноль означал бы «совпадает что угодно», больше единицы — «не совпадёт никогда»; и то и другое не настройка точности, а выключенная нода.</comment>
   </data>
   <data name="Validation_Node_TemplateMissing" xml:space="preserve">
-    <value>В макросе нет шаблона «{0}» — нода всегда будет уходить по «не найдено».</value>
-    <comment>ПРЕДУПРЕЖДЕНИЕ (не ошибка: «набрал имя, потом импортировал файл» — нормальный порядок действий). {0} — имя шаблона из ноды. Сверяется с описью бандла .hsm.</comment>
+      <value>В макросе нет шаблона «{0}» — действие всегда будет иметь результат «не найдено».</value>
+      <comment>ПРЕДУПРЕЖДЕНИЕ (не ошибка: «набрал имя, потом импортировал файл» — нормальный порядок действий). {0} — имя шаблона из ноды. Сверяется с описью бандла .hsm.</comment>
   </data>
   <data name="Validation_Node_TemplateSetMissing" xml:space="preserve">
-    <value>В макросе нет набора шаблонов «{0}» — нода всегда будет уходить по «не совпало».</value>
-    <comment>ПРЕДУПРЕЖДЕНИЕ, то же самое для НАБОРА (папка templates/{0}/ внутри бандла, нода распознавания тега). {0} — имя набора.</comment>
+      <value>В макросе нет набора шаблонов «{0}» — действие всегда будет иметь результат «не совпало».</value>
+      <comment>ПРЕДУПРЕЖДЕНИЕ, то же самое для НАБОРА (папка templates/{0}/ внутри бандла, нода распознавания тега). {0} — имя набора.</comment>
   </data>
   <data name="Validation_Node_ConditionalNeedsContextWindow" xml:space="preserve">
-    <value>Условной ноде нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса).</value>
-    <comment>ОШИБКА на ноде зрения (найти / дождаться / распознать). Прогон от хоткея контекстного окна не несёт, и такая нода оборвала бы его.</comment>
+      <value>Проверке условия нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса).</value>
+      <comment>ОШИБКА на ноде зрения (найти / дождаться / распознать). Прогон от хоткея контекстного окна не несёт, и такая нода оборвала бы его.</comment>
   </data>
   <data name="Validation_Node_ActionNeedsContextWindow" xml:space="preserve">
-    <value>Ноде действия без селектора Target нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса).</value>
-    <comment>ОШИБКА, то же самое для ноды действия (клавиша, клик, тег, иконка, вызов функции): лечится либо селектором Target, либо триггером «появился процесс».</comment>
+      <value>Действию без селектора Target нужно контекстное окно, но этот макрос может стартовать без него (нет триггера на появление процесса).</value>
+      <comment>ОШИБКА, то же самое для ноды действия (клавиша, клик, тег, иконка, вызов функции): лечится либо селектором Target, либо триггером «появился процесс».</comment>
   </data>
   <data name="Validation_Node_Unreachable" xml:space="preserve">
-    <value>Нода недостижима из стартовой.</value>
-    <comment>ПРЕДУПРЕЖДЕНИЕ на ноде: в неё не ведёт ни одно ребро от старта, то есть выполняться она никогда не будет.</comment>
+      <value>Действие недостижимо.</value>
+      <comment>ПРЕДУПРЕЖДЕНИЕ на ноде: в неё не ведёт ни одно ребро от старта, то есть выполняться она никогда не будет.</comment>
   </data>
   <data name="Validation_Graph_LoopWithoutDelay" xml:space="preserve">
-    <value>Цикл без ноды Delay/WaitForElement — будет крутиться вхолостую: {0}.</value>
-    <comment>ПРЕДУПРЕЖДЕНИЕ, вешается на первую ноду цикла. {0} — подписи нод цикла, склеенные через « → ».</comment>
+      <value>Цикл без действия Delay/WaitForElement — будет крутиться вхолостую: {0}.</value>
+      <comment>ПРЕДУПРЕЖДЕНИЕ, вешается на первую ноду цикла. {0} — подписи нод цикла, склеенные через « → ».</comment>
   </data>
   <data name="Validation_Submacro_NotSelected" xml:space="preserve">
-    <value>Под-макрос не выбран.</value>
-    <comment>ОШИБКА на ноде вызова: адресат пустой, ноду просто не дописали. Отделено от Validation_Submacro_NotFound намеренно — «ссылается на несуществующий» про пустое поле читалось бы как поломка файла.</comment>
+      <value>Саб-макрос не выбран.</value>
+      <comment>ОШИБКА на ноде вызова: адресат пустой, ноду просто не дописали. Отделено от Validation_Submacro_NotFound намеренно — «ссылается на несуществующий» про пустое поле читалось бы как поломка файла.</comment>
   </data>
   <data name="Validation_Submacro_NotFound" xml:space="preserve">
-    <value>Под-макроса, на который ссылается нода, в этом макросе нет.</value>
-    <comment>ОШИБКА на ноде вызова: адресат задан, но такого под-макроса в бандле нет (его удалили либо файл правили руками).</comment>
+      <value>Саб-макроса, на который ссылается действие, в этом макросе нет.</value>
+      <comment>ОШИБКА на ноде вызова: адресат задан, но такого под-макроса в бандле нет (его удалили либо файл правили руками).</comment>
   </data>
   <data name="Validation_Submacro_HasTrigger" xml:space="preserve">
-    <value>У под-макроса «{0}» есть триггер. Под-макрос — это функция: хоткей превращает её в макрос верхнего уровня, а демон такой триггер не вооружает.</value>
-    <comment>ОШИБКА уровня под-макроса. {0} — имя под-макроса. Молча не работающий хоткей — тот самый дефект, ради которого проверка и заведена.</comment>
+      <value>У саб-макроса «{0}» есть триггер.</value>
+      <comment>ОШИБКА уровня под-макроса. {0} — имя под-макроса. Молча не работающий хоткей — тот самый дефект, ради которого проверка и заведена.</comment>
   </data>
   <data name="Validation_Submacro_NestedCall" xml:space="preserve">
-    <value>Под-макрос не может звать под-макрос: вложенность плоская, и именно этим исключены циклы.</value>
-    <comment>ОШИБКА на ноде вызова ВНУТРИ под-макроса. Редактор такую ноду создать не даст; ловится файл, правленный руками.</comment>
+      <value>Саб-макрос не может звать саб-макрос.</value>
+      <comment>ОШИБКА на ноде вызова ВНУТРИ под-макроса. Редактор такую ноду создать не даст; ловится файл, правленный руками.</comment>
   </data>
   <data name="Validation_Submacro_VariableLost_Single" xml:space="preserve">
-    <value>Под-макрос «{0}» пишет переменную «{1}», но подпрогон работает с КОПИЕЙ переменных — наружу значение не вернётся, и читающая его нода оборвёт прогон.</value>
-    <comment>ПРЕДУПРЕЖДЕНИЕ на ноде вызова, оно же показывается в инспекторе под выбором функции. {0} — имя под-макроса, {1} — имя переменной. Живой пример: распознавание тега внутри функции, установка иконки — снаружи.</comment>
+      <value>Саб-макрос «{0}» пишет переменную «{1}», но саб-макросы работает с КОПИЕЙ переменных — наружу значение не вернётся, и читающая его нода оборвёт прогон.</value>
+      <comment>ПРЕДУПРЕЖДЕНИЕ на ноде вызова, оно же показывается в инспекторе под выбором функции. {0} — имя под-макроса, {1} — имя переменной. Живой пример: распознавание тега внутри функции, установка иконки — снаружи.</comment>
   </data>
   <data name="Validation_Submacro_VariableLost_Several" xml:space="preserve">
-    <value>Под-макрос «{0}» пишет переменные {1}, но подпрогон работает с КОПИЕЙ переменных — наружу значения не вернутся, и читающие их ноды оборвут прогон.</value>
-    <comment>ПРЕДУПРЕЖДЕНИЕ, то же для нескольких переменных. {0} — имя под-макроса; {1} — имена переменных, каждое уже в кавычках «», склеенные через «, ».</comment>
+      <value>Саб-макрос «{0}» пишет переменные {1}, но саб-макросы работает с КОПИЕЙ переменных — наружу значения не вернутся, и читающие их действия оборвут прогон.</value>
+      <comment>ПРЕДУПРЕЖДЕНИЕ, то же для нескольких переменных. {0} — имя под-макроса; {1} — имена переменных, каждое уже в кавычках «», склеенные через «, ».</comment>
   </data>
 
   <!-- ==================================================================================
@@ -2198,32 +2198,32 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Отказ: выделение пусто (или в нём одни удалённые ноды).</comment>
   </data>
   <data name="Extraction_Refused_WholeGraph" xml:space="preserve">
-    <value>Выделен весь макрос целиком. Под-макрос — это ЧАСТЬ графа; вынести всё значило бы завести уровень вложенности, который ничего не делает.</value>
-    <comment>Отказ: родитель остался бы из одной ноды вызова, которая зовёт свою же единственную функцию.</comment>
+      <value>Выделен весь макрос целиком.</value>
+      <comment>Отказ: родитель остался бы из одной ноды вызова, которая зовёт свою же единственную функцию.</comment>
   </data>
   <data name="Extraction_Refused_ContainsCall" xml:space="preserve">
-    <value>В выделении есть нода вызова под-макроса. Под-макросы плоские — функция не может звать функцию.</value>
-    <comment>Отказ: внутри выделения нода вызова, а вложенность плоская.</comment>
+      <value>В выделении есть действие вызова саб-макроса. Саб-макросы не могут выполнять друг друга.</value>
+      <comment>Отказ: внутри выделения нода вызова, а вложенность плоская.</comment>
   </data>
   <data name="Extraction_Refused_ManyEntries" xml:space="preserve">
-    <value>У выделения {0} входа: снаружи ведут рёбра в {1}. Под-макрос — это функция с ОДНИМ входом; добавьте в выделение ноду, которая идёт первой, или уберите лишнюю ветку.</value>
-    <comment>Отказ: в выделение входят снаружи в нескольких местах. {0} — сколько входов (всегда 2 и больше; согласование «входа/входов» сейчас не делается); {1} — подписи этих нод в кавычках «», через запятую.</comment>
+      <value>У выделения {0} входа: снаружи ведут рёбра в {1}. Саб-макрос — это функция с ОДНИМ входом; добавьте в выделение действие, которое идёт первым, или уберите лишнюю ветку.</value>
+      <comment>Отказ: в выделение входят снаружи в нескольких местах. {0} — сколько входов (всегда 2 и больше; согласование «входа/входов» сейчас не делается); {1} — подписи этих нод в кавычках «», через запятую.</comment>
   </data>
   <data name="Extraction_Refused_NoEntryClosedLoop" xml:space="preserve">
     <value>В выделении нет ноды, с которой оно начинается: все они замкнуты друг на друга. Добавьте в выделение ноду, в которую входят снаружи.</value>
     <comment>Отказ: выделен кольцевой кусок графа, начала у него нет.</comment>
   </data>
   <data name="Extraction_Refused_NoEntryFromOutside" xml:space="preserve">
-    <value>Непонятно, с чего под-макрос начинается: снаружи в выделение не ведёт ничего, а начал бы его любой из {0}. Выделите кусок, в который входят из остального графа.</value>
-    <comment>Отказ: в выделение снаружи не ведёт ни одно ребро, а претендентов на первую ноду несколько. {0} — подписи претендентов в кавычках «», через запятую.</comment>
+      <value>Непонятно, с чего саб-макрос начинается: снаружи в выделение не ведёт ничего, а начал бы его любой из {0}. Выделите кусок, в который входят из остального графа.</value>
+      <comment>Отказ: в выделение снаружи не ведёт ни одно ребро, а претендентов на первую ноду несколько. {0} — подписи претендентов в кавычках «», через запятую.</comment>
   </data>
   <data name="Extraction_Refused_ManyExits" xml:space="preserve">
-    <value>Выходы выделения ведут в разные места: {0}. У функции возврат один, и куда идти после неё, выбирать надо снаружи; добавьте эти ноды в выделение или сузьте его.</value>
-    <comment>Отказ: из выделения выходят в несколько разных нод. {0} — подписи этих нод в кавычках «», через запятую.</comment>
+      <value>Выходы выделения ведут в разные места: {0}. У саб-макроса может быть только один результат.</value>
+      <comment>Отказ: из выделения выходят в несколько разных нод. {0} — подписи этих нод в кавычках «», через запятую.</comment>
   </data>
   <data name="Extraction_Refused_MixedExits" xml:space="preserve">
-    <value>Часть выходов выделения заканчивает прогон, а часть ведёт в {0}. После извлечения оба стали бы одним возвратом, то есть ветка, которая раньше прогон заканчивала, начала бы его продолжать. Сузьте выделение или доведите обе ветки до одного места.</value>
-    <comment>Отказ: смешанный случай — один выход наружу плюс ветка, обрывающая прогон. Молча слить их значило бы переписать замысел автора. {0} — подпись ноды снаружи в кавычках «».</comment>
+      <value>Часть выходов выделения заканчивает прогон, а часть ведёт в {0}. После извлечения ветка, которая раньше прогон заканчивала, начала бы его продолжать. Сузьте выделение или доведите обе ветки до одного места.</value>
+      <comment>Отказ: смешанный случай — один выход наружу плюс ветка, обрывающая прогон. Молча слить их значило бы переписать замысел автора. {0} — подпись ноды снаружи в кавычках «».</comment>
   </data>
   <data name="Extraction_DefaultSubmacroNamePrefix" xml:space="preserve">
     <value>функция</value>
@@ -2257,8 +2257,8 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Подробность ноды вызова, когда родитель не ждёт функцию. {0} — имя под-макроса.</comment>
   </data>
   <data name="Run_PauseReason_Breakpoint" xml:space="preserve">
-    <value>брейкпоинт</value>
-    <comment>Причина паузы: обход упёрся в точку останова. Печатается в полосе лога и на панели инструментов отладчика. Единственный из четырёх — заимствование, а не русское слово.</comment>
+      <value>точка останова</value>
+      <comment>Причина паузы: обход упёрся в точку останова. Печатается в полосе лога и на панели инструментов отладчика. Единственный из четырёх — заимствование, а не русское слово.</comment>
   </data>
   <data name="Run_PauseReason_Step" xml:space="preserve">
     <value>шаг</value>
@@ -2273,40 +2273,40 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Причина паузы по умолчанию — просто нажали «Пауза». Тот же текст достаётся неизвестной причине, если их станет больше.</comment>
   </data>
   <data name="Run_Abort_DuplicateNodeId" xml:space="preserve">
-    <value>Макрос «{0}»: дубликат id ноды (одну из них зовут «{1}»).</value>
-    <comment>ОБРЫВ прогона. {0} — имя макроса, {1} — подпись одной из совпавших нод. То же самое валидатор говорит заранее; сюда доходит файл, правленный руками мимо валидатора.</comment>
+      <value>Макрос «{0}»: дубликат id действия (одну из них зовут «{1}»).</value>
+      <comment>ОБРЫВ прогона. {0} — имя макроса, {1} — подпись одной из совпавших нод. То же самое валидатор говорит заранее; сюда доходит файл, правленный руками мимо валидатора.</comment>
   </data>
   <data name="Run_Abort_EdgeToMissingNode" xml:space="preserve">
     <value>Макрос «{0}»: ребро ведёт в ноду, которой в графе нет.</value>
     <comment>ОБРЫВ прогона. {0} — имя макроса. Какая нода оборвалась, видно по последней строке полосы лога, поэтому в тексте её нет.</comment>
   </data>
   <data name="Run_Abort_UnsupportedNodeType" xml:space="preserve">
-    <value>Макрос «{0}»: нода «{1}» имеет неподдерживаемый тип {2}.</value>
-    <comment>ОБРЫВ прогона: в файле нода типа, которого эта сборка не знает. {0} — имя макроса, {1} — подпись ноды, {2} — имя типа из кода (латиницей).</comment>
+      <value>Макрос «{0}»: действие «{1}» имеет неподдерживаемый тип {2}.</value>
+      <comment>ОБРЫВ прогона: в файле нода типа, которого эта сборка не знает. {0} — имя макроса, {1} — подпись ноды, {2} — имя типа из кода (латиницей).</comment>
   </data>
   <data name="Run_Abort_NestedSubmacro" xml:space="preserve">
-    <value>Макрос «{0}»: под-макрос «{1}» пытается позвать под-макрос, а вложенность плоская.</value>
-    <comment>ОБРЫВ прогона. {0} — имя макроса, {1} — имя под-макроса, который зовёт. Единственная страховка от циклов в рантайме: валидатор такой граф отвергает раньше.</comment>
+      <value>Макрос «{0}»: саб-макрос «{1}» пытается позвать саб-макрос.</value>
+      <comment>ОБРЫВ прогона. {0} — имя макроса, {1} — имя под-макроса, который зовёт. Единственная страховка от циклов в рантайме: валидатор такой граф отвергает раньше.</comment>
   </data>
   <data name="Run_Abort_SubmacroNotFound" xml:space="preserve">
-    <value>Макрос «{0}»: нода «{1}» ссылается на под-макрос, которого в этом макросе нет.</value>
-    <comment>ОБРЫВ прогона. {0} — имя макроса, {1} — подпись ноды вызова.</comment>
+      <value>Макрос «{0}»: действие «{1}» ссылается на саб-макрос, которого в этом макросе нет.</value>
+      <comment>ОБРЫВ прогона. {0} — имя макроса, {1} — подпись ноды вызова.</comment>
   </data>
   <data name="Run_Abort_SubmacroAborted" xml:space="preserve">
-    <value>Макрос «{0}»: под-макрос «{1}» оборван: {2}</value>
-    <comment>ОБРЫВ прогона родителя из-за обрыва функции, которую он ждал. {0} — имя макроса, {1} — имя под-макроса, {2} — причина обрыва функции (уже готовая фраза с точкой, поэтому своей точки в конце нет).</comment>
+      <value>Макрос «{0}»: саб-макрос «{1}» оборван: {2}</value>
+      <comment>ОБРЫВ прогона родителя из-за обрыва функции, которую он ждал. {0} — имя макроса, {1} — имя под-макроса, {2} — причина обрыва функции (уже готовая фраза с точкой, поэтому своей точки в конце нет).</comment>
   </data>
   <data name="Run_Abort_NodeNeedsTargetOrContext" xml:space="preserve">
-    <value>У ноды «{0}» нет селектора Target, а у этого прогона нет контекстного окна (у прогонов от хоткея его не бывает).</value>
-    <comment>ОБРЫВ прогона на ноде действия. {0} — подпись ноды. Валидатор говорит то же самое заранее — см. Validation_Node_ActionNeedsContextWindow.</comment>
+      <value>У действия «{0}» нет селектора Target, а у этого прогона нет контекстного окна (у прогонов от хоткея его не бывает).</value>
+      <comment>ОБРЫВ прогона на ноде действия. {0} — подпись ноды. Валидатор говорит то же самое заранее — см. Validation_Node_ActionNeedsContextWindow.</comment>
   </data>
   <data name="Run_Abort_NodeNeedsContextWindow" xml:space="preserve">
-    <value>Ноде «{0}» нужно контекстное окно, а у этого прогона его нет (у прогонов от хоткея его не бывает).</value>
-    <comment>ОБРЫВ прогона на ноде зрения. {0} — подпись ноды. Парная к Validation_Node_ConditionalNeedsContextWindow.</comment>
+      <value>Действию «{0}» нужно контекстное окно, а у этого прогона его нет (у прогонов от хоткея его не бывает).</value>
+      <comment>ОБРЫВ прогона на ноде зрения. {0} — подпись ноды. Парная к Validation_Node_ConditionalNeedsContextWindow.</comment>
   </data>
   <data name="Run_Abort_ClickNeedsExactlyOnePoint" xml:space="preserve">
-    <value>У ноды ClickNode «{0}» должно быть задано ровно одно из Point / PointVar.</value>
-    <comment>ОБРЫВ прогона на ноде клика. {0} — подпись ноды. Парная к Validation_Node_ClickNeedsExactlyOnePoint, с той разницей, что здесь названы и тип, и подпись.</comment>
+      <value>У действия Click «{0}» должно быть задано ровно одно из Point / PointVar.</value>
+      <comment>ОБРЫВ прогона на ноде клика. {0} — подпись ноды. Парная к Validation_Node_ClickNeedsExactlyOnePoint, с той разницей, что здесь названы и тип, и подпись.</comment>
   </data>
   <data name="Run_Variable_NotDefined" xml:space="preserve">
     <value>Переменная «{0}» в этом прогоне не определена.</value>
@@ -2353,16 +2353,16 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Отказ сохранения или импорта: имя занято чужим макросом, а разрешения заменить его не давали. {0} — занятое имя. Пользователю после этого показывают выбор из трёх вариантов (заменить / другое имя / отмена).</comment>
   </data>
   <data name="Bundle_Unreadable_Overwrite" xml:space="preserve">
-    <value>Бандл «{0}» не читается, а перезапись уничтожила бы его содержимое. {1}</value>
-    <comment>Отказ сохранения: перед записью надо прочитать свой же файл (шаблоны, под-макросы, паспорт), а он не читается. {0} — путь к файлу, {1} — вердикт читателя (одна из записей Bundle_Read_*) либо Bundle_Unreadable_ReasonUnknown.</comment>
+      <value>Макрос «{0}» не читается, а перезапись уничтожила бы его содержимое. {1}</value>
+      <comment>Отказ сохранения: перед записью надо прочитать свой же файл (шаблоны, под-макросы, паспорт), а он не читается. {0} — путь к файлу, {1} — вердикт читателя (одна из записей Bundle_Read_*) либо Bundle_Unreadable_ReasonUnknown.</comment>
   </data>
   <data name="Bundle_Unreadable_ReasonUnknown" xml:space="preserve">
     <value>Причина неизвестна.</value>
     <comment>Подставляется в дырку {1} у Bundle_Unreadable_Overwrite, когда вердикта читателя нет.</comment>
   </data>
   <data name="Bundle_Import_NotABundle" xml:space="preserve">
-    <value>«{0}» — не бандл SmartMacro.</value>
-    <comment>Отказ импорта: выбранный файл не открывается как бандл либо в нём нет паспорта. {0} — путь к выбранному файлу. Запасной текст: обычно вместо него печатается более точный вердикт читателя.</comment>
+      <value>«{0}» — не макрос SmartMacro.</value>
+      <comment>Отказ импорта: выбранный файл не открывается как бандл либо в нём нет паспорта. {0} — путь к выбранному файлу. Запасной текст: обычно вместо него печатается более точный вердикт читателя.</comment>
   </data>
   <data name="Bundle_Read_FileMissing" xml:space="preserve">
     <value>Файла «{0}» нет.</value>
@@ -2373,12 +2373,12 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Вердикт читателя: файл есть, но открыть его не дали (занят, нет прав). Состояние ВРЕМЕННОЕ, и отличать его от порчи важно. {0} — путь, {1} — сообщение ОС.</comment>
   </data>
   <data name="Bundle_Read_NotAnArchive" xml:space="preserve">
-    <value>Файл не открывается как бандл: {0}</value>
-    <comment>Вердикт читателя: файл открылся, но это не zip. {0} — сообщение распаковщика. Путь здесь не называется — его знает тот, кто показывает строку.</comment>
+      <value>Файл не открывается как макрос: {0}</value>
+      <comment>Вердикт читателя: файл открылся, но это не zip. {0} — сообщение распаковщика. Путь здесь не называется — его знает тот, кто показывает строку.</comment>
   </data>
   <data name="Bundle_Read_MetadataEntryMissing" xml:space="preserve">
-    <value>В бандле нет «{0}» — это не бандл SmartMacro.</value>
-    <comment>Вердикт читателя: zip открылся, но паспорта в нём нет. {0} — имя записи внутри архива (metadata.json).</comment>
+      <value>В макросе нет «{0}».</value>
+      <comment>Вердикт читателя: zip открылся, но паспорта в нём нет. {0} — имя записи внутри архива (metadata.json).</comment>
   </data>
   <data name="Bundle_Read_MetadataUnreadable" xml:space="preserve">
     <value>Запись «{0}» не читается: {1}</value>
@@ -2397,8 +2397,8 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Вердикт читателя: JSON паспорта верный, но поля не те. {0} — имя записи, {1} — сообщение разборщика. Дословно совпадает с Bundle_Read_GraphMalformed — записи оставлены раздельными, чтобы про паспорт и про граф можно было сказать по-разному.</comment>
   </data>
   <data name="Bundle_Read_VersionMismatch" xml:space="preserve">
-    <value>Бандл сделан {0} версией формата (v{1}); эта сборка читает v{2}.</value>
-    <comment>Вердикт читателя: версия формата не та. НЕ повреждение — такой файл остаётся на месте и в сторону не отодвигается. {0} — Bundle_Read_VersionNewer или Bundle_Read_VersionOlder, {1} — версия файла, {2} — версия сборки.</comment>
+      <value>Несовпадение формата: Макрос  {0} сделан в формате v{1}, текущая версия формата: v{2}.</value>
+      <comment>Вердикт читателя: версия формата не та. НЕ повреждение — такой файл остаётся на месте и в сторону не отодвигается. {0} — Bundle_Read_VersionNewer или Bundle_Read_VersionOlder, {1} — версия файла, {2} — версия сборки.</comment>
   </data>
   <data name="Bundle_Read_VersionNewer" xml:space="preserve">
     <value>более новой</value>
@@ -2409,16 +2409,16 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Подставляется в дырку {0} у Bundle_Read_VersionMismatch: файл из прошлой версии программы. Обратной совместимости нет намеренно.</comment>
   </data>
   <data name="Bundle_Read_GraphNotRead" xml:space="preserve">
-    <value>Граф не читался: {0}</value>
-    <comment>Вердикт читателя: до графа дело не дошло, потому что не прочитался паспорт. {0} — вердикт про паспорт, у которого первая буква переведена в строчную (или Bundle_Read_MetadataNotRead).</comment>
+      <value>Макрос не читается: {0}</value>
+      <comment>Вердикт читателя: до графа дело не дошло, потому что не прочитался паспорт. {0} — вердикт про паспорт, у которого первая буква переведена в строчную (или Bundle_Read_MetadataNotRead).</comment>
   </data>
   <data name="Bundle_Read_MetadataNotRead" xml:space="preserve">
-    <value>паспорт бандла не прочитан.</value>
-    <comment>Подставляется в дырку {0} у Bundle_Read_GraphNotRead, когда причины нет. Со строчной буквы и с точкой: это продолжение фразы.</comment>
+      <value>Инофрмация о макросе не прочитана.</value>
+      <comment>Подставляется в дырку {0} у Bundle_Read_GraphNotRead, когда причины нет. Со строчной буквы и с точкой: это продолжение фразы.</comment>
   </data>
   <data name="Bundle_Read_GraphEntryMissing" xml:space="preserve">
-    <value>В бандле нет «{0}».</value>
-    <comment>Вердикт читателя: паспорт цел, а графа в архиве нет. {0} — имя записи (nodes.json). Ровно тот случай, ради которого паспорт и граф разнесены по разным записям: строка библиотеки покажет настоящее имя и описание автора.</comment>
+      <value>В макросе нет «{0}».</value>
+      <comment>Вердикт читателя: паспорт цел, а графа в архиве нет. {0} — имя записи (nodes.json). Ровно тот случай, ради которого паспорт и граф разнесены по разным записям: строка библиотеки покажет настоящее имя и описание автора.</comment>
   </data>
   <data name="Bundle_Read_GraphMalformed" xml:space="preserve">
     <value>«{0}» не разбирается: {1}</value>
@@ -2429,12 +2429,12 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Вердикт читателя: запись графа не распаковывается. {0} — имя записи, {1} — сообщение распаковщика. Дословно совпадает с Bundle_Read_MetadataUnreadable.</comment>
   </data>
   <data name="Bundle_Read_SubmacroMalformed" xml:space="preserve">
-    <value>Под-макрос «{0}» не разбирается: {1}</value>
-    <comment>Вердикт читателя об ОДНОЙ записи submacro/: становится ошибкой валидации уровня бандла, но родительский граф не прячет. {0} — имя записи внутри архива, {1} — сообщение разборщика.</comment>
+      <value>Саб-макрос «{0}» не разбирается: {1}</value>
+      <comment>Вердикт читателя об ОДНОЙ записи submacro/: становится ошибкой валидации уровня бандла, но родительский граф не прячет. {0} — имя записи внутри архива, {1} — сообщение разборщика.</comment>
   </data>
   <data name="Bundle_Read_SubmacroUnreadable" xml:space="preserve">
-    <value>Под-макрос «{0}» не читается: {1}</value>
-    <comment>То же, когда запись под-макроса не распаковывается. {0} — имя записи, {1} — сообщение распаковщика.</comment>
+      <value>Саб-макрос «{0}» не читается: {1}</value>
+      <comment>То же, когда запись под-макроса не распаковывается. {0} — имя записи, {1} — сообщение распаковщика.</comment>
   </data>
 
   <!-- ==================================================================================
@@ -2494,8 +2494,8 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Название поля в отказе проверки: как часто нода ожидания делает новый снимок.</comment>
   </data>
   <data name="Settings_Engine_Field_ClassMatchThreshold" xml:space="preserve">
-    <value>Порог распознавания класса</value>
-    <comment>Название поля в отказе проверки: порог отдельного сопоставителя классов (окно характеристик).</comment>
+      <value>Порог распознавания</value>
+      <comment>Название поля в отказе проверки: порог отдельного сопоставителя классов (окно характеристик).</comment>
   </data>
   <data name="Settings_Engine_Field_LuminanceThreshold" xml:space="preserve">
     <value>Порог яркости</value>
@@ -2550,24 +2550,24 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Значок рядом с пунктом «SendMessage» в списке способов ввода: работает ли по фоновым окнам и умеет ли сочетания с модификаторами. Дословно совпадает со значком PostMessage.</comment>
   </data>
   <data name="Settings_Engine_InputMethod_SendMessage_Detail" xml:space="preserve">
-    <value>Синхронно, по фоновым окнам. Ждёт ответа каждого окна: на десяти клиентах заметно медленнее. Модификаторы (Shift+1) не работают — PW читает их через GetKeyState, который межпоточный SendMessage не обновляет. Умолчание: именно на нём работает игра.</value>
-    <comment>Подсказка при наведении на способ ввода «SendMessage». Показывается дважды: в списке «Ввод по умолчанию» и на кнопке выбора у конкретного процесса.</comment>
+      <value>Синхронно, по фоновым окнам. Ждёт ответа каждого окна.</value>
+      <comment>Подсказка при наведении на способ ввода «SendMessage». Показывается дважды: в списке «Ввод по умолчанию» и на кнопке выбора у конкретного процесса.</comment>
   </data>
   <data name="Settings_Engine_InputMethod_PostMessage_Badge" xml:space="preserve">
     <value>в фоне ✓ · Shift+1 ✕</value>
     <comment>Значок рядом с пунктом «PostMessage». Дословно совпадает со значком SendMessage: различаются эти два способа не тем, что значок показывает, а скоростью и подтверждением доставки.</comment>
   </data>
   <data name="Settings_Engine_InputMethod_PostMessage_Detail" xml:space="preserve">
-    <value>Асинхронно, по фоновым окнам. Быстрее всех, но факт доставки не подтверждается: с ним 1–2 клиента из 11 периодически теряли широковещательное нажатие. Модификаторы (Shift+1) не работают.</value>
-    <comment>Подсказка при наведении на способ ввода «PostMessage».</comment>
+      <value>Асинхронно, по фоновым окнам. Быстрее всех, но факт доставки не подтверждается.</value>
+      <comment>Подсказка при наведении на способ ввода «PostMessage».</comment>
   </data>
   <data name="Settings_Engine_InputMethod_SendInput_Badge" xml:space="preserve">
     <value>в фоне ✕ · Shift+1 ✓</value>
     <comment>Значок рядом с пунктом «SendInput». Способ не реализован, и интерфейс его НЕ предлагает — текст виден только тому, кто вписал значение в settings.json руками.</comment>
   </data>
   <data name="Settings_Engine_InputMethod_SendInput_Detail" xml:space="preserve">
-    <value>Через очередь ввода ОС. Единственный способ, который умеет сочетания с модификаторами, но требует переднего плана: SmartMacro отберёт фокус, а действия по десяти окнам пойдут по очереди. Пока не реализован.</value>
-    <comment>Подсказка про «SendInput». Последняя фраза — единственное место, где программа сообщает, что способ есть в модели, но не работает.</comment>
+      <value>Через очередь ввода ОС. Единственный способ, который умеет сочетания с модификаторами, но требует переднего плана: SmartMacro отберёт фокус, а действия по десяти окнам пойдут по очереди.</value>
+      <comment>Подсказка про «SendInput». Последняя фраза — единственное место, где программа сообщает, что способ есть в модели, но не работает.</comment>
   </data>
   <data name="Settings_Engine_AutoStart_Off" xml:space="preserve">
     <value>автозапуск выключен</value>
@@ -2692,8 +2692,8 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>ПРЕДУПРЕЖДЕНИЕ, проверка хоткеев, и проверяется это состояние ПЕРВЫМ. Зелёной карточки здесь быть не может: клавиши прямо сейчас молчат.</comment>
   </data>
   <data name="Diag_Hotkeys_Suspended_Detail" xml:space="preserve">
-    <value>Сейчас не зарегистрировано ни одного аккорда: так бывает, пока в панели открыт режим «Макросы» — иначе уже занятую клавишу нельзя было бы переназначить. Закройте его, и хоткеи вернутся. Если ни одна панель не открыта, это ошибка: поможет перезапуск демона.</value>
-    <comment>Подробность той же карточки. Последняя фраза — про случай, когда панель убили Диспетчером задач: аренда приостановки отпускается вместе с соединением, но если этого не случилось, лечит только перезапуск.</comment>
+      <value>Сейчас не зарегистрировано ни одного хоткея: так бывает, пока в панели открыт режим «Макросы» — иначе уже занятую клавишу нельзя было бы переназначить. Закройте его, и хоткеи вернутся. Если ни одна панель не открыта, это ошибка: поможет перезапуск демона.</value>
+      <comment>Подробность той же карточки. Последняя фраза — про случай, когда панель убили Диспетчером задач: аренда приостановки отпускается вместе с соединением, но если этого не случилось, лечит только перезапуск.</comment>
   </data>
   <data name="Diag_Hotkeys_Ok_Title" xml:space="preserve">
     <value>Глобальные хоткеи</value>
@@ -2752,7 +2752,7 @@ SmartMacro хранит макросы, настройки, журналы и с
     <comment>Подставляется в дырку {1} у Diag_AutoStart_Failed_Detail, когда просят обе галочки: это единственная реальная причина отказа.</comment>
   </data>
   <data name="Diag_AutoStart_Failed_SeeLog" xml:space="preserve">
-    <value>Подробности — в журнале демона.</value>
-    <comment>Подставляется в ту же дырку в остальных случаях. Отсылка к журналу — признание, что точнее сказать нечем: настоящая причина осталась в строке от реестра или schtasks.</comment>
+      <value>Подробности — в журнале раннера.</value>
+      <comment>Подставляется в ту же дырку в остальных случаях. Отсылка к журналу — признание, что точнее сказать нечем: настоящая причина осталась в строке от реестра или schtasks.</comment>
   </data>
 </root>
