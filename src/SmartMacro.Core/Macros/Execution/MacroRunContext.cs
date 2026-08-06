@@ -1,3 +1,4 @@
+using SmartMacro.Contracts.Settings;
 using SmartMacro.Macros.Model;
 
 namespace SmartMacro.Macros.Execution;
@@ -43,6 +44,19 @@ public sealed record MacroRunContext
     /// было бы враньём.
     /// </summary>
     public IReadOnlyDictionary<Guid, MacroGraph>? Submacros { get; init; }
+
+    /// <summary>
+    /// Ссылки на побудку, которые держит ПРОГОН, — то, чем живёт <see cref="HookLifetime.Run"/>.
+    /// Ставится ОДИН РАЗ, там же, где <see cref="Templates"/>, и наследуется дочерними обходами
+    /// ПО ССЫЛКЕ: «весь прогон» — это про прогон, а не про обход, и веер на десять окон обязан
+    /// складывать свои ссылки в одну корзину.
+    ///
+    /// <c>null</c> = «ссылок на весь прогон никто не держит»; так выглядит любой тест, написанный
+    /// до этой волны, и так же выглядит прогон, в котором ни у одного окна нет хука с
+    /// <see cref="HookLifetime.Run"/>. Понодовые области при этом работают как всегда — они живут
+    /// внутри <c>IMacroPrimitives</c> и до контекста не доходят.
+    /// </summary>
+    public MacroRunHooks? Hooks { get; init; }
 
     /// <summary>
     /// Имя МАКРОСА (бандла), которому принадлежит этот обход, либо <c>null</c> — «взять имя

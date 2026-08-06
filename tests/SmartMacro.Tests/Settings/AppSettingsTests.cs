@@ -26,15 +26,20 @@ public class AppSettingsTests
             Startup = new StartupSettings { RunAtLogon = true, RunElevated = false },
             Profiles =
             [
-                new ProcessProfileSettings
-                {
-                    ProcessName = "elementclient_64",
-                    ActivationLParam = 37336,
-                    SettleDelayMs = 200,
-                    DeactivationDelayMs = 100,
-                },
+                new ProcessProfileSettings { ProcessName = "elementclient_64" },
                 new ProcessProfileSettings { ProcessName = "notepad", InputMethod = InputMethod.SendMessage },
             ],
+            Hooks = new Dictionary<string, ProcessHookSettings>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["elementclient_64"] = new()
+                {
+                    ActivationLParam = 37336,
+                    SettleMs = 200,
+                    DeactivateMs = 100,
+                    On = [HookOn.Capture],
+                    Scope = HookLifetime.Run,
+                },
+            },
         };
 
         var restored = AppSettingsJson.Deserialize(AppSettingsJson.Serialize(settings));
@@ -48,21 +53,68 @@ public class AppSettingsTests
         await Assert.That(restored.Startup.RunAtLogon).IsTrue();
         await Assert.That(restored.Startup.RunElevated).IsFalse();
         await Assert.That(restored.Profiles).Count().IsEqualTo(2);
-        await Assert.That(restored.Profiles[0].ActivationLParam).IsEqualTo(37336u);
         await Assert.That(restored.Profiles[1].InputMethod).IsEqualTo(InputMethod.SendMessage);
+        await Assert.That(restored.Hooks).Count().IsEqualTo(1);
+        await Assert.That(restored.Hooks["elementclient_64"].ActivationLParam).IsEqualTo(37336u);
+        await Assert.That(restored.Hooks["elementclient_64"].SettleMs).IsEqualTo(200);
+        await Assert.That(restored.Hooks["elementclient_64"].DeactivateMs).IsEqualTo(100);
+        await Assert.That(restored.Hooks["elementclient_64"].On).IsEquivalentTo(new[] { HookOn.Capture });
+        await Assert.That(restored.Hooks["elementclient_64"].Scope).IsEqualTo(HookLifetime.Run);
     }
 
-    // Отсутствие ActivationLParam — рабочая семантика («обычный процесс, пробуждение
-    // пропускается»), а не «поле забыли». Круг по JSON обязан её сохранять: потеряй мы null и
-    // подставь что-нибудь — профили не-игровых процессов начали бы слать окнам WM_ACTIVATEAPP.
+    // Отсутствие ХУКА — рабочая семантика («обычный процесс, пробуждение пропускается»), а не
+    // «блок забыли». Круг по JSON обязан её сохранять: заведись у notepad хук сам собой — его окна
+    // начали бы получать WM_ACTIVATEAPP.
     [Test]
-    public async Task Json_KeepsMissingActivationSignalAsNull()
+    public async Task Json_KeepsAProcessWithoutAHookWithoutOne()
     {
         var settings = new AppSettings { Profiles = [new ProcessProfileSettings { ProcessName = "notepad" }] };
 
         var restored = AppSettingsJson.Deserialize(AppSettingsJson.Serialize(settings));
 
-        await Assert.That(restored.Profiles[0].ActivationLParam).IsNull();
+        await Assert.That(restored.Hooks).IsEmpty();
+        await Assert.That(restored.FindHook("notepad")).IsNull();
+    }
+
+    // Пустой набор On законен и от отсутствия хука отличается: хук есть, числа сохранены, не
+    // срабатывает нигде. Потеряй круг по JSON эту разницу — «выключил на время» превратилось бы в
+    // «стёр».
+    [Test]
+    public async Task Json_KeepsAnEmptyOnSetDistinctFromAMissingHook()
+    {
+        var settings = new AppSettings
+        {
+            Hooks = new Dictionary<string, ProcessHookSettings>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["elementclient_64"] = new() { ActivationLParam = 37336, SettleMs = 200, On = [] },
+            },
+        };
+
+        var restored = AppSettingsJson.Deserialize(AppSettingsJson.Serialize(settings));
+
+        var hook = restored.FindHook("elementclient_64")!;
+        await Assert.That(hook.On).IsEmpty();
+        await Assert.That(hook.Fires(HookOn.Input)).IsFalse();
+        await Assert.That(hook.Fires(HookOn.Capture)).IsFalse();
+        await Assert.That(hook.ActivationLParam).IsEqualTo(37336u);
+    }
+
+    [Test]
+    public async Task FindHook_IgnoresCase()
+    {
+        var settings = new AppSettings
+        {
+            // Порядковый компаратор — так словарь и приезжает из JSON; поиск обязан быть
+            // регистронезависимым независимо от того, с каким компаратором его собрали.
+            Hooks = new Dictionary<string, ProcessHookSettings>(StringComparer.Ordinal)
+            {
+                ["ElementClient_64"] = new() { ActivationLParam = 37336 },
+            },
+        };
+
+        await Assert.That(settings.FindHook("elementclient_64")?.ActivationLParam).IsEqualTo(37336u);
+        await Assert.That(settings.FindHook("notepad")).IsNull();
+        await Assert.That(settings.FindHook(null)).IsNull();
     }
 
     [Test]
@@ -126,27 +178,115 @@ public class AppSettingsTests
         await Assert.That(settings.Input.DefaultMethod).IsEqualTo(InputMethod.SendMessage);
         await Assert.That(settings.Profiles).Count().IsEqualTo(1);
         await Assert.That(settings.Profiles[0].ProcessName).IsEqualTo("elementclient_64");
-        await Assert.That(settings.Profiles[0].ActivationLParam).IsEqualTo(37336u);
-        await Assert.That(settings.Profiles[0].SettleDelayMs).IsEqualTo(200);
-        await Assert.That(settings.Profiles[0].DeactivationDelayMs).IsEqualTo(100);
+
+        // Скобка пробуждения — те же три значения, что лежали полями профиля до этой волны, плюс
+        // явно названные умолчания: срабатывает и на вводе, и на захвате, живёт одно действие.
+        var hook = settings.FindHook("elementclient_64")!;
+        await Assert.That(hook.ActivationLParam).IsEqualTo(37336u);
+        await Assert.That(hook.SettleMs).IsEqualTo(200);
+        await Assert.That(hook.DeactivateMs).IsEqualTo(100);
+        await Assert.That(hook.On).IsEquivalentTo(new[] { HookOn.Input, HookOn.Capture });
+        await Assert.That(hook.Scope).IsEqualTo(HookLifetime.Action);
     }
 
     // Таблица известных сигналов применяется ПРИ СОЗДАНИИ и только к узнанному имени. Это и есть
-    // то, что позволило убрать число из интерфейса, не потеряв смысл его отсутствия.
+    // то, что позволило убрать скобку из интерфейса, не потеряв смысл её отсутствия.
     [Test]
-    public async Task NewProfile_FillsTheWakeSignalOnlyForKnownNames()
+    public async Task NewHook_IsCreatedOnlyForKnownNames()
     {
-        var game = KnownActivationSignals.NewProfile("elementclient_64");
-        var other = KnownActivationSignals.NewProfile("notepad");
+        var game = KnownActivationSignals.NewHook("elementclient_64")!;
 
         await Assert.That(game.ActivationLParam).IsEqualTo(37336u);
-        await Assert.That(game.SettleDelayMs).IsEqualTo(200);
-        await Assert.That(game.DeactivationDelayMs).IsEqualTo(100);
+        await Assert.That(game.SettleMs).IsEqualTo(200);
+        await Assert.That(game.DeactivateMs).IsEqualTo(100);
 
-        await Assert.That(other.ActivationLParam).IsNull();
-        // Паузы без сигнала побудки не нужны: GameWindow пропускает их целиком.
-        await Assert.That(other.SettleDelayMs).IsEqualTo(0);
-        await Assert.That(other.DeactivationDelayMs).IsEqualTo(0);
+        // Незнакомому имени — не хук с нулями, а отсутствие записи: только оно означает «обычный
+        // процесс, пробуждение пропускается».
+        await Assert.That(KnownActivationSignals.NewHook("notepad")).IsNull();
+        await Assert.That(KnownActivationSignals.NewHook(null)).IsNull();
+    }
+
+    // ---- старая форма файла ------------------------------------------------------------------
+    //
+    // До появления блока Hooks сигнал побудки и обе паузы лежали ПОЛЯМИ ПРОФИЛЯ. После смены схемы
+    // они стали бы неизвестными членами, а неизвестные члены System.Text.Json молча пропускает —
+    // то есть у всех, кто уже пользуется программой, скобка исчезла бы при первом же сохранении из
+    // панели. Симптом «макросы перестали работать», причина невидима, вернуть число неоткуда.
+
+    private const string LegacySettings = """
+        {
+          "Watch": { "ProcessPollIntervalSeconds": 1, "WindowPollIntervalSeconds": 2 },
+          "Profiles": [
+            {
+              "ProcessName": "elementclient_64",
+              "ActivationLParam": 37336,
+              "SettleDelayMs": 250,
+              "DeactivationDelayMs": 90,
+              "InputMethod": "PostMessage"
+            },
+            { "ProcessName": "notepad", "ActivationLParam": null, "SettleDelayMs": 0, "DeactivationDelayMs": 0 }
+          ]
+        }
+        """;
+
+    [Test]
+    public async Task Json_AdoptsTheWakeBracketFromTheOldProfileFields()
+    {
+        var restored = AppSettingsJson.Deserialize(LegacySettings, out var adopted);
+
+        await Assert.That(adopted).IsEqualTo(1);
+
+        var hook = restored.FindHook("elementclient_64")!;
+        await Assert.That(hook.ActivationLParam).IsEqualTo(37336u);
+        await Assert.That(hook.SettleMs).IsEqualTo(250);
+        await Assert.That(hook.DeactivateMs).IsEqualTo(90);
+        // Старая скобка срабатывала и на вводе, и на захвате, и жила одно действие: миграция не
+        // имеет права поменять поведение заодно.
+        await Assert.That(hook.On).IsEquivalentTo(new[] { HookOn.Input, HookOn.Capture });
+        await Assert.That(hook.Scope).IsEqualTo(HookLifetime.Action);
+
+        // Профиль без сигнала и был «обычным процессом» — хука ему не полагается.
+        await Assert.That(restored.FindHook("notepad")).IsNull();
+        // Остальное профиль донёс как обычно.
+        await Assert.That(restored.Profiles[0].InputMethod).IsEqualTo(InputMethod.PostMessage);
+    }
+
+    // ⚠️ «Ключа нет» и «ключ пуст» — разные вещи, и здесь это несущее различие: пустой "Hooks": {}
+    // означает осознанное «скобок нет», и перебить его старыми полями значило бы отменить решение
+    // пользователя.
+    [Test]
+    public async Task Json_DoesNotAdoptLegacyFieldsWhenHooksAreDeclaredEmpty()
+    {
+        var json = """
+            {
+              "Hooks": {},
+              "Profiles": [
+                { "ProcessName": "elementclient_64", "ActivationLParam": 37336, "SettleDelayMs": 250 }
+              ]
+            }
+            """;
+
+        var restored = AppSettingsJson.Deserialize(json, out var adopted);
+
+        await Assert.That(adopted).IsEqualTo(0);
+        await Assert.That(restored.Hooks).IsEmpty();
+    }
+
+    // Миграция читается, но НЕ переписывается: записанный обратно файл уже в новой форме, и старых
+    // полей в нём нет ни одного — иначе следующее чтение имело бы два источника правды.
+    [Test]
+    public async Task Json_WritesTheAdoptedBracketInTheNewShapeOnly()
+    {
+        var migrated = AppSettingsJson.Deserialize(LegacySettings);
+
+        var written = AppSettingsJson.Serialize(migrated);
+
+        await Assert.That(written).Contains("\"Hooks\"");
+        await Assert.That(written).Contains("\"SettleMs\": 250");
+        await Assert.That(written).DoesNotContain("SettleDelayMs");
+        await Assert.That(written).DoesNotContain("DeactivationDelayMs");
+        await Assert.That(AppSettingsJson.Deserialize(written).FindHook("elementclient_64")!.SettleMs)
+            .IsEqualTo(250);
     }
 
     [Test]
@@ -186,6 +326,26 @@ public class AppSettingsTests
 
         await Assert.That(issues).IsNotEmpty();
         await Assert.That(issues[0].Message).Contains("notepad");
+    }
+
+    // Границы пауз переехали вместе с самими паузами. Экран их не показывает, так что приехать
+    // такое может только из файла, правленного руками, — и пропустить в движок паузу устаканивания
+    // в десять минут хуже, чем сказать про поле, которого нет на экране.
+    [Test]
+    public async Task Validator_RejectsOutOfRangeHookDelays()
+    {
+        var settings = AppSettings.Default with
+        {
+            Hooks = new Dictionary<string, ProcessHookSettings>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["elementclient_64"] = new() { ActivationLParam = 37336, SettleMs = -1, DeactivateMs = 999_999 },
+            },
+        };
+
+        var issues = AppSettingsValidator.Validate(settings);
+
+        await Assert.That(issues.Select(i => i.Field)).Contains("Hooks[elementclient_64].SettleMs");
+        await Assert.That(issues.Select(i => i.Field)).Contains("Hooks[elementclient_64].DeactivateMs");
     }
 
     [Test]

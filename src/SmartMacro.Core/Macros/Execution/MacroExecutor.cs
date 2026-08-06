@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using SmartMacro.Contracts.Dto;
+using SmartMacro.Contracts.Settings;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
 using SmartMacro.Resources;
@@ -46,15 +47,20 @@ namespace SmartMacro.Macros.Execution;
 ///
 /// <b>Отладка (волна D5).</b> <see cref="MacroRunContext.Debugger"/> может припарковать обход
 /// МЕЖДУ двумя нодами — и никогда внутри ноды. Эта граница и есть весь довод в пользу
-/// безопасности: и обрамление <c>ActivateAsync</c>/<c>DeactivateAsync</c> у любой ноды ввода, и
-/// побудка с обратной заморозкой на каждом тике зрения целиком живут внутри
-/// <see cref="IMacroPrimitives"/>, так что к моменту возврата управления сюда ни одно игровое
-/// окно не остаётся разбуженным. Держится это не на порядке строк, а на <c>try/finally</c> в обеих
-/// скобках (<c>GameWindow</c> и <c>AgentInputDispatcher</c>): без него «к моменту возврата сюда»
-/// было бы верно только для успешного пути, а интересен здесь как раз неуспешный — отмена по
-/// «■ Стоп» посреди тика зрения. Пауза здесь не может бросить клиент замороженным; пауза
-/// где-нибудь глубже — может. Дисциплина затвора по <c>IsActive</c> та же, что у наблюдателя:
-/// обход, который никто не отлаживает, платит одно volatile-чтение на ноду и ничего не выделяет.
+/// безопасности: скобка пробуждения (<c>WindowHookScope</c>) — и у ноды ввода, и на каждом тике
+/// зрения — целиком живёт внутри <see cref="IMacroPrimitives"/>, так что к моменту возврата
+/// управления сюда ни одно игровое окно не остаётся разбуженным. Держится это не на порядке строк,
+/// а на том, что скобку закрывает <c>await using</c>: пока вторая половина была отдельным вызовом,
+/// «к моменту возврата сюда» было верно только для успешного пути, а интересен здесь как раз
+/// неуспешный — отмена по «■ Стоп» посреди тика зрения.
+///
+/// <b>Одно исключение из «ни одно окно не разбужено» — хук с <c>Scope: Run</c></b>, который держит
+/// побудку весь прогон. Оно и обслуживается тем же затвором: перед тем как встать на паузу, обход
+/// отпускает ссылки прогона (<see cref="MacroRunHooks.ReleaseAllAsync"/>), а после возобновления
+/// берёт их заново — ленивым захватом на ближайшей же ноде. Пауза здесь не может бросить клиент
+/// размороженным; пауза где-нибудь глубже — может. Дисциплина затвора по <c>IsActive</c> та же,
+/// что у наблюдателя: обход, который никто не отлаживает, платит одно volatile-чтение на ноду и
+/// ничего не выделяет.
 /// </summary>
 public sealed partial class MacroExecutor
 {
@@ -274,12 +280,29 @@ public sealed partial class MacroExecutor
             return Task.CompletedTask;
         }
 
-        return WaitAsync(debugger, gate, trace, ct);
+        return WaitAsync(debugger, gate, trace, context.Hooks, ct);
 
         static async Task WaitAsync(IMacroDebugger debugger, MacroDebugGate gate, MacroWalkTrace trace,
-            CancellationToken ct)
+            MacroRunHooks? hooks, CancellationToken ct)
         {
+            // Сначала объявляем о паузе, потом замораживаем. Порядок именно такой: закрытие
+            // ссылок платит паузу на слив, а событие Paused обязано уйти сразу — шаг, ждущий
+            // полную выдержку, ощущается как залипшая кнопка (тот же довод, что у обхода
+            // склейки в D3b).
             trace.Paused(gate.NodeId, gate.NodeName, gate.Reason);
+
+            // ⚠️ ПРИПАРКОВАВШИЙСЯ ОБХОД ОТПУСКАЕТ ССЫЛКИ НА ПОБУДКУ. Затвор потому и стоит здесь,
+            // между нодами, что к этому моменту ни одно игровое окно не разбужено; хук с
+            // Scope: Run это правило нарушал бы, потому что его ссылку никто не закрывает до
+            // конца прогона. Таймаута бездействия у паузы намеренно нет, так что «человек ушёл за
+            // чаем» без этой строки означало бы до десяти клиентов, рендерящих в фоне сколько
+            // угодно долго. Обратно ссылки берутся сами: захват ленивый, и ближайшая же нода
+            // после возобновления позовёт HoldForRunAsync.
+            if (hooks is not null)
+            {
+                await hooks.ReleaseAllAsync().ConfigureAwait(false);
+            }
+
             try
             {
                 // Отмена («■ Стоп», выключение демона) распускает парковку: OCE
@@ -319,6 +342,7 @@ public sealed partial class MacroExecutor
             case KeyPressNode n:
             {
                 var targets = ResolveTargets(n, n.Target, context);
+                await HoldForRunAsync(context, targets, HookOn.Input, ct).ConfigureAwait(false);
                 await Task.WhenAll(targets.Select(hwnd => _primitives.PressKeyAsync(hwnd, n.Key, ct)))
                     .ConfigureAwait(false);
                 return NodeStep.Done(n.Next, DetailIfTracing(trace, () => Fanout(n.Key.ToString(), targets.Count)));
@@ -327,6 +351,7 @@ public sealed partial class MacroExecutor
             {
                 var point = ResolveClickPoint(n, context.Variables);
                 var targets = ResolveTargets(n, n.Target, context);
+                await HoldForRunAsync(context, targets, HookOn.Input, ct).ConfigureAwait(false);
                 await Task.WhenAll(targets.Select(hwnd => _primitives.ClickAsync(hwnd, point, n.DoubleClick, ct)))
                     .ConfigureAwait(false);
                 return NodeStep.Done(n.Next, DetailIfTracing(trace, () => Fanout(
@@ -388,6 +413,7 @@ public sealed partial class MacroExecutor
                             CultureInfo.CurrentCulture, Strings.Run_Detail_TemplateNotInMacro, n.Template)));
                 }
 
+                await HoldForRunAsync(context, [hwnd], HookOn.Capture, ct).ConfigureAwait(false);
                 var found = await _primitives.FindElementAsync(hwnd, template, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
                 if (found is { } point)
                 {
@@ -412,6 +438,7 @@ public sealed partial class MacroExecutor
                             CultureInfo.CurrentCulture, Strings.Run_Detail_TemplateNotInMacro, n.Template)));
                 }
 
+                await HoldForRunAsync(context, [hwnd], HookOn.Capture, ct).ConfigureAwait(false);
                 var found = await _primitives.WaitForElementAsync(hwnd, template, n.Region, n.TimeoutMs, n.MatchThreshold, ct)
                     .ConfigureAwait(false);
                 if (found is { } point)
@@ -440,6 +467,7 @@ public sealed partial class MacroExecutor
                             CultureInfo.CurrentCulture, Strings.Run_Detail_TemplateNotInMacro, n.TemplateSet)));
                 }
 
+                await HoldForRunAsync(context, [hwnd], HookOn.Capture, ct).ConfigureAwait(false);
                 var tag = await _primitives.RecognizeAsync(hwnd, set, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
                 if (tag is not null)
                 {
@@ -464,6 +492,20 @@ public sealed partial class MacroExecutor
                     node.GetType().Name));
         }
     }
+
+    /// <summary>
+    /// Берёт ссылку на побудку ВСЕГО ПРОГОНА для тех целей, чей хук так велит
+    /// (<see cref="HookLifetime.Run"/>). Для всех прочих — а это умолчание — не делает ничего,
+    /// кроме прохода по списку целей.
+    ///
+    /// Стоит ЗДЕСЬ, а не внутри примитива, по той же причине, по которой шаблоны разрешает
+    /// обходчик: цели посчитаны тут, прогон известен тут, а слой «ввод, зрение и косметика по
+    /// hwnd» не должен знать ни о том, ни о другом. Понодовую область это не подменяет — примитив
+    /// откроет свою как всегда, просто счётчик окна уже не на нуле.
+    /// </summary>
+    private static Task HoldForRunAsync(MacroRunContext context, IReadOnlyList<IntPtr> targets, HookOn on,
+        CancellationToken ct) =>
+        context.Hooks is { } hooks ? hooks.EnsureAsync(targets, on, ct) : Task.CompletedTask;
 
     /// <summary>
     /// Имя шаблона → байты, из бандла ЭТОГО прогона (волна F2).
@@ -657,6 +699,10 @@ public sealed partial class MacroExecutor
             // Наследуется ради единообразия, а не ради вложенности: звать отсюда всё равно
             // некого — проверка плоскости выше это и обеспечивает.
             Submacros = parent.Submacros,
+            // Наследуется ПО ССЫЛКЕ, в отличие от переменных: «побудка на весь прогон» — это про
+            // прогон, а не про обход, и веер на десять окон обязан складывать ссылки в одну
+            // корзину, которую закроет оркестратор.
+            Hooks = parent.Hooks,
             OnNodeEntered = parent.OnNodeEntered,
             // Наследуется, а не заводится на каждого ребёнка: наблюдатель — синглтон, а
             // собственная идентичность ДОЧЕРНЕГО ОБХОДА рождается в MacroWalkTrace.Begin внутри

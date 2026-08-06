@@ -17,8 +17,13 @@
       этого нет ни в каком виде: чтобы показать число, панель обязана пересчитать все графы
       библиотеки, а устареет оно при первой же правке любого из них. Осталась пометка, что это
       умолчание и шаг вправе задать своё.
-    · СИГНАЛ ПОБУДКИ БЕЗ ЧИСЛА. Макет показывает ActivationLParam экспертным полем; здесь его нет
-      вовсе — только «есть» / «не нужен». Обоснование записано у ProcessProfileRowViewModel.
+    · СКОБКИ ПРОБУЖДЕНИЯ НЕТ ВОВСЕ. Макет показывает ActivationLParam экспертным полем, а первая
+      реализация оставляла от него признак «есть / не нужен» плюс колонки «ОСЕДАНИЕ» и «ДЕАКТИВ.».
+      Теперь все три поля собраны в хук процесса и живут только в settings.json: их значения
+      проверяются исключительно на живой игре, а выставленные наугад дают фоновые окна, молча
+      переставшие принимать ввод. Профиль отвечает на два вопроса, которые экран действительно
+      умеет задать, — за кем следить и чем вводить. Обоснование записано у
+      ProcessProfileRowViewModel и у ProcessHookSettings.
 
   ⚠️ У КАЖДОГО TextBox С ЖЁСТКОЙ ВЫСОТОЙ СТОИТ Padding="8,0" И VerticalContentAlignment="Center".
   Это не косметика: вертикальный отступ темы 11.2px плюс обрезающий PART_ScrollViewer при Height
@@ -268,7 +273,7 @@
                                 <TextBlock Grid.Column="1"
                                            Margin="9,0,0,0"
                                            Classes="aside"
-                                           Text="{x:Static res:Strings.Settings_Profiles_Subtitle}" />
+                                           Text="{x:Static res:Strings.Settings_Profiles_Caption}" />
                             </Grid>
                         </Border>
 
@@ -278,12 +283,9 @@
                                 BorderBrush="{DynamicResource NocturneDividerBrush}"
                                 BorderThickness="0,0,0,1"
                                 Padding="12,0">
-                            <Grid ColumnDefinitions="*,86,74,74,132,24">
+                            <Grid ColumnDefinitions="*,132,24">
                                 <TextBlock Grid.Column="0" Classes="eyebrow" Text="{x:Static res:Strings.Settings_Profiles_ColProcess}" />
-                                <TextBlock Grid.Column="1" Classes="eyebrow" Text="{x:Static res:Strings.Settings_Profiles_ColWake}" />
-                                <TextBlock Grid.Column="2" Classes="eyebrow" Text="{x:Static res:Strings.Settings_Profiles_ColSettle}" />
-                                <TextBlock Grid.Column="3" Classes="eyebrow" Text="{x:Static res:Strings.Settings_Profiles_ColDeactivate}" />
-                                <TextBlock Grid.Column="4" Classes="eyebrow" Text="{x:Static res:Strings.Settings_Profiles_ColInput}" />
+                                <TextBlock Grid.Column="1" Classes="eyebrow" Text="{x:Static res:Strings.Settings_Profiles_ColInput}" />
                             </Grid>
                         </Border>
 
@@ -294,7 +296,7 @@
                                         <Border BorderBrush="{DynamicResource NocturneDividerBrush}"
                                                 BorderThickness="0,0,0,1"
                                                 Padding="12,4">
-                                            <Grid ColumnDefinitions="*,86,74,74,132,24">
+                                            <Grid ColumnDefinitions="*,132,24">
                                                 <TextBox Grid.Column="0"
                                                          Height="26"
                                                          MinHeight="26"
@@ -306,33 +308,12 @@
                                                          Watermark="{x:Static res:Strings.Settings_Profiles_NameWatermark}"
                                                          Text="{Binding ProcessName, Mode=TwoWay}" />
 
-                                                <!-- Числа сигнала побудки здесь нет намеренно:
-                                                     это добытый реверсом костыль под одну игру,
-                                                     а не настройка. Подсказка объясняет и то,
-                                                     что он делает, и где его править. -->
-                                                <TextBlock Grid.Column="1"
-                                                           VerticalAlignment="Center"
-                                                           FontSize="{DynamicResource NocturneFontSizeSmall}"
-                                                           Text="{Binding WakeText}"
-                                                           ToolTip.Tip="{Binding WakeTooltip}"
-                                                           Foreground="{Binding WakesWindows, Converter={x:Static conv:TokenBrushConverter.Instance}, ConverterParameter=NocturneWarningBrush|NocturneTextFaintBrush}" />
-
-                                                <TextBox Grid.Column="2"
-                                                         Classes="num"
-                                                         Width="60"
-                                                         Margin="0,0,8,0"
-                                                         HorizontalAlignment="Left"
-                                                         ToolTip.Tip="{x:Static res:Strings.Settings_Profiles_SettleTip}"
-                                                         Text="{Binding SettleDelayMs, Mode=TwoWay}" />
-                                                <TextBox Grid.Column="3"
-                                                         Classes="num"
-                                                         Width="60"
-                                                         Margin="0,0,8,0"
-                                                         HorizontalAlignment="Left"
-                                                         ToolTip.Tip="{x:Static res:Strings.Settings_Profiles_DeactivateTip}"
-                                                         Text="{Binding DeactivationDelayMs, Mode=TwoWay}" />
-
-                                                <ComboBox Grid.Column="4"
+                                                <!-- Скобки пробуждения здесь нет целиком — ни
+                                                     «ПОБУДКА», ни «ОСЕДАНИЕ», ни «ДЕАКТИВ.».
+                                                     Это хук процесса в settings.json: добытый
+                                                     реверсом костыль под одну игру, значения
+                                                     которого проверяются только на живой игре. -->
+                                                <ComboBox Grid.Column="1"
                                                           Width="124"
                                                           Height="26"
                                                           VerticalAlignment="Center"
@@ -347,7 +328,7 @@
                                                     </ComboBox.ItemTemplate>
                                                 </ComboBox>
 
-                                                <Button Grid.Column="5"
+                                                <Button Grid.Column="2"
                                                         Content="✕"
                                                         Width="22"
                                                         Height="22"
