@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using SmartMacro.Io;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
 using SmartMacro.Resources;
@@ -206,7 +207,7 @@ public static class MacroBundleFolder
     /// Маска бандлов — она же фильтр наблюдателя у обоих владельцев. Временный файл атомарной
     /// записи (<c>{имя}.hsm.tmp</c>) под неё не попадает ни длинным именем, ни коротким 8.3
     /// («FOOHSM~1.TMP»: 8.3 берёт первые три символа ПОСЛЕДНЕГО расширения) — см.
-    /// <see cref="MacroBundleWriter"/>.
+    /// <see cref="AtomicFile"/>.
     /// </summary>
     public const string Filter = "*" + MacroBundleFormat.Extension;
 
@@ -601,15 +602,15 @@ public static class MacroBundleFolder
             // Прямой File.Copy(overwrite: true) отказал бы ровно тогда, когда бандл в этот момент
             // читает демон, — читатель открывает файл с FileShare.Read|Delete, а перезапись
             // просит доступ на запись.
-            var temp = path + MacroBundleWriter.TempSuffix;
+            var temp = AtomicFile.TempPathFor(path);
             try
             {
                 File.Copy(sourcePath, temp, overwrite: true);
-                MacroBundleWriter.PlaceAtomically(temp, path);
+                AtomicFile.Replace(temp, path);
             }
             catch
             {
-                TryDelete(temp);
+                AtomicFile.TryDelete(temp);
                 throw;
             }
 
@@ -618,18 +619,6 @@ public static class MacroBundleFolder
 
         File.Copy(sourcePath, path);
         return name;
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Не вышло — и ладно: следующая запись этого макроса ляжет по тому же имени.
-        }
     }
 
     /// <summary>

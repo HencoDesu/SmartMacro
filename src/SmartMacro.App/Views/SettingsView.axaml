@@ -85,7 +85,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
 
         <!-- ================================= шапка ================================= -->
         <Border Grid.Row="0"
@@ -153,8 +153,35 @@
             </Grid>
         </Border>
 
+        <!-- ========================= файл настроек не прочитан ========================= -->
+        <!-- Полоса стоит НАД ФОРМОЙ, а не в подсказке и не значком у поля, и не там, где раньше
+             жила диагностика среды (её нет вовсе). Довод: пока этой полосы не было, демон честно
+             не переписывал нечитаемый файл, а панель показывала вместо него умолчания — и первое
+             же «Применить» уничтожало файл, чинившийся одной запятой. Человек обязан прочитать
+             предупреждение ровно там, где собирается нажать кнопку.
+
+             «Применить» при этом НЕ гасится: перезаписать сломанный файл — законное намерение,
+             опасна была тихая потеря, а не сама возможность. -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource NocturneWarningSurfaceBrush}"
+                BorderBrush="{DynamicResource NocturneWarningBorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16,7"
+                IsVisible="{Binding ShowsFileFault}">
+            <StackPanel Spacing="3">
+                <TextBlock Text="{Binding FileFault}"
+                           FontSize="{DynamicResource NocturneFontSizeSmall}"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource NocturneWarningBrush}" />
+                <TextBlock Text="{x:Static res:Strings.Settings_File_UnreadableNote}"
+                           FontSize="{DynamicResource NocturneFontSizeMicro}"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource NocturneTextMutedBrush}" />
+            </StackPanel>
+        </Border>
+
         <!-- ================================== тело ================================== -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,380" Margin="12,10">
+        <Grid Grid.Row="2" ColumnDefinitions="*,380" Margin="12,10">
 
             <!-- ============================ левая колонка =========================== -->
             <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="0,0,12,0">
@@ -541,7 +568,7 @@
         </Grid>
 
         <!-- ============================== замечания ============================== -->
-        <Border Grid.Row="2"
+        <Border Grid.Row="3"
                 Background="{DynamicResource NocturneDangerSurfaceBrush}"
                 BorderBrush="{DynamicResource NocturneDangerBorderBrush}"
                 BorderThickness="0,1,0,0"

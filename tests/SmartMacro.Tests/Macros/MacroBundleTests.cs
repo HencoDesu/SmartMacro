@@ -538,23 +538,175 @@ public class MacroBundleTests
         }
     }
 
+    // ⚠️ Здесь стояло обратное утверждение — «писатель ОТКАЗЫВАЕТ двум шаблонам, различающимся
+    // регистром», с доводом про NTFS. Довод описывал сценарий, которого у нас нет: шаблоны никогда
+    // не распаковываются на диск, а исполнитель и опись разрешают имена ordinal'но, потому что
+    // «Лучник» и «лучник» — разные теги. Цена осторожности была невозвратной: импортированный
+    // бандл (импорт — копирование файла, содержимое намеренно не разбирается) с двумя такими
+    // записями читался, исполнялся и показывался двумя строками, но первое же «Сохранить» падало —
+    // и починить это из интерфейса было нельзя, потому что удаление шаблона идёт через того же
+    // писателя.
+    //
+    // Проверяем весь круг: читается, сохраняется, и ПОСЛЕ сохранения оба на месте, каждый со
+    // своими байтами.
     [Test]
-    public async Task Write_RefusesTwoTemplatesThatDifferOnlyInCase()
+    public async Task ABundleWithTwoTemplatesDifferingOnlyInCaseSurvivesASaveWithBothIntact()
     {
         var dir = CreateTempDir();
         try
         {
             var path = Path.Combine(dir, "регистр.hsm");
-
-            // На NTFS это не два файла, а один — у получателя бандл распаковался бы неполным.
-            await Assert.That(() => MacroBundleWriter.Write(path, Content() with
+            MacroBundleWriter.Write(path, Content() with
             {
                 Templates =
                 [
                     new MacroBundleFile("classes/Лучник.png", [1]),
                     new MacroBundleFile("classes/лучник.png", [2]),
                 ],
+            });
+
+            var read = MacroBundleReader.Read(path);
+            await Assert.That(read.TemplatePaths)
+                .IsEquivalentTo(new[] { "classes/Лучник.png", "classes/лучник.png" });
+
+            // Цикл «прочитать всё → поменять одно → записать всё» — то самое место, где раньше
+            // ломалось.
+            var content = MacroBundleReader.ReadContent(path);
+            await Assert.That(content.IsOk).IsTrue();
+            MacroBundleWriter.Write(path, content.Content! with { Metadata = content.Content!.Metadata.Touch() });
+
+            var again = MacroBundleReader.ReadAllTemplates(path);
+            await Assert.That(again.Select(file => file.Path))
+                .IsEquivalentTo(new[] { "classes/Лучник.png", "classes/лучник.png" });
+            await Assert.That(again.Single(file => file.Path == "classes/Лучник.png").Bytes)
+                .IsEquivalentTo(new byte[] { 1 });
+            await Assert.That(again.Single(file => file.Path == "classes/лучник.png").Bytes)
+                .IsEquivalentTo(new byte[] { 2 });
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+
+    // Побуквенный дубль писатель по-прежнему отвергает: две записи с ОДНИМ И ТЕМ ЖЕ именем — это
+    // архив, из которого читатель достанет одну, то есть молчаливая потеря второй.
+    [Test]
+    public async Task Write_RefusesTheSamePathTwice()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = Path.Combine(dir, "дубль.hsm");
+
+            await Assert.That(() => MacroBundleWriter.Write(path, Content() with
+            {
+                Templates =
+                [
+                    new MacroBundleFile("classes/Лучник.png", [1]),
+                    new MacroBundleFile("classes\\Лучник.png", [2]),
+                ],
             })).Throws<ArgumentException>();
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+
+    // ── Пределы распаковки ────────────────────────────────────────────────────────────────
+    //
+    // «Зип-бомб не бывает» верно только для бандлов, которые пишем МЫ: свойство «распакованный
+    // размер равен размеру файла» обеспечивает писатель (store-only). Импорт — копирование чужого
+    // файла байт в байт, и сжатие в нём никто не запрещал. Первый запуск такого макроса шёл прямо
+    // в ReadAllTemplates («все шаблоны бандла разом в память»), то есть ронял по памяти ДЕМОНА —
+    // резидентный движок со всеми хоткеями и прогонами.
+    //
+    // Отказ здесь общий на весь бандл, а не «пропустим эту запись»: пропущенная запись исчезла бы
+    // при первом же «Сохранить», то есть та же потеря, только тише.
+
+    [Test]
+    public async Task AnEntryThatInflatesPastTheLimitMakesTheWholeBundleUnreadable()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = Path.Combine(dir, "бомба.hsm");
+            WriteCompressedBundle(path, ("templates/бомба.png", MacroBundleFormat.MaxEntryBytes + 1));
+
+            var read = MacroBundleReader.Read(path);
+
+            await Assert.That(read.IsOk).IsFalse();
+            await Assert.That(read.Metadata.Fault).IsEqualTo(MacroBundleFault.TooLarge);
+            // Вердикт называет запись и оба числа — иначе «что-то не так с файлом» и всё.
+            await Assert.That(Msg.Is(read.Metadata.Message, Strings.Bundle_Read_EntryTooLarge)).IsTrue();
+            await Assert.That(read.Metadata.Message).Contains("templates/бомба.png");
+
+            // Дорога, по которой демон и падал: шаблоны не читаются вовсе.
+            await Assert.That(MacroBundleReader.ReadAllTemplates(path)).IsEmpty();
+            await Assert.That(MacroBundleReader.ReadTemplateCatalog(path)).IsEmpty();
+
+            // И перезапись отказывается: «прочитать всё → поменять одно → записать всё» не может
+            // выполнить первый шаг, а писать поверх значило бы стереть содержимое.
+            var content = MacroBundleReader.ReadContent(path);
+            await Assert.That(content.IsOk).IsFalse();
+            await Assert.That(content.IsMissing).IsFalse();
+            await Assert.That(content.Fault).IsEqualTo(MacroBundleFault.TooLarge);
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+
+    // Одного предела на запись мало: тысяча записей по мегабайту кладёт демон ровно так же.
+    [Test]
+    public async Task ManyEntriesUnderTheEntryLimitStillTripTheBundleLimit()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = Path.Combine(dir, "россыпь.hsm");
+            var each = MacroBundleFormat.MaxEntryBytes - 1;
+            var count = (int)(MacroBundleFormat.MaxBundleBytes / each) + 1;
+            WriteCompressedBundle(path,
+                [.. Enumerable.Range(0, count).Select(i => ($"templates/часть-{i}.png", each))]);
+
+            var read = MacroBundleReader.Read(path);
+
+            await Assert.That(read.Metadata.Fault).IsEqualTo(MacroBundleFault.TooLarge);
+            await Assert.That(Msg.Is(read.Metadata.Message, Strings.Bundle_Read_BundleTooLarge)).IsTrue();
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+
+    // Второй рубеж. Сумма по оглавлению — это доверие к числу, которое написал тот же, кто прислал
+    // файл. Здесь оглавление обещает 16 байт, а запись отдаёт мегабайт; проверка по оглавлению
+    // проходит, и поймать это может только само чтение.
+    [Test]
+    public async Task AnEntryThatOutgrowsItsDeclaredSizeIsNotMaterialised()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = Path.Combine(dir, "враньё.hsm");
+            MacroBundleWriter.Write(path, Content() with
+            {
+                Templates = [new MacroBundleFile("Кадр.png", new byte[1024 * 1024])],
+            });
+            LieAboutUncompressedSize(path, "templates/Кадр.png", declared: 16);
+
+            // Оглавление в пределах, так что бандл читается — и паспорт, и граф на месте.
+            var read = MacroBundleReader.Read(path);
+            await Assert.That(read.IsOk).IsTrue();
+
+            // А байты записи не отдаются: не тот размер — значит, нечитаемая запись.
+            await Assert.That(MacroBundleReader.ReadTemplate(path, "Кадр.png")).IsNull();
+            await Assert.That(MacroBundleReader.ReadAllTemplates(path).Select(file => file.Path))
+                .DoesNotContain("Кадр.png");
         }
         finally
         {
@@ -605,5 +757,72 @@ public class MacroBundleTests
         using var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Update);
         archive.GetEntry(entryName)?.Delete();
+    }
+
+    /// <summary>
+    /// Собирает СЖАТЫЙ бандл с записями заданного распакованного размера — то, чего наш писатель
+    /// не производит и чего импорт не запрещает.
+    ///
+    /// Нули пишутся потоком по мегабайту: дефлейт сжимает их в тысячу раз, так что файл на диске
+    /// остаётся крошечным, а оглавление честно объявляет полный размер — ровно как настоящая
+    /// зип-бомба.
+    /// </summary>
+    private static void WriteCompressedBundle(string path, params (string Entry, long Bytes)[] entries)
+    {
+        using var stream = new FileStream(path, FileMode.Create, FileAccess.Write);
+        using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
+
+        Text(archive, MacroBundleFormat.MetadataEntry, MacroBundleMetadataJson.Serialize(Metadata()));
+        Text(archive, MacroBundleFormat.GraphEntry, MacroGraphJson.Serialize(FullMacroGraphFixture.Build()));
+
+        var chunk = new byte[1024 * 1024];
+        foreach (var (name, size) in entries)
+        {
+            using var target = archive.CreateEntry(name, CompressionLevel.Optimal).Open();
+            for (long written = 0; written < size;)
+            {
+                var take = (int)Math.Min(chunk.Length, size - written);
+                target.Write(chunk, 0, take);
+                written += take;
+            }
+        }
+
+        static void Text(ZipArchive archive, string name, string text)
+        {
+            using var writer = new StreamWriter(
+                archive.CreateEntry(name, CompressionLevel.NoCompression).Open(), new UTF8Encoding(false));
+            writer.Write(text);
+        }
+    }
+
+    /// <summary>
+    /// Правит в ОГЛАВЛЕНИИ архива объявленный распакованный размер одной записи, не трогая саму
+    /// запись. Собрать такой файл через <see cref="ZipArchive"/> нельзя — он всегда пишет правду,
+    /// а проверить надо именно недоверие к оглавлению.
+    ///
+    /// Раскладка записи центрального каталога (PK\x01\x02): подпись 4, дальше по два байта до
+    /// crc32 на смещении 16, сжатый размер на 20, распакованный на 24, длина имени на 28.
+    /// </summary>
+    private static void LieAboutUncompressedSize(string path, string entryName, uint declared)
+    {
+        var bytes = File.ReadAllBytes(path);
+        var name = Encoding.UTF8.GetBytes(entryName);
+        ReadOnlySpan<byte> signature = [0x50, 0x4B, 0x01, 0x02];
+
+        for (var i = 0; i + 46 + name.Length <= bytes.Length; i++)
+        {
+            if (!bytes.AsSpan(i, 4).SequenceEqual(signature)
+                || BitConverter.ToUInt16(bytes, i + 28) != name.Length
+                || !bytes.AsSpan(i + 46, name.Length).SequenceEqual(name))
+            {
+                continue;
+            }
+
+            BitConverter.GetBytes(declared).CopyTo(bytes, i + 24);
+            File.WriteAllBytes(path, bytes);
+            return;
+        }
+
+        throw new InvalidOperationException($"В оглавлении архива нет записи «{entryName}».");
     }
 }

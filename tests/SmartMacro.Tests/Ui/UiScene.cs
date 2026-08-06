@@ -284,11 +284,16 @@ internal sealed class UiScene : IDisposable
                 Log(3, LogLevelDto.Error, "RegisterHotKey отказал: Ctrl+Shift+F1 занят другим приложением"),
                 Log(4, LogLevelDto.Debug, "Опрос процессов: найдено 3 окна elementclient_64"),
             })
+            // ⚠️ FileFault непустой НАМЕРЕННО: полоса «файл не прочитан» видна только в этом
+            // состоянии, а замер по пустому экрану доказывает лишь пустой экран. Заодно это
+            // самая длинная строка на экране настроек — её и надо мерить на перенос и на
+            // столкновения.
             .Respond(IpcMessageTypes.GetSettings, new SettingsSnapshotDto(
                 AppSettings.Default,
                 LogLevelDto.Information,
                 @"D:\SmartMacro\settings.json",
-                @"D:\SmartMacro"))
+                @"D:\SmartMacro",
+                "Файл настроек не прочитан: ')' is invalid after a value. Expected either ',', '}'."))
             .Respond(IpcMessageTypes.SaveSettings, Array.Empty<SettingsIssue>());
 
         return client;

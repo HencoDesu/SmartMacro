@@ -409,6 +409,27 @@ public class TemplatesViewModelTests
         await Assert.That(vm.Templates).Count().IsEqualTo(1);
     }
 
+    // ⚠️ Регистр. «Лучник» и «лучник» — разные теги: исполнитель разрешает шаблон по записям
+    // архива, а не через файловую систему, так что регистронезависимость NTFS сюда не протекает.
+    // MacroLibrary сравнивала пути шаблонов OrdinalIgnoreCase с доводом «на NTFS это не два
+    // файла» — и добавление одного МОЛЧА УДАЛЯЛО второй, а удаление уносило оба.
+    [Test]
+    public async Task AddingATemplateDoesNotEatItsDifferentlyCasedNeighbour()
+    {
+        using var library = WithTemplates(("classes", "лучник", Png(10, 10)));
+
+        library.Library.AddTemplate(Macro1, "classes", "Лучник", Png(20, 20));
+
+        using var vm = Create(library);
+        await Assert.That(vm.Templates.Select(row => row.Name))
+            .IsEquivalentTo(new[] { "Лучник", "лучник" });
+
+        // И удаление одного оставляет второй на месте.
+        library.Library.DeleteTemplate(Macro1, "classes", "Лучник");
+        vm.Refresh();
+        await Assert.That(vm.Templates.Select(row => row.Name)).IsEquivalentTo(new[] { "лучник" });
+    }
+
     [Test]
     public async Task Inventory_IsWhatTheValidatorChecksAgainst()
     {

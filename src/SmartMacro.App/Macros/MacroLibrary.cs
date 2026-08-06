@@ -301,9 +301,14 @@ public sealed class MacroLibrary : IDisposable
         pending?.Dispose();
     }
 
-    // NTFS регистр не различает, так что «Лучник.png» и «лучник.png» — это не два шаблона.
+    // ⚠️ ORDINAL, и это исправление. Здесь стояло OrdinalIgnoreCase с доводом «NTFS регистр не
+    // различает, так что «Лучник.png» и «лучник.png» — это не два шаблона». Довод описывает
+    // файловую систему, а шаблон НИКОГДА на неё не попадает: это запись zip, и разрешает её
+    // исполнитель по ordinal-словарю, потому что «Лучник» и «лучник» — разные теги (см.
+    // MacroTemplateInventory). С регистронезависимым сравнением добавление «Лучник» в бандл, где
+    // уже лежал «лучник», МОЛЧА УДАЛЯЛО чужой шаблон, а удаление одного уносило оба.
     private static bool SamePath(string left, string right) =>
-        string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+        string.Equals(left, right, StringComparison.Ordinal);
 
     private void Reload() => _entries = MacroBundleFolder.Read(FolderPath);
 

@@ -27,6 +27,29 @@ namespace SmartMacro.Macros.Bundle;
 /// Ни один метод не бросает на кривом файле: чтение бандла — это работа с чужими данными, и
 /// исход у неё нормальный, а не исключительный. Исключения остаются за тем, что кривое у
 /// ВЫЗЫВАЮЩЕГО (<c>null</c>, пустой путь).
+///
+/// <b>Размер проверяется ЗДЕСЬ, до первой распаковки, и это про потерю данных, а не про
+/// аккуратность.</b> «Зип-бомб не бывает» верно только для бандлов, которые пишем мы: без сжатия
+/// распакованный размер равен размеру файла. Импорт же — копирование чужого файла байт в байт
+/// (иначе прогон через сегодняшнего писателя потерял бы всё, чего сегодняшний формат не знает),
+/// так что читатель обязан считать сам. Первый запуск такого макроса шёл прямиком в
+/// <see cref="ReadAllTemplates"/>, то есть «прочитать ВСЕ шаблоны бандла разом в память», —
+/// и падал не редактор, а ДЕМОН, вместе со всеми хоткеями и прогонами.
+///
+/// Рубежа два, и они отвечают на разные вопросы:
+/// <list type="number">
+///   <item><b>По оглавлению архива, в <see cref="WithArchive{T}(Stream,Func{ZipArchive,T},Func{ValueTuple{MacroBundleFault,string},T})"/></b>
+///     — сумма объявленных размеров против <see cref="MacroBundleFormat.MaxBundleBytes"/> и каждая
+///     запись против <see cref="MacroBundleFormat.MaxEntryBytes"/>. Ничего не распаковывает, зато
+///     отвечает ВСЕМ входам сразу, включая <see cref="Read(string)"/>, — а значит, вердикт
+///     доезжает до строки библиотеки с красным «!», где пользователь его и увидит. Отказ здесь
+///     общий на весь бандл: пропустить одну запись значило бы, что следующее «Сохранить»
+///     перепишет файл без неё.</item>
+///   <item><b>При самой распаковке</b> — запись отдаёт ровно столько байт, сколько объявила, иначе
+///     считается нечитаемой. Оглавление пишет тот же, кто прислал файл, так что верить ему на
+///     слово нельзя: без этой сверки сто записей по килобайту в оглавлении могли бы развернуться
+///     в сто раз по шестьдесят мегабайт.</item>
+/// </list>
 /// </summary>
 public static class MacroBundleReader
 {
@@ -178,10 +201,7 @@ public static class MacroBundleReader
 
             try
             {
-                using var source = entry.Open();
-                using var buffer = new MemoryStream();
-                source.CopyTo(buffer);
-                files.Add(new MacroBundleFile(path, buffer.ToArray()));
+                files.Add(new MacroBundleFile(path, EntryContent(entry)));
             }
             catch (Exception ex) when (ex is IOException or InvalidDataException)
             {
@@ -218,8 +238,9 @@ public static class MacroBundleReader
     /// Тот же довод, что у <c>TemplateDto</c> в протоколе: одна запись весит десятки байт, так что
     /// весь список приезжает разом при открытии макроса, а картинка — за выделением, по одной.
     /// Размеры берутся из заголовка IHDR (24 байта), картинка не декодируется; вес — это
-    /// <see cref="System.IO.Compression.ZipArchiveEntry.Length"/>, то есть РАСПАКОВАННЫЙ размер, и
-    /// он же размер файла, потому что бандл не сжимается.
+    /// <see cref="System.IO.Compression.ZipArchiveEntry.Length"/>, то есть РАСПАКОВАННЫЙ размер:
+    /// вес самого PNG, а не место записи в файле. У наших бандлов это одно и то же (store-only),
+    /// у импортированного сжатого — нет; довод целиком у <see cref="MacroBundleTemplateInfo.Bytes"/>.
     /// </summary>
     public static IReadOnlyList<MacroBundleTemplateInfo> ReadTemplateCatalog(string path)
     {
@@ -268,10 +289,7 @@ public static class MacroBundleReader
 
                 try
                 {
-                    using var source = entry.Open();
-                    using var buffer = new MemoryStream();
-                    source.CopyTo(buffer);
-                    return buffer.ToArray();
+                    return EntryContent(entry);
                 }
                 catch (Exception ex) when (ex is IOException or InvalidDataException)
                 {
@@ -575,10 +593,7 @@ public static class MacroBundleReader
 
             try
             {
-                using var source = entry.Open();
-                using var buffer = new MemoryStream();
-                source.CopyTo(buffer);
-                files.Add(new MacroBundleFile(relativePath, buffer.ToArray()));
+                files.Add(new MacroBundleFile(relativePath, EntryContent(entry)));
             }
             catch (Exception ex) when (ex is IOException or InvalidDataException)
             {
@@ -619,7 +634,9 @@ public static class MacroBundleReader
 
     private static string ReadText(ZipArchiveEntry entry)
     {
-        using var source = entry.Open();
+        // Через EntryContent, а не потоком напрямую: JSON бандла тоже приезжает из чужого файла, а
+        // «прочитать nodes.json целиком» с той же готовностью развернёт зип-бомбу, что и шаблон.
+        using var source = new MemoryStream(EntryContent(entry), writable: false);
         // detectEncodingFromByteOrderMarks: BOM мы не пишем, но правленный руками файл вполне
         // может приехать из редактора, который пишет.
         using var reader = new StreamReader(source, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
@@ -683,6 +700,14 @@ public static class MacroBundleReader
         try
         {
             using var archive = new ZipArchive(source, ZipArchiveMode.Read, leaveOpen: true);
+
+            // Первый рубеж проверки размера — до того, как кто-нибудь распакует хоть байт, и на
+            // ВСЕ входы сразу. Довод целиком — в шапке класса.
+            if (Oversize(archive) is { } tooLarge)
+            {
+                return onFailure((MacroBundleFault.TooLarge, tooLarge));
+            }
+
             return read(archive);
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException)
@@ -690,6 +715,77 @@ public static class MacroBundleReader
             return onFailure((MacroBundleFault.NotAnArchive, string.Format(
                 CultureInfo.CurrentCulture, Strings.Bundle_Read_NotAnArchive, ex.Message)));
         }
+    }
+
+    /// <summary>
+    /// Вердикт по ОГЛАВЛЕНИЮ архива: <c>null</c> — размеры в пределах, иначе текст отказа.
+    /// Ничего не распаковывает — перечисление записей читает центральный каталог.
+    /// </summary>
+    private static string? Oversize(ZipArchive archive)
+    {
+        long total = 0;
+        foreach (var entry in archive.Entries)
+        {
+            if (entry.Length > MacroBundleFormat.MaxEntryBytes)
+            {
+                return string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings.Bundle_Read_EntryTooLarge,
+                    entry.FullName,
+                    Megabytes(entry.Length),
+                    Megabytes(MacroBundleFormat.MaxEntryBytes));
+            }
+
+            total += entry.Length;
+        }
+
+        return total > MacroBundleFormat.MaxBundleBytes
+            ? string.Format(
+                CultureInfo.CurrentCulture,
+                Strings.Bundle_Read_BundleTooLarge,
+                Megabytes(total),
+                Megabytes(MacroBundleFormat.MaxBundleBytes))
+            : null;
+    }
+
+    private static string Megabytes(long bytes) =>
+        (bytes / (1024.0 * 1024)).ToString("F0", CultureInfo.CurrentCulture);
+
+    /// <summary>
+    /// Содержимое одной записи — второй рубеж проверки размера.
+    ///
+    /// Читает РОВНО столько, сколько запись о себе объявила, и требует, чтобы поток на этом и
+    /// кончился. Оглавление архива пишет тот, кто прислал файл, так что «объявила килобайт, а
+    /// разворачивается в шестьдесят мегабайт» — это не теоретическая возможность, а сам приём;
+    /// первый рубеж (сумма по оглавлению) от него не защищает.
+    ///
+    /// Бросает <see cref="InvalidDataException"/>, а не отдаёт <c>null</c>, намеренно: у всех
+    /// вызывающих уже есть обработка нечитаемой записи (пропустить один битый PNG, объяснить
+    /// нечитаемый <c>metadata.json</c>), и второй способ сказать то же самое им не нужен.
+    /// </summary>
+    private static byte[] EntryContent(ZipArchiveEntry entry)
+    {
+        var declared = entry.Length;
+        if (declared > MacroBundleFormat.MaxEntryBytes)
+        {
+            throw new InvalidDataException(string.Format(
+                CultureInfo.CurrentCulture,
+                Strings.Bundle_Read_EntryTooLarge,
+                entry.FullName,
+                Megabytes(declared),
+                Megabytes(MacroBundleFormat.MaxEntryBytes)));
+        }
+
+        using var source = entry.Open();
+        var buffer = new byte[(int)declared];
+        if (source.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false) != buffer.Length
+            || source.ReadByte() >= 0)
+        {
+            throw new InvalidDataException(string.Format(
+                CultureInfo.CurrentCulture, Strings.Bundle_Read_EntryLengthMismatch, entry.FullName));
+        }
+
+        return buffer;
     }
 
     private static string Lower(string? message) =>
