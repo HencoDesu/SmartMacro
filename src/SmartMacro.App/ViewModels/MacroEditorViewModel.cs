@@ -354,6 +354,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private readonly IMacroLauncher? _launcher;
     private readonly IHotkeySuspension? _hotkeys;
     private readonly IMacroNameConflictPrompt? _conflicts;
+    private readonly IRegionCapturePrompt? _regions;
     private readonly IUiDispatcher _dispatcher;
 
     private IReadOnlyList<MacroBundleEntry> _library = [];
@@ -456,13 +457,21 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// Вопрос пользователю о занятом имени. <c>null</c> означает «спросить не у кого», и тогда
     /// ответом считается отмена: молча заменить чужой макрос — худший из возможных исходов.
     /// </param>
+    /// <param name="regions">
+    /// Диалог «выдели область на свежем снимке окна». <c>null</c> означает «спросить не у кого», и
+    /// тогда кнопка вырезки просто ничего не делает — ровно как <see cref="_conflicts"/> выше и по
+    /// той же причине: путь дизайнера и headless-тесты, где диалог не проверяют. Кнопка при этом
+    /// НЕ гаснет, потому что гасить её пришлось бы привязкой из шаблона ноды к view-model
+    /// редактора, а такой связи в этой разметке нет ни у чего.
+    /// </param>
     public MacroEditorViewModel(
         IIpcClient client,
         MacroLibrary macros,
         IMacroLauncher? launcher = null,
         IHotkeySuspension? hotkeys = null,
         IUiDispatcher? dispatcher = null,
-        IMacroNameConflictPrompt? conflicts = null)
+        IMacroNameConflictPrompt? conflicts = null,
+        IRegionCapturePrompt? regions = null)
     {
         ArgumentNullException.ThrowIfNull(macros);
         _client = client;
@@ -470,6 +479,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _launcher = launcher;
         _hotkeys = hotkeys;
         _conflicts = conflicts;
+        _regions = regions;
         _dispatcher = dispatcher ?? AvaloniaUiDispatcher.Instance;
         // Браузер шаблонов принадлежит РЕДАКТОРУ, а не оболочке (волна F2): с переездом шаблонов
         // внутрь бандла они перестали быть самостоятельной сущностью и стали свойством макроса —
@@ -2174,6 +2184,115 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool IsDirty() =>
         HasOpenMacro && !string.Equals(_loadedJson, SerializeForAutoSave(), StringComparison.Ordinal);
+
+    // ---- вырезка шаблона со свежего снимка (issue #29) --------------------------------------
+
+    /// <summary>
+    /// Снимает окно, даёт выделить на нём область, кладёт вырезку шаблоном в бандл и заполняет
+    /// область ноды.
+    ///
+    /// <b>Смысл — в точности, а не в удобстве.</b> Кадр идёт тем же путём, что и сопоставление:
+    /// <c>PrintWindow</c> с <c>PW_CLIENTONLY | PW_RENDERFULLCONTENT</c> по разбуженному окну.
+    /// Шаблон, вырезанный из «Win+Shift+S», отличается от того, что увидит зрение (цветокоррекция
+    /// композитора, масштаб, курсор в кадре), и половина вопросов «почему не находит» родом
+    /// оттуда.
+    ///
+    /// <b>Область заполняется ВСЕГДА и с запасом.</b> Почему не ровно по кромке вырезки — записано
+    /// у <see cref="SearchRegion"/>: совпадающая с шаблоном пиксель в пиксель область превращает
+    /// «найти» в «проверить, что оно ровно здесь». Все четыре поля остаются в инспекторе, так что
+    /// ужать их до точных координат — одно движение.
+    ///
+    /// ⚠️ <b>Про гонку с автосохранением.</b> Её здесь нет, и держится это на двух вещах, а не на
+    /// удаче. Первая: оба писателя работают в потоке UI (часы — <c>DispatcherTimer</c> в виде,
+    /// этот метод — обработчик кнопки), а обе записи синхронны от чтения бандла до подмены файла,
+    /// так что вклиниться между «прочитал» и «записал» второму просто негде — даже пока модальный
+    /// диалог крутит свой цикл диспетчера. Вторая: правка шаблонов кладёт граф обратно ТЕМ ЖЕ,
+    /// каким прочла, поэтому наш собственный <c>_diskJson</c> не устаревает, «изменён на диске» не
+    /// загорается и следующая запись автосохранения спокойно наследует свежий шаблон из файла.
+    /// </summary>
+    /// <param name="row">Нода, из инспектора которой нажали. Не нода распознавания — ничего не делаем.</param>
+    public async Task CaptureRegionAsync(NodeRowViewModel? row)
+    {
+        if (_regions is null || row is not ConditionalNodeRowViewModel node)
+        {
+            return;
+        }
+
+        if (_loadedName is not { } macroName)
+        {
+            ErrorMessage = Strings.Editor_Region_NoBundle;
+            return;
+        }
+
+        var set = node.CaptureSet;
+        if (node.CaptureKind == RegionCaptureKind.Tag && set is null)
+        {
+            // Класть некуда: RecognizeTag называет НАБОР, и без него у файла нет пути внутри
+            // бандла. Отказ вслух, а не погашенная кнопка: пользователь нажал ровно ту кнопку,
+            // которая ему нужна, и обязан узнать, чего не хватает.
+            ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Region_NoTemplateSet, node.DisplayName);
+            return;
+        }
+
+        RegionCaptureResult? result;
+        try
+        {
+            result = await _regions.AskAsync(new RegionCaptureRequest(
+                node.CaptureKind,
+                macroName,
+                node.DisplayName,
+                set,
+                node.CaptureName,
+                Templates.NamesIn(set),
+                Windows.Windows)).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Region_Failed, ex.Message);
+            return;
+        }
+
+        if (result is null)
+        {
+            return; // отменили — законный и частый исход
+        }
+
+        if (!Templates.Add(set, result.Name, result.Png))
+        {
+            ErrorMessage = Templates.ImportProblem ?? string.Format(
+                CultureInfo.CurrentCulture, Strings.Editor_Region_Failed, result.Name);
+            return;
+        }
+
+        node.ApplyCapturedName(result.Name);
+        node.ApplyCapturedRegion(result.Region);
+
+        // ⚠️ Дописываем немедленно, и найдено это глазами. Добавление ноды Find останавливает
+        // автосохранение («сперва поправьте поля»: пустое имя шаблона — ошибка ВВОДА), а вырезка
+        // это поле как раз заполняет. Без этой строки подпись ещё три с половиной секунды
+        // требовала поправить поле, которое уже поправлено, и панель замечаний держала снятое
+        // замечание. Порядок обязателен: до ApplyCapturedName запись отказала бы по той же самой
+        // причине.
+        //
+        // Заодно это единственное место, где две записи бандла идут подряд (шаблон и граф), и
+        // гонки между ними нет по построению: обе синхронны и обе в потоке UI, а правка шаблонов
+        // кладёт граф обратно тем же, каким прочла.
+        FlushAutoSave();
+
+        // Показать только что вырезанное: строка выделяется, и в панели превью видно ровно те
+        // байты, которые пойдут в сопоставление, — единственная возможность заметить промах
+        // выделения до того, как макрос не найдёт ничего на живой игре.
+        Templates.Selected = Templates.Templates.FirstOrDefault(template =>
+            string.Equals(template.Set, set, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(template.Name, result.Name, StringComparison.Ordinal));
+
+        ErrorMessage = null;
+        StatusMessage = string.Format(CultureInfo.CurrentCulture,
+            Strings.Editor_Region_Captured,
+            MacroBundleFormat.TemplatePath(set, result.Name));
+    }
 
     // ---- автосохранение ------------------------------------------------------------------
 

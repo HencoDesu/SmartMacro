@@ -763,6 +763,32 @@
                 </Grid>
             </Border>
         </DataTemplate>
+
+        <!-- Кнопка вырезки шаблона со свежего снимка (issue #29).
+
+             КЛЮЧЕВОЙ шаблон в ресурсах, а не DataTemplate по типу
+             ConditionalNodeRowViewModel ниже: тот матчился бы и на три конкретных наследника, а
+             поиск шаблона линеен — побеждает первый подошедший, и общий предок погасил бы все три
+             блока параметров разом (x:Key в UserControl.DataTemplates к тому же не принимается).
+
+             И не внутри шаблона RegionEditorViewModel: область есть у нод, у которых шаблона нет
+             вовсе, а DataContext там — сама область, где о ноде ничего не известно.
+
+             Стоит НАД четырьмя полями области: заполняет она именно их (плюс имя шаблона), и
+             место ей там, куда посмотрят за результатом. -->
+        <DataTemplate x:Key="RegionCaptureButton"
+                      DataType="{x:Type nodes:ConditionalNodeRowViewModel}"
+                      x:DataType="nodes:ConditionalNodeRowViewModel">
+            <Button Classes="ghost"
+                    HorizontalAlignment="Left"
+                    Margin="64,0,0,0"
+                    Padding="0"
+                    MinWidth="0"
+                    FontSize="{DynamicResource NocturneFontSizeMicro}"
+                    Content="{x:Static res:Strings.Editor_Region_Capture}"
+                    ToolTip.Tip="{x:Static res:Strings.Editor_Region_CaptureTip}"
+                    Click="OnCaptureRegionClicked" />
+        </DataTemplate>
     </UserControl.Resources>
 
     <UserControl.DataTemplates>
@@ -895,6 +921,7 @@
                     <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Template}" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_Template_Watermark}" Text="{Binding Template, Mode=TwoWay}" />
                 </Grid>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource RegionCaptureButton}" />
                 <ContentControl Content="{Binding Region}" />
                 <TextBlock Classes="hint" Text="{x:Static res:Strings.Node_Find_RegionHint}" Margin="64,0,0,0" />
                 <Grid ColumnDefinitions="64,*">
@@ -915,6 +942,7 @@
                     <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Template}" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_Template_Watermark}" Text="{Binding Template, Mode=TwoWay}" />
                 </Grid>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource RegionCaptureButton}" />
                 <ContentControl Content="{Binding Region}" />
                 <Grid ColumnDefinitions="64,*">
                     <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Timeout}" />
@@ -942,6 +970,7 @@
                                Text="{x:Static res:Strings.Node_Field_TemplateSet}" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="classes" Text="{Binding TemplateSet, Mode=TwoWay}" />
                 </Grid>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource RegionCaptureButton}" />
                 <ContentControl Content="{Binding Region}" />
                 <Grid ColumnDefinitions="64,*">
                     <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_Threshold}" />

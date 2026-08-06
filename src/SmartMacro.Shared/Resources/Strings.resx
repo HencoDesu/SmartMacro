@@ -1245,6 +1245,32 @@
     <comment>подсказка крестика на строке шаблона</comment>
   </data>
 
+  <!-- ======== Режим «Макросы» — вырезка шаблона со свежего снимка окна ======== -->
+  <data name="Editor_Region_Capture" xml:space="preserve">
+    <value>Выделить на снимке…</value>
+    <comment>кнопка в инспекторе нод Find / Wait / Recognize, прямо над четырьмя полями области</comment>
+  </data>
+  <data name="Editor_Region_CaptureTip" xml:space="preserve">
+    <value>Снять окно и вырезать шаблон мышью. Кадр берётся так же, как его берёт зрение.</value>
+    <comment>подсказка к ней; вторая фраза — про PrintWindow по разбуженному окну, а не «Win+Shift+S»</comment>
+  </data>
+  <data name="Editor_Region_NoBundle" xml:space="preserve">
+    <value>Сначала откройте макрос — вырезку некуда класть.</value>
+    <comment>красная строка панели инструментов: нажали кнопку вырезки, когда в редакторе ничего не открыто</comment>
+  </data>
+  <data name="Editor_Region_NoTemplateSet" xml:space="preserve">
+    <value>Нет набора шаблонов у «{0}» — вырезку некуда класть.</value>
+    <comment>красная строка: RecognizeTag называет НАБОР, и без него у файла нет пути внутри бандла. {0} = подпись ноды. ⚠️ Строка ошибки в панели инструментов узкая — длиннее примерно 58 знаков обрезается многоточием посреди слова. Найдено глазами.</comment>
+  </data>
+  <data name="Editor_Region_Failed" xml:space="preserve">
+    <value>Не удалось вырезать шаблон: {0}</value>
+    <comment>красная строка; {0} = сообщение отказа (демон не знает окна, PrintWindow отказал, файл не прочитался)</comment>
+  </data>
+  <data name="Editor_Region_Captured" xml:space="preserve">
+    <value>Шаблон «{0}» положен в макрос.</value>
+    <comment>подпись состояния после удачной вырезки; {0} = путь внутри templates/. ⚠️ Размер области здесь НЕ называется, хотя сначала назывался: строка состояния узкая и обрезала его многоточием, а четыре поля области и коробка на канве и так показывают его рядом. Найдено глазами.</comment>
+  </data>
+
   <!-- ======== Режим «Макросы» — шаблоны макроса: список, превью, отказы импорта ======== -->
   <data name="Editor_Templates_NotPng" xml:space="preserve">
     <value>не PNG</value>
@@ -1952,6 +1978,148 @@
   </data>
 
   <!-- ======== Отказы при старте панели (нативные окна сообщений — логгера ещё нет) ======== -->
+  <!-- ======== Диалог «выбор области»: снимок окна, выделение мышью, вырезка шаблона ======== -->
+  <data name="Dialog_Region_WindowTitle" xml:space="preserve">
+    <value>SmartMacro — выбор области</value>
+    <comment>заголовок окна для Alt+Tab; на экране его не видно — у окна своя строка заголовка</comment>
+  </data>
+  <data name="Dialog_Region_Title" xml:space="preserve">
+    <value>ВЫБОР ОБЛАСТИ</value>
+    <comment>подпись слева в своей строке заголовка диалога</comment>
+  </data>
+  <data name="Dialog_Region_CloseTip" xml:space="preserve">
+    <value>Закрыть, ничего не вырезав</value>
+    <comment>подсказка крестика</comment>
+  </data>
+  <data name="Dialog_Region_Heading" xml:space="preserve">
+    <value>«{0}» · макрос «{1}»</value>
+    <comment>в строке заголовка справа от подписи: ради чего открыли. {0} = подпись ноды, {1} = имя макроса</comment>
+  </data>
+  <data name="Dialog_Region_Window" xml:space="preserve">
+    <value>окно</value>
+    <comment>подпись списка окон в верхней полосе диалога</comment>
+  </data>
+  <data name="Dialog_Region_WindowItem" xml:space="preserve">
+    <value>0x{0:X} · {1} · {2}</value>
+    <comment>строка списка окон; {0} = хендл, {1} = имя процесса, {2} = теги через запятую либо «без тегов»</comment>
+  </data>
+  <data name="Dialog_Region_WindowNoTags" xml:space="preserve">
+    <value>без тегов</value>
+    <comment>вместо перечня тегов у окна, которое ещё не опознано</comment>
+  </data>
+  <data name="Dialog_Region_Recapture" xml:space="preserve">
+    <value>Снять заново</value>
+    <comment>кнопка повторного снимка выбранного окна; выделение при этом сохраняется</comment>
+  </data>
+  <data name="Dialog_Region_RecaptureTip" xml:space="preserve">
+    <value>Свежий кадр того же окна. Рамка выделения остаётся на месте.</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Dialog_Region_FromFile" xml:space="preserve">
+    <value>Файл с диска…</value>
+    <comment>кнопка «взять кадр из файла» — дверь на случай, когда игра не запущена</comment>
+  </data>
+  <data name="Dialog_Region_FromFileTip" xml:space="preserve">
+    <value>Взять кадр из готового изображения — например, когда игра не запущена.</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Dialog_Region_FilePickerTitle" xml:space="preserve">
+    <value>Кадр, из которого вырезать</value>
+    <comment>заголовок системного диалога выбора файла</comment>
+  </data>
+  <data name="Dialog_Region_FileType" xml:space="preserve">
+    <value>Изображения</value>
+    <comment>подпись фильтра файлов в нём: PNG, BMP, JPG</comment>
+  </data>
+  <data name="Dialog_Region_NoWindows" xml:space="preserve">
+    <value>Демон не видит ни одного окна — игра, скорее всего, не запущена. Возьмите кадр из файла на диске.</value>
+    <comment>пустое состояние посреди диалога, когда снимать нечего; ведёт к кнопке «Файл с диска…»</comment>
+  </data>
+  <data name="Dialog_Region_NoFrame" xml:space="preserve">
+    <value>Кадра пока нет: выберите окно вверху или возьмите файл с диска.</value>
+    <comment>пустое состояние, когда окна есть, но снимок ещё не сделан или не удался</comment>
+  </data>
+  <data name="Dialog_Region_Capturing" xml:space="preserve">
+    <value>Снимаю окно…</value>
+    <comment>вместо размера кадра, пока идёт побудка и PrintWindow</comment>
+  </data>
+  <data name="Dialog_Region_Frame" xml:space="preserve">
+    <value>кадр {0}×{1}</value>
+    <comment>размер снятого кадра в верхней полосе; {0} = ширина, {1} = высота клиентской области</comment>
+  </data>
+  <data name="Dialog_Region_ZoomOutTip" xml:space="preserve">
+    <value>Отдалить</value>
+    <comment>подсказка кнопки «−»</comment>
+  </data>
+  <data name="Dialog_Region_ZoomInTip" xml:space="preserve">
+    <value>Приблизить</value>
+    <comment>подсказка кнопки «+»</comment>
+  </data>
+  <data name="Dialog_Region_ZoomFit" xml:space="preserve">
+    <value>В окно</value>
+    <comment>кнопка «вписать кадр целиком» — состояние, в котором диалог открывается</comment>
+  </data>
+  <data name="Dialog_Region_ZoomFitTip" xml:space="preserve">
+    <value>Вписать кадр целиком</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Dialog_Region_ViewHint" xml:space="preserve">
+    <value>Левая кнопка — выделить, средняя или правая — панорама, колесо — масштаб.</value>
+    <comment>подсказка под кадром: три жеста, которым больше негде о себе сказать</comment>
+  </data>
+  <data name="Dialog_Region_NameWatermark" xml:space="preserve">
+    <value>так его найдёт нода</value>
+    <comment>водяной знак поля имени шаблона (или тега); ⚠️ поле 220 px моноширинным — длиннее строка обрезается без многоточия</comment>
+  </data>
+  <data name="Dialog_Region_NameLabelTemplate" xml:space="preserve">
+    <value>имя шаблона</value>
+    <comment>подпись поля имени для нод Find / Wait: файл ляжет в корень templates/</comment>
+  </data>
+  <data name="Dialog_Region_NameLabelTag" xml:space="preserve">
+    <value>тег</value>
+    <comment>она же для ноды Recognize: файл ляжет в набор, а основа его имени и станет тегом</comment>
+  </data>
+  <data name="Dialog_Region_Measure" xml:space="preserve">
+    <value>выделено X={0} Y={1} · {2}×{3} → область ноды {4}×{5} (то же выделение с запасом в {6} px с каждой стороны)</value>
+    <comment>отсчёт под кадром; {0} и {1} = левый верхний угол выделения, {2}×{3} = его размер, {4}×{5} = размер области С ЗАПАСОМ, {6} = сам запас. ⚠️ Именно «X=699 Y=85», а не «699,85»: по-русски запятая — десятичный разделитель, и пара координат читалась как одно дробное число. Найдено глазами.</comment>
+  </data>
+  <data name="Dialog_Region_NoSelection" xml:space="preserve">
+    <value>Выделите область на кадре левой кнопкой.</value>
+    <comment>претензия внизу диалога, пока рамки нет</comment>
+  </data>
+  <data name="Dialog_Region_NameEmpty" xml:space="preserve">
+    <value>Впишите имя — под ним шаблон ляжет в макрос.</value>
+    <comment>претензия: выделение есть, имени нет</comment>
+  </data>
+  <data name="Dialog_Region_NameBad" xml:space="preserve">
+    <value>Такое имя нода не найдёт: без слешей и без .png.</value>
+    <comment>претензия на негодное имя; главный случай — слеш: «classes/Лучник» в поле одиночного шаблона лёг бы в набор, а нода искала бы файл с таким именем в корне</comment>
+  </data>
+  <data name="Dialog_Region_NameTaken" xml:space="preserve">
+    <value>«{0}» в макросе уже есть — вырезка заменит его.</value>
+    <comment>предупреждение, а НЕ запрет: заменить свой же шаблон свежей вырезкой — обычное дело. {0} = имя</comment>
+  </data>
+  <data name="Dialog_Region_CaptureFailed" xml:space="preserve">
+    <value>Снять окно не удалось: {0}</value>
+    <comment>{0} = сообщение отказа (демон не знает окна, окно свёрнуто, PrintWindow отказал)</comment>
+  </data>
+  <data name="Dialog_Region_FileFailed" xml:space="preserve">
+    <value>Файл не открылся как изображение: {0}</value>
+    <comment>{0} = сообщение отказа чтения или декодирования</comment>
+  </data>
+  <data name="Dialog_Region_CropFailed" xml:space="preserve">
+    <value>Не удалось вырезать: {0}</value>
+    <comment>{0} = сообщение отказа; сюда попадают отказы отрисовки Skia</comment>
+  </data>
+  <data name="Dialog_Region_Accept" xml:space="preserve">
+    <value>Вырезать</value>
+    <comment>главная кнопка диалога: положить вырезку в макрос и заполнить область ноды</comment>
+  </data>
+  <data name="Dialog_Region_Cancel" xml:space="preserve">
+    <value>Отмена</value>
+    <comment>вторая кнопка; она же Esc и крестик</comment>
+  </data>
+
   <data name="Dialog_Startup_LoggerFailed" xml:space="preserve">
     <value>Не удалось поднять журнал панели.
 
@@ -2388,6 +2556,14 @@ SmartMacro хранит макросы, настройки, журналы и с
   <data name="Ipc_Rejected_HotkeySuspensionNeedsConnection" xml:space="preserve">
     <value>Приостановка хоткеев возможна только по соединению.</value>
     <comment>Отказ и на снятие хоткеев, и на их возврат (текст один на оба случая): приостановка — аренда, привязанная к соединению, и отпускается вместе с ним.</comment>
+  </data>
+  <data name="Ipc_Rejected_CaptureHookNeedsConnection" xml:space="preserve">
+    <value>Побудка окна для снимка возможна только по соединению.</value>
+    <comment>Отказ и на взятие аренды побудки, и на её возврат (текст один на оба случая): аренда привязана к соединению и отпускается вместе с ним.</comment>
+  </data>
+  <data name="Ipc_Rejected_WindowNotFound" xml:space="preserve">
+    <value>Окно 0x{0:X} демон не отслеживает — снимать нечего.</value>
+    <comment>Отказ на просьбу разбудить окно для снимка: такого дескриптора в реестре нет (окно закрылось, пока диалог был открыт). {0} — хендл окна, печатается шестнадцатеричным, как везде в панели.</comment>
   </data>
   <data name="Ipc_Rejected_LogNeedsConnection" xml:space="preserve">
     <value>Подписка на журнал возможна только по соединению.</value>

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Diagnostics.CodeAnalysis;
+using SmartMacro.App.Services;
 using SmartMacro.Macros.Model;
+using SmartMacro.Native;
 using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels.Nodes;
@@ -34,6 +36,46 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
 
     /// <summary>Ребро на случай неудачи (NotFound / Timeout / NotMatched).</summary>
     public NodeEdgeViewModel NegativeEdge => Edges[1];
+
+    /// <summary>
+    /// Вырезка в клиентских координатах. Объявлена ЗДЕСЬ, потому что её правит не только
+    /// инспектор: диалог выбора области заполняет её выделением с запасом, и знать при этом, какая
+    /// из трёх нод перед ним, ему незачем.
+    /// </summary>
+    public abstract RegionEditorViewModel Region { get; }
+
+    /// <summary>Что диалог выбора области спрашивает у человека — имя файла или имя тега.</summary>
+    public abstract RegionCaptureKind CaptureKind { get; }
+
+    /// <summary>
+    /// Набор, в который ляжет вырезка, либо <c>null</c> — корень <c>templates/</c>. У
+    /// <c>RecognizeTag</c> это набор самой ноды: она называет его целиком, а вырезка становится
+    /// одним из его тегов.
+    /// </summary>
+    public abstract string? CaptureSet { get; }
+
+    /// <summary>
+    /// Чем заполнить поле имени в диалоге. У <c>Find</c>/<c>Wait</c> это уже набранное имя
+    /// шаблона — тогда «снял и нажал ОК» просто заменяет содержимое существующего файла свежей
+    /// вырезкой, а имя в ноде остаётся тем же.
+    /// </summary>
+    public abstract string CaptureName { get; }
+
+    /// <summary>
+    /// Принимает имя, под которым шаблон лёг в бандл. <c>Find</c>/<c>Wait</c> вписывают его в
+    /// поле шаблона; <c>RecognizeTag</c> не делает НИЧЕГО — он называет набор, а не файл, и
+    /// подставить туда тег значило бы сломать ноду ровно тем, что выглядит как забота.
+    /// </summary>
+    public abstract void ApplyCapturedName(string name);
+
+    /// <summary>Записывает область, вернувшуюся из диалога, в четыре поля инспектора.</summary>
+    public void ApplyCapturedRegion(ScreenRect region)
+    {
+        Region.XText = NodeInput.FormatInt(region.X);
+        Region.YText = NodeInput.FormatInt(region.Y);
+        Region.WidthText = NodeInput.FormatInt(region.Width);
+        Region.HeightText = NodeInput.FormatInt(region.Height);
+    }
 
     /// <summary>
     /// Порог совпадения ЭТОЙ ноды, как его набрали. Пустая строка — законное «взять умолчание
@@ -122,7 +164,19 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
     }
 
     /// <summary>Вырезка в клиентских координатах; нулевая ширина или высота значит «искать по всему окну».</summary>
-    public RegionEditorViewModel Region { get; }
+    public override RegionEditorViewModel Region { get; }
+
+    /// <inheritdoc />
+    public override RegionCaptureKind CaptureKind => RegionCaptureKind.Template;
+
+    /// <inheritdoc />
+    public override string? CaptureSet => null;
+
+    /// <inheritdoc />
+    public override string CaptureName => _template;
+
+    /// <inheritdoc />
+    public override void ApplyCapturedName(string name) => Template = name;
 
     /// <summary>Необязательная переменная прогона, куда пишется центр совпадения. Пусто — не записывать.</summary>
     [AllowNull]
@@ -200,7 +254,19 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
         set => SetField(ref _template, value ?? string.Empty);
     }
 
-    public RegionEditorViewModel Region { get; }
+    public override RegionEditorViewModel Region { get; }
+
+    /// <inheritdoc />
+    public override RegionCaptureKind CaptureKind => RegionCaptureKind.Template;
+
+    /// <inheritdoc />
+    public override string? CaptureSet => null;
+
+    /// <inheritdoc />
+    public override string CaptureName => _template;
+
+    /// <inheritdoc />
+    public override void ApplyCapturedName(string name) => Template = name;
 
     /// <summary>Сколько всего миллисекунд отведено на ожидание.</summary>
     public string TimeoutMsText
@@ -294,7 +360,28 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
     }
 
     /// <summary>Обязательная вырезка в клиентских координатах, по которой сопоставляется набор.</summary>
-    public RegionEditorViewModel Region { get; }
+    public override RegionEditorViewModel Region { get; }
+
+    /// <inheritdoc />
+    public override RegionCaptureKind CaptureKind => RegionCaptureKind.Tag;
+
+    /// <inheritdoc />
+    public override string? CaptureSet =>
+        string.IsNullOrWhiteSpace(_templateSet) ? null : _templateSet.Trim();
+
+    /// <summary>
+    /// Поле имени в диалоге остаётся ПУСТЫМ: нода называет набор, а вырезается один из его тегов,
+    /// и подставить сюда имя набора значило бы предложить назвать «Лучника» словом «classes».
+    /// </summary>
+    public override string CaptureName => string.Empty;
+
+    /// <inheritdoc />
+    public override void ApplyCapturedName(string name)
+    {
+        // Намеренно ничего. Нода несёт НАБОР; имя вырезки — это тег внутри него, и вписать его в
+        // поле набора значило бы направить сопоставление в templates/Лучник/ вместо
+        // templates/classes/.
+    }
 
     /// <summary>Повесить на контекстное окно тег с именем победившего шаблона.</summary>
     public bool ApplyTag

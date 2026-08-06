@@ -3,9 +3,14 @@ using FakeItEasy;
 using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Contracts.Settings;
+using SmartMacro.GameWindows;
+using SmartMacro.Input;
 using SmartMacro.Ipc;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Native.Mouse;
+using SmartMacro.Tests.Settings;
 
 namespace SmartMacro.Tests.Ipc;
 
@@ -368,6 +373,127 @@ public class IpcServerTests
         await serve;
 
         A.CallTo(() => fixture.Engine.Hotkeys.ResumeAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
+    }
+
+    // ---------------------------------------------- аренда побудки окна ради снимка
+
+    /// <summary>
+    /// Окно с настоящей скобкой пробуждения поверх поддельного Win32: только так видно, что за
+    /// «отпустил аренду» стоит настоящий <c>WM_ACTIVATEAPP(FALSE)</c>, а не запись в словаре.
+    /// </summary>
+    private static (FakeNativeWindow Native, GameWindow Window) GameWindowAt(IntPtr handle)
+    {
+        var native = new FakeNativeWindow(handle);
+        var settings = new FakeSettingsSource();
+        var window = new GameWindow(
+            native,
+            "elementclient_64",
+            new ProcessHookSettings { ActivationLParam = 37336, SettleMs = 0, DeactivateMs = 0 },
+            new KeyboardInputResolver(settings, NullLogger<KeyboardInputResolver>.Instance),
+            new PostMessageMouseInput(),
+            settings,
+            NullLogger<GameWindow>.Instance);
+        return (native, window);
+    }
+
+    // Ответ на Acquire означает «окно РАЗБУЖЕНО»: панель снимает кадр следующей строкой, а
+    // PrintWindow по замороженному клиенту PW возвращает чёрный или устаревший кадр.
+    [Test]
+    public async Task AcquireCaptureHook_WakesTheWindow_AndReleaseFreezesItBack()
+    {
+        await using var fixture = new ServerFixture();
+        var (native, window) = GameWindowAt(0x140804);
+        fixture.Engine.Windows.Register(0x140804, "elementclient_64", window);
+        var (client, serve) = await fixture.ConnectAsync();
+
+        await client.SendAsync(new IpcRequest(1, IpcMessageTypes.AcquireCaptureHook,
+            IpcJson.Write(new CaptureHookRequest(0x140804))));
+        await Assert.That(Parse(await client.ReadLineAsync()).GetProperty("Ok").GetBoolean()).IsTrue();
+        await Assert.That(native.Calls).IsEquivalentTo(new[] { "activate" });
+
+        await client.SendAsync(new IpcRequest(2, IpcMessageTypes.ReleaseCaptureHook,
+            IpcJson.Write(new CaptureHookRequest(0x140804))));
+        await Assert.That(Parse(await client.ReadLineAsync()).GetProperty("Ok").GetBoolean()).IsTrue();
+        await Assert.That(native.Calls).IsEquivalentTo(new[] { "activate", "deactivate" });
+
+        client.CloseClient();
+        await serve;
+    }
+
+    // ГЛАВНОЕ свойство аренды, и ровно то, ради чего она привязана к соединению. Панель снимают
+    // диспетчером задач, панель падает, и — что важнее всего — демон САМ выбрасывает клиента,
+    // переставшего разбирать очередь событий. Без отдачи на разрыве клиент PW остался бы
+    // размороженным (то есть рендерить на полной частоте в фоне) до настоящей смены фокуса
+    // пользователем, и починить его было бы уже некому.
+    [Test]
+    public async Task CaptureHook_IsReleasedWhenTheClientDisconnects()
+    {
+        await using var fixture = new ServerFixture();
+        var (native, window) = GameWindowAt(0x140804);
+        fixture.Engine.Windows.Register(0x140804, "elementclient_64", window);
+        var (client, serve) = await fixture.ConnectAsync();
+
+        await client.SendAsync(new IpcRequest(1, IpcMessageTypes.AcquireCaptureHook,
+            IpcJson.Write(new CaptureHookRequest(0x140804))));
+        await Assert.That(Parse(await client.ReadLineAsync()).GetProperty("Ok").GetBoolean()).IsTrue();
+        await Assert.That(native.Calls).IsEquivalentTo(new[] { "activate" });
+
+        // Панель умирает посреди снимка, не сказав ни слова.
+        client.CloseClient();
+        await serve;
+
+        await Assert.That(native.Calls).IsEquivalentTo(new[] { "activate", "deactivate" });
+    }
+
+    // Идемпотентность ПО ОКНУ: сколько бы раз клиент ни попросил, аренда одна, и окно будят один
+    // раз. Иначе счётчик областей у GameWindow ушёл бы в плюс, и последняя закрытая область его
+    // бы не обнулила — то есть тот же дефект, только изнутри.
+    [Test]
+    public async Task RepeatedAcquireFromOneClient_IsOneLease()
+    {
+        await using var fixture = new ServerFixture();
+        var (native, window) = GameWindowAt(0x140804);
+        fixture.Engine.Windows.Register(0x140804, "elementclient_64", window);
+        var (client, serve) = await fixture.ConnectAsync();
+
+        await client.SendAsync(new IpcRequest(1, IpcMessageTypes.AcquireCaptureHook,
+            IpcJson.Write(new CaptureHookRequest(0x140804))));
+        await client.ReadLineAsync();
+        await client.SendAsync(new IpcRequest(2, IpcMessageTypes.AcquireCaptureHook,
+            IpcJson.Write(new CaptureHookRequest(0x140804))));
+        await client.ReadLineAsync();
+
+        await Assert.That(native.Calls).IsEquivalentTo(new[] { "activate" });
+
+        client.CloseClient();
+        await serve;
+
+        await Assert.That(native.Calls).IsEquivalentTo(new[] { "activate", "deactivate" });
+    }
+
+    // Аренд у соединения по одной НА ОКНО, а не одна на всех: разбуженных окон бывает несколько
+    // сразу, и разрыв обязан отпустить каждое.
+    [Test]
+    public async Task EveryHeldWindow_IsFreedOnDisconnect()
+    {
+        await using var fixture = new ServerFixture();
+        var (first, firstWindow) = GameWindowAt(0x1);
+        var (second, secondWindow) = GameWindowAt(0x2);
+        fixture.Engine.Windows.Register(0x1, "elementclient_64", firstWindow);
+        fixture.Engine.Windows.Register(0x2, "elementclient_64", secondWindow);
+        var (client, serve) = await fixture.ConnectAsync();
+
+        await client.SendAsync(new IpcRequest(1, IpcMessageTypes.AcquireCaptureHook,
+            IpcJson.Write(new CaptureHookRequest(0x1))));
+        await client.SendAsync(new IpcRequest(2, IpcMessageTypes.AcquireCaptureHook,
+            IpcJson.Write(new CaptureHookRequest(0x2))));
+        await client.ReadLinesAsync(2);
+
+        client.CloseClient();
+        await serve;
+
+        await Assert.That(first.Calls).IsEquivalentTo(new[] { "activate", "deactivate" });
+        await Assert.That(second.Calls).IsEquivalentTo(new[] { "activate", "deactivate" });
     }
 
     [Test]

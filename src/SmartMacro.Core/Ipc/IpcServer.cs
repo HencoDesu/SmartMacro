@@ -8,6 +8,8 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Contracts.Settings;
+using SmartMacro.GameWindows;
 using SmartMacro.Hotkeys;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Storage;
@@ -47,14 +49,16 @@ namespace SmartMacro.Ipc;
 /// всем остальным.
 ///
 /// <b>Всё, что клиент включил, снимается на разрыве — и это ЗАКРЫТЫЙ список.</b> Соединение
-/// владеет тремя переключателями движка (события прогона вместе со счётом отладчиков, лента
-/// журнала, приостановка хоткеев), и у каждого один и тот же довод: состояние, снять которое
-/// способна только панель, не имеет права её пережить. Панель уходит не только закрытием окна —
-/// «Снять задачу», падение, и, что важнее всего, <see cref="Deliver"/> ВЫБРАСЫВАЕТ клиента,
-/// переставшего разбирать очередь. Приостановка хоткеев попала в этот список последней и стоила
-/// дороже всех: демон оставался работать с нулём зарегистрированных аккордов, а перерегистрация по
-/// изменению библиотеки под приостановкой намеренно ничего не делает, так что самолечения не было
-/// вовсе. Добавляешь переключатель — добавляй строку в <c>finally</c> у
+/// владеет четырьмя переключателями движка (события прогона вместе со счётом отладчиков, лента
+/// журнала, приостановка хоткеев, аренды побудки окон), и у каждого один и тот же довод:
+/// состояние, снять которое способна только панель, не имеет права её пережить. Панель уходит не
+/// только закрытием окна — «Снять задачу», падение, и, что важнее всего, <see cref="Deliver"/>
+/// ВЫБРАСЫВАЕТ клиента, переставшего разбирать очередь. Приостановка хоткеев попала в этот список
+/// первой и стоила дороже всех: демон оставался работать с нулём зарегистрированных аккордов, а
+/// перерегистрация по изменению библиотеки под приостановкой намеренно ничего не делает, так что
+/// самолечения не было вовсе. Аренда побудки пришла следом и оплачивается похоже: до настоящей
+/// смены фокуса пользователем клиент PW остаётся размороженным, то есть рендерит в фоне.
+/// Добавляешь переключатель — добавляй строку в <c>finally</c> у
 /// <see cref="ServeConnectionAsync(Stream, Stream, CancellationToken)"/>.
 /// </summary>
 public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBroadcaster
@@ -358,7 +362,8 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             _runEvents,
             _log,
             _debug,
-            _hotkeys);
+            _hotkeys,
+            _windows);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             _stopping.Token,
@@ -388,6 +393,10 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             // ничего не делала до перезапуска. Обратим внимание, что «умер» — это в том числе
             // «мы сами его выбросили за забитую очередь» несколькими строками ниже по стеку.
             await ReleaseHotkeySuspensionAsync(client).ConfigureAwait(false);
+            // И ТО ЖЕ САМОЕ для аренд побудки: панель, снятая посреди захвата кадра, иначе
+            // оставила бы разбуженные клиенты PW рендерить в фоне — чинить их было бы уже некому,
+            // само это проходит только от настоящей смены фокуса пользователем.
+            await ReleaseCaptureHooksAsync(client).ConfigureAwait(false);
             client.CompleteEvents();
             // Насос может стоять в записи в трубу, которую никто не читает; разблокирует его
             // именно отмена, а WhenAny страхует случай, когда даже она не помогла.
@@ -487,6 +496,27 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         catch (Exception ex)
         {
             LogHotkeyResumeOnDisconnectFailed(ex);
+        }
+    }
+
+    /// <summary>
+    /// Отпускает все аренды побудки, которые держало это соединение.
+    ///
+    /// Отдельным методом по тем же двум причинам, что и сосед выше: <b>токен здесь принципиально
+    /// <c>None</c></b> (отменённая заморозка — это и есть тот дефект, который мы закрываем; то же
+    /// правило записано на <c>IWindowHookHolder.ExitHookAsync</c>, у которого токена нет в
+    /// сигнатуре вовсе) и <b>исключение отсюда не имеет права наружу</b>: снос соединения обязан
+    /// доработать до конца, даже если Win32 отказался усыплять окно.
+    /// </summary>
+    private async Task ReleaseCaptureHooksAsync(ClientConnection client)
+    {
+        try
+        {
+            await client.ReleaseAllCaptureHooksAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogCaptureHookReleaseOnDisconnectFailed(ex);
         }
     }
 
@@ -709,6 +739,20 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
         // оставил бы аккорды снятыми навсегда.
         private readonly SemaphoreSlim _hotkeyGate = new(1, 1);
 
+        // Аренды побудки окон, взятые ЭТИМ соединением, — по одной области на дескриптор. Своё
+        // русло, а не флаг рядом с приостановкой хоткеев: разбуженных окон бывает несколько сразу,
+        // и «одна аренда на клиента» пришлось бы либо считать здесь вручную (второй счётчик поверх
+        // того, что уже ведёт GameWindow), либо запретить снимать два окна подряд.
+        //
+        // Семафор, а не Lock, по той же причине, что у хоткеев: побудка асинхронна (внутри пауза
+        // устаканивания), а запросы одного соединения обрабатываются параллельно — цикл чтения не
+        // ждёт обработчика. «Acquire наперегонки с Release», доехав до счётчика окна задом наперёд,
+        // оставил бы клиента PW разбуженным навсегда.
+        private readonly SemaphoreSlim _captureGate = new(1, 1);
+        private readonly Dictionary<IntPtr, WindowHookScope> _captureHooks = [];
+
+        private readonly WindowRegistry _windows;
+
         private bool _wantsRunEvents;
         private bool _wantsLog;
         private bool _suspendsHotkeys;
@@ -718,13 +762,15 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             RunEventPublisher runEvents,
             LogEventPublisher log,
             MacroDebugSession debug,
-            IHotkeyRegistration hotkeys)
+            IHotkeyRegistration hotkeys,
+            WindowRegistry windows)
         {
             Connection = connection;
             _runEvents = runEvents;
             _log = log;
             _debug = debug;
             _hotkeys = hotkeys;
+            _windows = windows;
         }
 
         public IpcConnection Connection { get; }
@@ -861,6 +907,77 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             }
         }
 
+        /// <inheritdoc />
+        public async Task<bool> SetCaptureHookAsync(long hwnd, bool held,
+            CancellationToken cancellationToken = default)
+        {
+            var handle = (IntPtr)hwnd;
+
+            // Взятие отменяемо (пауза устаканивания идёт под токеном соединения), отдача — нет:
+            // отменить уборку по тому же токену, который её и вызвал, значит не сделать её ровно
+            // тогда, когда она нужна. То же правило и в той же формулировке — на
+            // IWindowHookHolder.ExitHookAsync.
+            await _captureGate.WaitAsync(held ? cancellationToken : CancellationToken.None)
+                .ConfigureAwait(false);
+            try
+            {
+                if (!held)
+                {
+                    if (!_captureHooks.Remove(handle, out var open))
+                    {
+                        return true; // аренды не было — лишняя отдача безопасна
+                    }
+
+                    await open.DisposeAsync().ConfigureAwait(false);
+                    return true;
+                }
+
+                if (_captureHooks.ContainsKey(handle))
+                {
+                    return true; // одна аренда на окно, сколько бы раз ни попросили
+                }
+
+                if (_windows.TryGetWindow(handle) is not { } window)
+                {
+                    return false;
+                }
+
+                // Область кладётся в словарь ПОСЛЕ того, как побудка удалась: не удавшаяся
+                // (обычно — отменённая в паузе устаканивания) откатывает счётчик окна сама, и
+                // запись о ней была бы записью об аренде, которой нет.
+                _captureHooks[handle] = await window
+                    .EnterHookAsync(HookOn.Capture, cancellationToken)
+                    .ConfigureAwait(false);
+                return true;
+            }
+            finally
+            {
+                _captureGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// Закрывает все области побудки, которые держало это соединение. Путь разрыва; токена не
+        /// принимает по тому же правилу, что и отдача одной аренды выше.
+        /// </summary>
+        public async Task ReleaseAllCaptureHooksAsync()
+        {
+            await _captureGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                foreach (var scope in _captureHooks.Values)
+                {
+                    await scope.DisposeAsync().ConfigureAwait(false);
+                }
+
+                _captureHooks.Clear();
+            }
+            finally
+            {
+                _captureGate.Release();
+            }
+        }
+
         public bool TryEnqueue(IpcEvent evt) => _events.Writer.TryWrite(evt);
 
         public void CompleteEvents() => _events.Writer.TryComplete();
@@ -883,6 +1000,7 @@ public sealed partial class IpcServer : IHostedService, IAsyncDisposable, IIpcBr
             await Connection.DisposeAsync().ConfigureAwait(false);
             Cts.Dispose();
             _hotkeyGate.Dispose();
+            _captureGate.Dispose();
         }
     }
 }

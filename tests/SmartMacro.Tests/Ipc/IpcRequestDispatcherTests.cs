@@ -262,6 +262,77 @@ public class IpcRequestDispatcherTests
 
     private static VirtualKey KeyOf(MacroGraph graph) => ((KeyPressNode)graph.Nodes[0]).Key;
 
+    // ------------------------------------------------------- побудка окна ради снимка
+
+    // Панель снимает кадр САМА (PrintWindow живёт в Native), а будит окно демон: скобка
+    // пробуждения со счётчиком и цепочкой переходов существует в одном экземпляре. Ответ на
+    // Acquire означает «окно разбужено и устаканилось» — снимать раньше значит снять
+    // замороженный кадр.
+    [Test]
+    public async Task AcquireAndReleaseCaptureHook_ReachTheSession()
+    {
+        using var harness = new IpcDispatcherHarness();
+        harness.Session.KnownWindows.Add(0x140804);
+
+        var acquired = await harness.DispatchAsync(
+            IpcMessageTypes.AcquireCaptureHook, new CaptureHookRequest(0x140804), session: harness.Session);
+        var released = await harness.DispatchAsync(
+            IpcMessageTypes.ReleaseCaptureHook, new CaptureHookRequest(0x140804), session: harness.Session);
+
+        await Assert.That(acquired.Ok).IsTrue();
+        await Assert.That(released.Ok).IsTrue();
+        await Assert.That(harness.Session.CaptureHooks)
+            .IsEquivalentTo(new[] { (0x140804L, true), (0x140804L, false) });
+    }
+
+    // Неизвестный дескриптор — ОТКАЗ, а не тишина: панель узнаёт, что снимать нечего, до того,
+    // как покажет пользователю чёрный прямоугольник и оставит его гадать, что не так с игрой.
+    [Test]
+    public async Task AcquireCaptureHook_OnAWindowTheDaemonDoesNotKnow_IsRefused()
+    {
+        using var harness = new IpcDispatcherHarness();
+
+        var response = await harness.DispatchAsync(
+            IpcMessageTypes.AcquireCaptureHook, new CaptureHookRequest(0xDEAD), session: harness.Session);
+
+        await Assert.That(response.Ok).IsFalse();
+        await Assert.That(response.Error).IsEqualTo(string.Format(
+            System.Globalization.CultureInfo.CurrentCulture, Strings.Ipc_Rejected_WindowNotFound, 0xDEAD));
+        await Assert.That(harness.Session.CaptureHooks).IsEmpty();
+    }
+
+    // Аренда — состояние КЛИЕНТА, как и приостановка хоткеев, и по тому же доводу: снять её
+    // способна только панель, а уходит она не всегда штатно. Без соединения за спиной отпустить
+    // побудку было бы некому, и клиент PW остался бы рендерить в фоне.
+    [Test]
+    public async Task CaptureHook_WithoutAConnection_IsRefused()
+    {
+        using var harness = new IpcDispatcherHarness();
+
+        var acquired = await harness.DispatchAsync(
+            IpcMessageTypes.AcquireCaptureHook, new CaptureHookRequest(0x10));
+        var released = await harness.DispatchAsync(
+            IpcMessageTypes.ReleaseCaptureHook, new CaptureHookRequest(0x10));
+
+        await Assert.That(acquired.Ok).IsFalse();
+        await Assert.That(acquired.Error).IsEqualTo(Strings.Ipc_Rejected_CaptureHookNeedsConnection);
+        await Assert.That(released.Ok).IsFalse();
+        await Assert.That(released.Error).IsEqualTo(Strings.Ipc_Rejected_CaptureHookNeedsConnection);
+    }
+
+    // Лишняя отдача безопасна: на путь отпускания приходят с двух дорог — ответным
+    // ReleaseCaptureHook и с разрыва соединения, — и обе обязаны работать после первой.
+    [Test]
+    public async Task ReleaseCaptureHook_WithoutALease_IsNotAnError()
+    {
+        using var harness = new IpcDispatcherHarness();
+
+        var response = await harness.DispatchAsync(
+            IpcMessageTypes.ReleaseCaptureHook, new CaptureHookRequest(0x10), session: harness.Session);
+
+        await Assert.That(response.Ok).IsTrue();
+    }
+
     // ------------------------------------------------------------------------ хоткеи
 
     [Test]

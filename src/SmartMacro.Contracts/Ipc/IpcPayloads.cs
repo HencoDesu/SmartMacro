@@ -22,6 +22,18 @@ public sealed record AddTagRequest(long Hwnd, string Tag);
 /// <param name="Tag">Снимаемый тег. Снять тег, которого у окна нет, — не ошибка, а пустая операция.</param>
 public sealed record RemoveTagRequest(long Hwnd, string Tag);
 
+/// <summary>
+/// Нагрузка <see cref="IpcMessageTypes.AcquireCaptureHook"/> и
+/// <see cref="IpcMessageTypes.ReleaseCaptureHook"/> — одна на оба, потому что и просят, и
+/// отпускают одно и то же: аренду побудки одного окна.
+/// </summary>
+/// <param name="Hwnd">
+/// Хендл окна, с которого панель собирается снять кадр, в том виде, в каком он приходит в
+/// <c>WindowDto.Hwnd</c>. Неизвестный демону хендл — отказ: панель обязана узнать, что снимать
+/// нечего, а не получить чёрный кадр.
+/// </param>
+public sealed record CaptureHookRequest(long Hwnd);
+
 /// <summary>Нагрузка <see cref="IpcMessageTypes.RunMacro"/>.</summary>
 /// <param name="Name">Макрос, который надо запустить. На незнакомом имени запрос падает.</param>
 public sealed record RunMacroRequest(string Name);
