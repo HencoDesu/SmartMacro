@@ -262,8 +262,8 @@ public class HotkeyConflictTests
 
         var flagged = vm.Macros.Single(item => item.HasHotkeyProblem);
         await Assert.That(flagged.Name).IsEqualTo("баг-госта");
-        await Assert.That(flagged.HotkeyProblem).IsEqualTo(
-            "Win+L не зарегистрирован — сочетание занято другим приложением");
+        await Assert.That(Msg.Arg(flagged.HotkeyProblem, Strings.Macros_Row_HotkeyRefused))
+            .IsEqualTo("Win+L");
         await Assert.That(vm.Macros.Single(item => item.Name == "pw-immunity").HasHotkeyProblem).IsFalse();
     }
 

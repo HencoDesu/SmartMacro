@@ -488,9 +488,13 @@
       <value>информация о макросе тоже не прочитана</value>
       <comment>вторая строка под именем, когда не прочитался и metadata.json</comment>
   </data>
-  <data name="Macros_Row_HotkeyUnarmed" xml:space="preserve">
-      <value>хоткей не зарегистрирован — в макросе найдена одна или несколько ошибок: {0}</value>
-      <comment>подсказка красного ▲ рядом с аккордом; {0} = сколько ошибок нашёл валидатор</comment>
+  <data name="Macros_Row_ErrorTip" xml:space="preserve">
+      <value>В макросе ошибок: {0} — запустить его нельзя</value>
+      <comment>подсказка красного «!» на строке макроса, когда граф читается, но валидатор нашёл ошибки; {0} = сколько. Парная строке функции Macros_SubmacroRow_ErrorTip</comment>
+  </data>
+  <data name="Macros_Row_ErrorTipHotkey" xml:space="preserve">
+      <value>В макросе ошибок: {0} — запустить его нельзя, и хоткей не зарегистрирован</value>
+      <comment>тот же «!», когда у макроса есть хоткей-триггер: к невозможности запуска добавляется молчащее сочетание. {0} = сколько ошибок</comment>
   </data>
   <data name="Macros_Row_HotkeyRefused" xml:space="preserve">
     <value>{0} не зарегистрирован — сочетание занято другим приложением</value>
@@ -1464,7 +1468,7 @@
   </data>
   <data name="Editor_Status_SavedWithErrors" xml:space="preserve">
     <value>Сохранено, но в макросе ошибок: {0} — демон не вооружит его триггеры.</value>
-    <comment>он же, когда валидатор нашёл ОШИБКИ. Записи они больше не мешают (граф невалиден ровно тогда, когда над ним работают), но по хоткею такой макрос не запустится; та же формулировка, что у Macros_Row_HotkeyUnarmed. {0} = сколько ошибок</comment>
+    <comment>он же, когда валидатор нашёл ОШИБКИ. Записи они больше не мешают (граф невалиден ровно тогда, когда над ним работают), но по хоткею такой макрос не запустится; о том же говорит «!» на строке библиотеки, Macros_Row_ErrorTip. {0} = сколько ошибок</comment>
   </data>
   <data name="Editor_Status_Reloaded" xml:space="preserve">
     <value>Перезагружено с диска.</value>

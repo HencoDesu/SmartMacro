@@ -1413,17 +1413,20 @@
                                                                      аккорд соперничать за ширину перестал, см. ниже. -->
                                                                 <Grid ColumnDefinitions="Auto,*,Auto"
                                                                       VerticalAlignment="Center">
-                                                                    <!-- Бандл не читается. Строка ОСТАЁТСЯ в списке:
-                                                                         файл существует, и пользователь обязан это
-                                                                         видеть — иначе единственный способ узнать о
-                                                                         нём — открыть папку проводником. -->
+                                                                    <!-- С макросом беда: бандл не читается ЛИБО в графе
+                                                                         ошибки. Строка ОСТАЁТСЯ в списке: файл
+                                                                         существует, и пользователь обязан это видеть —
+                                                                         иначе единственный способ узнать о нём — открыть
+                                                                         папку проводником. Второй случай сюда добавлен
+                                                                         позже: у макроса с ошибкой и без хоткея не
+                                                                         загоралось ничего, а ▸ гасла молча. -->
                                                                     <TextBlock Grid.Column="0"
                                                                                FontSize="10"
                                                                                Margin="0,0,7,0"
                                                                                VerticalAlignment="Center"
                                                                                Foreground="{DynamicResource NocturneDangerBrush}"
-                                                                               IsVisible="{Binding IsBroken}"
-                                                                               ToolTip.Tip="{Binding Problem}"
+                                                                               IsVisible="{Binding IsUnhealthy}"
+                                                                               ToolTip.Tip="{Binding UnhealthyReason}"
                                                                                Text="!" />
                                                                     <TextBlock Grid.Column="1"
                                                                                FontSize="11.5"

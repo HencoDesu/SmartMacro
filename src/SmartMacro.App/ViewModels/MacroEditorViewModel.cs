@@ -95,6 +95,33 @@ public sealed class MacroListItemViewModel : ObservableObject
     /// <summary>Сколько ошибок нашёл валидатор. Больше нуля — демон не вооружит триггеры этого макроса.</summary>
     public int ErrorCount { get; }
 
+    /// <summary>
+    /// Показывать ли красное «!»: бандл не читается ЛИБО валидатор нашёл в графе ошибки.
+    ///
+    /// <b>Раньше отметка отвечала только за первое, и это оставляло дыру.</b> У макроса с ошибкой
+    /// валидации и без хоткей-триггера не загоралось вообще ничего: <c>IsBroken</c> ложь (файл-то
+    /// читается), <see cref="HotkeyProblem"/> пуст (говорить «хоткей не вооружён» про макрос без
+    /// хоткея бессмысленно), а единственным следом оставалась погашенная ▸ — без единого слова о
+    /// причине. Узнать её можно было, только открыв макрос. Вложенная строка ФУНКЦИИ при этом
+    /// свой «!» показывала: ошибка в графе функции была видна, ошибка в графе её родителя — нет.
+    /// </summary>
+    public bool IsUnhealthy => IsBroken || ErrorCount > 0;
+
+    /// <summary>
+    /// Подсказка того же «!»: вердикт читателя у нечитаемого бандла, иначе число ошибок.
+    ///
+    /// <b>Отметка одна, а не две.</b> Про ошибки графа могли бы сказать и «!», и ▲ у аккорда —
+    /// но два значка об одной причине приучают не читать ни одного. Поэтому «!» отвечает за
+    /// здоровье МАКРОСА (не читается либо не запустится), а ▲ остался ровно за тем, чего «!»
+    /// знать не может: Windows не отдала сочетание. Молчащий из-за ошибок хоткей упоминается
+    /// здесь же, второй половиной фразы, — он следствие того же самого.
+    /// </summary>
+    public string? UnhealthyReason => Problem ?? (ErrorCount > 0
+        ? string.Format(CultureInfo.CurrentCulture,
+            HasHotkeyTrigger ? Strings.Macros_Row_ErrorTipHotkey : Strings.Macros_Row_ErrorTip,
+            ErrorCount)
+        : null);
+
     /// <summary>У макроса есть хоткей-триггер — значит, «не вооружён» про него говорить осмысленно.</summary>
     public bool HasHotkeyTrigger { get; }
 
@@ -176,7 +203,8 @@ public sealed class MacroListItemViewModel : ObservableObject
         0 => null,
         _ => macro.Triggers[0] switch
         {
-            HotkeyTrigger { IsMouse: true } hotkey => HotkeyNames.Chord(hotkey.Modifiers, hotkey.MouseButton.ToString()),
+            HotkeyTrigger { IsMouse: true } hotkey =>
+                HotkeyNames.Chord(hotkey.Modifiers, hotkey.MouseButton.ToString()),
             HotkeyTrigger hotkey => HotkeyNames.Chord(hotkey.Modifiers, hotkey.Key.ToString()),
             ProcessAppearedTrigger => Strings.Macros_Row_TriggerProcess,
             var other => other.GetType().Name,
@@ -529,7 +557,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         set
         {
             if (!_suppressSelectionReload && value is not null
-                && !string.Equals(_selectedMacro?.Name, value.Name, StringComparison.Ordinal))
+                                          && !string.Equals(_selectedMacro?.Name, value.Name, StringComparison.Ordinal))
             {
                 FlushAutoSave();
                 // Запись выше могла пересобрать библиотеку, а с ней и все строки; берём живую с
@@ -2154,9 +2182,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private List<MacroSubmacro> BuildSubmacros() =>
         _openSubmacroId is not { } open
             ? [.. _submacros]
-            : [.. _submacros.Select(submacro => submacro.Id == open
-                ? submacro with { Graph = BuildGraph() }
-                : submacro)];
+            :
+            [
+                .. _submacros.Select(submacro => submacro.Id == open
+                    ? submacro with { Graph = BuildGraph() }
+                    : submacro)
+            ];
 
     /// <summary>
     /// Перекладывает то, что на канве, в модель бандла. Зовётся перед сменой открытого графа и
@@ -2765,8 +2796,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         RefreshSaveState();
         StatusMessage = (errors, Issues.Count) switch
         {
-            ( > 0, _) => string.Format(CultureInfo.CurrentCulture, Strings.Editor_Status_SavedWithErrors, errors),
-            (0, > 0) => string.Format(CultureInfo.CurrentCulture, Strings.Editor_Status_SavedWithWarnings, Issues.Count),
+            (> 0, _) => string.Format(CultureInfo.CurrentCulture, Strings.Editor_Status_SavedWithErrors, errors),
+            (0, > 0) => string.Format(CultureInfo.CurrentCulture, Strings.Editor_Status_SavedWithWarnings,
+                Issues.Count),
             _ => Strings.Editor_Status_Saved,
         };
         return true;
@@ -3223,15 +3255,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 CultureInfo.CurrentCulture, Strings.Macros_Row_HotkeyRefused, chord);
         }
 
+        // Только отказ Windows. Ветку «в графе ошибки, значит триггер не вооружён» отсюда убрали:
+        // про это говорит «!» на той же строке (см. MacroListItemViewModel.UnhealthyReason), и
+        // держать два значка об одной причине — верный способ приучить не читать ни одного.
         foreach (var item in Macros)
         {
-            item.HotkeyProblem = item switch
-            {
-                { HasHotkeyTrigger: true, ErrorCount: > 0 } =>
-                    string.Format(CultureInfo.CurrentCulture,
-                        Strings.Macros_Row_HotkeyUnarmed, item.ErrorCount),
-                _ => byMacro.TryGetValue(item.Name, out var text) ? text : null,
-            };
+            item.HotkeyProblem = byMacro.TryGetValue(item.Name, out var text) ? text : null;
         }
     }
 

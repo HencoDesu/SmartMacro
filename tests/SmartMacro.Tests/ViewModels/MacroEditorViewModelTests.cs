@@ -6,7 +6,6 @@ using SmartMacro.App.ViewModels;
 using SmartMacro.App.ViewModels.Nodes;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
-using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
 using SmartMacro.Resources;
@@ -255,8 +254,57 @@ public class MacroEditorViewModelTests
         await Assert.That(vm.ErrorMessage).IsNull();
         // Статус обязан назвать цену: по клавише такой макрос не запустится.
         await Assert.That(vm.StatusMessage).Contains("не вооружит");
-        // И то же самое видно, не открывая макрос, — красным «!» на строке библиотеки.
-        await Assert.That(vm.Macros.Single(m => m.Name == "битый").ErrorCount).IsGreaterThan(0);
+        // И то же самое видно, не открывая макрос, — красным «!» на строке библиотеки. Утверждение
+        // раньше проверяло только счётчик, а «!» при этом не загорался вовсе; см. соседний тест.
+        var row = vm.Macros.Single(m => m.Name == "битый");
+        await Assert.That(row.ErrorCount).IsGreaterThan(0);
+        await Assert.That(row.IsUnhealthy).IsTrue();
+        await Assert.That(Msg.Arg(row.UnhealthyReason, Strings.Macros_Row_ErrorTipHotkey)).IsNotNull();
+    }
+
+    // Дыра, ради которой правилась отметка: макрос с ошибкой валидации и БЕЗ хоткей-триггера.
+    // IsBroken ложь — файл читается; про хоткей сказать нечего — его нет; и до правки на строке
+    // не загоралось НИЧЕГО, а ▸ гасла молча. Узнать причину можно было, только открыв макрос, —
+    // притом что вложенная строка функции свой «!» за ошибку в графе показывала всегда.
+    [Test]
+    public async Task LibraryRow_MarksAMacroWithGraphErrors_EvenWithoutAHotkey()
+    {
+        using var daemon = new Panel();
+
+        // Мимо панели, потому что так этот файл и появляется: чужой .hsm, правка проводником,
+        // удалённая нода, на которую осталось ребро. Триггеров нет вовсе — значит, и сказать про
+        // хоткей нечего.
+        daemon.WriteExternally(new MacroGraph
+        {
+            Name = "безклавиши",
+            StartNodeId = Ids.Of("a"),
+            Nodes = [new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 100, Next = Ids.Of("удалённая") }],
+        });
+
+        using var vm = CreateEditor(daemon);
+
+        var row = vm.Macros.Single(m => m.Name == "безклавиши");
+        await Assert.That(row.IsBroken).IsFalse();
+        await Assert.That(row.HasHotkeyProblem).IsFalse();
+        await Assert.That(row.CanRun).IsFalse();
+        await Assert.That(row.IsUnhealthy).IsTrue();
+        // Формулировка без второй половины про хоткей: его у этого макроса нет.
+        await Assert.That(Msg.Arg(row.UnhealthyReason, Strings.Macros_Row_ErrorTip))
+            .IsEqualTo(row.ErrorCount.ToString(CultureInfo.CurrentCulture));
+    }
+
+    // Здоровый макрос отметки не несёт — иначе «!» перестал бы что-либо означать.
+    [Test]
+    public async Task LibraryRow_OfAHealthyMacro_CarriesNoMark()
+    {
+        using var daemon = new Panel();
+        using var vm = CreateEditor(daemon);
+        vm.LoadGraph(Chain("здоровая"));
+        await vm.SaveAsync();
+
+        var row = vm.Macros.Single(m => m.Name == "здоровая");
+        await Assert.That(row.IsUnhealthy).IsFalse();
+        await Assert.That(row.UnhealthyReason).IsNull();
     }
 
     [Test]

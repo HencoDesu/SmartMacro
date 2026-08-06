@@ -181,9 +181,21 @@ for years, so a macro with a validation error had a dead hotkey and an honest re
 dying on the broken node. Worse than the D4 defect F3 closed: the macro did not go quiet, it did
 half the job). Otherwise «the hotkey does nothing» comes back
 from the other side — the D4 defect exactly. The validator is shared and the inventory is the same
-one, so **the panel reaches the same verdict itself** and needs no new request to say «хоткей не
-вооружён — в макросе ошибок: N» on the library row. Telling the two causes apart is now the
+one, so **the panel reaches the same verdict itself** and needs no new request to say «в макросе
+ошибок: N» on the library row. Telling the two causes apart is now the
 library row's job alone — the environment diagnostic that used to do it is gone (see «Настройки»).
+
+**The row carries ONE mark, and which one it is was got wrong the first time.** The red `!` means
+«с этим макросом беда» in both senses — the bundle does not read, *or* the validator found errors —
+and its tooltip says which; the ⚠ next to the chord is left with the only thing `!` cannot know,
+that **Windows refused the chord**. Until this was fixed the `!` covered the unreadable case alone
+and the errors case rode on the ⚠ as «хоткей не вооружён», which left a hole exactly where nobody
+would look: **a macro with a graph error and NO hotkey trigger lit nothing at all.** `IsBroken` was
+false (the file reads), there was no hotkey to complain about, and the only trace was a greyed-out
+▸ with no word about why — the D4 defect once more, and this time inside the screen that exists to
+report it. The nested row of a *function* had shown its `!` for a graph error since F4, so an error
+in a function was visible and the same error in its parent was not. ⚠️ Do not "restore" the second
+marker for the unarmed case: two marks for one cause is how a person learns to read neither.
 
 **One race F3 introduced.** The panel writes the file; the daemon hears about it through a debounced
 watcher. «Сохранить» then immediately «Запустить» can land in the gap. So `RunMacro`, on a miss,
