@@ -321,6 +321,21 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// <summary>Полный путь к файлу настроек — подпись в шапке.</summary>
     public string SettingsFilePath => _snapshot?.SettingsFilePath ?? string.Empty;
 
+    /// <summary>
+    /// Вердикт демона о том, почему файл настроек не прочитан, — или пусто, если прочитан.
+    ///
+    /// Показывается ПОЛОСОЙ ВВЕРХУ ФОРМЫ, а не значком и не подсказкой: на экране в этот момент
+    /// не содержимое файла (умолчания или последний удачный снимок), а «Применить» перезапишет
+    /// файл целиком. Человек обязан прочитать это ровно там, где собирается нажать кнопку.
+    ///
+    /// <b>«Применить» при этом НЕ блокируется.</b> Перезаписать сломанный файл — законное
+    /// намерение; опасна была тихая потеря, а не сама возможность.
+    /// </summary>
+    public string FileFault => _snapshot?.FileFault ?? string.Empty;
+
+    /// <summary><c>true</c>, когда полосу «файл не прочитан» надо показать.</summary>
+    public bool ShowsFileFault => FileFault.Length > 0;
+
     /// <summary><c>true</c>, когда демон вообще ответил хоть раз.</summary>
     public bool IsLoaded => _snapshot is not null;
 
@@ -461,7 +476,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 .ConfigureAwait(false);
             if (snapshot is not null)
             {
-                _dispatcher.Post(() => _snapshot = snapshot);
+                _dispatcher.Post(() => SetSnapshot(snapshot));
             }
         }
         catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
@@ -565,7 +580,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             // Перекладываем только тогда, когда на экране нечего терять.
             if (IsDirty)
             {
-                _snapshot = snapshot;
+                SetSnapshot(snapshot);
                 RaiseDirty();
                 Status = Strings.Settings_Status_FileChanged;
                 return;
@@ -577,9 +592,20 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
 
     // ---- раскладка --------------------------------------------------------------------------
 
-    private void Load(SettingsSnapshotDto snapshot)
+    // Единственное место, где меняется _snapshot. Заведено ради полосы «файл не прочитан»: снимок
+    // приезжает тремя дорогами (ответ на GetSettings, пуш SettingsChanged, ответ на SetLogLevel), и
+    // предупреждение, появляющееся не на всех трёх, — это предупреждение, которого в нужный момент
+    // может не быть.
+    private void SetSnapshot(SettingsSnapshotDto snapshot)
     {
         _snapshot = snapshot;
+        OnPropertyChanged(nameof(FileFault));
+        OnPropertyChanged(nameof(ShowsFileFault));
+    }
+
+    private void Load(SettingsSnapshotDto snapshot)
+    {
+        SetSnapshot(snapshot);
         _loading = true;
         try
         {

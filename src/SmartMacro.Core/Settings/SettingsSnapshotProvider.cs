@@ -35,7 +35,7 @@ public sealed class SettingsSnapshotProvider
 
     /// <summary>Текущее состояние экрана настроек целиком.</summary>
     public SettingsSnapshotDto Snapshot() =>
-        new(_store.Current, _logLevel.Current, _store.FilePath, _store.FolderPath);
+        new(_store.Current, _logLevel.Current, _store.FilePath, _store.FolderPath, _store.Fault);
 
     /// <summary>
     /// Двигает минимальный уровень журнала демона.

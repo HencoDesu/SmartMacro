@@ -1,6 +1,9 @@
-﻿using SmartMacro.Contracts.Dto;
+﻿using Microsoft.Extensions.Logging.Abstractions;
+using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Contracts.Settings;
+using SmartMacro.Resources;
+using SmartMacro.Settings;
 
 namespace SmartMacro.Tests.Ipc;
 
@@ -124,5 +127,34 @@ public class SettingsProtocolTests
         await Assert.That(seen).Count().IsEqualTo(2);
         await Assert.That(seen[0].Settings.Profiles).IsEmpty();
         await Assert.That(seen[1].LogLevel).IsEqualTo(LogLevelDto.Error);
+    }
+
+    // ⚠️ «Файл не прочитан» обязано ЕХАТЬ ПО ПРОВОДУ, а не оставаться строкой в журнале. Хранилище
+    // нечитаемый файл не переписывает, но панель без этого поля показала бы умолчания как
+    // содержимое файла — и следующее «Применить» уничтожило бы файл, чинившийся одной запятой.
+    // Собрано здесь на настоящем хранилище над сломанным файлом: снимок строит провайдер, а
+    // диспетчер на GetSettings просто отдаёт его.
+    [Test]
+    public async Task TheSnapshotCarriesTheVerdictWhenTheSettingsFileIsNotRead()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"smartmacro-settings-fault-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, SettingsStore.FileName), "{ \"Watch\": { ,, } ");
+            using var store = new SettingsStore(directory, NullLogger<SettingsStore>.Instance);
+            var provider = new SettingsSnapshotProvider(store, new IpcDispatcherHarness.FakeLogLevelSwitch());
+
+            // Через настоящий круг сериализации протокола: поле должно пережить провод.
+            var snapshot = IpcJson.Read<SettingsSnapshotDto>(IpcJson.Write(provider.Snapshot()))!;
+
+            await Assert.That(snapshot.FileFault).IsNotNull();
+            await Assert.That(Msg.Is(snapshot.FileFault, Strings.Settings_File_Unreadable)).IsTrue();
+            provider.Detach();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 }

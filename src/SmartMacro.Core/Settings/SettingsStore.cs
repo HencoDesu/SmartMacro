@@ -1,7 +1,10 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Contracts.Settings;
+using SmartMacro.Io;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Settings;
 
@@ -24,6 +27,24 @@ namespace SmartMacro.Settings;
 /// и нажмите Сохранить». Файл с разумными умолчаниями создаёт сам демон, и делает это ровно один
 /// раз, только когда файла нет; существующий файл не переписывается никогда, даже если он
 /// нечитаем (см. <see cref="Load"/>).
+///
+/// ⚠️ <b>«Нечитаемый файл не переписывается» — обещание хранилища, и одного его МАЛО.</b>
+/// Хранилище и правда не пишет, но следующая же команда панели пишет: пользователь видел форму с
+/// умолчаниями, считал, что настройки сбросились, жал «Применить» — и чинимый одной запятой файл
+/// исчезал навсегда. Поэтому нечитаемость теперь не только пишется в журнал, но и ЕЗДИТ НАРУЖУ
+/// (<see cref="Fault"/> → <c>SettingsSnapshotDto</c> → полоса вверху экрана настроек). Блокировать
+/// «Применить» при этом НЕ надо: перезаписать сломанный файл — законное намерение, опасна была
+/// тихая потеря, а не сама возможность.
+///
+/// <b>Запись АТОМАРНА</b> — <see cref="AtomicFile"/>, тот же механизм, что у бандла: временный
+/// файл рядом, затем <c>ReplaceFile</c>. До этого здесь стоял <c>File.WriteAllTextAsync</c>, то
+/// есть усечение и запись на месте: демон, убитый посреди записи, оставлял половину JSON — а
+/// половина JSON нечитаема, и все настройки пользователя превращались в те самые умолчания.
+///
+/// ⚠️ Имя временного файла (<c>settings.json.tmp</c>) обязано промахиваться мимо фильтра
+/// наблюдателя, а фильтр здесь — САМО ИМЯ ФАЙЛА, не маска. Промахивается: ни длинное
+/// <c>settings.json.tmp</c>, ни короткое 8.3 <c>SETTIN~1.TMP</c> с <c>settings.json</c> не
+/// совпадают.
 ///
 /// <b>Наблюдатель за файлом — не удобство, а следствие кнопки «Открыть папку».</b> Раскладка
 /// портативная, папка одна, и пользователя туда прямо приглашают. Правка блокнотом обязана
@@ -54,6 +75,9 @@ public sealed partial class SettingsStore : ISettingsSource, IDisposable
     private DateTime _signature;
 
     private volatile AppSettings _current = AppSettings.Default;
+
+    // Вердикт последней НЕУДАВШЕЙСЯ загрузки; null — снимок и есть содержимое файла.
+    private volatile string? _fault;
 
     /// <summary>
     /// Боевой конструктор: <c>settings.json</c> в КОРНЕ УСТАНОВКИ. В поставке это папка уровнем
@@ -103,6 +127,20 @@ public sealed partial class SettingsStore : ISettingsSource, IDisposable
 
     /// <inheritdoc />
     public AppSettings Current => _current;
+
+    /// <summary>
+    /// Почему файл настроек НЕ прочитан, — или <c>null</c>, если <see cref="Current"/> и есть его
+    /// содержимое.
+    ///
+    /// Существует затем, чтобы «файл не прочитан» доехало до человека, а не осталось строкой в
+    /// журнале, которую никто не открывает. Пока этого поля не было, панель показывала умолчания
+    /// (или последний удачный снимок) как содержимое файла, и «Применить» уничтожало файл, который
+    /// чинился одной запятой; довод целиком — в шапке класса.
+    ///
+    /// Не флаг, а вердикт: «повреждён» и «занят другим процессом» требуют от пользователя разных
+    /// действий, ровно как у <c>MacroBundleFault</c>.
+    /// </summary>
+    public string? Fault => _fault;
 
     /// <summary>Полный путь к файлу настроек.</summary>
     public string FilePath => _path;
@@ -191,15 +229,18 @@ public sealed partial class SettingsStore : ISettingsSource, IDisposable
     // Три исхода:
     //   * файла нет      → умолчания + ЗАПИСЬ (единственное место, где мы создаём файл сами);
     //   * файл читается  → снимок из него;
-    //   * файл не читается → ОСТАВЛЯЕМ ПРЕЖНИЙ снимок и громко пишем в лог. Именно оставляем, а
-    //     не откатываем к умолчаниям и уж точно не переписываем: пользователь правил файл
-    //     блокнотом и поставил лишнюю запятую, и «программа молча вернула всё к заводскому»
-    //     здесь — потеря его работы. Он чинит запятую, наблюдатель перечитывает.
+    //   * файл не читается → ОСТАВЛЯЕМ ПРЕЖНИЙ снимок, громко пишем в лог И ВЫСТАВЛЯЕМ Fault.
+    //     Именно оставляем, а не откатываем к умолчаниям и уж точно не переписываем: пользователь
+    //     правил файл блокнотом и поставил лишнюю запятую, и «программа молча вернула всё к
+    //     заводскому» здесь — потеря его работы. Он чинит запятую, наблюдатель перечитывает.
+    //     Fault при этом — не украшение: без него панель показывала бы не содержимое файла как
+    //     содержимое файла, и «Применить» доделало бы то, от чего мы здесь воздержались.
     private void Load()
     {
         if (!File.Exists(_path))
         {
             _current = AppSettings.Default;
+            _fault = null;
             LogMissingFileSeeded(_path);
             TryWriteFile(AppSettings.Default);
             return;
@@ -210,6 +251,7 @@ public sealed partial class SettingsStore : ISettingsSource, IDisposable
             var text = File.ReadAllText(_path);
             _current = AppSettingsJson.Deserialize(text, out var adoptedHooks);
             _signature = File.GetLastWriteTimeUtc(_path);
+            _fault = null;
             LogLoaded(_current.Profiles.Count, _path);
 
             // Молчаливая миграция здесь недопустима: она меняет смысл файла, который пользователь
@@ -222,6 +264,7 @@ public sealed partial class SettingsStore : ISettingsSource, IDisposable
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
+            _fault = string.Format(CultureInfo.CurrentCulture, Strings.Settings_File_Unreadable, ex.Message);
             LogUnreadable(ex, _path);
         }
     }
@@ -231,10 +274,13 @@ public sealed partial class SettingsStore : ISettingsSource, IDisposable
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await File.WriteAllTextAsync(_path, AppSettingsJson.Serialize(settings), cancellationToken)
+            await AtomicFile.WriteAllTextAsync(_path, AppSettingsJson.Serialize(settings), cancellationToken)
                 .ConfigureAwait(false);
             _current = settings;
             _signature = File.GetLastWriteTimeUtc(_path);
+            // Файл теперь наш и читается: держать прежний вердикт значило бы предупреждать о
+            // потере, которая уже случилась по воле пользователя.
+            _fault = null;
         }
         finally
         {
@@ -248,7 +294,7 @@ public sealed partial class SettingsStore : ISettingsSource, IDisposable
     {
         try
         {
-            File.WriteAllText(_path, AppSettingsJson.Serialize(settings));
+            AtomicFile.WriteAllText(_path, AppSettingsJson.Serialize(settings));
             _signature = File.GetLastWriteTimeUtc(_path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

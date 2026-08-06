@@ -425,11 +425,15 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Имена шаблонов, уже лежащие в этом наборе (или в корне, когда <paramref name="set"/> —
     /// <c>null</c>). Нужны диалогу выбора области, чтобы предупредить о замене.
+    ///
+    /// ⚠️ Сравнение набора — ORDINAL, как у исполнителя и у описи: <c>classes</c> и
+    /// <c>Classes</c> — две разные подпапки бандла, и <c>RecognizeTag</c> найдёт ровно ту, что
+    /// названа. Регистронезависимое сравнение обещало бы замену там, где её не будет.
     /// </summary>
     public IReadOnlyList<string> NamesIn(string? set) =>
     [
         .. _files
-            .Where(file => string.Equals(file.Set, set, StringComparison.OrdinalIgnoreCase))
+            .Where(file => string.Equals(file.Set, set, StringComparison.Ordinal))
             .Select(file => file.Name)
     ];
 

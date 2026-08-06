@@ -63,6 +63,51 @@ public class SettingsViewModelTests
         await Assert.That(vm.IsDirty).IsFalse();
     }
 
+    // ⚠️ «Файл настроек не прочитан» обязано быть НА ЭКРАНЕ. Демон такой файл не переписывает, но
+    // панель показывает вместо него умолчания — и без полосы над формой человек читает их как
+    // содержимое файла, жмёт «Применить» и теряет файл, чинившийся одной запятой.
+    [Test]
+    public async Task AnUnreadSettingsFileIsShownAsAStripOverTheForm()
+    {
+        var client = new FakeIpcClient();
+        using var vm = Create(client, Snapshot() with { FileFault = "Файл настроек не прочитан: лишняя запятая" });
+
+        await Assert.That(vm.ShowsFileFault).IsTrue();
+        await Assert.That(vm.FileFault).IsEqualTo("Файл настроек не прочитан: лишняя запятая");
+
+        // И «Применить» при этом НЕ блокируется: перезаписать сломанный файл — законное
+        // намерение, опасна была тихая потеря, а не сама возможность.
+        vm.ProcessPollSeconds = "9";
+        await Assert.That(vm.CanApply).IsTrue();
+    }
+
+    [Test]
+    public async Task AReadableFileDrawsNoStrip()
+    {
+        var client = new FakeIpcClient();
+        using var vm = Create(client);
+
+        await Assert.That(vm.ShowsFileFault).IsFalse();
+    }
+
+    // Снимок приезжает тремя дорогами, и предупреждение, появляющееся не на всех трёх, — это
+    // предупреждение, которого в нужный момент может не быть. Здесь — пуш, приходящий и от правки
+    // файла блокнотом.
+    [Test]
+    public async Task ThePushBringsTheStripUpToo()
+    {
+        var client = new FakeIpcClient();
+        using var vm = Create(client);
+        var announced = new List<string>();
+        vm.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? string.Empty);
+
+        client.RaiseEvent(IpcMessageTypes.SettingsChanged,
+            Snapshot() with { FileFault = "Файл настроек не прочитан: неожиданный символ" });
+
+        await Assert.That(vm.ShowsFileFault).IsTrue();
+        await Assert.That(announced).Contains(nameof(SettingsViewModel.ShowsFileFault));
+    }
+
     // Экран не предлагает SendInput: проверить его без живой игры нельзя, а непроверенный способ
     // в списке хуже отсутствующего.
     [Test]

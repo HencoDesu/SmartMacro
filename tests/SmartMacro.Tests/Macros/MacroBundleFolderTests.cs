@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using SmartMacro.Io;
 using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
@@ -494,7 +495,7 @@ public class MacroBundleFolderTests
 
             await Assert.That(Directory.EnumerateFiles(dir).Select(Path.GetFileName).ToList())
                 .IsEquivalentTo(new List<string?> { "атомарно.hsm" });
-            await Assert.That(File.Exists(MacroBundleFolder.PathFor(dir, "атомарно") + MacroBundleWriter.TempSuffix))
+            await Assert.That(File.Exists(AtomicFile.TempPathFor(MacroBundleFolder.PathFor(dir, "атомарно"))))
                 .IsFalse();
         }
         finally

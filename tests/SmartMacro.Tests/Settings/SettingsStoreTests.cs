@@ -1,5 +1,7 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
+﻿using System.IO.Enumeration;
+using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Contracts.Settings;
+using SmartMacro.Io;
 using SmartMacro.Resources;
 using SmartMacro.Settings;
 
@@ -131,6 +133,144 @@ public class SettingsStoreTests
             // Главное: файл на месте и не переписан — пользователь чинит запятую, а не набирает
             // всё заново.
             await Assert.That(File.ReadAllText(path)).IsEqualTo(broken);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // ⚠️ «Не переписан» — обещание хранилища, и одного его мало: следующая команда панели пишет.
+    // Пока нечитаемость не выезжала наружу, пользователь видел форму с умолчаниями, считал, что
+    // настройки сбросились, жал «Применить» — и файл, чинившийся одной запятой, исчезал. Вердикт
+    // обязан быть внятным: не флаг, а причина, и с ней панель рисует полосу над формой.
+    [Test]
+    public async Task ABrokenFileIsReportedAsAFaultAndNotJustLogged()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, SettingsStore.FileName);
+            File.WriteAllText(path, "{ \"Watch\": { \"ProcessPollIntervalSeconds\": 3, } ");
+
+            using var store = Open(directory);
+
+            await Assert.That(store.Fault).IsNotNull();
+            await Assert.That(Msg.Is(store.Fault, Strings.Settings_File_Unreadable)).IsTrue();
+            // В вердикте — причина от разборщика, а не просто «ошибка».
+            await Assert.That(Msg.Arg(store.Fault, Strings.Settings_File_Unreadable)).IsNotEmpty();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task AReadableFileCarriesNoFault()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            using var store = Open(directory);
+            await Assert.That(store.Fault).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // Перезаписать сломанный файл — законное намерение, и «Применить» ради этого НЕ блокируется.
+    // После записи файл наш и читается, так что держать прежний вердикт значило бы предупреждать
+    // о потере, которая уже случилась по воле человека.
+    [Test]
+    public async Task SaveAsync_OverABrokenFileWritesItAndClearsTheFault()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            var path = Path.Combine(directory, SettingsStore.FileName);
+            File.WriteAllText(path, "не json вовсе");
+            using var store = Open(directory);
+            await Assert.That(store.Fault).IsNotNull();
+
+            var issues = await store.SaveAsync(AppSettings.Default with
+            {
+                Watch = new WatchSettings { ProcessPollIntervalSeconds = 5, WindowPollIntervalSeconds = 6 },
+            });
+
+            await Assert.That(issues).IsEmpty();
+            await Assert.That(store.Fault).IsNull();
+            await Assert.That(AppSettingsJson.Deserialize(File.ReadAllText(path)).Watch.ProcessPollIntervalSeconds)
+                .IsEqualTo(5);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // ---- атомарность записи -------------------------------------------------------------------
+    //
+    // Здесь стоял File.WriteAllTextAsync — усечение и запись на месте. Демон, убитый посреди
+    // записи, оставлял половину JSON, а половина JSON нечитаема: все настройки пользователя
+    // превращались в умолчания. Убийство процесса из теста не воспроизвести, зато можно проверить
+    // ровно те два наблюдаемых следствия механизма, которых у записи на месте нет.
+
+    // Первое: читатель, держащий файл открытым, продолжает видеть ЦЕЛЫЙ прежний файл, а на диске
+    // уже новый. Запись на месте здесь либо отдала бы ему усечённое содержимое, либо вовсе упала
+    // бы с отказом доступа.
+    [Test]
+    public async Task SaveAsync_ReplacesTheFileWholeWhileSomebodyIsReadingIt()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            using var store = Open(directory);
+            var before = File.ReadAllText(store.FilePath);
+
+            using (var reader = new FileStream(
+                       store.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+            {
+                await store.SaveAsync(AppSettings.Default with
+                {
+                    Watch = new WatchSettings { ProcessPollIntervalSeconds = 12, WindowPollIntervalSeconds = 14 },
+                });
+
+                using var text = new StreamReader(reader);
+                await Assert.That(await text.ReadToEndAsync()).IsEqualTo(before);
+            }
+
+            await Assert.That(AppSettingsJson.Deserialize(File.ReadAllText(store.FilePath))
+                .Watch.ProcessPollIntervalSeconds).IsEqualTo(12);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // Второе: временный файл лежит В ТОЙ ЖЕ ПАПКЕ (замена атомарна только в пределах тома, так что
+    // %TEMP% обесценил бы всю затею), промахивается мимо фильтра наблюдателя — а фильтр здесь само
+    // имя файла, не маска, — и после записи не остаётся.
+    [Test]
+    public async Task TheTemporaryFileSitsNextToTheSettingsAndMissesTheWatcherFilter()
+    {
+        var directory = TempDirectory();
+        try
+        {
+            using var store = Open(directory);
+            var temp = AtomicFile.TempPathFor(store.FilePath);
+
+            await Assert.That(Path.GetDirectoryName(temp)).IsEqualTo(Path.GetDirectoryName(store.FilePath));
+            await Assert.That(FileSystemName.MatchesSimpleExpression(
+                SettingsStore.FileName, Path.GetFileName(temp))).IsFalse();
+
+            await store.SaveAsync(AppSettings.Default with { Profiles = [] });
+
+            await Assert.That(Directory.EnumerateFiles(directory).Select(Path.GetFileName).ToList())
+                .IsEquivalentTo(new List<string?> { SettingsStore.FileName });
         }
         finally
         {
