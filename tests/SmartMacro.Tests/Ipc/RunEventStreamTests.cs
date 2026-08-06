@@ -64,7 +64,7 @@ public class RunEventStreamTests
         {
             await client.SendAsync(new IpcRequest(id, IpcMessageTypes.SubscribeRunEvents,
                 IpcJson.Write(new SubscribeRunEventsRequest(enabled))));
-            var reply = Parse(await client.ReadLineAsync());
+            var reply = await ReadReplyAsync(client, id);
             if (!reply.GetProperty("Ok").GetBoolean())
             {
                 throw new InvalidOperationException(reply.GetProperty("Error").GetString());
@@ -83,6 +83,45 @@ public class RunEventStreamTests
     private static JsonElement Parse(string line) => JsonDocument.Parse(line).RootElement.Clone();
 
     private static string TypeOf(JsonElement element) => element.GetProperty("Type").GetString()!;
+
+    /// <summary>
+    /// Читает строки, пока не придёт ОТВЕТ с нужным <paramref name="id"/>; пуши, встреченные по
+    /// дороге, пропускаются.
+    ///
+    /// ⚠️ <b>Не «прочитать следующую строку».</b> Первый закон этого протокола — «ответы могут
+    /// прийти не по порядку, соотносить по <c>Id</c>, никогда по приходу», и настоящий клиент в
+    /// панели именно так и устроен; оснастка же читала позиционно и тем нарушала правило того
+    /// самого кода, который проверяет. Стоило это плавающего теста: пачка событий, вылетевшая
+    /// между запросом и ответом, доставалась вместо ответа — редко (для этого надо попасть в
+    /// окно склейки) и потому невоспроизводимо.
+    ///
+    /// Ответ от пуша отличается наличием <c>Id</c>: у <c>IpcEvent</c> такого поля нет по
+    /// определению.
+    /// </summary>
+    private static async Task<JsonElement> ReadReplyAsync(DuplexStreamPair client, int id, int timeoutMs = 5000)
+    {
+        while (true)
+        {
+            var line = Parse(await client.ReadLineAsync(timeoutMs));
+            if (line.TryGetProperty("Id", out var actual) && actual.GetInt32() == id)
+            {
+                return line;
+            }
+        }
+    }
+
+    /// <summary>Зеркало <see cref="ReadReplyAsync"/>: читает, пока не придёт ПУШ.</summary>
+    private static async Task<JsonElement> ReadPushAsync(DuplexStreamPair client, int timeoutMs = 5000)
+    {
+        while (true)
+        {
+            var line = Parse(await client.ReadLineAsync(timeoutMs));
+            if (!line.TryGetProperty("Id", out _))
+            {
+                return line;
+            }
+        }
+    }
 
     private static async Task<bool> WaitUntilAsync(Func<bool> condition, int timeoutMs = 5000)
     {
@@ -129,7 +168,7 @@ public class RunEventStreamTests
         // Не «события отфильтровали» — их вообще не производили. Единственная строка, которую
         // это соединение способно получить, — ответ на посланный следом запрос.
         await client.SendAsync(new IpcRequest(7, IpcMessageTypes.GetWindows));
-        var line = Parse(await client.ReadLineAsync());
+        var line = await ReadReplyAsync(client, 7);
         await Assert.That(line.GetProperty("Id").GetInt32()).IsEqualTo(7);
 
         client.CloseClient();
@@ -147,7 +186,7 @@ public class RunEventStreamTests
         await Assert.That(fixture.Publisher.SubscriberCount).IsEqualTo(1);
 
         Walk(fixture.Publisher, "pw-boot", 0x10, "a");
-        var evt = Parse(await client.ReadLineAsync());
+        var evt = await ReadPushAsync(client);
         await Assert.That(TypeOf(evt)).IsEqualTo(IpcMessageTypes.RunEvents);
 
         await fixture.SubscribeAsync(client, id: 2, enabled: false);
@@ -201,12 +240,12 @@ public class RunEventStreamTests
         await fixture.SubscribeAsync(watcher);
         Walk(fixture.Publisher, "pw-boot", 0x10, "a");
 
-        await Assert.That(TypeOf(Parse(await watcher.ReadLineAsync()))).IsEqualTo(IpcMessageTypes.RunEvents);
+        await Assert.That(TypeOf(await ReadPushAsync(watcher))).IsEqualTo(IpcMessageTypes.RunEvents);
 
         // Посторонний получает обычные события и ничего сверх того. Вывалив на него всплеск, мы
         // стоили бы ему соединения ради потока, который ему совершенно не нужен.
         fixture.Engine.Windows.Register(0x99, "elementclient");
-        var seen = Parse(await bystander.ReadLineAsync());
+        var seen = await ReadPushAsync(bystander);
         await Assert.That(TypeOf(seen)).IsEqualTo(IpcMessageTypes.WindowAppeared);
 
         watcher.CloseClient();
@@ -255,7 +294,7 @@ public class RunEventStreamTests
 
         Walk(fixture.Publisher, "pw-boot", 0x1, "a");
 
-        var batch = IpcJson.Read<RunEventBatch>(Parse(await client.ReadLineAsync()).GetProperty("Payload"))!;
+        var batch = IpcJson.Read<RunEventBatch>((await ReadPushAsync(client)).GetProperty("Payload"))!;
         var started = batch.Events.First(e => e.Kind == RunEventKind.WalkStarted);
         await Assert.That(started.Walk!.FromStart).IsTrue();
 
@@ -307,7 +346,7 @@ public class RunEventStreamTests
         var deadline = Environment.TickCount64 + 15000;
         while (events.Count + dropped < expected && Environment.TickCount64 < deadline)
         {
-            var line = Parse(await client.ReadLineAsync(timeoutMs: 5000));
+            var line = await ReadPushAsync(client);
             await Assert.That(TypeOf(line)).IsEqualTo(IpcMessageTypes.RunEvents);
             var batch = IpcJson.Read<RunEventBatch>(line.GetProperty("Payload"))!;
             events.AddRange(batch.Events);
@@ -327,7 +366,7 @@ public class RunEventStreamTests
         // И то, ради чего всё затевалось: соединение это пережило.
         await Assert.That(fixture.Server.ConnectionCount).IsEqualTo(1);
         await client.SendAsync(new IpcRequest(99, IpcMessageTypes.GetWindows));
-        var reply = Parse(await client.ReadLineAsync());
+        var reply = await ReadReplyAsync(client, 99);
         await Assert.That(reply.GetProperty("Id").GetInt32()).IsEqualTo(99);
         await Assert.That(reply.GetProperty("Ok").GetBoolean()).IsTrue();
 
@@ -357,8 +396,7 @@ public class RunEventStreamTests
         var deadline = Environment.TickCount64 + 15000;
         while (dropped == 0 && Environment.TickCount64 < deadline)
         {
-            var batch = IpcJson.Read<RunEventBatch>(Parse(await client.ReadLineAsync(timeoutMs: 5000))
-                .GetProperty("Payload"))!;
+            var batch = IpcJson.Read<RunEventBatch>((await ReadPushAsync(client)).GetProperty("Payload"))!;
             dropped += batch.Dropped;
         }
 
@@ -384,8 +422,7 @@ public class RunEventStreamTests
         await fixture.SubscribeAsync(client, id: 3);
         Walk(fixture.Publisher, "pw-assist", 0x2, "z");
 
-        var batch = IpcJson.Read<RunEventBatch>(Parse(await client.ReadLineAsync(timeoutMs: 5000))
-            .GetProperty("Payload"))!;
+        var batch = IpcJson.Read<RunEventBatch>((await ReadPushAsync(client)).GetProperty("Payload"))!;
 
         // OfType<string>(), а не Where(name => name is not null): здесь null — законное значение
         // (у событий уровня обхода ноды нет) и его действительно надо отбросить, но через Where
