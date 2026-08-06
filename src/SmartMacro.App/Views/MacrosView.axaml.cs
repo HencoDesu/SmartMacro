@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -73,6 +74,22 @@ public partial class MacrosView : UserControl
     private readonly DispatcherTimer _elapsedTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
 
     /// <summary>
+    /// Часы автосохранения — по тому же правилу, что и часы выше: <c>DispatcherTimer</c> живёт в
+    /// виде, а view-model выставляет наружу <c>TickAutoSave()</c>, который тест дёргает напрямую.
+    /// Ни одна проверка автосохранения поэтому не ждёт настоящих секунд.
+    ///
+    /// Период и число тихих тиков — оба у view-model
+    /// (<see cref="MacroEditorViewModel.AutoSaveTick"/>,
+    /// <see cref="MacroEditorViewModel.AutoSaveQuietTicks"/>): «через сколько записываем»
+    /// обязано читаться в одном месте, а не по половине на файл.
+    ///
+    /// Часы НЕ останавливаются при уходе из режима «Макросы» — виды переключаются видимостью, и
+    /// правка, сделанная за секунду до перехода в «Настройки», обязана дописаться так же, как
+    /// любая другая.
+    /// </summary>
+    private readonly DispatcherTimer _autoSaveTimer = new() { Interval = MacroEditorViewModel.AutoSaveTick };
+
+    /// <summary>
     /// <b>InitializeComponent, а НЕ AvaloniaXamlLoader.Load.</b> Выглядят они равнозначно, но
     /// равнозначны не являются: генератор имён Avalonia кладёт присваивания полей <c>x:Name</c>
     /// ВНУТРЬ сгенерированного <c>InitializeComponent</c>, так что вызов одного лишь загрузчика
@@ -88,6 +105,7 @@ public partial class MacrosView : UserControl
     {
         InitializeComponent();
         _elapsedTimer.Tick += (_, _) => Vm?.TickElapsed();
+        _autoSaveTimer.Tick += (_, _) => Vm?.TickAutoSave();
     }
 
     private MacroEditorViewModel? Vm => DataContext as MacroEditorViewModel;
@@ -479,6 +497,43 @@ public partial class MacrosView : UserControl
         if (Vm is { } vm)
         {
             await vm.SaveAsync();
+        }
+    }
+
+    // ---- переименование файла макроса -----------------------------------------------------
+    //
+    // Автосохранение пишет в ЗАГРУЖЕННОЕ имя и файлов не плодит, поэтому момент «имя набрано
+    // целиком» называет человек. Способов три и они равнозначны: Enter, уход фокуса и кнопка
+    // «Сохранить». Esc возвращает то, как файл называется на самом деле.
+
+    private async void OnMacroNameKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (Vm is not { } vm)
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case Key.Enter:
+                e.Handled = true;
+                // force: Enter — прямое действие, и спросить про занятое имя надо даже если на
+                // него уже отвечали отказом.
+                await vm.CommitRenameAsync(force: true);
+                break;
+
+            case Key.Escape:
+                e.Handled = true;
+                vm.CancelRename();
+                break;
+        }
+    }
+
+    private async void OnMacroNameLostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm)
+        {
+            await vm.CommitRenameAsync();
         }
     }
 
@@ -923,12 +978,30 @@ public partial class MacrosView : UserControl
         base.OnAttachedToVisualTree(e);
         ApplyTransform();
         _elapsedTimer.Start();
+        if (RunsInALivePanel)
+        {
+            _autoSaveTimer.Start();
+        }
     }
+
+    /// <summary>
+    /// Этот вид поднят настоящей панелью, а не дизайнером и не headless-обходом раскладки.
+    ///
+    /// Признак тот же, по которому <c>App</c> решает, поднимать ли главное окно, — классический
+    /// оконный цикл. Часы времени прогона такой оговорки не требуют (они лишь поднимают
+    /// <c>PropertyChanged</c>), а часы автосохранения ПИШУТ ФАЙЛЫ, и делать это от одного лишь
+    /// появления контрола в дереве нельзя: у обхода раскладки тик пришёлся бы посреди замера и
+    /// сделал бы его плавающим — ровно та беда, из-за которой часы вообще вынесены в вид и
+    /// дёргаются тестом вручную.
+    /// </summary>
+    private static bool RunsInALivePanel =>
+        Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime;
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
         _elapsedTimer.Stop();
+        _autoSaveTimer.Stop();
         // Неуправляемая память Skia у превью шаблона: панель закрыли — отпускаем сразу, а не
         // финализатором.
         _templatePreview?.Dispose();

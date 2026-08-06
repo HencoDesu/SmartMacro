@@ -198,6 +198,43 @@ public class SubmacroEditorTests
         await Assert.That(vm.IsDirty()).IsTrue();
     }
 
+    /// <summary>
+    /// ⚠️ Обратная сторона того же: правка РОДИТЕЛЯ обязана пережить вход в функцию.
+    ///
+    /// Опоры «есть несохранённые правки» и «изменили снаружи» сдвигались на КАЖДОМ переключении
+    /// канвы, а не только при загрузке бандла, — и обе беды от этого были тихие. Правка
+    /// родителя, после которой вошли в функцию, объявлялась сохранённой, и закрытие редактора её
+    /// теряло; а опора для сверки с диском начинала держать граф ФУНКЦИИ, тогда как сверяется с
+    /// ней граф верхнего уровня, — так что любое событие наблюдателя при открытой функции
+    /// читалось как чужая правка и на чистом редакторе перезагружало бандл целиком, выбрасывая
+    /// ту самую функцию, которую в этот момент правили.
+    /// </summary>
+    [Test]
+    public async Task EditingTheParent_SurvivesSteppingIntoASubmacro()
+    {
+        using var library = new TempLibrary();
+        using var vm = Editor(library, new FakeIpcClient());
+        vm.LoadGraph(Chain());
+        Mark(vm, "b", "c");
+        vm.ExtractSubmacro("опознать");
+        await vm.SaveAsync();
+
+        var added = vm.AddNode(MacroNodeKind.Delay).DisplayName;
+        await Assert.That(vm.IsDirty()).IsTrue();
+
+        vm.OpenSubmacro(vm.Submacros.Single().Id);
+        await Assert.That(vm.IsDirty()).IsTrue();
+
+        // Наблюдатель перечитал папку, пока на канве функция: чужой правки не было, значит и
+        // перезагружать нечего.
+        library.Library.Refresh();
+
+        await Assert.That(vm.IsSubmacroOpen).IsTrue();
+        await Assert.That(vm.IsDirty()).IsTrue();
+        vm.OpenParentGraph();
+        await Assert.That(vm.Nodes.Select(n => n.DisplayName)).IsEquivalentTo(new[] { "a", "sub-1", added });
+    }
+
     [Test]
     public async Task DeletingASubmacro_IsRefusedWhileANodeStillCallsIt()
     {
