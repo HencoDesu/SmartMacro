@@ -7,6 +7,7 @@ using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
+using SmartMacro.Macros.Validation;
 using SmartMacro.Native;
 using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
@@ -135,23 +136,56 @@ public class RegionCaptureTests
 
     // ---- что делает редактор с ответом человека --------------------------------------------
 
-    /// <summary>Диалог, отвечающий наперёд заданным ответом. Записывает, о чём его спросили.</summary>
+    /// <summary>
+    /// Диалог, отвечающий наперёд заданным ответом. Записывает, о чём его спросили.
+    ///
+    /// Вырезки кладёт ТАК ЖЕ, как боевое окно, — через переданный обратный вызов: иначе половина
+    /// пути (та, где файл попадает в бандл) осталась бы непокрытой, а именно она и переехала из
+    /// редактора в диалог вместе с кнопкой «Сохранить и дальше».
+    /// </summary>
     private sealed class FakePrompt : IRegionCapturePrompt
     {
-        private readonly Func<RegionCaptureRequest, RegionCaptureResult?> _answer;
+        private readonly Func<RegionCaptureRequest, IReadOnlyList<RegionCaptureResult>> _answer;
 
-        public FakePrompt(Func<RegionCaptureRequest, RegionCaptureResult?> answer) => _answer = answer;
+        public FakePrompt(Func<RegionCaptureRequest, RegionCaptureResult?> answer)
+            => _answer = request => answer(request) is { } one ? [one] : [];
 
         public FakePrompt(RegionCaptureResult? answer) : this(_ => answer)
         {
         }
 
+        /// <summary>Несколько вырезок подряд — то, что делает «Сохранить и дальше».</summary>
+        public FakePrompt(params RegionCaptureResult[] answers) => _answer = _ => answers;
+
         public List<RegionCaptureRequest> Asked { get; } = [];
 
-        public Task<RegionCaptureResult?> AskAsync(RegionCaptureRequest request)
+        /// <summary>Отказы, которые вернул редактор на попытку положить вырезку.</summary>
+        public List<string> Refusals { get; } = [];
+
+        public ScreenPoint? Point { get; init; }
+
+        public Task<RegionCaptureResult?> AskAsync(RegionCaptureRequest request, RegionCaptureSink commit)
         {
             Asked.Add(request);
-            return Task.FromResult(_answer(request));
+            RegionCaptureResult? last = null;
+            foreach (var crop in _answer(request))
+            {
+                if (commit(crop) is { } refusal)
+                {
+                    Refusals.Add(refusal);
+                    continue;
+                }
+
+                last = crop;
+            }
+
+            return Task.FromResult(last);
+        }
+
+        public Task<ScreenPoint?> AskPointAsync(RegionCaptureRequest request)
+        {
+            Asked.Add(request);
+            return Task.FromResult(Point);
         }
     }
 
@@ -208,6 +242,34 @@ public class RegionCaptureTests
         await Assert.That(node.Region.YText).IsEqualTo((300 - SearchRegion.Margin).ToString());
         await Assert.That(node.Region.WidthText).IsEqualTo((100 + (2 * SearchRegion.Margin)).ToString());
         await Assert.That(node.Region.HeightText).IsEqualTo((40 + (2 * SearchRegion.Margin)).ToString());
+        await Assert.That(vm.ErrorMessage).IsNull();
+    }
+
+    // «Сохранить и дальше»: одиннадцать классов режутся ОДНОЙ рамкой у разных персонажей, и все
+    // ложатся в бандл за один заход диалога. Область ноды при этом заполняется один раз — рамка
+    // у всех и была одна.
+    [Test]
+    public async Task SeveralCropsInOneVisit_AllLandInTheSet_AndTheNodeTakesTheRegionOnce()
+    {
+        using var library = new TempLibrary();
+        var rect = new ScreenRect(1200, 400, 120, 30);
+        var prompt = new FakePrompt(
+            new RegionCaptureResult("Лучник", Cut, rect, 3840, 2160),
+            new RegionCaptureResult("Жрец", Cut, rect, 3840, 2160),
+            new RegionCaptureResult("Шаман", Cut, rect, 3840, 2160));
+        using var vm = Open(library, WithRecognize("classes"), prompt);
+        var node = (MatchTemplateSetNodeRowViewModel)vm.Nodes[0];
+
+        await vm.CaptureRegionAsync(node);
+
+        foreach (var tag in new[] { "Лучник", "Жрец", "Шаман" })
+        {
+            await Assert.That(library.Library.ReadTemplate("опознание", "classes", tag)).IsEquivalentTo(Cut);
+        }
+
+        await Assert.That(prompt.Refusals).IsEmpty();
+        await Assert.That(node.Region.XText).IsEqualTo((1200 - SearchRegion.Margin).ToString());
+        await Assert.That(node.TemplateSet).IsEqualTo("classes");
         await Assert.That(vm.ErrorMessage).IsNull();
     }
 
@@ -393,6 +455,87 @@ public class RegionCaptureTests
 
         await Assert.That(vm.Templates.Templates).IsEmpty();
         await Assert.That(node.Template).IsEqualTo(string.Empty);
+        await Assert.That(vm.ErrorMessage).IsNull();
+    }
+
+    // ---- выбор точки для ноды клика ---------------------------------------------------------
+
+    private static MacroGraph WithClick(string name = "клик") => new()
+    {
+        Name = name,
+        StartNodeId = Ids.Of("c"),
+        Nodes =
+        [
+            new ClickNode { Id = Ids.Of("c"), DisplayName = "click-1", PointVar = "cursor" },
+        ],
+    };
+
+    // ⚠️ Половина смысла — во второй строке проверки. Point и PointVar взаимоисключающие, и
+    // валидатор считает ошибкой оба сразу: выбор точки, оставивший галочку «брать из переменной»,
+    // сделал бы ноду НЕВАЛИДНОЙ ровно тем действием, которое должно было ей помочь.
+    [Test]
+    public async Task APickedPoint_FillsXAndY_AndTurnsOffTheVariableSwitch()
+    {
+        using var library = new TempLibrary();
+        var prompt = new FakePrompt((RegionCaptureResult?)null) { Point = new ScreenPoint(1234, 567) };
+        using var vm = Open(library, WithClick(), prompt);
+        var node = (ClickNodeRowViewModel)vm.Nodes[0];
+        await Assert.That(node.UseVariable).IsTrue();
+
+        await vm.PickClickPointAsync(node);
+
+        await Assert.That(node.XText).IsEqualTo("1234");
+        await Assert.That(node.YText).IsEqualTo("567");
+        await Assert.That(node.UseVariable).IsFalse();
+
+        var saved = (ClickNode)node.ToNode();
+        await Assert.That(saved.Point).IsEqualTo(new ScreenPoint(1234, 567));
+        await Assert.That(saved.PointVar).IsNull();
+        await Assert.That(MacroGraphValidator.Validate(vm.BuildGraph())).IsEmpty();
+    }
+
+    // Диалог открывают в третьем режиме, и имени у него не спрашивают вовсе: файла нет.
+    [Test]
+    public async Task ThePointDialogIsOpenedInPointMode_WithoutASetOrAName()
+    {
+        using var library = new TempLibrary();
+        var prompt = new FakePrompt((RegionCaptureResult?)null) { Point = new ScreenPoint(1, 2) };
+        using var vm = Open(library, WithClick(), prompt);
+
+        await vm.PickClickPointAsync(vm.Nodes[0]);
+
+        await Assert.That(prompt.Asked[0].Kind).IsEqualTo(RegionCaptureKind.Point);
+        await Assert.That(prompt.Asked[0].Set).IsNull();
+        await Assert.That(prompt.Asked[0].SuggestedName).IsEqualTo(string.Empty);
+        await Assert.That(prompt.Asked[0].NodeName).IsEqualTo("click-1");
+    }
+
+    // Отмена не трогает ничего — в том числе не сбрасывает галочку переменной.
+    [Test]
+    public async Task ACancelledPointDialogLeavesTheClickNodeAlone()
+    {
+        using var library = new TempLibrary();
+        var prompt = new FakePrompt((RegionCaptureResult?)null);
+        using var vm = Open(library, WithClick(), prompt);
+        var node = (ClickNodeRowViewModel)vm.Nodes[0];
+
+        await vm.PickClickPointAsync(node);
+
+        await Assert.That(node.UseVariable).IsTrue();
+        await Assert.That(node.XText).IsEqualTo("0");
+    }
+
+    // Не нода клика — не наше дело; метод принимает базовый тип строки.
+    [Test]
+    public async Task PickingAPointOnANodeThatHasNone_DoesNothing()
+    {
+        using var library = new TempLibrary();
+        var prompt = new FakePrompt((RegionCaptureResult?)null) { Point = new ScreenPoint(5, 5) };
+        using var vm = Open(library, WithFind(), prompt);
+
+        await vm.PickClickPointAsync(vm.Nodes[0]);
+
+        await Assert.That(prompt.Asked).IsEmpty();
         await Assert.That(vm.ErrorMessage).IsNull();
     }
 

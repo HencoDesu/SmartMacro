@@ -378,6 +378,18 @@ public partial class MacrosView : UserControl
     }
 
     /// <summary>
+    /// «Указать на снимке…» у ноды клика — то же самое окно, но за одной точкой. Содержательная
+    /// часть у view-model; здесь только доставка строки ноды из <c>DataContext</c> кнопки.
+    /// </summary>
+    private async void OnPickPointClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: NodeRowViewModel row })
+        {
+            await vm.PickClickPointAsync(row);
+        }
+    }
+
+    /// <summary>
     /// Декодирование превью шаблона.
     ///
     /// <b>Здесь, а не в конвертере привязки</b>, и это то же решение, что стояло в удалённом

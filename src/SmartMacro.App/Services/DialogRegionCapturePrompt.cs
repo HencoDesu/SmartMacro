@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using Serilog;
 using SmartMacro.App.Views;
+using SmartMacro.Native;
 
 namespace SmartMacro.App.Services;
 
@@ -30,9 +31,10 @@ public sealed class DialogRegionCapturePrompt : IRegionCapturePrompt
         _capture = capture;
     }
 
-    public async Task<RegionCaptureResult?> AskAsync(RegionCaptureRequest request)
+    public async Task<RegionCaptureResult?> AskAsync(RegionCaptureRequest request, RegionCaptureSink commit)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(commit);
 
         if (Owner() is not { } owner)
         {
@@ -43,12 +45,30 @@ public sealed class DialogRegionCapturePrompt : IRegionCapturePrompt
         // Зовут из обработчика кнопки, то есть уже в потоке UI; проверка оставлена по той же
         // причине, что и у соседа: цена ошибки здесь — исключение посреди правки ноды.
         return Dispatcher.UIThread.CheckAccess()
-            ? await Ask(owner, request)
-            : await Dispatcher.UIThread.InvokeAsync(() => Ask(owner, request));
+            ? await Ask(owner, request, commit)
+            : await Dispatcher.UIThread.InvokeAsync(() => Ask(owner, request, commit));
     }
 
-    private Task<RegionCaptureResult?> Ask(Window owner, RegionCaptureRequest request) =>
-        new RegionCaptureDialog(request, _capture).AskAsync(owner);
+    public async Task<ScreenPoint?> AskPointAsync(RegionCaptureRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (Owner() is not { } owner)
+        {
+            Log.Warning("Некому показать выбор точки для «{Node}» — главного окна нет", request.NodeName);
+            return null;
+        }
+
+        return Dispatcher.UIThread.CheckAccess()
+            ? await AskPoint(owner, request)
+            : await Dispatcher.UIThread.InvokeAsync(() => AskPoint(owner, request));
+    }
+
+    private Task<RegionCaptureResult?> Ask(Window owner, RegionCaptureRequest request, RegionCaptureSink commit) =>
+        new RegionCaptureDialog(request, _capture, commit).AskAsync(owner);
+
+    private Task<ScreenPoint?> AskPoint(Window owner, RegionCaptureRequest request) =>
+        new RegionCaptureDialog(request, _capture, commit: null).AskPointAsync(owner);
 
     private static Window? Owner() =>
         (Avalonia.Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)

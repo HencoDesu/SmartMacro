@@ -1266,6 +1266,22 @@
     <value>Не удалось вырезать шаблон: {0}</value>
     <comment>красная строка; {0} = сообщение отказа (демон не знает окна, PrintWindow отказал, файл не прочитался)</comment>
   </data>
+  <data name="Editor_Point_Pick" xml:space="preserve">
+    <value>Указать на снимке…</value>
+    <comment>кнопка в инспекторе ноды «Клик», под полями X и Y. Заменяет прежний способ добывать координату: навести курсор в игре, запустить макрос и пойти читать в журнале, чем засеялась переменная cursor.</comment>
+  </data>
+  <data name="Editor_Point_PickTip" xml:space="preserve">
+    <value>Снять окно и щёлкнуть по нужному пикселю. Галочка «брать точку из переменной» при этом снимется: у ноды либо числа, либо переменная.</value>
+    <comment>подсказка к ней; вторая фраза обязательна — Point и PointVar взаимоисключающие, и валидатор считает ошибкой оба сразу</comment>
+  </data>
+  <data name="Editor_Point_Picked" xml:space="preserve">
+    <value>Точка X={0} Y={1} взята со снимка.</value>
+    <comment>подпись состояния после удачного выбора точки. «X=… Y=…», а не «{0},{1}»: по-русски запятая — десятичный разделитель</comment>
+  </data>
+  <data name="Editor_Point_Failed" xml:space="preserve">
+    <value>Не удалось выбрать точку: {0}</value>
+    <comment>красная строка; {0} = сообщение отказа (демон не знает окна, PrintWindow отказал, файл не прочитался)</comment>
+  </data>
   <data name="Editor_Region_Captured" xml:space="preserve">
     <value>Шаблон «{0}» положен в макрос.</value>
     <comment>подпись состояния после удачной вырезки; {0} = путь внутри templates/. ⚠️ Размер области здесь НЕ называется, хотя сначала назывался: строка состояния узкая и обрезала его многоточием, а четыре поля области и коробка на канве и так показывают его рядом. Найдено глазами.</comment>
@@ -2098,6 +2114,46 @@
   <data name="Dialog_Region_Cancel" xml:space="preserve">
     <value>Отмена</value>
     <comment>вторая кнопка; она же Esc и крестик</comment>
+  </data>
+  <data name="Dialog_Region_SaveAndNext" xml:space="preserve">
+    <value>Сохранить и дальше</value>
+    <comment>третья кнопка, ТОЛЬКО в режиме набора: кладёт вырезку в макрос, не закрывая диалог, и переходит к следующему окну с той же самой рамкой. Ради неё волна и делалась: одиннадцать классов режутся из одного места экрана у разных персонажей.</comment>
+  </data>
+  <data name="Dialog_Region_SaveAndNextTip" xml:space="preserve">
+    <value>Положить вырезку в макрос и снять следующее окно ТОЙ ЖЕ рамкой. Диалог остаётся открытым.</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Dialog_Region_Saved" xml:space="preserve">
+    <value>«{0}» сохранён · снято: {1}</value>
+    <comment>подпись под кадром после «Сохранить и дальше»; {0} = имя тега, {1} = сколько вырезок уже положено за этот заход</comment>
+  </data>
+  <data name="Dialog_Region_SaveFailed" xml:space="preserve">
+    <value>Не удалось положить «{0}» в макрос: {1}</value>
+    <comment>претензия внизу диалога, когда запись бандла отказала; {0} = имя, {1} = причина от библиотеки макросов. Диалог при этом НЕ закрывается и имя не стирается — чинить придётся здесь же.</comment>
+  </data>
+  <data name="Dialog_Region_SelectionOutsideFrame" xml:space="preserve">
+    <value>Кадр {0}×{1} меньше рамки — эта же область в нём не помещается. Возьмите окно того же размера или выделите заново.</value>
+    <comment>претензия, когда снятое окно оказалось меньше уже намеченной рамки. {0}×{1} = размер нового кадра. ОТКАЗ, а не обрезка: обрезанная вырезка была бы шаблоном ДРУГОГО размера, а весь смысл набора в том, что все его шаблоны сняты одним и тем же прямоугольником.</comment>
+  </data>
+  <data name="Dialog_Region_TitlePoint" xml:space="preserve">
+    <value>ВЫБОР ТОЧКИ</value>
+    <comment>подпись в строке заголовка вместо Dialog_Region_Title, когда диалог открыт ради координат клика</comment>
+  </data>
+  <data name="Dialog_Region_AcceptPoint" xml:space="preserve">
+    <value>Взять точку</value>
+    <comment>главная кнопка в режиме точки вместо «Вырезать»: положить координаты в поля X/Y ноды клика</comment>
+  </data>
+  <data name="Dialog_Region_NoPoint" xml:space="preserve">
+    <value>Щёлкните по нужному пикселю кадра левой кнопкой.</value>
+    <comment>претензия внизу диалога в режиме точки, пока точка не выбрана</comment>
+  </data>
+  <data name="Dialog_Region_PointMeasure" xml:space="preserve">
+    <value>точка X={0} Y={1} · увеличьте масштаб, чтобы попасть в нужный пиксель</value>
+    <comment>отсчёт под кадром в режиме точки. «X=…​ Y=…», а не «699,85», по той же причине, что у Dialog_Region_Measure: по-русски запятая — десятичный разделитель. Вторая половина — не украшение: на кадре 3840×2160 во весь экран один пиксель меньше точки.</comment>
+  </data>
+  <data name="Dialog_Region_ViewHintPoint" xml:space="preserve">
+    <value>Левая кнопка — поставить точку (можно тащить), средняя или правая — панорама, колесо — масштаб.</value>
+    <comment>подсказка под кадром в режиме точки вместо Dialog_Region_ViewHint</comment>
   </data>
 
   <data name="Dialog_Startup_LoggerFailed" xml:space="preserve">

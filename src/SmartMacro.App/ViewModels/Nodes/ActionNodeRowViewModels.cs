@@ -146,6 +146,22 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
         set => SetField(ref _doubleClick, value);
     }
 
+    /// <summary>
+    /// Кладёт точку, выбранную на снимке окна, в поля X и Y.
+    ///
+    /// ⚠️ <b>Переключатель «брать точку из переменной» снимается здесь же, и это обязательная
+    /// половина действия.</b> <c>Point</c> и <c>PointVar</c> взаимоисключающие — валидатор требует
+    /// ровно одно из двух, — так что оставить галочку значило бы сделать ноду НЕВАЛИДНОЙ ровно тем
+    /// действием, которое должно было её починить. Само имя переменной в поле остаётся: в модель
+    /// оно не поедет (см. <see cref="ToNode"/>), а вернуть галочку обратно захочется одним щелчком.
+    /// </summary>
+    public void ApplyPickedPoint(ScreenPoint point)
+    {
+        XText = NodeInput.FormatInt(point.X);
+        YText = NodeInput.FormatInt(point.Y);
+        UseVariable = false;
+    }
+
     public override MacroNode ToNode() => new ClickNode
     {
         Id = Id,
