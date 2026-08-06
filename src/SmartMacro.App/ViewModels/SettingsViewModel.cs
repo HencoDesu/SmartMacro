@@ -8,6 +8,7 @@ using SmartMacro.App.Mvvm;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Contracts.Settings;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -19,9 +20,9 @@ public sealed class InputMethodChoice
         Method = method;
         if (method is null)
         {
-            Title = "По умолчанию";
+            Title = Strings_App.Settings_Input_Inherit;
             Badge = string.Empty;
-            Detail = "Берётся способ из «Ввод по умолчанию».";
+            Detail = Strings_App.Settings_Input_InheritDetail;
             return;
         }
 
@@ -303,10 +304,10 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// <summary>Как приложение зарегистрирует автозапуск при текущих галочках.</summary>
     public string StartupMechanismText => (_runAtLogon, _runElevated) switch
     {
-        (false, false) => "автозапуск выключен",
-        (true, false) => "ключ Run в HKCU",
-        (false, true) => "автозапуска нет; повышение запрашивается при ручном старте",
-        (true, true) => "задача в Планировщике, наивысшие права",
+        (false, false) => Strings_App.Settings_Startup_MechanismNone,
+        (true, false) => Strings_App.Settings_Startup_MechanismRunKey,
+        (false, true) => Strings_App.Settings_Startup_MechanismElevatedOnly,
+        (true, true) => Strings_App.Settings_Startup_MechanismTask,
     };
 
     /// <summary><c>true</c>, когда галочка прав отличается от той, с которой демон запущен.</summary>
@@ -320,13 +321,13 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     public bool IsDirty => ChangeCount > 0;
 
     /// <summary>«2 изменения не применены» — в полосе внизу экрана.</summary>
-    public string ChangeText => ChangeCount switch
-    {
-        0 => string.Empty,
-        1 => "1 изменение не применено",
-        2 or 3 or 4 => string.Create(CultureInfo.CurrentCulture, $"{ChangeCount} изменения не применены"),
-        _ => string.Create(CultureInfo.CurrentCulture, $"{ChangeCount} изменений не применены"),
-    };
+    public string ChangeText => ChangeCount == 0
+        ? string.Empty
+        : PluralForms.Format(
+            ChangeCount,
+            Strings_App.Settings_Header_Changes_One,
+            Strings_App.Settings_Header_Changes_Few,
+            Strings_App.Settings_Header_Changes_Many);
 
     /// <summary><c>true</c>, пока идёт запрос: гасит кнопки, чтобы не отправить два «Применить» подряд.</summary>
     public bool IsBusy
@@ -370,13 +371,17 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             if (Diagnostics.Count == 0)
             {
-                return "проверка не запускалась";
+                return Strings_App.Settings_Diagnostics_NotRun;
             }
 
             var ok = Diagnostics.Count(row => row.IsOk);
             var time = _checkedAt?.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture) ?? "—";
-            return string.Create(CultureInfo.CurrentCulture,
-                $"проверка от {time} · {ok} из {Diagnostics.Count} в порядке");
+            return string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_App.Settings_Diagnostics_Summary,
+                time,
+                ok,
+                Diagnostics.Count);
         }
     }
 
@@ -422,7 +427,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         // курсор.
         if (!TryBuild(out var edited))
         {
-            Status = "не применено";
+            Status = Strings_App.Settings_Status_NotApplied;
             OnPropertyChanged(nameof(HasIssues));
             return;
         }
@@ -437,7 +442,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 Issues.Add(issue.Message);
             }
 
-            Status = "не применено";
+            Status = Strings_App.Settings_Status_NotApplied;
             OnPropertyChanged(nameof(HasIssues));
             return;
         }
@@ -457,7 +462,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 }
 
                 OnPropertyChanged(nameof(HasIssues));
-                Status = response.Length == 0 ? "применено" : "не применено";
+                Status = response.Length == 0 ? Strings_App.Settings_Status_Applied : Strings_App.Settings_Status_NotApplied;
                 // Пуш SettingsChanged всё равно приедет и переразложит поля; здесь мы лишь
                 // снимаем счётчик правок сразу, чтобы кнопка не выглядела не нажатой.
                 if (response.Length == 0)
@@ -469,7 +474,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
         {
             Log.Warning(ex, "Не удалось сохранить настройки");
-            _dispatcher.Post(() => Status = "демон не ответил");
+            _dispatcher.Post(() => Status = Strings_App.Settings_Status_NoAnswer);
         }
         finally
         {
@@ -483,7 +488,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         if (_snapshot is { } snapshot)
         {
             Load(snapshot);
-            Status = "правки отменены";
+            Status = Strings_App.Settings_Status_Reverted;
         }
     }
 
@@ -499,7 +504,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
                 _dispatcher.Post(() =>
                 {
                     Load(snapshot);
-                    Status = "сброшено к умолчаниям";
+                    Status = Strings_App.Settings_Status_Reset;
                 });
             }
         }
@@ -545,15 +550,16 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             Log.Warning(ex, "Проверка среды не выполнена");
             _dispatcher.Post(() => Fill([
-                new DiagnosticDto(DiagnosticIds.Channel, DiagnosticStatus.Failed, "Канал с демоном",
-                    "демон не ответил — движок не работает, макросы не запускаются"),
+                new DiagnosticDto(DiagnosticIds.Channel, DiagnosticStatus.Failed, Strings_App.Settings_Diagnostics_ChannelTitle,
+                    Strings_App.Settings_Diagnostics_ChannelFailed),
             ]));
             return;
         }
 
         stopwatch.Stop();
-        var channel = new DiagnosticDto(DiagnosticIds.Channel, DiagnosticStatus.Ok, "Канал с демоном",
-            string.Create(CultureInfo.CurrentCulture, $"отвечает, {stopwatch.ElapsedMilliseconds} мс"));
+        var channel = new DiagnosticDto(DiagnosticIds.Channel, DiagnosticStatus.Ok, Strings_App.Settings_Diagnostics_ChannelTitle,
+            string.Format(CultureInfo.CurrentCulture, Strings_App.Settings_Diagnostics_ChannelOk,
+                stopwatch.ElapsedMilliseconds));
 
         _dispatcher.Post(() => Fill([channel, .. results]));
     }
@@ -646,7 +652,7 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             {
                 _snapshot = snapshot;
                 RaiseDirty();
-                Status = "файл настроек изменился — «Отменить» покажет новое";
+                Status = Strings_App.Settings_Status_FileChanged;
                 return;
             }
 
@@ -707,8 +713,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        if (!TryParse(_processPoll, "Поиск новых процессов", out var processPoll)
-            | !TryParse(_windowPoll, "Проверка живости окон", out var windowPoll))
+        if (!TryParse(_processPoll, Strings_App.Settings_Field_ProcessPoll, out var processPoll)
+            | !TryParse(_windowPoll, Strings_App.Settings_Field_WindowPoll, out var windowPoll))
         {
             return false;
         }
@@ -751,7 +757,8 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
             return true;
         }
 
-        Issues.Add($"{title}: «{text}» — это не целое число.");
+        Issues.Add(string.Format(CultureInfo.CurrentCulture,
+            Strings_App.Settings_BadNumber, title, text));
         return false;
     }
 

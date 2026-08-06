@@ -17,6 +17,7 @@ using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -61,12 +62,12 @@ public sealed class MacroListItemViewModel : ObservableObject
 
         // Бандл не читается. Имя строки — по-прежнему основа имени файла (она и есть личность),
         // а вот подпись берётся из паспорта, если тот уцелел.
-        Problem = entry.FaultMessage ?? "Бандл не читается.";
+        Problem = entry.FaultMessage ?? Strings_App.Macros_Row_BrokenFallback;
         BrokenDetail = entry.Metadata is { } passport
             ? string.IsNullOrWhiteSpace(passport.Description)
                 ? passport.Name
                 : $"{passport.Name} — {passport.Description}"
-            : "паспорт бандла тоже не прочитан";
+            : Strings_App.Macros_Row_BrokenNoPassport;
         Summary = $"{BrokenDetail} · {Problem}";
     }
 
@@ -165,8 +166,9 @@ public sealed class MacroListItemViewModel : ObservableObject
         var triggers = macro.Triggers.Select(DescribeTrigger).ToList();
         var triggerText = triggers.Count > 0
             ? string.Join(", ", triggers)
-            : "без триггеров";
-        return string.Create(CultureInfo.CurrentCulture, $"{triggerText} · нод: {macro.Nodes.Count}");
+            : Strings_App.Macros_Row_NoTriggers;
+        return string.Format(CultureInfo.CurrentCulture, Strings_App.Macros_Row_Summary,
+            triggerText, macro.Nodes.Count);
     }
 
     private static string? Badge(MacroGraph macro) => macro.Triggers.Count switch
@@ -176,7 +178,7 @@ public sealed class MacroListItemViewModel : ObservableObject
         {
             HotkeyTrigger { IsMouse: true } hotkey => HotkeyNames.Chord(hotkey.Modifiers, hotkey.MouseButton.ToString()),
             HotkeyTrigger hotkey => HotkeyNames.Chord(hotkey.Modifiers, hotkey.Key.ToString()),
-            ProcessAppearedTrigger => "процесс",
+            ProcessAppearedTrigger => Strings_App.Macros_Row_TriggerProcess,
             var other => other.GetType().Name,
         },
     };
@@ -190,7 +192,8 @@ public sealed class MacroListItemViewModel : ObservableObject
     {
         HotkeyTrigger { IsMouse: true } hotkey => HotkeyNames.Chord(hotkey.Modifiers, hotkey.MouseButton.ToString()),
         HotkeyTrigger hotkey => HotkeyNames.Chord(hotkey.Modifiers, hotkey.Key.ToString()),
-        ProcessAppearedTrigger process => $"процесс {process.ProcessName}",
+        ProcessAppearedTrigger process => string.Format(
+            CultureInfo.CurrentCulture, Strings_App.Macros_Row_TriggerProcessNamed, process.ProcessName),
         _ => trigger.GetType().Name,
     };
 }
@@ -215,7 +218,8 @@ public sealed class SubmacroListItemViewModel : ObservableObject
         Id = submacro.Id;
         Name = submacro.Name;
         ErrorCount = errorCount;
-        Summary = string.Create(CultureInfo.CurrentCulture, $"под-макрос · нод: {submacro.Graph.Nodes.Count}");
+        Summary = string.Format(CultureInfo.CurrentCulture, Strings_App.Macros_SubmacroRow_Summary,
+            submacro.Graph.Nodes.Count);
     }
 
     /// <summary>Макрос, которому под-макрос принадлежит, — то есть файл, в котором он лежит.</summary>
@@ -486,13 +490,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 LoadGraph(graph, entry.Submacros);
                 ErrorMessage = discarded is null
                     ? null
-                    : $"Несохранённые изменения в «{discarded}» отброшены.";
+                    : string.Format(CultureInfo.CurrentCulture,
+                        Strings_App.Editor_Status_DiscardedChanges, discarded);
             }
             else if (value.Problem is { } problem)
             {
                 // Нечитаемый бандл. Открывать нечего, но молчать нельзя: строка кликабельна ровно
                 // затем, чтобы можно было спросить «а что с ним не так».
-                ErrorMessage = $"«{value.Name}» не открывается: {problem}";
+                ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                    Strings_App.Editor_Status_CannotOpen, value.Name, problem);
             }
         }
     }
@@ -715,7 +721,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     public bool HasSelectedNode => _selectedNode is not null;
 
     /// <summary>Заголовок инспектора — тип выделенной ноды либо «Макрос».</summary>
-    public string InspectorTitle => _selectedNode?.TypeLabel ?? "Макрос";
+    public string InspectorTitle => _selectedNode?.TypeLabel ?? Strings_App.Editor_Inspector_MacroTitle;
 
     // ---- canvas ---------------------------------------------------------------------
 
@@ -826,8 +832,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// не пишется», потому что реакции пользователя на это разные.
     /// </summary>
     public string RunLogEmptyText => _wantsRunEvents
-        ? "прогонов ещё не было"
-        : "лог пишется, пока открыт режим «Макросы»";
+        ? Strings_App.Editor_RunLog_EmptyRecorded
+        : Strings_App.Editor_RunLog_EmptyUnsubscribed;
 
     /// <summary>
     /// Обходы ОТКРЫТОГО макроса, старые первыми, — то, что перелистывает чип прогона. Пусто
@@ -899,12 +905,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             var parts = new List<string>(2);
             if (_selectedRun is { FromStart: false })
             {
-                parts.Add("начало прогона не записано");
+                parts.Add(Strings_App.Editor_RunLog_NoticePartial);
             }
 
             if (_droppedRunEvents > 0)
             {
-                parts.Add(string.Create(CultureInfo.CurrentCulture, $"пропущено событий: {_droppedRunEvents}"));
+                parts.Add(string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_App.Editor_RunLog_NoticeDropped,
+                    _droppedRunEvents));
             }
 
             return parts.Count == 0 ? null : string.Join(" · ", parts);
@@ -962,8 +971,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// </summary>
     public string PauseNotice => _selectedRun switch
     {
-        { IsPaused: true, CurrentNodeName: { } node } run => $"{run.PauseReason}: {node}",
-        { PauseRequested: true } => "пауза запрошена — ждём конца ноды",
+        { IsPaused: true, CurrentNodeName: { } node } run => string.Format(
+            CultureInfo.CurrentCulture, Strings_App.Editor_Debug_PausedAt, run.PauseReason, node),
+        { PauseRequested: true } => Strings_App.Editor_Debug_PauseRequested,
         _ => string.Empty,
     };
 
@@ -977,10 +987,11 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     public string DebugStateText => _selectedRun switch
     {
         null => string.Empty,
-        { IsFinished: true } run => run.FinalOutcome ?? "завершён",
-        { IsPaused: true } run => $"на паузе · {run.PauseReason}",
-        { PauseRequested: true } => "пауза…",
-        _ => "выполняется",
+        { IsFinished: true } run => run.FinalOutcome ?? Strings_App.Editor_Debug_StateFinished,
+        { IsPaused: true } run => string.Format(
+            CultureInfo.CurrentCulture, Strings_App.Editor_Debug_StatePaused, run.PauseReason),
+        { PauseRequested: true } => Strings_App.Editor_Debug_StatePausing,
+        _ => Strings_App.Editor_Debug_StateRunning,
     };
 
     /// <summary>«3 / 11» — во сколько нод этот обход вошёл, из скольких состоит граф.</summary>
@@ -1018,13 +1029,17 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// показывать.
     /// </summary>
     public string StopLabel => LiveSiblingCount() is > 1 and var n
-        ? string.Create(CultureInfo.InvariantCulture, $"■ Стоп ×{n}")
-        : "■ Стоп";
+        ? string.Format(CultureInfo.CurrentCulture, Strings_App.Editor_Debug_StopMany, n)
+        : Strings_App.Editor_Debug_Stop;
 
     /// <summary>Проговаривает, что именно ■ отменит на самом деле.</summary>
     public string StopTooltip => LiveSiblingCount() is > 1 and var n
-        ? string.Create(CultureInfo.InvariantCulture, $"Остановить весь прогон целиком — все {n} обхода")
-        : "Остановить прогон";
+        ? PluralForms.Format(
+            n,
+            Strings_App.Editor_Debug_StopManyTip_One,
+            Strings_App.Editor_Debug_StopManyTip_Few,
+            Strings_App.Editor_Debug_StopManyTip_Many)
+        : Strings_App.Editor_Debug_StopTip;
 
     /// <summary>Просит демон припарковать выбранный обход на его следующей ноде.</summary>
     public Task PauseAsync() => DebugAsync(DebugCommand.Pause);
@@ -1093,7 +1108,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
         {
-            ErrorMessage = $"Отладчик: команда не прошла ({ex.Message}).";
+            ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings_App.Editor_Debug_CommandFailed, ex.Message);
             return;
         }
 
@@ -1106,7 +1122,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         {
             // Обход закончился между нажатием кнопки и запросом. Скажем об этом, а не оставим
             // гореть мёртвую «Паузу», — остальное уляжется событием WalkFinished.
-            StatusMessage = "Обход уже завершился.";
+            StatusMessage = Strings_App.Editor_Debug_WalkAlreadyFinished;
             RefreshDebugState();
             return;
         }
@@ -1427,7 +1443,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _suppressSelectionReload = true;
         SelectedMacro = null;
         _suppressSelectionReload = false;
-        StatusMessage = "Черновик — не сохранён.";
+        StatusMessage = Strings_App.Editor_Status_Draft;
     }
 
     /// <summary>
@@ -1449,7 +1465,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            ErrorMessage = $"Не удалось удалить «{item.Name}»: {ex.Message}";
+            ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings_App.Editor_Status_DeleteFailed, item.Name, ex.Message);
             Log.Warning(ex, "Удаление макроса '{Macro}' не выполнено", item.Name);
             return false;
         }
@@ -1460,7 +1477,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
 
         ApplyLibrary(_macros.Entries);
-        StatusMessage = $"Макрос «{item.Name}» удалён.";
+        StatusMessage = string.Format(CultureInfo.CurrentCulture, Strings_App.Editor_Status_Deleted, item.Name);
         return true;
     }
 
@@ -1498,7 +1515,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                     break;
 
                 default:
-                    StatusMessage = $"Импорт отменён: имя «{stem}» занято.";
+                    StatusMessage = string.Format(CultureInfo.CurrentCulture,
+                        Strings_App.Editor_Status_ImportCancelled, stem);
                     return null;
             }
         }
@@ -1510,7 +1528,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
         {
-            ErrorMessage = $"Импорт не удался: {ex.Message}";
+            ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings_App.Editor_Status_ImportFailed, ex.Message);
             Log.Warning(ex, "Импорт макроса из {Path} не выполнен", sourcePath);
             return null;
         }
@@ -1522,7 +1541,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             SelectByName(name);
         }
 
-        StatusMessage = $"Макрос «{name}» импортирован.";
+        StatusMessage = string.Format(CultureInfo.CurrentCulture, Strings_App.Editor_Status_Imported, name);
         return name;
     }
 
@@ -1543,7 +1562,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         ErrorMessage = null;
         if (_launcher is null)
         {
-            ErrorMessage = "Запуск недоступен.";
+            ErrorMessage = Strings_App.Editor_Status_RunUnavailable;
             return;
         }
 
@@ -1768,7 +1787,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _openSubmacroId = submacro.Id;
         LoadCanvasGraph(submacro.Graph);
         RebuildLibrary(_library);
-        StatusMessage = $"Под-макрос «{submacro.Name}» создан — не забудьте сохранить макрос.";
+        StatusMessage = string.Format(CultureInfo.CurrentCulture,
+            Strings_App.Editor_Status_SubmacroCreated, submacro.Name);
         return submacro.Id;
     }
 
@@ -1797,8 +1817,10 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             .ToList();
         if (callers.Count > 0)
         {
-            ErrorMessage = $"Под-макрос вызывают: {string.Join(", ", callers.Select(name => $"«{name}»"))}. " +
-                           "Уберите эти ноды или перенацельте их, а потом удаляйте.";
+            ErrorMessage = string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_App.Editor_Status_SubmacroInUse,
+                string.Join(", ", callers.Select(name => $"«{name}»")));
             return false;
         }
 
@@ -1820,7 +1842,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
 
         ErrorMessage = null;
-        StatusMessage = $"Под-макрос «{removed.Name}» удалён — не забудьте сохранить макрос.";
+        StatusMessage = string.Format(CultureInfo.CurrentCulture,
+            Strings_App.Editor_Status_SubmacroDeleted, removed.Name);
         return true;
     }
 
@@ -1839,8 +1862,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     /// <summary>«Выделить в под-макрос (3)» либо «Выделить в под-макрос».</summary>
     public string ExtractLabel => MarkedCount > 0
-        ? string.Create(CultureInfo.InvariantCulture, $"Выделить в под-макрос ({MarkedCount})")
-        : "Выделить в под-макрос";
+        ? string.Format(CultureInfo.CurrentCulture, Strings_App.Editor_Toolbar_ExtractCount, MarkedCount)
+        : Strings_App.Editor_Toolbar_Extract;
 
     /// <summary>Ctrl+клик по коробке: добавить её в набор для извлечения или убрать из него.</summary>
     public void ToggleMark(NodeRowViewModel row)
@@ -1879,7 +1902,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         if (_openSubmacroId is not null)
         {
-            ErrorMessage = "Под-макросы плоские: выделять кусок можно только в самом макросе, не внутри функции.";
+            ErrorMessage = Strings_App.Editor_Status_ExtractInsideSubmacro;
             return false;
         }
 
@@ -1905,7 +1928,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         LoadCanvasGraph(result.Parent!);
         RebuildLibrary(_library);
         SelectedNode = Nodes.FirstOrDefault(node => node.Id == result.CallNodeId);
-        StatusMessage = $"Выделено в под-макрос «{result.Submacro!.Name}» — не забудьте сохранить макрос.";
+        StatusMessage = string.Format(CultureInfo.CurrentCulture,
+            Strings_App.Editor_Status_Extracted, result.Submacro!.Name);
         return true;
     }
 
@@ -2036,7 +2060,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
         if (inputErrors.Count > 0)
         {
-            ErrorMessage = "Сохранение отменено: исправьте ошибки.";
+            ErrorMessage = Strings_App.Editor_Status_SaveBlocked;
             return false;
         }
 
@@ -2053,7 +2077,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         if (MacroBundleFolder.ValidateName(name) is { } nameError)
         {
             AddIssue(new ValidationIssueViewModel(nameError, isError: true));
-            ErrorMessage = "Сохранение отменено: исправьте ошибки.";
+            ErrorMessage = Strings_App.Editor_Status_SaveBlocked;
             return false;
         }
 
@@ -2071,7 +2095,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 AddIssue(IssueRow(issue, submacros));
             }
 
-            ErrorMessage = "Сохранение отменено: исправьте ошибки.";
+            ErrorMessage = Strings_App.Editor_Status_SaveBlocked;
             return false;
         }
 
@@ -2116,7 +2140,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                     break;
 
                 default:
-                    StatusMessage = $"Сохранение отменено: имя «{name}» занято.";
+                    StatusMessage = string.Format(CultureInfo.CurrentCulture,
+                        Strings_App.Editor_Status_SaveNameTaken, name);
                     return false;
             }
         }
@@ -2152,7 +2177,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             _loadedName = previousName;
             _loadedJson = previousLoadedJson;
             _diskJson = previousDiskJson;
-            ErrorMessage = $"Не удалось сохранить: {ex.Message}";
+            ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings_App.Editor_Status_SaveFailed, ex.Message);
             Log.Warning(ex, "Запись макроса '{Macro}' не выполнена", name);
             return false;
         }
@@ -2184,8 +2210,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         ChangedOnDisk = false;
         SelectByName(name);
         StatusMessage = Issues.Count > 0
-            ? $"Сохранено с предупреждениями ({Issues.Count})."
-            : "Сохранено.";
+            ? string.Format(CultureInfo.CurrentCulture,
+                Strings_App.Editor_Status_SavedWithWarnings, Issues.Count)
+            : Strings_App.Editor_Status_Saved;
         return true;
     }
 
@@ -2230,7 +2257,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
 
         LoadGraph(graph, entry.Submacros);
-        StatusMessage = "Перезагружено с диска.";
+        StatusMessage = Strings_App.Editor_Status_Reloaded;
     }
 
     /// <summary>
@@ -2524,15 +2551,16 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             }
             else if (owners.TryGetValue(key, out var other))
             {
-                row.Conflict = $"уже занят {other}";
+                row.Conflict = string.Format(CultureInfo.CurrentCulture,
+                    Strings_App.Editor_Hotkey_ConflictOther, other);
             }
             else if (!seen.Add(key))
             {
-                row.Conflict = "уже задан в этом макросе";
+                row.Conflict = Strings_App.Editor_Hotkey_ConflictSelf;
             }
             else
             {
-                row.Conflict = refusedHere.Contains(key) ? "занят другим приложением" : null;
+                row.Conflict = refusedHere.Contains(key) ? Strings_App.Editor_Hotkey_ConflictSystem : null;
             }
         }
 
@@ -2565,7 +2593,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             // аккорд иначе, чем его печатает бейдж на той же строке, — значит объяснять поломку
             // записью, которой он нигде больше не видел.
             var chord = HotkeyNames.Chord(failure.Modifiers, failure.Key.ToString());
-            byMacro[failure.MacroName] = $"{chord} не зарегистрирован — сочетание занято другим приложением";
+            byMacro[failure.MacroName] = string.Format(
+                CultureInfo.CurrentCulture, Strings_App.Macros_Row_HotkeyRefused, chord);
         }
 
         foreach (var item in Macros)
@@ -2573,7 +2602,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             item.HotkeyProblem = item switch
             {
                 { HasHotkeyTrigger: true, ErrorCount: > 0 } =>
-                    $"хоткей не вооружён — в макросе ошибок: {item.ErrorCount}",
+                    string.Format(CultureInfo.CurrentCulture,
+                        Strings_App.Macros_Row_HotkeyUnarmed, item.ErrorCount),
                 _ => byMacro.TryGetValue(item.Name, out var text) ? text : null,
             };
         }
@@ -3049,7 +3079,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         if (entry is null)
         {
             ChangedOnDisk = true;
-            StatusMessage = $"Файл «{_loadedName}» исчез с диска — сохранение создаст его заново.";
+            StatusMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings_App.Editor_Status_FileGone, _loadedName);
             return;
         }
 
@@ -3058,7 +3089,8 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             // Файл на месте, но перестал читаться — подменили снаружи на что-то испорченное.
             // Открытый граф не трогаем: он у нас цел, и сохранение его восстановит.
             ChangedOnDisk = true;
-            StatusMessage = $"Файл «{_loadedName}» на диске больше не читается: {entry.FaultMessage}";
+            StatusMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings_App.Editor_Status_FileUnreadable, _loadedName, entry.FaultMessage);
             return;
         }
 
@@ -3078,7 +3110,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
 
         LoadGraph(onDisk, entry.Submacros);
-        StatusMessage = "Макрос обновлён на диске — перечитан.";
+        StatusMessage = Strings_App.Editor_Status_RefreshedFromDisk;
     }
 
     private void SetLibrary(IReadOnlyList<MacroBundleEntry> entries)

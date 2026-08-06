@@ -9,6 +9,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SmartMacro.App.ViewModels"
+             xmlns:res="using:SmartMacro.Resources"
              x:Class="SmartMacro.App.Views.RunsView"
              x:DataType="vm:ShellViewModel">
 
@@ -21,7 +22,7 @@
                 Padding="12,9">
             <Grid ColumnDefinitions="Auto,Auto,*,Auto">
                 <TextBlock Grid.Column="0"
-                           Text="Прогоны"
+                           Text="{x:Static res:Strings_App.Shell_Mode_Runs}"
                            FontSize="{DynamicResource NocturneFontSizeBody}"
                            FontWeight="Medium"
                            VerticalAlignment="Center" />
@@ -33,7 +34,7 @@
                            Foreground="{DynamicResource NocturneNeutral600Brush}"
                            VerticalAlignment="Center" />
                 <Button Grid.Column="3"
-                        Content="Стоп всё"
+                        Content="{x:Static res:Strings_App.Runs_Header_StopAll}"
                         Classes="danger"
                         Height="24"
                         Padding="10,0"
@@ -70,10 +71,10 @@
                                                    FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                                    Foreground="{DynamicResource NocturneAccent400Brush}"
                                                    TextTrimming="CharacterEllipsis"
-                                                   ToolTip.Tip="Текущая нода"
+                                                   ToolTip.Tip="{x:Static res:Strings_App.Runs_Row_CurrentNodeTip}"
                                                    VerticalAlignment="Center" />
                                         <Button Grid.Column="3"
-                                                Content="Стоп"
+                                                Content="{x:Static res:Strings_App.Runs_Row_Stop}"
                                                 Height="21"
                                                 Padding="10,0"
                                                 Click="OnStopRunClicked" />
@@ -84,11 +85,11 @@
                     </ItemsControl>
 
                     <StackPanel Margin="12,40" Spacing="6" IsVisible="{Binding !HasRuns}">
-                        <TextBlock Text="Сейчас ничего не выполняется."
+                        <TextBlock Text="{x:Static res:Strings_App.Runs_Empty_Title}"
                                    FontSize="{DynamicResource NocturneFontSizeTitle}"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource NocturneTextMutedBrush}" />
-                        <TextBlock Text="Запуск — хоткеем макроса, появлением процесса или кнопкой ▸ в режиме «Макросы»."
+                        <TextBlock Text="{x:Static res:Strings_App.Runs_Empty_Hint}"
                                    FontSize="{DynamicResource NocturneFontSizeSmall}"
                                    HorizontalAlignment="Center"
                                    TextWrapping="Wrap"

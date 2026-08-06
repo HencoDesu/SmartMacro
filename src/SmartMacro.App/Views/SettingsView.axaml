@@ -28,6 +28,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SmartMacro.App.ViewModels"
              xmlns:conv="using:SmartMacro.App.Converters"
+             xmlns:res="using:SmartMacro.Resources"
              x:Class="SmartMacro.App.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
 
@@ -90,7 +91,7 @@
                  он же целиком есть в подсказке. -->
             <Grid ColumnDefinitions="Auto,*,Auto">
                 <TextBlock Grid.Column="0"
-                           Text="Настройки"
+                           Text="{x:Static res:Strings_App.Shell_Mode_Settings}"
                            FontSize="{DynamicResource NocturneFontSizeBody}"
                            FontWeight="Medium"
                            VerticalAlignment="Center" />
@@ -99,7 +100,7 @@
                            Classes="aside"
                            TextTrimming="CharacterEllipsis"
                            ToolTip.Tip="{Binding SettingsFilePath}"
-                           Text="{Binding SettingsFilePath, StringFormat='всё в одной папке · {0}'}" />
+                           Text="{Binding SettingsFilePath, StringFormat={x:Static res:Strings_App.Settings_Header_Path}}" />
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
                     <!-- «2 изменения не применены» — рядом с кнопкой, которая их применит.
@@ -111,28 +112,28 @@
                                Margin="0,0,4,0"
                                Foreground="{DynamicResource NocturneWarningBrush}"
                                IsVisible="{Binding IsDirty}" />
-                    <Button Content="Проверить среду"
+                    <Button Content="{x:Static res:Strings_App.Settings_Header_RunDiagnostics}"
                             Height="23"
                             Padding="10,0"
-                            ToolTip.Tip="Права, шаблоны, масштаб экрана, хоткеи, папка на запись, автозапуск и канал с демоном"
+                            ToolTip.Tip="{x:Static res:Strings_App.Settings_Header_RunDiagnosticsTip}"
                             Click="OnRunDiagnosticsClicked" />
-                    <Button Content="Открыть папку"
+                    <Button Content="{x:Static res:Strings_App.Settings_Header_OpenFolder}"
                             Height="23"
                             Padding="10,0"
                             ToolTip.Tip="{Binding FolderPath}"
                             Click="OnOpenFolderClicked" />
-                    <Button Content="Сброс к умолчаниям"
+                    <Button Content="{x:Static res:Strings_App.Settings_Header_Reset}"
                             Height="23"
                             Padding="10,0"
-                            ToolTip.Tip="Перезапишет settings.json заводскими значениями. Макросы и шаблоны не тронет."
+                            ToolTip.Tip="{x:Static res:Strings_App.Settings_Header_ResetTip}"
                             Click="OnResetClicked" />
-                    <Button Content="Отменить"
+                    <Button Content="{x:Static res:Strings_App.Settings_Header_Revert}"
                             Height="23"
                             Padding="10,0"
                             IsEnabled="{Binding IsDirty}"
-                            ToolTip.Tip="Вернуть поля к тому, что сейчас у демона"
+                            ToolTip.Tip="{x:Static res:Strings_App.Settings_Header_RevertTip}"
                             Click="OnRevertClicked" />
-                    <Button Content="Применить"
+                    <Button Content="{x:Static res:Strings_App.Settings_Header_Apply}"
                             Classes="accent"
                             Height="23"
                             Padding="12,0"
@@ -166,29 +167,29 @@
                                     Padding="12,0"
                                     Height="30">
                                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                                    <TextBlock Classes="tile" Text="Наблюдение" />
-                                    <TextBlock Classes="aside" Text="два разных цикла" />
+                                    <TextBlock Classes="tile" Text="{x:Static res:Strings_App.Settings_Watch_Title}" />
+                                    <TextBlock Classes="aside" Text="{x:Static res:Strings_App.Settings_Watch_Subtitle}" />
                                 </StackPanel>
                             </Border>
                             <StackPanel Margin="12,9" Spacing="8">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5">
-                                        <TextBlock Classes="label" Text="Поиск новых процессов" />
-                                        <TextBlock Classes="aside" Text="— заметить запуск клиента" />
+                                        <TextBlock Classes="label" Text="{x:Static res:Strings_App.Settings_Watch_ProcessPoll}" />
+                                        <TextBlock Classes="aside" Text="{x:Static res:Strings_App.Settings_Watch_ProcessPollHint}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                                         <TextBox Classes="num" Text="{Binding ProcessPollSeconds, Mode=TwoWay}" />
-                                        <TextBlock Classes="aside" Text="с" />
+                                        <TextBlock Classes="aside" Text="{x:Static res:Strings_App.Settings_Watch_SecondsUnit}" />
                                     </StackPanel>
                                 </Grid>
                                 <Grid ColumnDefinitions="*,Auto">
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5">
-                                        <TextBlock Classes="label" Text="Проверка живости окон" />
-                                        <TextBlock Classes="aside" Text="— заметить закрытие" />
+                                        <TextBlock Classes="label" Text="{x:Static res:Strings_App.Settings_Watch_WindowPoll}" />
+                                        <TextBlock Classes="aside" Text="{x:Static res:Strings_App.Settings_Watch_WindowPollHint}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                                         <TextBox Classes="num" Text="{Binding WindowPollSeconds, Mode=TwoWay}" />
-                                        <TextBlock Classes="aside" Text="с" />
+                                        <TextBlock Classes="aside" Text="{x:Static res:Strings_App.Settings_Watch_SecondsUnit}" />
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
@@ -210,11 +211,11 @@
                                     Padding="12,0"
                                     Height="30">
                                 <Grid ColumnDefinitions="Auto,*">
-                                    <TextBlock Grid.Column="0" Classes="tile" Text="Журнал" />
+                                    <TextBlock Grid.Column="0" Classes="tile" Text="{x:Static res:Strings_App.Settings_Log_Title}" />
                                     <TextBlock Grid.Column="1"
                                                Classes="aside"
                                                HorizontalAlignment="Right"
-                                               Text="применяется сразу" />
+                                               Text="{x:Static res:Strings_App.Settings_Log_Subtitle}" />
                                 </Grid>
                             </Border>
                             <StackPanel Margin="12,9" Spacing="7">
@@ -223,7 +224,7 @@
                                           VerticalAlignment="Center"
                                           ItemsSource="{Binding LogLevels}"
                                           SelectedItem="{Binding LogLevel, Mode=TwoWay}"
-                                          ToolTip.Tip="Минимальный уровень, ниже которого записи не покидают демон">
+                                          ToolTip.Tip="{x:Static res:Strings_App.Settings_Log_LevelTip}">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="vm:LogLevelChoice">
                                             <TextBlock Text="{Binding Title}"
@@ -236,7 +237,7 @@
                                      не сохраняется, и то, чем стоит Debug. Настройка, которая
                                      молча не переживает перезапуск, читается как сломанная. -->
                                 <TextBlock Classes="hint"
-                                           Text="Живёт до перезапуска демона: постоянный уровень — в appsettings.json. Debug пишет каждое сообщение окну — это десятки МБ в час на десяти клиентах." />
+                                           Text="{x:Static res:Strings_App.Settings_Log_Hint}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -258,11 +259,11 @@
                                 CornerRadius="8,8,0,0"
                                 Padding="12,0">
                             <Grid ColumnDefinitions="Auto,Auto,*">
-                                <TextBlock Grid.Column="0" Classes="tile" Text="Профили процессов" />
+                                <TextBlock Grid.Column="0" Classes="tile" Text="{x:Static res:Strings_App.Settings_Profiles_Title}" />
                                 <TextBlock Grid.Column="1"
                                            Margin="9,0,0,0"
                                            Classes="aside"
-                                           Text="за кем следить и как будить окна перед вводом" />
+                                           Text="{x:Static res:Strings_App.Settings_Profiles_Subtitle}" />
                             </Grid>
                         </Border>
 
@@ -273,11 +274,11 @@
                                 BorderThickness="0,0,0,1"
                                 Padding="12,0">
                             <Grid ColumnDefinitions="*,86,74,74,132,24">
-                                <TextBlock Grid.Column="0" Classes="eyebrow" Text="ПРОЦЕСС" />
-                                <TextBlock Grid.Column="1" Classes="eyebrow" Text="ПОБУДКА" />
-                                <TextBlock Grid.Column="2" Classes="eyebrow" Text="ОСЕДАНИЕ" />
-                                <TextBlock Grid.Column="3" Classes="eyebrow" Text="ДЕАКТИВ." />
-                                <TextBlock Grid.Column="4" Classes="eyebrow" Text="ВВОД" />
+                                <TextBlock Grid.Column="0" Classes="eyebrow" Text="{x:Static res:Strings_App.Settings_Profiles_ColProcess}" />
+                                <TextBlock Grid.Column="1" Classes="eyebrow" Text="{x:Static res:Strings_App.Settings_Profiles_ColWake}" />
+                                <TextBlock Grid.Column="2" Classes="eyebrow" Text="{x:Static res:Strings_App.Settings_Profiles_ColSettle}" />
+                                <TextBlock Grid.Column="3" Classes="eyebrow" Text="{x:Static res:Strings_App.Settings_Profiles_ColDeactivate}" />
+                                <TextBlock Grid.Column="4" Classes="eyebrow" Text="{x:Static res:Strings_App.Settings_Profiles_ColInput}" />
                             </Grid>
                         </Border>
 
@@ -297,7 +298,7 @@
                                                          VerticalContentAlignment="Center"
                                                          FontFamily="{DynamicResource NocturneFontFamilyMono}"
                                                          FontSize="{DynamicResource NocturneFontSizeBody}"
-                                                         Watermark="имя процесса без .exe"
+                                                         Watermark="{x:Static res:Strings_App.Settings_Profiles_NameWatermark}"
                                                          Text="{Binding ProcessName, Mode=TwoWay}" />
 
                                                 <!-- Числа сигнала побудки здесь нет намеренно:
@@ -316,14 +317,14 @@
                                                          Width="60"
                                                          Margin="0,0,8,0"
                                                          HorizontalAlignment="Left"
-                                                         ToolTip.Tip="Пауза после сигнала побудки, мс. Ниже 150 PW начинает терять ввод."
+                                                         ToolTip.Tip="{x:Static res:Strings_App.Settings_Profiles_SettleTip}"
                                                          Text="{Binding SettleDelayMs, Mode=TwoWay}" />
                                                 <TextBox Grid.Column="3"
                                                          Classes="num"
                                                          Width="60"
                                                          Margin="0,0,8,0"
                                                          HorizontalAlignment="Left"
-                                                         ToolTip.Tip="Пауза перед деактивацией, мс — время на разбор очереди ввода."
+                                                         ToolTip.Tip="{x:Static res:Strings_App.Settings_Profiles_DeactivateTip}"
                                                          Text="{Binding DeactivationDelayMs, Mode=TwoWay}" />
 
                                                 <ComboBox Grid.Column="4"
@@ -348,7 +349,7 @@
                                                         MinWidth="0"
                                                         Padding="0"
                                                         VerticalAlignment="Center"
-                                                        ToolTip.Tip="Убрать профиль — за окнами этого процесса демон следить перестанет"
+                                                        ToolTip.Tip="{x:Static res:Strings_App.Settings_Profiles_Remove}"
                                                         Click="OnRemoveProfileClicked" />
                                             </Grid>
                                         </Border>
@@ -372,12 +373,12 @@
                                          Padding="8,0"
                                          VerticalContentAlignment="Center"
                                          FontSize="{DynamicResource NocturneFontSizeSmall}"
-                                         Watermark="имя процесса, например elementclient_64"
+                                         Watermark="{x:Static res:Strings_App.Settings_Profiles_NewWatermark}"
                                          Text="{Binding NewProfileName, Mode=TwoWay}"
                                          KeyDown="OnNewProfileKeyDown" />
                                 <Button Grid.Column="1"
                                         Margin="6,0,0,0"
-                                        Content="+ Профиль"
+                                        Content="{x:Static res:Strings_App.Settings_Profiles_Add}"
                                         Height="26"
                                         Padding="10,0"
                                         Click="OnAddProfileClicked" />
@@ -385,7 +386,7 @@
                                            Margin="10,0,0,0"
                                            Classes="aside"
                                            TextTrimming="CharacterEllipsis"
-                                           Text="узнанному имени сигнал побудки проставится сам" />
+                                           Text="{x:Static res:Strings_App.Settings_Profiles_AddHint}" />
                             </Grid>
                         </Border>
                     </Grid>
@@ -408,8 +409,8 @@
                                 Padding="12,0"
                                 Height="30">
                             <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
-                                <TextBlock Classes="tile" Text="Ввод по умолчанию" />
-                                <TextBlock Classes="aside" Text="наведение — цена способа" />
+                                <TextBlock Classes="tile" Text="{x:Static res:Strings_App.Settings_Input_Title}" />
+                                <TextBlock Classes="aside" Text="{x:Static res:Strings_App.Settings_Input_Subtitle}" />
                             </StackPanel>
                         </Border>
 
@@ -440,7 +441,7 @@
 
                         <TextBlock Margin="12,4,12,9"
                                    Classes="hint"
-                                   Text="Клики всегда уходят PostMessage и настройке не подчиняются: они доходили надёжно всегда. Спорной была только клавиатура." />
+                                   Text="{x:Static res:Strings_App.Settings_Input_Hint}" />
                     </StackPanel>
                 </Border>
 
@@ -456,13 +457,13 @@
                                 CornerRadius="8,8,0,0"
                                 Padding="12,0"
                                 Height="30">
-                            <TextBlock Classes="tile" Text="Распознавание шаблонов" />
+                            <TextBlock Classes="tile" Text="{x:Static res:Strings_App.Settings_Vision_Title}" />
                         </Border>
                         <StackPanel Margin="12,9" Spacing="6">
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Grid.Column="0"
                                            Classes="label"
-                                           Text="Порог совпадения — умолчание" />
+                                           Text="{x:Static res:Strings_App.Settings_Vision_Threshold}" />
                                 <TextBlock Grid.Column="1"
                                            Text="{Binding MatchThresholdText}"
                                            FontFamily="{DynamicResource NocturneFontFamilyMono}"
@@ -479,7 +480,7 @@
                                  будет: чтобы его показать, панель обязана пересчитать все графы
                                  библиотеки, а устареет он при первой же правке любого. -->
                             <TextBlock Classes="hint"
-                                       Text="Умолчание для тех шагов, где порог не задан. Шаг вправе задать свой — тогда это значение к нему не относится." />
+                                       Text="{x:Static res:Strings_App.Settings_Vision_Hint}" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -496,7 +497,7 @@
                                 CornerRadius="8,8,0,0"
                                 Padding="12,0"
                                 Height="30">
-                            <TextBlock Classes="tile" Text="Запуск и права" />
+                            <TextBlock Classes="tile" Text="{x:Static res:Strings_App.Settings_Startup_Title}" />
                         </Border>
 
                         <!-- Пояснение вынесено ИЗ содержимого галочки и стоит отдельной строкой
@@ -505,20 +506,20 @@
                              в две строки оказывался напротив ВТОРОЙ из них — то есть напротив
                              текста, к которому не относится. Найдено глазами. -->
                         <CheckBox Margin="12,8,12,0"
-                                  Content="Запускать при входе в систему"
+                                  Content="{x:Static res:Strings_App.Settings_Startup_RunAtLogon}"
                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
                                   IsChecked="{Binding RunAtLogon, Mode=TwoWay}" />
                         <TextBlock Margin="31,1,12,0"
                                    Classes="hint"
-                                   Text="поднимать демон вместе с сеансом" />
+                                   Text="{x:Static res:Strings_App.Settings_Startup_RunAtLogonHint}" />
 
                         <CheckBox Margin="12,9,12,0"
-                                  Content="Работать с правами администратора"
+                                  Content="{x:Static res:Strings_App.Settings_Startup_RunElevated}"
                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
                                   IsChecked="{Binding RunElevated, Mode=TwoWay}" />
                         <TextBlock Margin="31,1,12,0"
                                    Classes="hint"
-                                   Text="нужно, чтобы доставлять ввод в клиенты, запущенные с повышением" />
+                                   Text="{x:Static res:Strings_App.Settings_Startup_RunElevatedHint}" />
 
                         <Border Margin="0,9,0,0"
                                 Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
@@ -526,7 +527,7 @@
                                 BorderThickness="0,1,0,0"
                                 Padding="12,6">
                             <Grid ColumnDefinitions="Auto,*">
-                                <TextBlock Grid.Column="0" Classes="eyebrow" Text="СПОСОБ" />
+                                <TextBlock Grid.Column="0" Classes="eyebrow" Text="{x:Static res:Strings_App.Settings_Startup_MechanismHeader}" />
                                 <TextBlock Grid.Column="1"
                                            Margin="9,0,0,0"
                                            Text="{Binding StartupMechanismText}"
@@ -551,11 +552,11 @@
                                            Foreground="{DynamicResource NocturneWarningBrush}"
                                            TextWrapping="Wrap"
                                            IsVisible="{Binding ShowsElevationRestartNote}"
-                                           Text="Смена прав требует перезапуска демона: повышение нельзя получить на лету." />
+                                           Text="{x:Static res:Strings_App.Settings_Startup_RestartNote}" />
                                 <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
                                            Foreground="{DynamicResource NocturneTextMutedBrush}"
                                            TextWrapping="Wrap"
-                                           Text="Сняв права, вы сломаете ввод в окна игры, запущенной от администратора: UIPI заблокирует и сообщения, и захват экрана. Обе галочки вместе возможны только через Планировщик — ключ реестра не умеет поднимать процесс с повышением." />
+                                           Text="{x:Static res:Strings_App.Settings_Startup_UipiNote}" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -571,7 +572,7 @@
                 Padding="16,6"
                 IsVisible="{Binding HasIssues}">
             <StackPanel Spacing="3">
-                <TextBlock Text="Не применено:"
+                <TextBlock Text="{x:Static res:Strings_App.Settings_Issues_Header}"
                            FontSize="{DynamicResource NocturneFontSizeSmall}"
                            Foreground="{DynamicResource NocturneDangerBrush}" />
                 <ItemsControl ItemsSource="{Binding Issues}">
@@ -598,7 +599,7 @@
                 Padding="16,9,16,11">
             <StackPanel Spacing="8">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <TextBlock Classes="tile" Text="Диагностика среды" />
+                    <TextBlock Classes="tile" Text="{x:Static res:Strings_App.Settings_Diagnostics_Title}" />
                     <TextBlock Classes="aside" Text="{Binding DiagnosticsSummary}" />
                     <TextBlock Classes="aside"
                                Text="{Binding Status}"
@@ -683,7 +684,7 @@
 
                 <TextBlock Classes="hint"
                            IsVisible="{Binding !Diagnostics.Count}"
-                           Text="Права, файлы шаблонов, масштаб экрана, регистрация хоткеев, папка на запись и время ответа демона. Почти всё, что здесь ломается, ломается снаружи программы." />
+                           Text="{x:Static res:Strings_App.Settings_Diagnostics_Hint}" />
             </StackPanel>
         </Border>
     </Grid>

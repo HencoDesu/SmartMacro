@@ -1,6 +1,7 @@
 using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.Contracts.Dto;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels.Canvas;
 
@@ -38,7 +39,7 @@ public sealed class RunLogRowViewModel : ObservableObject
     }
 
     /// <summary>Метка, которую незавершённая строка несёт в колонке исхода.</summary>
-    public const string PendingOutcome = "▸ идёт";
+    public static string PendingOutcome => Strings_App.Editor_RunLog_Pending;
 
     /// <summary>Время с начала обхода, <c>m:ss.f</c>.</summary>
     public string Elapsed { get; }
@@ -96,16 +97,16 @@ public sealed class RunLogRowViewModel : ObservableObject
     /// <summary>Русская формулировка для символа <see cref="RunOutcomes"/>.</summary>
     public static string DescribeOutcome(string? outcome) => outcome switch
     {
-        RunOutcomes.Ok => "ок",
-        RunOutcomes.Found => "нашёл",
-        RunOutcomes.NotFound => "не нашёл",
-        RunOutcomes.Timeout => "таймаут",
-        RunOutcomes.Matched => "распознал",
-        RunOutcomes.NotMatched => "не распознал",
-        RunOutcomes.Error => "ошибка",
-        RunOutcomes.Completed => "готово",
-        RunOutcomes.Aborted => "прервано",
-        RunOutcomes.Cancelled => "отменено",
+        RunOutcomes.Ok => Strings_App.Editor_RunLog_OutcomeOk,
+        RunOutcomes.Found => Strings_App.Editor_RunLog_OutcomeFound,
+        RunOutcomes.NotFound => Strings_App.Editor_RunLog_OutcomeNotFound,
+        RunOutcomes.Timeout => Strings_App.Editor_RunLog_OutcomeTimeout,
+        RunOutcomes.Matched => Strings_App.Editor_RunLog_OutcomeMatched,
+        RunOutcomes.NotMatched => Strings_App.Editor_RunLog_OutcomeNotMatched,
+        RunOutcomes.Error => Strings_App.Editor_RunLog_OutcomeError,
+        RunOutcomes.Completed => Strings_App.Editor_RunLog_OutcomeCompleted,
+        RunOutcomes.Aborted => Strings_App.Editor_RunLog_OutcomeAborted,
+        RunOutcomes.Cancelled => Strings_App.Editor_RunLog_OutcomeCancelled,
         // Исхода нет вообще — значит, нода ещё не завершилась, и строка остаётся с меткой «идёт».
         null or "" => PendingOutcome,
         // Демон новее этой панели (волна D5 добавляет и виды, и исходы). Показать сырой символ
@@ -128,8 +129,11 @@ public sealed class RunLogRowViewModel : ObservableObject
 
     /// <summary>До секунды — миллисекунды, свыше — секунды с одним знаком после запятой.</summary>
     public static string FormatDuration(int durationMs) => durationMs < 1000
-        ? string.Create(CultureInfo.InvariantCulture, $"{durationMs} мс")
-        : string.Create(CultureInfo.InvariantCulture, $"{durationMs / 1000.0:0.0} с");
+        ? string.Format(CultureInfo.InvariantCulture, Strings_App.Editor_RunLog_DurationMs, durationMs)
+        : string.Format(
+            CultureInfo.InvariantCulture,
+            Strings_App.Editor_RunLog_DurationSec,
+            (durationMs / 1000.0).ToString("0.0", CultureInfo.InvariantCulture));
 
     private static string Join(string? detail, string duration) =>
         string.IsNullOrEmpty(detail) ? duration : $"{detail} · {duration}";

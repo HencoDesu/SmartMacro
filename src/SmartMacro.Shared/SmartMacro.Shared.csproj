@@ -34,4 +34,46 @@
     <ProjectReference Include="..\SmartMacro.Native\SmartMacro.Native.csproj" />
   </ItemGroup>
 
+  <!--
+    ТЕКСТЫ ИНТЕРФЕЙСА. Причина, по которой они здесь, а не в App: сборку видят обе стороны, а
+    пользовательские тексты валидатора тут уже лежали.
+
+    Класс-обёртку генерирует MSBuild (задача GenerateResource), а НЕ студийный ResXFileCodeGenerator:
+    гейт этого проекта — dotnet build, и «сгенерируется, когда кто-нибудь откроет решение в Visual
+    Studio» здесь не работает. Метаданные Generator/LastGenOutput оставлены только затем, чтобы
+    студия не пыталась сгенерировать второй, конфликтующий файл.
+
+    StronglyTypedFileName ведёт в obj\: порождённый код не должен попадаться ни на глаза, ни
+    сканерам исходников из tests/Sources (они пропускают bin и obj по имени папки).
+
+    PublicClass=true обязателен: класс читают из ДРУГИХ сборок — из App и из разметки Avalonia
+    через {x:Static}. Умолчание у задачи — internal, и с ним всё это не собралось бы.
+
+    ⚠️ LogicalName — не украшение, а единственное, что здесь вообще работает. Имя ресурса в
+    манифесте по умолчанию берётся из ПУТИ файла (Resources\Strings.App.resx при
+    RootNamespace=SmartMacro даёт SmartMacro.Resources.Strings.App), а имя, которое порождённый
+    класс передаёт в ResourceManager, — из ИМЕНИ КЛАССА (SmartMacro.Resources.Strings_App). Точка
+    против подчёркивания: имена не совпадают, сборка проходит молча, а первое же чтение строки
+    падает в рантайме MissingManifestResourceException — то есть на живой панели и мимо всех
+    тестов. LogicalName выравнивает их, задавая имя в манифесте напрямую.
+
+    Соседний рычаг StronglyTypedManifestPrefix для этого НЕ годится, и это проверено: задача
+    склеивает его с именем класса через точку, так что «SmartMacro.Resources» превращается в
+    «SmartMacro.Resources.Strings_App» (то есть в умолчание), а попытка задать полный путь даёт
+    «SmartMacro.Resources.Strings.App.Strings_App». Совпасть с путём файла, в котором есть точка,
+    им нельзя в принципе.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Update="Resources\Strings.App.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Strings.App.Designer.cs</LastGenOutput>
+      <StronglyTypedFileName>$(IntermediateOutputPath)Strings.App.Designer.cs</StronglyTypedFileName>
+      <StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
+      <StronglyTypedNamespace>SmartMacro.Resources</StronglyTypedNamespace>
+      <StronglyTypedClassName>Strings_App</StronglyTypedClassName>
+      <LogicalName>SmartMacro.Resources.Strings_App.resources</LogicalName>
+      <PublicClass>true</PublicClass>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

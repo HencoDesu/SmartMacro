@@ -21,6 +21,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:services="using:SmartMacro.App.Services"
+        xmlns:res="using:SmartMacro.Resources"
         x:Class="SmartMacro.App.Views.MacroNameConflictDialog"
         x:DataType="services:MacroNameConflict"
         Width="440"
@@ -30,7 +31,7 @@
         SystemDecorations="None"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource NocturneSurfaceOverlayBrush}"
-        Title="Имя занято">
+        Title="{x:Static res:Strings_App.Dialog_NameConflict_WindowTitle}">
 
     <Border BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
             BorderThickness="1">
@@ -43,7 +44,7 @@
                     PointerPressed="OnTitleBarPointerPressed">
                 <Grid ColumnDefinitions="*,Auto" Margin="11.2,0,0,0">
                     <TextBlock Grid.Column="0"
-                               Text="Имя занято"
+                               Text="{x:Static res:Strings_App.Dialog_NameConflict_Title}"
                                FontSize="11.5"
                                FontWeight="Medium"
                                Foreground="{DynamicResource NocturneNeutral300Brush}"
@@ -56,7 +57,7 @@
                             MinWidth="0"
                             Padding="0"
                             CornerRadius="0"
-                            ToolTip.Tip="Отмена"
+                            ToolTip.Tip="{x:Static res:Strings_App.Dialog_NameConflict_CloseTip}"
                             Click="OnCancelClicked" />
                 </Grid>
             </Border>
@@ -93,14 +94,14 @@
                          увиденное на живой панели: «Отмена» без рамки читается как подпись рядом
                          с двумя кнопками, а она здесь действие по умолчанию. -->
                     <Button x:Name="CancelButton"
-                            Content="Отмена"
+                            Content="{x:Static res:Strings_App.Dialog_NameConflict_Cancel}"
                             IsCancel="True"
                             IsDefault="True"
                             Click="OnCancelClicked" />
                     <Button Content="{Binding FreeNameLabel}"
                             Click="OnFreeNameClicked" />
                     <Button Classes="danger"
-                            Content="Заменить"
+                            Content="{x:Static res:Strings_App.Dialog_NameConflict_Replace}"
                             Click="OnReplaceClicked" />
                 </StackPanel>
             </StackPanel>

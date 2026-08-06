@@ -18,6 +18,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:SmartMacro.App.ViewModels"
              xmlns:conv="using:SmartMacro.App.Converters"
+             xmlns:res="using:SmartMacro.Resources"
              x:Class="SmartMacro.App.Views.WindowsView"
              x:DataType="vm:ShellViewModel">
 
@@ -42,7 +43,7 @@
                 Padding="12,9">
             <Grid ColumnDefinitions="Auto,Auto,*,Auto">
                 <TextBlock Grid.Column="0"
-                           Text="Окна"
+                           Text="{x:Static res:Strings_App.Shell_Mode_Windows}"
                            FontSize="{DynamicResource NocturneFontSizeBody}"
                            FontWeight="Medium"
                            VerticalAlignment="Center" />
@@ -54,16 +55,16 @@
                            Foreground="{DynamicResource NocturneNeutral600Brush}"
                            VerticalAlignment="Center" />
                 <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6">
-                    <Button Content="Опознать все"
+                    <Button Content="{x:Static res:Strings_App.Windows_Header_IdentifyAll}"
                             Height="24"
                             Padding="10,0"
                             IsEnabled="{Binding CanIdentifyAll}"
-                            ToolTip.Tip="Запустить макрос pw-identify по всем окнам"
+                            ToolTip.Tip="{x:Static res:Strings_App.Windows_Header_IdentifyAllTip}"
                             Click="OnIdentifyAllClicked" />
-                    <Button Content="Дамп"
+                    <Button Content="{x:Static res:Strings_App.Windows_Header_Dump}"
                             Height="24"
                             Padding="10,0"
-                            ToolTip.Tip="Сохранить снимки окон в debug/ для настройки регионов"
+                            ToolTip.Tip="{x:Static res:Strings_App.Windows_Header_DumpTip}"
                             Click="OnDumpCapturesClicked" />
                 </StackPanel>
             </Grid>
@@ -122,7 +123,7 @@
                                                                         Padding="3,0"
                                                                         Margin="0"
                                                                         VerticalAlignment="Center"
-                                                                        ToolTip.Tip="Снять тег"
+                                                                        ToolTip.Tip="{x:Static res:Strings_App.Windows_Row_RemoveTag}"
                                                                         Click="OnRemoveTagClicked" />
                                                             </StackPanel>
                                                         </Border>
@@ -137,7 +138,7 @@
                                                     Padding="6,0"
                                                     MinWidth="0"
                                                     IsVisible="{Binding !IsAddingTag}"
-                                                    ToolTip.Tip="Добавить тег"
+                                                    ToolTip.Tip="{x:Static res:Strings_App.Windows_Row_AddTag}"
                                                     Click="OnBeginAddTagClicked" />
                                             <StackPanel Grid.Column="1"
                                                         Orientation="Horizontal"
@@ -149,7 +150,7 @@
                                                          Padding="7,0"
                                                          VerticalContentAlignment="Center"
                                                          FontSize="10.5"
-                                                         Watermark="новый тег"
+                                                         Watermark="{x:Static res:Strings_App.Windows_Row_NewTagWatermark}"
                                                          Text="{Binding NewTagText, Mode=TwoWay}"
                                                          KeyDown="OnTagInputKeyDown"
                                                          AttachedToVisualTree="OnInlineTagBoxAttached" />
@@ -157,7 +158,7 @@
                                                         Height="21"
                                                         MinWidth="22"
                                                         Padding="0"
-                                                        ToolTip.Tip="Добавить тег"
+                                                        ToolTip.Tip="{x:Static res:Strings_App.Windows_Row_AddTag}"
                                                         Click="OnAddTagClicked" />
                                             </StackPanel>
                                         </Grid>
@@ -213,7 +214,7 @@
                                                      Padding="7,0"
                                                      VerticalContentAlignment="Center"
                                                      FontSize="10.5"
-                                                     Watermark="новый тег"
+                                                     Watermark="{x:Static res:Strings_App.Windows_Row_NewTagWatermark}"
                                                      Background="{DynamicResource NocturneSurfaceOverlayBrush}"
                                                      BorderBrush="{DynamicResource NocturneChipInputBorderBrush}"
                                                      Text="{Binding NewTagText, Mode=TwoWay}"
@@ -223,7 +224,7 @@
                                                     Height="21"
                                                     MinWidth="22"
                                                     Padding="0"
-                                                    ToolTip.Tip="Добавить тег"
+                                                    ToolTip.Tip="{x:Static res:Strings_App.Windows_Row_AddTag}"
                                                     Click="OnAddTagClicked" />
                                         </StackPanel>
                                     </Grid>
@@ -234,11 +235,11 @@
 
                     <!-- ==== пустое состояние ==== -->
                     <StackPanel Margin="12,40" Spacing="6" IsVisible="{Binding Workspace.HasNoWindows}">
-                        <TextBlock Text="Демон не видит ни одного окна."
+                        <TextBlock Text="{x:Static res:Strings_App.Windows_Empty_Title}"
                                    FontSize="{DynamicResource NocturneFontSizeTitle}"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource NocturneTextMutedBrush}" />
-                        <TextBlock Text="Список наполняется сам, как только запустится процесс из ProcessProfiles."
+                        <TextBlock Text="{x:Static res:Strings_App.Windows_Empty_Hint}"
                                    FontSize="{DynamicResource NocturneFontSizeSmall}"
                                    HorizontalAlignment="Center"
                                    TextWrapping="Wrap"

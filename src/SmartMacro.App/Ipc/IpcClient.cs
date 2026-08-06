@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Text.Json;
 using Serilog;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.Ipc;
 
@@ -174,7 +175,7 @@ public sealed class IpcClient : IIpcClient
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
 
         var connection = _connection
-                         ?? throw new IpcRequestException(type, "нет соединения с демоном");
+                         ?? throw new IpcRequestException(type, Strings_App.Dialog_Ipc_NotConnected);
 
         var id = Interlocked.Increment(ref _nextId);
         var completion = new TaskCompletionSource<IpcResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -190,12 +191,12 @@ public sealed class IpcClient : IIpcClient
 
             return response.Ok
                 ? response
-                : throw new IpcRequestException(type, response.Error ?? "запрос отклонён без описания причины");
+                : throw new IpcRequestException(type, response.Error ?? Strings_App.Dialog_Ipc_RejectedSilently);
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
             // Труба порвалась прямо под записью. Поддерживающий цикл это заметит и переподключится.
-            throw new IpcRequestException(type, "соединение с демоном разорвано", ex);
+            throw new IpcRequestException(type, Strings_App.Dialog_Ipc_Broken, ex);
         }
         finally
         {
@@ -353,7 +354,7 @@ public sealed class IpcClient : IIpcClient
         {
             if (_pending.TryRemove(id, out var completion))
             {
-                completion.TrySetException(new IpcRequestException("(соединение)", "демон отключился"));
+                completion.TrySetException(new IpcRequestException("(соединение)", Strings_App.Dialog_Ipc_Disconnected));
             }
         }
 

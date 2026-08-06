@@ -2,6 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 using SmartMacro.App.Mvvm;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels.Nodes;
 
@@ -71,7 +72,7 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
         _mouseButton = trigger.MouseButton;
     }
 
-    public override string TypeLabel => "Хоткей";
+    public override string TypeLabel => Strings_App.Node_Type_HotkeyTrigger;
 
     /// <summary>
     /// Почему это сочетание не сделает того, что по нему кажется, либо <c>null</c>, когда оно
@@ -129,7 +130,7 @@ public sealed class HotkeyTriggerRowViewModel : TriggerRowViewModel
         var trigger = (HotkeyTrigger)ToTrigger();
         if (!trigger.IsKeyboard && !trigger.IsMouse)
         {
-            yield return "Хоткей: сочетание не назначено.";
+            yield return Strings_App.Node_Error_HotkeyUnbound;
         }
     }
 
@@ -165,7 +166,7 @@ public sealed class ProcessTriggerRowViewModel : TriggerRowViewModel
 
     public ProcessTriggerRowViewModel(ProcessAppearedTrigger trigger) => _processName = trigger.ProcessName;
 
-    public override string TypeLabel => "Появление процесса";
+    public override string TypeLabel => Strings_App.Node_Type_ProcessTrigger;
 
     /// <summary>Имя процесса без расширения, сопоставляется без учёта регистра (например, <c>elementclient_64</c>).</summary>
     [AllowNull]
@@ -181,7 +182,7 @@ public sealed class ProcessTriggerRowViewModel : TriggerRowViewModel
     {
         if (string.IsNullOrWhiteSpace(_processName))
         {
-            yield return "Появление процесса: имя процесса не задано.";
+            yield return Strings_App.Node_Error_ProcessUnnamed;
         }
     }
 }

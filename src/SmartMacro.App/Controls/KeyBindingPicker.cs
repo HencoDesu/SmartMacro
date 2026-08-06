@@ -9,6 +9,7 @@ using SmartMacro.Native;
 // затягивает директива `using Avalonia.Input;`. Ловушка хранит значения в форме Win32,
 // ложащиеся в старшее слово MSLLHOOKSTRUCT.mouseData, поэтому псевдоним заводим на наше.
 using MouseButton = SmartMacro.Native.MouseButton;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.Controls;
 
@@ -116,15 +117,15 @@ public sealed class KeyBindingPicker : Button
             nameof(ShowsPrompt),
             picker => picker.ShowsPrompt);
 
-    private const string CapturePrompt = "Нажмите сочетание…";
+    private static string CapturePrompt => Strings_App.Editor_Hotkey_CapturePrompt;
 
     // В макете перед этим стоит ⌨ (U+2328). Использовать его нельзя: у этой кодовой точки есть
     // эмодзи-представление, поэтому Windows подаёт её из Segoe UI Emoji серой картинкой,
     // игнорирующей Foreground, — ровно та ловушка, которую Tokens.axaml описывает для U+25B6.
     // Ничто из неэмодзийных диапазонов не читается как «клавиатура», а пунктирный контур и так
     // говорит «пусто», поэтому приглашение — обычный текст.
-    private const string EmptyPrompt = "нажмите, чтобы задать";
-    private const string RebindHint = "клик — перезадать";
+    private static string EmptyPrompt => Strings_App.Editor_Hotkey_EmptyPrompt;
+    private static string RebindHint => Strings_App.Editor_Hotkey_RebindHint;
 
     private bool _capturing;
     private IReadOnlyList<KeycapItem> _keycaps = [];

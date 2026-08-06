@@ -1,4 +1,5 @@
 using System.Globalization;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.Services;
 
@@ -56,12 +57,13 @@ public sealed record MacroNameConflict(
     string? Fault = null)
 {
     /// <summary>Первая строка вопроса.</summary>
-    public string Heading => $"Макрос «{Name}» в библиотеке уже есть";
+    public string Heading =>
+        string.Format(CultureInfo.CurrentCulture, Strings_App.Dialog_NameConflict_Heading, Name);
 
     /// <summary>Вторая строка: что произойдёт, если согласиться.</summary>
     public string Action => Kind == MacroNameConflictKind.Save
-        ? "Сохранение под этим именем заменит его."
-        : "Импорт под этим именем заменит его.";
+        ? Strings_App.Dialog_NameConflict_ActionSave
+        : Strings_App.Dialog_NameConflict_ActionImport;
 
     /// <summary>Третья строка: ЧТО именно будет потеряно. Главная строка окна.</summary>
     public string Loss
@@ -70,46 +72,43 @@ public sealed record MacroNameConflict(
         {
             if (Fault is { Length: > 0 } fault)
             {
-                return $"Его бандл не читается, так что неизвестно даже, что в нём: {fault} " +
-                       "Замена уничтожит файл целиком.";
+                return string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_App.Dialog_NameConflict_LossUnreadable,
+                    fault);
             }
 
             var parts = new List<string>(2);
             if (Templates > 0)
             {
-                parts.Add(Count(Templates, "шаблон", "шаблона", "шаблонов"));
+                parts.Add(PluralForms.Format(
+                    Templates,
+                    Strings_App.Dialog_NameConflict_Templates_One,
+                    Strings_App.Dialog_NameConflict_Templates_Few,
+                    Strings_App.Dialog_NameConflict_Templates_Many));
             }
 
             if (Submacros > 0)
             {
-                parts.Add(Count(Submacros, "под-макрос", "под-макроса", "под-макросов"));
+                parts.Add(PluralForms.Format(
+                    Submacros,
+                    Strings_App.Dialog_NameConflict_Submacros_One,
+                    Strings_App.Dialog_NameConflict_Submacros_Few,
+                    Strings_App.Dialog_NameConflict_Submacros_Many));
             }
 
             return parts.Count == 0
-                ? "Ни шаблонов, ни под-макросов в нём нет — потеряется только его граф."
-                : $"Будет потеряно: {string.Join(", ", parts)}.";
+                ? Strings_App.Dialog_NameConflict_LossNothing
+                : string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings_App.Dialog_NameConflict_LossList,
+                    string.Join(", ", parts));
         }
     }
 
     /// <summary>Подпись кнопки «взять свободное имя» — с самим именем, чтобы не гадать, каким.</summary>
-    public string FreeNameLabel => $"Взять имя «{FreeName}»";
-
-    // Расписано руками, а не взято из библиотеки склонений: слов два, а интерфейс всё равно
-    // только русский. Тот же приём, что у счётчика окон в бейдже целей.
-    private static string Count(int count, string one, string few, string many)
-    {
-        var mod100 = count % 100;
-        var word = mod100 is >= 11 and <= 14
-            ? many
-            : (count % 10) switch
-            {
-                1 => one,
-                2 or 3 or 4 => few,
-                _ => many,
-            };
-
-        return string.Create(CultureInfo.CurrentCulture, $"{count} {word}");
-    }
+    public string FreeNameLabel =>
+        string.Format(CultureInfo.CurrentCulture, Strings_App.Dialog_NameConflict_FreeName, FreeName);
 }
 
 /// <summary>

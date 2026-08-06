@@ -5,6 +5,7 @@ using SmartMacro.App.Ipc;
 using SmartMacro.App.Mvvm;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Resources;
 
 namespace SmartMacro.App.ViewModels;
 
@@ -84,14 +85,18 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
 
     /// <summary>Строка шапки режима «Окна»: «8 опознано · 3 без тегов».</summary>
     public string WindowsSummaryText => Windows.Count == 0
-        ? "нет окон под управлением"
+        ? Strings_App.Windows_Header_Empty
         : UntaggedCount == 0
-            ? string.Create(CultureInfo.CurrentCulture, $"{IdentifiedCount} опознано")
-            : string.Create(CultureInfo.CurrentCulture, $"{IdentifiedCount} опознано · {UntaggedCount} без тегов");
+            ? string.Format(CultureInfo.CurrentCulture, Strings_App.Windows_Header_Identified, IdentifiedCount)
+            : string.Format(
+                CultureInfo.CurrentCulture,
+                Strings_App.Windows_Header_IdentifiedAndUntagged,
+                IdentifiedCount,
+                UntaggedCount);
 
     /// <summary>Разделитель над группой без тегов. Капсом, потому что подпись рисуется надзаголовком.</summary>
     public string UntaggedHeaderText =>
-        string.Create(CultureInfo.CurrentCulture, $"НЕ ОПОЗНАНО · {UntaggedCount}");
+        string.Format(CultureInfo.CurrentCulture, Strings_App.Windows_Untagged_Header, UntaggedCount);
 
     /// <summary><c>true</c>, пока хотя бы одно окно без тегов, — этим включается вся группа.</summary>
     public bool HasUntagged => UntaggedWindows.Count > 0;
@@ -101,8 +106,8 @@ public sealed class WorkspaceViewModel : ObservableObject, IDisposable
 
     /// <summary>Шапка режима «Прогоны»; она же служит текстом пустого состояния.</summary>
     public string RunsHeaderText => Runs.Count == 0
-        ? "нет активных прогонов"
-        : string.Create(CultureInfo.CurrentCulture, $"активных прогонов: {Runs.Count}");
+        ? Strings_App.Runs_Header_Empty
+        : string.Format(CultureInfo.CurrentCulture, Strings_App.Runs_Header_Count, Runs.Count);
 
     /// <summary><c>true</c>, пока отслеживается хотя бы один прогон, — этим включается кнопка «Стоп всё».</summary>
     public bool HasRuns => Runs.Count > 0;

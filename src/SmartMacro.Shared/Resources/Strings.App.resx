@@ -1,0 +1,2064 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    ТЕКСТЫ ПАНЕЛИ. Всё, что пользователь читает на экране SmartMacro.exe.
+
+    Почему в Shared, а не в App: сборку видят и Contracts, и Core, и Daemon, и App, а тексты
+    валидатора здесь уже лежат — держать две «половины интерфейса» в двух сборках означало бы
+    разъехаться формулировками там, где панель и движок говорят об одном и том же.
+
+    Ключи ASCII, вида Область_Элемент_Смысл. Области панели: Shell_, Windows_, Macros_, Editor_,
+    Node_, Runs_, Log_, Settings_, Dialog_.
+
+    ЗНАЧЕНИЕ — русский текст как есть. Перевод — отдельная работа: рядом лягут
+    Strings.App.en.resx и прочие, а этот файл остаётся нейтральным (то есть русским).
+
+    ⚠️ Множественное число resx не умеет. Формы заводятся ЯВНЫМИ ключами _One / _Few / _Many, а
+    выбирает между ними SmartMacro.Resources.PluralForms — один на всё дерево. Не пишите разбор
+    по %10 в view-model'и: именно так и появились «1 окон» и «все 7 обхода».
+
+    ⚠️ Глифы в значениях проверяются тестом Sources/AxamlGlyphTests: у кодовой точки со
+    свойством Emoji Windows подменяет шрифт на Segoe UI Emoji, и Foreground перестаёт работать.
+    Сканер читает и разметку, и этот файл — унести подпись сюда не значит вынести её из-под
+    проверки.
+  -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+
+
+
+  <!-- ======== Общее — контекстное меню любого текстового поля ======== -->
+  <data name="Shell_TextBox_Cut" xml:space="preserve">
+    <value>Вырезать</value>
+    <comment>пункт контекстного меню любого TextBox панели; справа от него печатается Ctrl+X</comment>
+  </data>
+  <data name="Shell_TextBox_Copy" xml:space="preserve">
+    <value>Копировать</value>
+    <comment>второй пункт того же меню</comment>
+  </data>
+  <data name="Shell_TextBox_Paste" xml:space="preserve">
+    <value>Вставить</value>
+    <comment>третий пункт того же меню</comment>
+  </data>
+
+  <!-- ======== Оболочка — строка заголовка ======== -->
+  <data name="Shell_Caption_Minimize" xml:space="preserve">
+    <value>Свернуть</value>
+    <comment>подсказка кнопки «—» в своей строке заголовка, правый верхний угол</comment>
+  </data>
+  <data name="Shell_Caption_Maximize" xml:space="preserve">
+    <value>Развернуть</value>
+    <comment>подсказка кнопки «▢» там же; текст не меняется на «восстановить», когда окно уже развёрнуто</comment>
+  </data>
+  <data name="Shell_Caption_Close" xml:space="preserve">
+    <value>Закрыть</value>
+    <comment>подсказка кнопки «✕» там же</comment>
+  </data>
+
+  <!-- ======== Оболочка — рейка режимов (левая полоса, сверху вниз) ======== -->
+  <data name="Shell_Mode_Windows" xml:space="preserve">
+    <value>Окна</value>
+    <comment>первая строка рейки И заголовок шапки этого режима — одна строка на оба места; рейка шириной 172 px, влезает примерно 14 знаков</comment>
+  </data>
+  <data name="Shell_Mode_Macros" xml:space="preserve">
+    <value>Макросы</value>
+    <comment>вторая строка рейки; она же подставляется в подсказки вида «пока открыт режим «Макросы»»</comment>
+  </data>
+  <data name="Shell_Mode_Runs" xml:space="preserve">
+    <value>Прогоны</value>
+    <comment>третья строка рейки И заголовок шапки этого режима</comment>
+  </data>
+  <data name="Shell_Mode_Log" xml:space="preserve">
+    <value>Лог</value>
+    <comment>четвёртая строка рейки И заголовок шапки этого режима</comment>
+  </data>
+  <data name="Shell_Mode_Settings" xml:space="preserve">
+    <value>Настройки</value>
+    <comment>пятая строка рейки, под разделителем, с шестерёнкой; она же заголовок шапки режима</comment>
+  </data>
+  <data name="Shell_Rail_SettingsTip" xml:space="preserve">
+    <value>Настройки демона и диагностика среды</value>
+    <comment>подсказка строки «Настройки» в рейке</comment>
+  </data>
+  <data name="Shell_Rail_DiagnosticsDot" xml:space="preserve">
+    <value>Проверка среды нашла проблему</value>
+    <comment>подсказка красной точки на строке «Настройки» — место, где у остальных строк счётчик</comment>
+  </data>
+
+  <!-- ======== Оболочка — сводка по тегам внизу рейки ======== -->
+  <data name="Shell_Tags_Header" xml:space="preserve">
+    <value>ТЕГИ</value>
+    <comment>надзаголовок капслоком над чипами тегов; ширина рейки 172 px</comment>
+  </data>
+  <data name="Shell_Tags_Empty" xml:space="preserve">
+    <value>ни одного окна не опознано</value>
+    <comment>вместо чипов, когда ни на одном окне нет тега; переносится по словам в 148 px</comment>
+  </data>
+
+  <!-- ======== Оболочка — полоса прогона (нижняя строка в 30 px, видна всегда) ======== -->
+  <data name="Shell_RunBar_Idle" xml:space="preserve">
+    <value>нет активных прогонов</value>
+    <comment>полоса прогона, когда ничего не идёт; схлопываться полоса не умеет — это её обычный вид</comment>
+  </data>
+  <data name="Shell_RunBar_CurrentNodeTip" xml:space="preserve">
+    <value>Текущая нода</value>
+    <comment>подсказка колонки «▸ имя-ноды» в полосе прогона</comment>
+  </data>
+  <data name="Shell_RunBar_OtherRunsTip" xml:space="preserve">
+    <value>Ещё прогоны — весь список в режиме «Прогоны»</value>
+    <comment>подсказка счётчика «+2» в полосе прогона</comment>
+  </data>
+  <data name="Shell_RunBar_Stop" xml:space="preserve">
+    <value>Стоп</value>
+    <comment>кнопка в полосе прогона: останавливает тот прогон, который полоса называет; кнопка высотой 21 px с отступом 10 px — длиннее пары слов не влезет</comment>
+  </data>
+  <data name="Shell_RunBar_StopTip" xml:space="preserve">
+    <value>Остановить прогон, названный в полосе</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Shell_RunBar_StopAll" xml:space="preserve">
+    <value>Стоп всё</value>
+    <comment>красная кнопка паники в полосе прогона: отменяет все прогоны разом</comment>
+  </data>
+
+  <!-- ======== Режим «Окна» — шапка ======== -->
+  <data name="Windows_Header_Empty" xml:space="preserve">
+    <value>нет окон под управлением</value>
+    <comment>серая приписка в шапке, пока демон не сообщает ни одного окна</comment>
+  </data>
+  <data name="Windows_Header_Identified" xml:space="preserve">
+    <value>{0} опознано</value>
+    <comment>приписка в шапке, когда теги есть у всех окон; {0} = число опознанных</comment>
+  </data>
+  <data name="Windows_Header_IdentifiedAndUntagged" xml:space="preserve">
+    <value>{0} опознано · {1} без тегов</value>
+    <comment>она же, когда часть окон без тегов; {0} = опознано, {1} = без тегов</comment>
+  </data>
+  <data name="Windows_Header_IdentifyAll" xml:space="preserve">
+    <value>Опознать все</value>
+    <comment>кнопка в шапке; гаснет, когда макроса pw-identify в библиотеке нет</comment>
+  </data>
+  <data name="Windows_Header_IdentifyAllTip" xml:space="preserve">
+    <value>Запустить макрос pw-identify по всем окнам</value>
+    <comment>подсказка к ней; имя макроса зашито в оболочке (ShellViewModel.IdentifyMacroName)</comment>
+  </data>
+  <data name="Windows_Header_Dump" xml:space="preserve">
+    <value>Дамп</value>
+    <comment>кнопка в шапке: снять debug/*.png со всех окон</comment>
+  </data>
+  <data name="Windows_Header_DumpTip" xml:space="preserve">
+    <value>Сохранить снимки окон в debug/ для настройки регионов</value>
+    <comment>подсказка к ней</comment>
+  </data>
+
+  <!-- ======== Режим «Окна» — строка окна ======== -->
+  <data name="Windows_Row_RemoveTag" xml:space="preserve">
+    <value>Снять тег</value>
+    <comment>подсказка крестика внутри чипа тега</comment>
+  </data>
+  <data name="Windows_Row_AddTag" xml:space="preserve">
+    <value>Добавить тег</value>
+    <comment>подсказка кнопки «+» в строке окна — и тихой, и той, что рядом с полем ввода; три места</comment>
+  </data>
+  <data name="Windows_Row_NewTagWatermark" xml:space="preserve">
+    <value>новый тег</value>
+    <comment>водяной знак поля ввода тега; поле шириной 120 px, кегль 10.5</comment>
+  </data>
+  <data name="Windows_Untagged_Header" xml:space="preserve">
+    <value>НЕ ОПОЗНАНО · {0}</value>
+    <comment>надзаголовок разделителя над группой окон без тегов; {0} = сколько их</comment>
+  </data>
+
+  <!-- ======== Режим «Окна» — пустое состояние ======== -->
+  <data name="Windows_Empty_Title" xml:space="preserve">
+    <value>Демон не видит ни одного окна.</value>
+    <comment>заголовок пустого состояния по центру списка</comment>
+  </data>
+  <data name="Windows_Empty_Hint" xml:space="preserve">
+    <value>Список наполняется сам, как только запустится процесс из ProcessProfiles.</value>
+    <comment>пояснение под ним</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — панель инструментов (верхняя полоса) ======== -->
+  <data name="Editor_Toolbar_MacroNameTip" xml:space="preserve">
+    <value>Имя макроса = имя файла</value>
+    <comment>подсказка поля имени макроса; поле шириной 170 px</comment>
+  </data>
+  <data name="Editor_Toolbar_BackToMacroTip" xml:space="preserve">
+    <value>Вернуться к макросу</value>
+    <comment>подсказка хлебной крошки «макрос ▸ функция», когда на канве под-макрос</comment>
+  </data>
+  <data name="Editor_Toolbar_SubmacroNameTip" xml:space="preserve">
+    <value>Подпись под-макроса. На него ссылаются по Guid, так что переименование ничего не ломает.</value>
+    <comment>подсказка поля имени функции; поле шириной 140 px</comment>
+  </data>
+  <data name="Editor_Toolbar_StartNode" xml:space="preserve">
+    <value>старт</value>
+    <comment>подпись выпадающего списка стартовой ноды</comment>
+  </data>
+  <data name="Editor_Toolbar_AddNode" xml:space="preserve">
+    <value>+ Нода</value>
+    <comment>кнопка с выпадающим списком типов нод; высота 26 px</comment>
+  </data>
+  <data name="Editor_Toolbar_AddSubmacro" xml:space="preserve">
+    <value>+ Под-макрос</value>
+    <comment>кнопка «завести функцию»; гаснет внутри функции — под-макросы плоские</comment>
+  </data>
+  <data name="Editor_Toolbar_AddSubmacroTip" xml:space="preserve">
+    <value>Завести пустую функцию внутри этого макроса</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Editor_Toolbar_ExtractTip" xml:space="preserve">
+    <value>Вынести отмеченные ноды (Ctrl+клик) в новый под-макрос</value>
+    <comment>подсказка кнопки извлечения; сама кнопка называется Editor_Toolbar_Extract*</comment>
+  </data>
+  <data name="Editor_Toolbar_ChangedOnDiskTip" xml:space="preserve">
+    <value>«Перечитать» — взять версию с диска, «Сохранить» — затереть её</value>
+    <comment>подсказка предупреждения о правке файла на диске</comment>
+  </data>
+  <data name="Editor_Toolbar_ChangedOnDisk" xml:space="preserve">
+    <value>Макрос изменён на диске, а здесь есть несохранённые правки.</value>
+    <comment>жёлтая строка посреди панели инструментов; ⚠️ обрезается многоточием — соседний счётчик извлечения уже однажды съел её ширину и обрубил на полуслове</comment>
+  </data>
+  <data name="Editor_Toolbar_OpenFolder" xml:space="preserve">
+    <value>Папка макросов</value>
+    <comment>кнопка: открыть macros/ проводником; подсказка — сам путь</comment>
+  </data>
+  <data name="Editor_Toolbar_Reload" xml:space="preserve">
+    <value>Перечитать</value>
+    <comment>кнопка: взять версию с диска</comment>
+  </data>
+  <data name="Editor_Toolbar_ReloadTip" xml:space="preserve">
+    <value>Отбросить правки и взять версию с диска</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Editor_Toolbar_AutoLayout" xml:space="preserve">
+    <value>Авто-раскладка</value>
+    <comment>кнопка: разложить граф автоматически</comment>
+  </data>
+  <data name="Editor_Toolbar_AutoLayoutTip" xml:space="preserve">
+    <value>Разложить граф строками с переносом от стартовой ноды</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Editor_Toolbar_Save" xml:space="preserve">
+    <value>Сохранить</value>
+    <comment>главная (акцентная) кнопка панели инструментов; правее неё ничего нет</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — отладчик в панели инструментов ======== -->
+  <data name="Editor_Debug_Pause" xml:space="preserve">
+    <value>Пауза</value>
+    <comment>кнопка отладчика; делит слот с «Дальше» — это взаимоисключающие состояния одного обхода</comment>
+  </data>
+  <data name="Editor_Debug_PauseTip" xml:space="preserve">
+    <value>Встать на паузу перед следующей нодой этого обхода</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Editor_Debug_Resume" xml:space="preserve">
+    <value>▸ Дальше</value>
+    <comment>кнопка отладчика на месте «Паузы», когда обход припаркован. Глиф U+25B8 — часть подписи; большой U+25B6 брать нельзя, он приезжает цветным эмодзи</comment>
+  </data>
+  <data name="Editor_Debug_ResumeTip" xml:space="preserve">
+    <value>Снять обход с паузы</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Editor_Debug_Step" xml:space="preserve">
+    <value>Шаг</value>
+    <comment>кнопка отладчика: одна нода и снова пауза</comment>
+  </data>
+  <data name="Editor_Debug_StepTip" xml:space="preserve">
+    <value>Выполнить одну ноду и встать снова</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Editor_Debug_RunToCursor" xml:space="preserve">
+    <value>До курсора</value>
+    <comment>кнопка отладчика: идти до выбранной на canvas ноды</comment>
+  </data>
+  <data name="Editor_Debug_RunToCursorTip" xml:space="preserve">
+    <value>Идти до ноды, выбранной на canvas, и встать перед ней</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Editor_Debug_ProgressTip" xml:space="preserve">
+    <value>Пройдено нод / всего в графе · время обхода</value>
+    <comment>подсказка счётчика прогресса рядом с кнопками отладчика</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — отладчик: состояние выбранного обхода ======== -->
+  <data name="Editor_RunLog_EmptyRecorded" xml:space="preserve">
+    <value>прогонов ещё не было</value>
+    <comment>пустая полоса лога, когда подписка на события включена, но ничего не запускалось</comment>
+  </data>
+  <data name="Editor_RunLog_EmptyUnsubscribed" xml:space="preserve">
+    <value>лог пишется, пока открыт режим «Макросы»</value>
+    <comment>пустая полоса лога, когда события не собираются: они включены только в этом режиме</comment>
+  </data>
+  <data name="Editor_RunLog_NoticePartial" xml:space="preserve">
+    <value>начало прогона не записано</value>
+    <comment>жёлтая пилюля: панель подключилась к обходу, который уже шёл</comment>
+  </data>
+  <data name="Editor_RunLog_NoticeDropped" xml:space="preserve">
+    <value>пропущено событий: {0}</value>
+    <comment>жёлтая пилюля: очередь демона переполнялась; {0} = сколько событий потерялось</comment>
+  </data>
+  <data name="Editor_Debug_PausedAt" xml:space="preserve">
+    <value>{0}: {1}</value>
+    <comment>красная пилюля в шапке полосы лога; {0} = причина паузы от демона, {1} = имя ноды</comment>
+  </data>
+  <data name="Editor_Debug_PauseRequested" xml:space="preserve">
+    <value>пауза запрошена — ждём конца ноды</value>
+    <comment>та же пилюля между нажатием «Пауза» и остановкой: гейт стоит между нодами, а не внутри</comment>
+  </data>
+  <data name="Editor_Debug_StateFinished" xml:space="preserve">
+    <value>завершён</value>
+    <comment>состояние обхода в чипе переключателя, когда демон не назвал исход</comment>
+  </data>
+  <data name="Editor_Debug_StatePaused" xml:space="preserve">
+    <value>на паузе · {0}</value>
+    <comment>то же для припаркованного обхода; {0} = причина паузы</comment>
+  </data>
+  <data name="Editor_Debug_StatePausing" xml:space="preserve">
+    <value>пауза…</value>
+    <comment>то же, пока пауза запрошена, но ещё не наступила</comment>
+  </data>
+  <data name="Editor_Debug_StateRunning" xml:space="preserve">
+    <value>выполняется</value>
+    <comment>то же для живого обхода</comment>
+  </data>
+  <data name="Editor_Debug_Stop" xml:space="preserve">
+    <value>■ Стоп</value>
+    <comment>красная кнопка отладчика, когда обход по этому прогону один. Глиф — часть подписи</comment>
+  </data>
+  <data name="Editor_Debug_StopMany" xml:space="preserve">
+    <value>■ Стоп ×{0}</value>
+    <comment>она же при веере: ■ отменяет ВЕСЬ прогон, а не один обход, и подпись обязана это сказать. {0} = сколько живых обходов</comment>
+  </data>
+  <data name="Editor_Debug_StopTip" xml:space="preserve">
+    <value>Остановить прогон</value>
+    <comment>подсказка к ней в одиночном случае</comment>
+  </data>
+  <data name="Editor_Debug_StopManyTip_One" xml:space="preserve">
+    <value>Остановить весь прогон целиком — весь {0} обход</value>
+    <comment>подсказка ■ при веере, форма для 1, 21, 31…</comment>
+  </data>
+  <data name="Editor_Debug_StopManyTip_Few" xml:space="preserve">
+    <value>Остановить весь прогон целиком — все {0} обхода</value>
+    <comment>она же, форма для 2–4, 22–24…</comment>
+  </data>
+  <data name="Editor_Debug_StopManyTip_Many" xml:space="preserve">
+    <value>Остановить весь прогон целиком — все {0} обходов</value>
+    <comment>она же, форма для 5–20, 25–30… ⚠️ до выноса согласования не было вовсе: печаталось «все 7 обхода»</comment>
+  </data>
+  <data name="Editor_Debug_CommandFailed" xml:space="preserve">
+    <value>Отладчик: команда не прошла ({0}).</value>
+    <comment>красная строка в панели инструментов; {0} = текст исключения от канала</comment>
+  </data>
+  <data name="Editor_Debug_WalkAlreadyFinished" xml:space="preserve">
+    <value>Обход уже завершился.</value>
+    <comment>статус: обход кончился между нажатием кнопки отладчика и запросом</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — библиотека (левая колонка, 228 px) ======== -->
+  <data name="Macros_Library_SearchWatermark" xml:space="preserve">
+    <value>поиск…</value>
+    <comment>водяной знак поля поиска над списком макросов</comment>
+  </data>
+  <data name="Macros_Row_Run" xml:space="preserve">
+    <value>Запустить</value>
+    <comment>подсказка кнопки ▸ на строке макроса</comment>
+  </data>
+  <data name="Macros_Row_Stop" xml:space="preserve">
+    <value>Остановить</value>
+    <comment>подсказка кнопки ■ на строке макроса</comment>
+  </data>
+  <data name="Macros_Row_Export" xml:space="preserve">
+    <value>Экспорт — отдать файл .hsm как есть</value>
+    <comment>подсказка кнопки ⤓ на строке макроса</comment>
+  </data>
+  <data name="Macros_Row_Delete" xml:space="preserve">
+    <value>Удалить</value>
+    <comment>подсказка кнопки × на строке макроса</comment>
+  </data>
+  <data name="Macros_SubmacroRow_ErrorTip" xml:space="preserve">
+    <value>В графе под-макроса есть ошибка — макрос не вооружён</value>
+    <comment>подсказка красного «!» на вложенной строке функции</comment>
+  </data>
+  <data name="Macros_SubmacroRow_Delete" xml:space="preserve">
+    <value>Удалить под-макрос</value>
+    <comment>подсказка кнопки × на вложенной строке функции</comment>
+  </data>
+  <data name="Macros_Library_New" xml:space="preserve">
+    <value>+ Новый макрос</value>
+    <comment>акцентная кнопка в подвале библиотеки; растянута на всю ширину минус «Импорт…»</comment>
+  </data>
+  <data name="Macros_Library_Import" xml:space="preserve">
+    <value>Импорт…</value>
+    <comment>кнопка рядом с ней</comment>
+  </data>
+  <data name="Macros_Library_ImportTip" xml:space="preserve">
+    <value>Скопировать чужой .hsm в папку макросов</value>
+    <comment>подсказка к ней</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — строка библиотеки: подсказка, бейджи, беда с бандлом ======== -->
+  <data name="Macros_Row_NoTriggers" xml:space="preserve">
+    <value>без триггеров</value>
+    <comment>начало подсказки строки библиотеки, когда у макроса нет ни хоткея, ни триггера на процесс</comment>
+  </data>
+  <data name="Macros_Row_Summary" xml:space="preserve">
+    <value>{0} · нод: {1}</value>
+    <comment>подсказка строки макроса целиком; {0} = перечень триггеров, {1} = сколько нод в графе</comment>
+  </data>
+  <data name="Macros_Row_TriggerProcess" xml:space="preserve">
+    <value>процесс</value>
+    <comment>бейдж триггера на строке макроса — короткая форма, без имени процесса</comment>
+  </data>
+  <data name="Macros_Row_TriggerProcessNamed" xml:space="preserve">
+    <value>процесс {0}</value>
+    <comment>он же в подсказке — с именем процесса; {0} = имя без .exe</comment>
+  </data>
+  <data name="Macros_SubmacroRow_Summary" xml:space="preserve">
+    <value>под-макрос · нод: {0}</value>
+    <comment>подсказка вложенной строки функции; {0} = сколько нод в её графе</comment>
+  </data>
+  <data name="Macros_Row_BrokenFallback" xml:space="preserve">
+    <value>Бандл не читается.</value>
+    <comment>красное «!» на строке: подсказка, когда читатель бандла не сказал ничего конкретнее</comment>
+  </data>
+  <data name="Macros_Row_BrokenNoPassport" xml:space="preserve">
+    <value>паспорт бандла тоже не прочитан</value>
+    <comment>вторая строка под именем, когда не прочитался и metadata.json</comment>
+  </data>
+  <data name="Macros_Row_HotkeyUnarmed" xml:space="preserve">
+    <value>хоткей не вооружён — в макросе ошибок: {0}</value>
+    <comment>подсказка красного ▲ рядом с аккордом; {0} = сколько ошибок нашёл валидатор</comment>
+  </data>
+  <data name="Macros_Row_HotkeyRefused" xml:space="preserve">
+    <value>{0} не зарегистрирован — сочетание занято другим приложением</value>
+    <comment>подсказка того же ▲, когда Windows отказала в аккорде; {0} = сам аккорд</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — canvas: пустые состояния, масштаб, легенда ======== -->
+  <data name="Macros_PickMacro_Title" xml:space="preserve">
+    <value>Выберите макрос слева или создайте новый.</value>
+    <comment>пустое состояние canvas, когда библиотека не пуста, а макрос не открыт</comment>
+  </data>
+  <data name="Macros_EmptyLibrary_Title" xml:space="preserve">
+    <value>Библиотека пуста.</value>
+    <comment>пустое состояние canvas на свежей установке</comment>
+  </data>
+  <data name="Macros_EmptyLibrary_Hint" xml:space="preserve">
+    <value>Создайте макрос кнопкой слева внизу. Готовый .hsm, положенный в эту папку, тоже подхватится сам — перезапускать ничего не надо. Шаблоны едут внутри файла, так что чужой макрос работает как есть.</value>
+    <comment>пояснение под ним; блок шириной 460 px, под ним печатается путь к папке</comment>
+  </data>
+  <data name="Editor_Canvas_ZoomOut" xml:space="preserve">
+    <value>Мельче</value>
+    <comment>подсказка кнопки − в чипе масштаба</comment>
+  </data>
+  <data name="Editor_Canvas_ZoomReset" xml:space="preserve">
+    <value>Сбросить масштаб</value>
+    <comment>подсказка самого числа в чипе масштаба</comment>
+  </data>
+  <data name="Editor_Canvas_ZoomIn" xml:space="preserve">
+    <value>Крупнее</value>
+    <comment>подсказка кнопки + в чипе масштаба</comment>
+  </data>
+  <data name="Editor_Canvas_LegendConditional" xml:space="preserve">
+    <value>условие</value>
+    <comment>легенда canvas: ромб = условная нода</comment>
+  </data>
+  <data name="Editor_Canvas_LegendAction" xml:space="preserve">
+    <value>действие</value>
+    <comment>легенда canvas: квадрат = нода-действие</comment>
+  </data>
+  <data name="Editor_Canvas_LegendVariable" xml:space="preserve">
+    <value>переменная</value>
+    <comment>легенда canvas: линия = связь по переменной</comment>
+  </data>
+  <data name="Editor_Canvas_LegendPan" xml:space="preserve">
+    <value>СКМ или пустое место — панорама · колесо — зум</value>
+    <comment>последняя строка легенды; ⚠️ при 1100 px легенда сталкивается с чипом масштаба (см. UiLayoutTests)</comment>
+  </data>
+  <data name="Editor_Canvas_PortTip" xml:space="preserve">
+    <value>Потяните, чтобы связать с нодой; бросьте на пустое место — конец прогона</value>
+    <comment>подсказка точки-порта на свёрнутой коробке ноды</comment>
+  </data>
+  <data name="Editor_Canvas_BreakpointTip" xml:space="preserve">
+    <value>Брейкпоинт: прогон встанет ПЕРЕД этой нодой</value>
+    <comment>подсказка красной полосы во всю высоту коробки</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — лог прогона (нижняя полоса) ======== -->
+  <data name="Editor_RunLog_Title" xml:space="preserve">
+    <value>Лог прогона</value>
+    <comment>заголовок полосы под canvas</comment>
+  </data>
+  <data name="Editor_RunLog_PreviousRun" xml:space="preserve">
+    <value>Предыдущий прогон</value>
+    <comment>подсказка стрелки ◂ переключателя обходов</comment>
+  </data>
+  <data name="Editor_RunLog_NextRun" xml:space="preserve">
+    <value>Следующий прогон</value>
+    <comment>подсказка стрелки ▸ переключателя обходов</comment>
+  </data>
+  <data name="Editor_RunLog_Columns" xml:space="preserve">
+    <value>нода · исход · деталь · длительность</value>
+    <comment>подпись колонок; уступает место красной пилюле паузы, когда обход припаркован</comment>
+  </data>
+  <data name="Editor_RunLog_Clear" xml:space="preserve">
+    <value>очистить</value>
+    <comment>кнопка справа в шапке полосы, строчными</comment>
+  </data>
+  <data name="Editor_RunLog_ClearTip" xml:space="preserve">
+    <value>Забыть записанные прогоны</value>
+    <comment>подсказка к ней</comment>
+  </data>
+
+  <!-- ======== Каталог нод — лог прогона: исходы и длительности ======== -->
+  <data name="Editor_RunLog_Pending" xml:space="preserve">
+    <value>▸ идёт</value>
+    <comment>колонка исхода у строки, которая ещё не завершилась; глиф — часть подписи</comment>
+  </data>
+  <data name="Editor_RunLog_OutcomeOk" xml:space="preserve">
+    <value>ок</value>
+    <comment>исход обычной ноды-действия</comment>
+  </data>
+  <data name="Editor_RunLog_OutcomeFound" xml:space="preserve">
+    <value>нашёл</value>
+    <comment>исход ноды поиска: шаблон найден</comment>
+  </data>
+  <data name="Editor_RunLog_OutcomeNotFound" xml:space="preserve">
+    <value>не нашёл</value>
+    <comment>исход ноды поиска: не найден</comment>
+  </data>
+  <data name="Editor_RunLog_OutcomeTimeout" xml:space="preserve">
+    <value>таймаут</value>
+    <comment>исход ноды ожидания: время вышло</comment>
+  </data>
+  <data name="Editor_RunLog_OutcomeMatched" xml:space="preserve">
+    <value>распознал</value>
+    <comment>исход ноды распознавания</comment>
+  </data>
+  <data name="Editor_RunLog_OutcomeNotMatched" xml:space="preserve">
+    <value>не распознал</value>
+    <comment>исход ноды распознавания: мимо</comment>
+  </data>
+  <data name="Editor_RunLog_OutcomeError" xml:space="preserve">
+    <value>ошибка</value>
+    <comment>нода упала</comment>
+  </data>
+  <data name="Editor_RunLog_OutcomeCompleted" xml:space="preserve">
+    <value>готово</value>
+    <comment>обход дошёл до конца</comment>
+  </data>
+  <data name="Editor_RunLog_OutcomeAborted" xml:space="preserve">
+    <value>прервано</value>
+    <comment>обход прерван движком</comment>
+  </data>
+  <data name="Editor_RunLog_OutcomeCancelled" xml:space="preserve">
+    <value>отменено</value>
+    <comment>обход отменён кнопкой ■</comment>
+  </data>
+  <data name="Editor_RunLog_DurationMs" xml:space="preserve">
+    <value>{0} мс</value>
+    <comment>длительность ноды короче секунды; колонка детали</comment>
+  </data>
+  <data name="Editor_RunLog_DurationSec" xml:space="preserve">
+    <value>{0} с</value>
+    <comment>длительность ноды от секунды и выше, с одним знаком</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — инспектор (правая колонка, 308 px) ======== -->
+  <data name="Editor_Inspector_DoubleClickHint" xml:space="preserve">
+    <value>двойной клик — правка на месте</value>
+    <comment>приписка справа в шапке инспектора; ⚠️ уже сталкивалась с подписью типа ноды «Запустить под-макрос» пиксель в пиксель</comment>
+  </data>
+  <data name="Editor_Inspector_NodeNameTip" xml:space="preserve">
+    <value>Подпись ноды: видна в логе прогона и в замечаниях валидатора. Рёбра ссылаются не на неё, так что переименование графа не трогает.</value>
+    <comment>подсказка поля имени ноды</comment>
+  </data>
+  <data name="Editor_Inspector_TargetsHeader" xml:space="preserve">
+    <value>ЦЕЛИ</value>
+    <comment>надзаголовок раздела целей ноды</comment>
+  </data>
+  <data name="Editor_Inspector_OutcomesHeader" xml:space="preserve">
+    <value>ВЫХОДЫ</value>
+    <comment>надзаголовок раздела исходов ноды</comment>
+  </data>
+  <data name="Editor_Inspector_EndHint" xml:space="preserve">
+    <value>«— конец —» — прогон заканчивается на этом исходе. Это не ошибка и не отдельная нода.</value>
+    <comment>пояснение под списком исходов; «— конец —» здесь обязано совпадать с Node_Edge_End</comment>
+  </data>
+  <data name="Editor_Inspector_Breakpoint" xml:space="preserve">
+    <value>Брейкпоинт на этой ноде</value>
+    <comment>галочка в подвале раздела исходов</comment>
+  </data>
+  <data name="Editor_Inspector_BreakpointTip" xml:space="preserve">
+    <value>Прогон встанет ПЕРЕД этой нодой. Хранится в демоне, не в файле макроса.</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Editor_Inspector_DeleteNode" xml:space="preserve">
+    <value>Удалить ноду</value>
+    <comment>красная кнопка в самом низу инспектора ноды</comment>
+  </data>
+  <data name="Editor_Inspector_NoSelection" xml:space="preserve">
+    <value>Кликните бокс, чтобы править его здесь. Двойной клик разворачивает бокс на месте.</value>
+    <comment>инспектор, когда макрос открыт, но нода не выделена</comment>
+  </data>
+  <data name="Editor_Inspector_NoMacro" xml:space="preserve">
+    <value>Макрос не открыт.</value>
+    <comment>инспектор, когда макрос не открыт</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — инспектор: бейдж целей и его popup ======== -->
+  <data name="Editor_Targets_BadgeTip" xml:space="preserve">
+    <value>Кто попадёт под этот селектор прямо сейчас</value>
+    <comment>подсказка бейджа целей в шапке раздела «ЦЕЛИ»</comment>
+  </data>
+  <data name="Editor_Targets_ModeContext" xml:space="preserve">
+    <value>контекст-окно</value>
+    <comment>левая половина переключателя в popup: действие уходит в окно, из которого запущен макрос</comment>
+  </data>
+  <data name="Editor_Targets_ModeTags" xml:space="preserve">
+    <value>по тегам</value>
+    <comment>правая половина того же переключателя</comment>
+  </data>
+  <data name="Editor_Targets_EmptyHint" xml:space="preserve">
+    <value>Селектор пуст — действие уйдёт в окно, из которого запущен макрос.</value>
+    <comment>пояснение в popup в режиме «контекст-окно»; popup шириной 322 px</comment>
+  </data>
+  <data name="Editor_Targets_AddTagWatermark" xml:space="preserve">
+    <value>+ тег</value>
+    <comment>поле добавления тега внутри чипового редактора; два места — «нужны» и «исключить»</comment>
+  </data>
+  <data name="Editor_Targets_RemoveTag" xml:space="preserve">
+    <value>Убрать тег</value>
+    <comment>подсказка крестика на чипе тега в popup селектора</comment>
+  </data>
+  <data name="Editor_Targets_HitsHeader" xml:space="preserve">
+    <value>СЕЙЧАС ПОПАДАЕТ</value>
+    <comment>надзаголовок живого состава в нижней части popup</comment>
+  </data>
+
+  <!-- ======== Каталог нод — бейдж целей: что он говорит про селектор ======== -->
+  <data name="Editor_Targets_TextContext" xml:space="preserve">
+    <value>контекст-окно</value>
+    <comment>текст бейджа целей, когда селектор не задан вовсе</comment>
+  </data>
+  <data name="Editor_Targets_TextAll" xml:space="preserve">
+    <value>все окна</value>
+    <comment>текст бейджа, когда селектор включён, но оба поля пусты</comment>
+  </data>
+  <data name="Editor_Targets_TextExcludeOnly" xml:space="preserve">
+    <value>кроме {0}</value>
+    <comment>текст бейджа, когда заданы только исключения; {0} = теги через запятую</comment>
+  </data>
+  <data name="Editor_Targets_TextRequireExclude" xml:space="preserve">
+    <value>{0} · кроме {1}</value>
+    <comment>текст бейджа, когда заданы и обязательные теги, и исключения</comment>
+  </data>
+  <data name="Editor_Targets_CountContext" xml:space="preserve">
+    <value>1 окно · контекст</value>
+    <comment>счётчик на коробке ноды в режиме контекстного окна — цель всегда ровно одна</comment>
+  </data>
+  <data name="Editor_Targets_CountNoWindows" xml:space="preserve">
+    <value>нет окон</value>
+    <comment>счётчик, когда демон не видит ни одного окна; ⚠️ это НЕ ошибка — красным здесь ничего не красится, иначе с закрытой игрой краснел бы каждый макрос. Два места</comment>
+  </data>
+  <data name="Editor_Targets_CompactContext" xml:space="preserve">
+    <value>контекст</value>
+    <comment>то же в компактном бейдже в шапке коробки — там помещается только одно слово</comment>
+  </data>
+  <data name="Editor_Targets_WindowCount_One" xml:space="preserve">
+    <value>{0} окно</value>
+    <comment>счётчик окон в бейдже; форма для 1, 21, 31…</comment>
+  </data>
+  <data name="Editor_Targets_WindowCount_Few" xml:space="preserve">
+    <value>{0} окна</value>
+    <comment>он же, форма для 2–4, 22–24…</comment>
+  </data>
+  <data name="Editor_Targets_WindowCount_Many" xml:space="preserve">
+    <value>{0} окон</value>
+    <comment>он же, форма для 5–20, 25–30…</comment>
+  </data>
+  <data name="Editor_Targets_CountRequire" xml:space="preserve">
+    <value>{0} · {1}</value>
+    <comment>счётчик с обязательными тегами; {0} = «7 окон», {1} = теги</comment>
+  </data>
+  <data name="Editor_Targets_CountExclude" xml:space="preserve">
+    <value>{0} · кроме {1}</value>
+    <comment>счётчик с исключениями; {0} = «7 окон», {1} = исключённые теги</comment>
+  </data>
+  <data name="Editor_Targets_CountRequireExclude" xml:space="preserve">
+    <value>{0} · {1} · кроме {2}</value>
+    <comment>счётчик с обоими списками</comment>
+  </data>
+  <data name="Editor_Targets_HitsNoWindows" xml:space="preserve">
+    <value>нет окон под управлением</value>
+    <comment>строка живого состава в popup, когда демон не видит ни одного окна</comment>
+  </data>
+  <data name="Editor_Targets_HitsCount" xml:space="preserve">
+    <value>{0} из {1}</value>
+    <comment>строка живого состава: сколько окон задето из всех; {0} = задето, {1} = всего</comment>
+  </data>
+  <data name="Editor_Targets_Untagged" xml:space="preserve">
+    <value>{0} без тегов</value>
+    <comment>серый чип в popup: столько окон вообще без тегов, маршрутизировать по ним нечем</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — редакторы параметров нод (инспектор и развёрнутая коробка) ======== -->
+  <data name="Node_Field_Name" xml:space="preserve">
+    <value>имя</value>
+    <comment>подпись поля подписи ноды; два места — развёрнутая коробка на canvas и инспектор. Колонка подписи 64 px</comment>
+  </data>
+  <data name="Node_Target_UseSelector" xml:space="preserve">
+    <value>Цели по тегам (выкл. — контекст-окно)</value>
+    <comment>галочка над полями тегов в редакторе целей</comment>
+  </data>
+  <data name="Node_Target_Require" xml:space="preserve">
+    <value>нужны</value>
+    <comment>подпись поля обязательных тегов; два места — редактор целей и popup бейджа</comment>
+  </data>
+  <data name="Node_Target_Exclude" xml:space="preserve">
+    <value>исключить</value>
+    <comment>подпись поля исключающих тегов; те же два места</comment>
+  </data>
+  <data name="Node_Target_TagsWatermark" xml:space="preserve">
+    <value>через запятую</value>
+    <comment>водяной знак обоих полей тегов</comment>
+  </data>
+  <data name="Node_Field_Region" xml:space="preserve">
+    <value>регион</value>
+    <comment>подпись четвёрки полей X/Y/Ш/В у нод машинного зрения</comment>
+  </data>
+  <data name="Node_Field_RegionWidth" xml:space="preserve">
+    <value>Ш</value>
+    <comment>подпись под третьим полем региона — ширина. Одна буква: колонка около 30 px</comment>
+  </data>
+  <data name="Node_Field_RegionHeight" xml:space="preserve">
+    <value>В</value>
+    <comment>подпись под четвёртым полем региона — высота</comment>
+  </data>
+  <data name="Node_Field_Key" xml:space="preserve">
+    <value>клавиша</value>
+    <comment>подпись ловушки клавиши у ноды «Нажать клавишу»</comment>
+  </data>
+  <data name="Node_Field_Point" xml:space="preserve">
+    <value>точка</value>
+    <comment>подпись пары полей X/Y у ноды «Клик»</comment>
+  </data>
+  <data name="Node_Field_PointVar" xml:space="preserve">
+    <value>из перем.</value>
+    <comment>подпись поля имени переменной у ноды «Клик»; сокращено — колонка подписи 64 px</comment>
+  </data>
+  <data name="Node_Click_UseVariable" xml:space="preserve">
+    <value>из переменной</value>
+    <comment>галочка «брать точку из переменной» у ноды «Клик»</comment>
+  </data>
+  <data name="Node_Click_Double" xml:space="preserve">
+    <value>двойной</value>
+    <comment>галочка «двойной клик»</comment>
+  </data>
+  <data name="Node_Field_Delay" xml:space="preserve">
+    <value>пауза</value>
+    <comment>подпись поля длительности у ноды «Пауза»</comment>
+  </data>
+  <data name="Node_Field_Seconds" xml:space="preserve">
+    <value>сек</value>
+    <comment>единица измерения справа от поля паузы</comment>
+  </data>
+  <data name="Node_Delay_Hint" xml:space="preserve">
+    <value>дробное — можно: 1.5 = 1500 мс</value>
+    <comment>пояснение под полем паузы</comment>
+  </data>
+  <data name="Node_Field_Tag" xml:space="preserve">
+    <value>тег</value>
+    <comment>подпись поля тега у нод «Добавить тег» / «Снять тег»</comment>
+  </data>
+  <data name="Node_Tag_Watermark" xml:space="preserve">
+    <value>имя тега или {переменная}</value>
+    <comment>водяной знак этого поля; фигурные скобки — синтаксис подстановки, не форматная строка</comment>
+  </data>
+  <data name="Node_Field_Icon" xml:space="preserve">
+    <value>иконка</value>
+    <comment>подпись поля пути к иконке у ноды «Сменить иконку»</comment>
+  </data>
+  <data name="Node_Field_Submacro" xml:space="preserve">
+    <value>функция</value>
+    <comment>подпись выпадающего списка у ноды «Запустить под-макрос»</comment>
+  </data>
+  <data name="Node_Submacro_Await" xml:space="preserve">
+    <value>ждать завершения</value>
+    <comment>галочка «ждать завершения» у той же ноды</comment>
+  </data>
+  <data name="Node_Submacro_VariablesHint" xml:space="preserve">
+    <value>под-макрос получает копию переменных — то, что он в них запишет, наружу не вернётся</value>
+    <comment>пояснение под выбором функции</comment>
+  </data>
+  <data name="Node_Field_Template" xml:space="preserve">
+    <value>шаблон</value>
+    <comment>подпись поля имени шаблона; два места — «Найти элемент» и «Ждать элемент»</comment>
+  </data>
+  <data name="Node_Template_Watermark" xml:space="preserve">
+    <value>имя файла без .png</value>
+    <comment>водяной знак этого поля; те же два места</comment>
+  </data>
+  <data name="Node_Find_RegionHint" xml:space="preserve">
+    <value>Ш или В = 0 — искать по всему окну</value>
+    <comment>пояснение под регионом у ноды «Найти элемент»</comment>
+  </data>
+  <data name="Node_Field_Threshold" xml:space="preserve">
+    <value>порог</value>
+    <comment>подпись поля порога совпадения; три места — Найти / Ждать / Распознать</comment>
+  </data>
+  <data name="Node_Threshold_Watermark" xml:space="preserve">
+    <value>из настроек</value>
+    <comment>водяной знак поля порога: пусто = умолчание демона. Те же три места</comment>
+  </data>
+  <data name="Node_Threshold_Hint" xml:space="preserve">
+    <value>пусто — порог из настроек (Vision)</value>
+    <comment>пояснение под полем порога; те же три места</comment>
+  </data>
+  <data name="Node_Field_FoundPointVar" xml:space="preserve">
+    <value>точка →</value>
+    <comment>подпись поля «куда записать найденную точку»; два места — Найти и Ждать</comment>
+  </data>
+  <data name="Node_FoundPointVar_Watermark" xml:space="preserve">
+    <value>переменная (необяз.)</value>
+    <comment>водяной знак этого поля; те же два места</comment>
+  </data>
+  <data name="Node_Field_Timeout" xml:space="preserve">
+    <value>таймаут</value>
+    <comment>подпись поля таймаута у ноды «Ждать элемент»</comment>
+  </data>
+  <data name="Node_Field_Milliseconds" xml:space="preserve">
+    <value>мс</value>
+    <comment>единица измерения справа от поля таймаута</comment>
+  </data>
+  <data name="Node_Field_TemplateSet" xml:space="preserve">
+    <value>набор</value>
+    <comment>подпись поля набора шаблонов у ноды «Распознать тег»</comment>
+  </data>
+  <data name="Node_Field_ResultVar" xml:space="preserve">
+    <value>результат</value>
+    <comment>подпись поля переменной результата у ноды «Распознать тег»</comment>
+  </data>
+  <data name="Node_Recognize_ApplyTag" xml:space="preserve">
+    <value>вешать тег на окно</value>
+    <comment>галочка у ноды «Распознать тег»</comment>
+  </data>
+
+  <!-- ======== Каталог нод — подписи типов (шапка коробки, заголовок инспектора, меню «+ Нода») ======== -->
+  <data name="Node_Type_KeyPress" xml:space="preserve">
+    <value>Нажать клавишу</value>
+    <comment>шапка коробки на canvas шириной 210 px, заголовок инспектора и пункт меню «+ Нода»</comment>
+  </data>
+  <data name="Node_Type_Click" xml:space="preserve">
+    <value>Клик</value>
+    <comment>то же для ноды клика</comment>
+  </data>
+  <data name="Node_Type_Delay" xml:space="preserve">
+    <value>Пауза</value>
+    <comment>то же для ноды паузы</comment>
+  </data>
+  <data name="Node_Type_AddTag" xml:space="preserve">
+    <value>Добавить тег</value>
+    <comment>то же для ноды «повесить тег на окно»</comment>
+  </data>
+  <data name="Node_Type_RemoveTag" xml:space="preserve">
+    <value>Снять тег</value>
+    <comment>то же для ноды «снять тег»</comment>
+  </data>
+  <data name="Node_Type_SetIcon" xml:space="preserve">
+    <value>Сменить иконку</value>
+    <comment>то же для ноды смены иконки окна</comment>
+  </data>
+  <data name="Node_Type_FindElement" xml:space="preserve">
+    <value>Найти элемент</value>
+    <comment>то же для ноды однократного поиска шаблона</comment>
+  </data>
+  <data name="Node_Type_WaitForElement" xml:space="preserve">
+    <value>Ждать элемент</value>
+    <comment>то же для ноды ожидания шаблона</comment>
+  </data>
+  <data name="Node_Type_RecognizeTag" xml:space="preserve">
+    <value>Распознать тег</value>
+    <comment>то же для ноды распознавания набора шаблонов</comment>
+  </data>
+  <data name="Node_Type_RunSubmacroMenu" xml:space="preserve">
+    <value>Запустить под-макрос</value>
+    <comment>пункт меню «+ Нода» для ноды вызова функции — ПОЛНАЯ форма</comment>
+  </data>
+  <data name="Node_Type_RunSubmacro" xml:space="preserve">
+    <value>Под-макрос</value>
+    <comment>⚠️ короткая форма той же ноды — в шапке коробки и в заголовке инспектора. Полная «Запустить под-макрос» сталкивалась там с подсказкой «двойной клик — правка на месте» пиксель в пиксель, поэтому здесь она короче, чем в меню</comment>
+  </data>
+  <data name="Node_Type_HotkeyTrigger" xml:space="preserve">
+    <value>Хоткей</value>
+    <comment>подпись строки триггера-хоткея</comment>
+  </data>
+  <data name="Node_Type_ProcessTrigger" xml:space="preserve">
+    <value>Появление процесса</value>
+    <comment>подпись строки триггера на процесс</comment>
+  </data>
+
+  <!-- ======== Каталог нод — сводка на свёрнутой коробке и подписи исходов ======== -->
+  <data name="Node_Edge_Next" xml:space="preserve">
+    <value>Далее</value>
+    <comment>единственный исход обычной ноды-действия; печатается у точки-порта справа на коробке</comment>
+  </data>
+  <data name="Node_Edge_Found" xml:space="preserve">
+    <value>Найдено</value>
+    <comment>исход «шаблон нашёлся»; два места — Найти и Ждать</comment>
+  </data>
+  <data name="Node_Edge_NotFound" xml:space="preserve">
+    <value>Не найдено</value>
+    <comment>исход «шаблон не нашёлся» у ноды «Найти элемент»</comment>
+  </data>
+  <data name="Node_Edge_Timeout" xml:space="preserve">
+    <value>Таймаут</value>
+    <comment>исход «время вышло» у ноды «Ждать элемент»</comment>
+  </data>
+  <data name="Node_Edge_Matched" xml:space="preserve">
+    <value>Распознано</value>
+    <comment>исход «набор распознан» у ноды «Распознать тег»</comment>
+  </data>
+  <data name="Node_Edge_NotMatched" xml:space="preserve">
+    <value>Не распознано</value>
+    <comment>исход «набор не распознан»; ⚠️ самое длинное имя исхода в каталоге — под него и выбрана колонка подписи в 82 px</comment>
+  </data>
+  <data name="Node_Edge_End" xml:space="preserve">
+    <value>— конец —</value>
+    <comment>пункт выпадающего списка «этот исход завершает прогон»; совпадает с текстом Editor_Inspector_EndHint, где он процитирован</comment>
+  </data>
+  <data name="Node_Edge_Dangling" xml:space="preserve">
+    <value>(ноды нет в графе)</value>
+    <comment>пункт списка, когда ребро указывает на удалённую ноду</comment>
+  </data>
+  <data name="Node_Submacro_Missing" xml:space="preserve">
+    <value>(под-макроса нет в бандле)</value>
+    <comment>пункт списка функций, когда ссылка указывает на удалённую функцию</comment>
+  </data>
+  <data name="Node_Edge_BoxLabelEnd" xml:space="preserve">
+    <value>{0} → конец</value>
+    <comment>подпись исхода на свёрнутой коробке, когда он никуда не ведёт; {0} = имя исхода</comment>
+  </data>
+  <data name="Node_Summary_Threshold" xml:space="preserve">
+    <value>порог {0}</value>
+    <comment>кусок сводки на коробке ноды машинного зрения; {0} = число порога</comment>
+  </data>
+  <data name="Node_Summary_WholeWindow" xml:space="preserve">
+    <value>всё окно</value>
+    <comment>кусок сводки: регион не задан, значит ищем по всему окну</comment>
+  </data>
+  <data name="Node_Summary_TemplateSet" xml:space="preserve">
+    <value>набор {0}</value>
+    <comment>кусок сводки ноды «Распознать тег»; {0} = имя набора</comment>
+  </data>
+  <data name="Node_Summary_Seconds" xml:space="preserve">
+    <value>{0} с</value>
+    <comment>кусок сводки: длительность в секундах. {0} — уже отформатированное число</comment>
+  </data>
+  <data name="Node_Summary_Await" xml:space="preserve">
+    <value>ждать</value>
+    <comment>кусок сводки ноды вызова функции: стоит флаг «ждать завершения»</comment>
+  </data>
+
+  <!-- ======== Каталог нод — замечания о недонабранных полях (список внизу инспектора) ======== -->
+  <data name="Node_Error_KeyMissing" xml:space="preserve">
+    <value>[{0}] клавиша не задана.</value>
+    <comment>{0} = подпись ноды «Нажать клавишу»</comment>
+  </data>
+  <data name="Node_Error_PointVarMissing" xml:space="preserve">
+    <value>[{0}] имя переменной не задано.</value>
+    <comment>{0} = подпись ноды «Клик» в режиме «из переменной»</comment>
+  </data>
+  <data name="Node_Error_ClickX" xml:space="preserve">
+    <value>[{0}] X: «{1}» — не целое число.</value>
+    <comment>{0} = подпись ноды, {1} = то, что набрано в поле X</comment>
+  </data>
+  <data name="Node_Error_ClickY" xml:space="preserve">
+    <value>[{0}] Y: «{1}» — не целое число.</value>
+    <comment>{0} = подпись ноды, {1} = то, что набрано в поле Y</comment>
+  </data>
+  <data name="Node_Error_Delay" xml:space="preserve">
+    <value>[{0}] пауза: «{1}» — не неотрицательное число секунд.</value>
+    <comment>{0} = подпись ноды «Пауза», {1} = набранное значение</comment>
+  </data>
+  <data name="Node_Error_TagMissing" xml:space="preserve">
+    <value>[{0}] тег не задан.</value>
+    <comment>{0} = подпись ноды «Добавить тег» или «Снять тег»</comment>
+  </data>
+  <data name="Node_Error_IconMissing" xml:space="preserve">
+    <value>[{0}] путь к иконке не задан.</value>
+    <comment>{0} = подпись ноды «Сменить иконку»</comment>
+  </data>
+  <data name="Node_Error_SubmacroMissing" xml:space="preserve">
+    <value>[{0}] не выбран под-макрос.</value>
+    <comment>{0} = подпись ноды вызова функции</comment>
+  </data>
+  <data name="Node_Error_Threshold" xml:space="preserve">
+    <value>[{0}] порог: «{1}» — не число.</value>
+    <comment>{0} = подпись ноды машинного зрения, {1} = набранное значение порога</comment>
+  </data>
+  <data name="Node_Error_TemplateMissing" xml:space="preserve">
+    <value>[{0}] шаблон не задан.</value>
+    <comment>{0} = подпись ноды «Найти элемент» или «Ждать элемент»; два места</comment>
+  </data>
+  <data name="Node_Error_Timeout" xml:space="preserve">
+    <value>[{0}] таймаут: «{1}» — не целое число миллисекунд.</value>
+    <comment>{0} = подпись ноды «Ждать элемент», {1} = набранное значение</comment>
+  </data>
+  <data name="Node_Error_TemplateSetMissing" xml:space="preserve">
+    <value>[{0}] набор шаблонов не задан.</value>
+    <comment>{0} = подпись ноды «Распознать тег»</comment>
+  </data>
+  <data name="Node_Error_ResultVarMissing" xml:space="preserve">
+    <value>[{0}] имя переменной результата не задано.</value>
+    <comment>{0} = подпись ноды «Распознать тег»</comment>
+  </data>
+  <data name="Node_Error_Region" xml:space="preserve">
+    <value>[{0}] регион {1}: «{2}» — не целое число.</value>
+    <comment>{0} = подпись ноды, {1} = X/Y/Ш/В, {2} = набранное значение</comment>
+  </data>
+  <data name="Node_Error_HotkeyUnbound" xml:space="preserve">
+    <value>Хоткей: сочетание не назначено.</value>
+    <comment>замечание о пустой строке триггера-хоткея; имени у триггера нет, поэтому без префикса</comment>
+  </data>
+  <data name="Node_Error_ProcessUnnamed" xml:space="preserve">
+    <value>Появление процесса: имя процесса не задано.</value>
+    <comment>замечание о пустой строке триггера на процесс</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — инспектор: триггеры ======== -->
+  <data name="Editor_Triggers_Header" xml:space="preserve">
+    <value>ТРИГГЕРЫ</value>
+    <comment>надзаголовок раздела</comment>
+  </data>
+  <data name="Editor_Triggers_AddHotkey" xml:space="preserve">
+    <value>+ хоткей</value>
+    <comment>кнопка добавления хоткея</comment>
+  </data>
+  <data name="Editor_Triggers_AddProcess" xml:space="preserve">
+    <value>+ процесс</value>
+    <comment>кнопка добавления триггера на процесс</comment>
+  </data>
+  <data name="Editor_Triggers_RemoveHotkey" xml:space="preserve">
+    <value>Убрать триггер (Del в ловушке — очистить сочетание)</value>
+    <comment>подсказка крестика у строки хоткея</comment>
+  </data>
+  <data name="Editor_Triggers_CaptureHint" xml:space="preserve">
+    <value>Esc — отмена · Del — очистить · ловятся и боковые кнопки мыши</value>
+    <comment>подсказка под взведённой ловушкой сочетания</comment>
+  </data>
+  <data name="Editor_Triggers_SuspendedHint" xml:space="preserve">
+    <value>глобальные хоткеи приостановлены, пока открыт редактор</value>
+    <comment>жёлтая строка под взведённой ловушкой, рядом с ▲; появляется только во время ловли</comment>
+  </data>
+  <data name="Editor_Triggers_RemoveProcess" xml:space="preserve">
+    <value>Убрать триггер</value>
+    <comment>подсказка крестика у строки триггера на процесс</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — ловушка сочетания клавиш ======== -->
+  <data name="Editor_Hotkey_CapturePrompt" xml:space="preserve">
+    <value>Нажмите сочетание…</value>
+    <comment>надпись внутри взведённой ловушки</comment>
+  </data>
+  <data name="Editor_Hotkey_EmptyPrompt" xml:space="preserve">
+    <value>нажмите, чтобы задать</value>
+    <comment>надпись в пустой ловушке; заменяет глиф клавиатуры ⌨ — у него есть эмодзи-представление</comment>
+  </data>
+  <data name="Editor_Hotkey_RebindHint" xml:space="preserve">
+    <value>клик — перезадать</value>
+    <comment>приписка рядом с уже назначенным аккордом</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — конфликты сочетаний в ловушке хоткея ======== -->
+  <data name="Editor_Hotkey_ConflictOther" xml:space="preserve">
+    <value>уже занят {0}</value>
+    <comment>красное состояние ловушки: аккорд уже привязан к другому макросу; {0} = его имя</comment>
+  </data>
+  <data name="Editor_Hotkey_ConflictSelf" xml:space="preserve">
+    <value>уже задан в этом макросе</value>
+    <comment>то же, когда аккорд повторяется внутри одного макроса</comment>
+  </data>
+  <data name="Editor_Hotkey_ConflictSystem" xml:space="preserve">
+    <value>занят другим приложением</value>
+    <comment>то же, когда в аккорде отказала Windows — это знает только демон</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — инспектор: переменные макроса ======== -->
+  <data name="Editor_Variables_Header" xml:space="preserve">
+    <value>ПЕРЕМЕННЫЕ МАКРОСА</value>
+    <comment>надзаголовок раздела</comment>
+  </data>
+  <data name="Editor_Variables_WrittenBy" xml:space="preserve">
+    <value>пишет</value>
+    <comment>подпись строки «кто записывает»; колонка 46 px</comment>
+  </data>
+  <data name="Editor_Variables_ReadBy" xml:space="preserve">
+    <value>читает</value>
+    <comment>подпись строки «кто читает»; та же колонка</comment>
+  </data>
+  <data name="Editor_Variables_Undefined" xml:space="preserve">
+    <value>никто не пишет — прогон прервётся на первом чтении</value>
+    <comment>красная строка внутри карточки переменной, которую никто не записывает</comment>
+  </data>
+  <data name="Editor_Variables_HoverHint" xml:space="preserve">
+    <value>Наведение подсвечивает на canvas ноду-источник и потребителей и рисует между ними пунктир.</value>
+    <comment>пояснение под списком переменных</comment>
+  </data>
+
+  <!-- ======== Каталог нод — переменные макроса: вид и место чтения ======== -->
+  <data name="Editor_Variables_KindPoint" xml:space="preserve">
+    <value>точка</value>
+    <comment>вид переменной рядом с её именем в карточке</comment>
+  </data>
+  <data name="Editor_Variables_KindText" xml:space="preserve">
+    <value>строка</value>
+    <comment>то же для строкового значения</comment>
+  </data>
+  <data name="Editor_Variables_KindAny" xml:space="preserve">
+    <value>значение</value>
+    <comment>то же, когда вид неизвестен</comment>
+  </data>
+  <data name="Editor_Variables_SeededByTrigger" xml:space="preserve">
+    <value>триггер (сид)</value>
+    <comment>в строке «пишет», когда переменную засевает триггер, а не нода</comment>
+  </data>
+  <data name="Editor_Variables_Nobody" xml:space="preserve">
+    <value>никто</value>
+    <comment>в строках «пишет» и «читает», когда таких нод нет; два места</comment>
+  </data>
+  <data name="Editor_Variables_SlotFoundPoint" xml:space="preserve">
+    <value>точка находки</value>
+    <comment>где именно нода читает переменную — поле «точка →» у Найти/Ждать</comment>
+  </data>
+  <data name="Editor_Variables_SlotResult" xml:space="preserve">
+    <value>результат распознавания</value>
+    <comment>то же — поле «результат» у ноды «Распознать тег»</comment>
+  </data>
+  <data name="Editor_Variables_SlotPoint" xml:space="preserve">
+    <value>в точке клика</value>
+    <comment>то же — поле «из перем.» у ноды «Клик»</comment>
+  </data>
+  <data name="Editor_Variables_SlotTag" xml:space="preserve">
+    <value>в теге</value>
+    <comment>то же — поле «тег»</comment>
+  </data>
+  <data name="Editor_Variables_SlotIcon" xml:space="preserve">
+    <value>в пути к иконке</value>
+    <comment>то же — поле «иконка»</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — инспектор: шаблоны макроса ======== -->
+  <data name="Editor_Templates_Header" xml:space="preserve">
+    <value>ШАБЛОНЫ</value>
+    <comment>надзаголовок раздела</comment>
+  </data>
+  <data name="Editor_Templates_Add" xml:space="preserve">
+    <value>+ файл…</value>
+    <comment>кнопка импорта PNG в бандл макроса</comment>
+  </data>
+  <data name="Editor_Templates_AddTip" xml:space="preserve">
+    <value>Положить PNG в бандл этого макроса</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Editor_Templates_Set" xml:space="preserve">
+    <value>набор</value>
+    <comment>подпись поля набора, в который поедет импортируемый файл; колонка 46 px</comment>
+  </data>
+  <data name="Editor_Templates_SetWatermark" xml:space="preserve">
+    <value>пусто — одиночный</value>
+    <comment>водяной знак этого поля</comment>
+  </data>
+  <data name="Editor_Templates_NoBundle" xml:space="preserve">
+    <value>Черновик ещё не сохранён — бандла, в который класть шаблон, пока нет.</value>
+    <comment>вместо поля набора, пока макрос не сохранён ни разу</comment>
+  </data>
+  <data name="Editor_Templates_Empty" xml:space="preserve">
+    <value>Шаблонов в макросе нет. Ноды Find/Wait/Recognize без них всегда уходят по «не найдено».</value>
+    <comment>пустое состояние списка шаблонов</comment>
+  </data>
+  <data name="Editor_Templates_Delete" xml:space="preserve">
+    <value>Убрать из бандла</value>
+    <comment>подсказка крестика на строке шаблона</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — шаблоны макроса: список, превью, отказы импорта ======== -->
+  <data name="Editor_Templates_NotPng" xml:space="preserve">
+    <value>не PNG</value>
+    <comment>вместо размера в строке шаблона, если файл не разбирается как PNG</comment>
+  </data>
+  <data name="Editor_Templates_Unused" xml:space="preserve">
+    <value>не используется</value>
+    <comment>подсказка строки шаблона, на который не ссылается ни одна нода</comment>
+  </data>
+  <data name="Editor_Templates_UsedBy_One" xml:space="preserve">
+    <value>{0} нода</value>
+    <comment>подсказка строки: сколько нод ссылается; форма для 1, 21…</comment>
+  </data>
+  <data name="Editor_Templates_UsedBy_Few" xml:space="preserve">
+    <value>{0} ноды</value>
+    <comment>она же, форма для 2–4, 22–24…</comment>
+  </data>
+  <data name="Editor_Templates_UsedBy_Many" xml:space="preserve">
+    <value>{0} нод</value>
+    <comment>она же, форма для 5–20, 25–30…</comment>
+  </data>
+  <data name="Editor_Templates_GroupSingles" xml:space="preserve">
+    <value>одиночные</value>
+    <comment>заголовок группы шаблонов в корне бандла — не имя папки, а роль: их называют поимённо</comment>
+  </data>
+  <data name="Editor_Templates_NoUsages" xml:space="preserve">
+    <value>НА НЕГО НИКТО НЕ ССЫЛАЕТСЯ</value>
+    <comment>надзаголовок под превью выбранного шаблона</comment>
+  </data>
+  <data name="Editor_Templates_Usages" xml:space="preserve">
+    <value>ССЫЛАЮТСЯ · {0}</value>
+    <comment>он же, когда ссылки есть; {0} = сколько нод</comment>
+  </data>
+  <data name="Editor_Templates_BadName" xml:space="preserve">
+    <value>«{0}» — не годится как имя шаблона.</value>
+    <comment>красная строка под кнопкой «+ файл…»; {0} = имя выбранного файла</comment>
+  </data>
+  <data name="Editor_Templates_AddFailedUnreadable" xml:space="preserve">
+    <value>Не удалось добавить «{0}»: бандл макроса не читается.</value>
+    <comment>красная строка; {0} = имя шаблона</comment>
+  </data>
+  <data name="Editor_Templates_AddFailed" xml:space="preserve">
+    <value>Не удалось добавить шаблон: {0}</value>
+    <comment>красная строка; {0} = сообщение файловой системы</comment>
+  </data>
+  <data name="Editor_Templates_DeleteFailed" xml:space="preserve">
+    <value>Не удалось удалить шаблон: {0}</value>
+    <comment>красная строка; {0} = сообщение файловой системы</comment>
+  </data>
+  <data name="Editor_Templates_PreviewNotPng" xml:space="preserve">
+    <value>Файл не разобрался как PNG — показывать нечего.</value>
+    <comment>вместо картинки в панели превью</comment>
+  </data>
+  <data name="Editor_Templates_PreviewTooBig" xml:space="preserve">
+    <value>{0} — больше потолка превью в {1}.</value>
+    <comment>вместо картинки, когда файл крупнее потолка; {0} = размер файла, {1} = сам потолок</comment>
+  </data>
+  <data name="Editor_Templates_PreviewFailed" xml:space="preserve">
+    <value>Не удалось прочитать шаблон: {0}</value>
+    <comment>вместо картинки; {0} = сообщение файловой системы</comment>
+  </data>
+  <data name="Editor_Templates_PreviewGone" xml:space="preserve">
+    <value>Шаблона в бандле больше нет.</value>
+    <comment>вместо картинки: список устарел, бандл сменился между перечислением и чтением</comment>
+  </data>
+  <data name="Editor_Templates_Bytes" xml:space="preserve">
+    <value>{0} Б</value>
+    <comment>размер шаблона в строке списка, до килобайта</comment>
+  </data>
+  <data name="Editor_Templates_Kilobytes" xml:space="preserve">
+    <value>{0} КБ</value>
+    <comment>он же в килобайтах, с одним знаком после запятой</comment>
+  </data>
+  <data name="Editor_Templates_Megabytes" xml:space="preserve">
+    <value>{0} МБ</value>
+    <comment>он же в мегабайтах</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — статусы редактора: черновик, сохранение, перечитывание ======== -->
+  <data name="Editor_Inspector_MacroTitle" xml:space="preserve">
+    <value>Макрос</value>
+    <comment>заголовок инспектора, когда ни одна нода не выделена</comment>
+  </data>
+  <data name="Editor_Status_DiscardedChanges" xml:space="preserve">
+    <value>Несохранённые изменения в «{0}» отброшены.</value>
+    <comment>красная строка при переходе на другой макрос; {0} = имя брошенного макроса</comment>
+  </data>
+  <data name="Editor_Status_CannotOpen" xml:space="preserve">
+    <value>«{0}» не открывается: {1}</value>
+    <comment>красная строка при клике по нечитаемой строке библиотеки; {0} = имя, {1} = вердикт читателя</comment>
+  </data>
+  <data name="Editor_Status_Draft" xml:space="preserve">
+    <value>Черновик — не сохранён.</value>
+    <comment>статус сразу после «+ Новый макрос»: на диске файла ещё нет</comment>
+  </data>
+  <data name="Editor_Status_DeleteFailed" xml:space="preserve">
+    <value>Не удалось удалить «{0}»: {1}</value>
+    <comment>красная строка; {0} = имя макроса, {1} = сообщение файловой системы</comment>
+  </data>
+  <data name="Editor_Status_Deleted" xml:space="preserve">
+    <value>Макрос «{0}» удалён.</value>
+    <comment>статус после удаления; {0} = имя</comment>
+  </data>
+  <data name="Editor_Status_ImportCancelled" xml:space="preserve">
+    <value>Импорт отменён: имя «{0}» занято.</value>
+    <comment>статус, когда на вопрос о занятом имени ответили «Отмена»; {0} = имя</comment>
+  </data>
+  <data name="Editor_Status_ImportFailed" xml:space="preserve">
+    <value>Импорт не удался: {0}</value>
+    <comment>красная строка; {0} = сообщение файловой системы</comment>
+  </data>
+  <data name="Editor_Status_Imported" xml:space="preserve">
+    <value>Макрос «{0}» импортирован.</value>
+    <comment>статус после импорта; {0} = имя в библиотеке</comment>
+  </data>
+  <data name="Editor_Status_RunUnavailable" xml:space="preserve">
+    <value>Запуск недоступен.</value>
+    <comment>красная строка: кнопку ▸ нажали, а шва запуска нет (панель собрана без него)</comment>
+  </data>
+  <data name="Editor_Status_SubmacroCreated" xml:space="preserve">
+    <value>Под-макрос «{0}» создан — не забудьте сохранить макрос.</value>
+    <comment>статус после «+ Под-макрос»; {0} = имя функции. Про сохранение сказано потому, что функция живёт внутри файла макроса</comment>
+  </data>
+  <data name="Editor_Status_SubmacroInUse" xml:space="preserve">
+    <value>Под-макрос вызывают: {0}. Уберите эти ноды или перенацельте их, а потом удаляйте.</value>
+    <comment>красная строка при попытке удалить вызываемую функцию; {0} = перечень нод в кавычках</comment>
+  </data>
+  <data name="Editor_Status_SubmacroDeleted" xml:space="preserve">
+    <value>Под-макрос «{0}» удалён — не забудьте сохранить макрос.</value>
+    <comment>статус после удаления функции; {0} = её имя</comment>
+  </data>
+  <data name="Editor_Toolbar_Extract" xml:space="preserve">
+    <value>Выделить в под-макрос</value>
+    <comment>акцентная кнопка панели инструментов; видна, только когда есть что извлекать</comment>
+  </data>
+  <data name="Editor_Toolbar_ExtractCount" xml:space="preserve">
+    <value>Выделить в под-макрос ({0})</value>
+    <comment>она же со счётчиком отмеченных нод; {0} = сколько отмечено Ctrl+кликом. ⚠️ длина этой подписи отбирает ширину у строки состояния слева</comment>
+  </data>
+  <data name="Editor_Status_ExtractInsideSubmacro" xml:space="preserve">
+    <value>Под-макросы плоские: выделять кусок можно только в самом макросе, не внутри функции.</value>
+    <comment>красная строка: извлечение запрошено, когда на канве уже функция</comment>
+  </data>
+  <data name="Editor_Status_Extracted" xml:space="preserve">
+    <value>Выделено в под-макрос «{0}» — не забудьте сохранить макрос.</value>
+    <comment>статус после извлечения; {0} = имя новой функции</comment>
+  </data>
+  <data name="Editor_Status_SaveBlocked" xml:space="preserve">
+    <value>Сохранение отменено: исправьте ошибки.</value>
+    <comment>красная строка: сохранение остановлено валидатором. Три места — недонабранные поля, негодное имя файла и ошибки графа</comment>
+  </data>
+  <data name="Editor_Status_SaveNameTaken" xml:space="preserve">
+    <value>Сохранение отменено: имя «{0}» занято.</value>
+    <comment>статус, когда на вопрос о занятом имени ответили «Отмена»; {0} = имя</comment>
+  </data>
+  <data name="Editor_Status_SaveFailed" xml:space="preserve">
+    <value>Не удалось сохранить: {0}</value>
+    <comment>красная строка; {0} = сообщение файловой системы</comment>
+  </data>
+  <data name="Editor_Status_Saved" xml:space="preserve">
+    <value>Сохранено.</value>
+    <comment>статус после успешной записи файла</comment>
+  </data>
+  <data name="Editor_Status_SavedWithWarnings" xml:space="preserve">
+    <value>Сохранено с предупреждениями ({0}).</value>
+    <comment>он же, когда валидатор нашёл предупреждения (они записи не мешают); {0} = сколько</comment>
+  </data>
+  <data name="Editor_Status_Reloaded" xml:space="preserve">
+    <value>Перезагружено с диска.</value>
+    <comment>статус после кнопки «Перечитать»</comment>
+  </data>
+  <data name="Editor_Status_FileGone" xml:space="preserve">
+    <value>Файл «{0}» исчез с диска — сохранение создаст его заново.</value>
+    <comment>статус, когда открытый макрос удалили из папки снаружи; {0} = имя</comment>
+  </data>
+  <data name="Editor_Status_FileUnreadable" xml:space="preserve">
+    <value>Файл «{0}» на диске больше не читается: {1}</value>
+    <comment>статус, когда открытый макрос испортили снаружи; {0} = имя, {1} = вердикт читателя</comment>
+  </data>
+  <data name="Editor_Status_RefreshedFromDisk" xml:space="preserve">
+    <value>Макрос обновлён на диске — перечитан.</value>
+    <comment>статус, когда файл изменили снаружи, а несохранённых правок не было</comment>
+  </data>
+
+  <!-- ======== Режим «Макросы» — диалоги файлов и статусы экспорта/импорта ======== -->
+  <data name="Dialog_ImportMacro_Title" xml:space="preserve">
+    <value>Импорт макроса</value>
+    <comment>заголовок системного диалога выбора файла</comment>
+  </data>
+  <data name="Dialog_MacroFileType" xml:space="preserve">
+    <value>Макрос SmartMacro</value>
+    <comment>название типа файла в диалогах импорта и экспорта (*.hsm); два места</comment>
+  </data>
+  <data name="Dialog_ExportMacro_Title" xml:space="preserve">
+    <value>Экспорт макроса</value>
+    <comment>заголовок системного диалога сохранения</comment>
+  </data>
+  <data name="Dialog_ImportTemplate_Title" xml:space="preserve">
+    <value>Шаблон машинного зрения</value>
+    <comment>заголовок системного диалога выбора PNG для бандла макроса</comment>
+  </data>
+  <data name="Editor_Status_ImportNotOnDisk" xml:space="preserve">
+    <value>«{0}» лежит не на диске — импортировать нечего.</value>
+    <comment>красная строка: выбранный в диалоге файл не имеет локального пути; {0} = его имя</comment>
+  </data>
+  <data name="Editor_Status_ExportFileMissing" xml:space="preserve">
+    <value>Файл макроса «{0}» не найден.</value>
+    <comment>красная строка: экспортировать нечего, файла в папке уже нет; {0} = имя</comment>
+  </data>
+  <data name="Editor_Status_Exported" xml:space="preserve">
+    <value>«{0}» экспортирован.</value>
+    <comment>статус после экспорта; {0} = имя макроса</comment>
+  </data>
+  <data name="Editor_Status_ExportFailed" xml:space="preserve">
+    <value>Экспорт не удался: {0}</value>
+    <comment>красная строка; {0} = сообщение файловой системы</comment>
+  </data>
+  <data name="Editor_Status_OpenFolderFailed" xml:space="preserve">
+    <value>Не удалось открыть папку: {0}</value>
+    <comment>красная строка после кнопки «Папка макросов»; {0} = сообщение системы</comment>
+  </data>
+
+  <!-- ======== Режим «Прогоны» — шапка и строка ======== -->
+  <data name="Runs_Header_Empty" xml:space="preserve">
+    <value>нет активных прогонов</value>
+    <comment>приписка в шапке режима, когда список пуст; то же самое, что полоса прогона говорит внизу (Shell_RunBar_Idle), но это два разных места</comment>
+  </data>
+  <data name="Runs_Header_Count" xml:space="preserve">
+    <value>активных прогонов: {0}</value>
+    <comment>приписка в шапке, когда прогоны есть; {0} = сколько</comment>
+  </data>
+  <data name="Runs_Header_StopAll" xml:space="preserve">
+    <value>Стоп всё</value>
+    <comment>красная кнопка в шапке режима; та же по смыслу, что Shell_RunBar_StopAll в полосе внизу</comment>
+  </data>
+  <data name="Runs_Row_CurrentNodeTip" xml:space="preserve">
+    <value>Текущая нода</value>
+    <comment>подсказка колонки «▸ имя-ноды» в строке прогона; повторяет Shell_RunBar_CurrentNodeTip</comment>
+  </data>
+  <data name="Runs_Row_Stop" xml:space="preserve">
+    <value>Стоп</value>
+    <comment>кнопка в строке прогона; та же по смыслу, что Shell_RunBar_Stop в полосе внизу</comment>
+  </data>
+
+  <!-- ======== Режим «Прогоны» — пустое состояние ======== -->
+  <data name="Runs_Empty_Title" xml:space="preserve">
+    <value>Сейчас ничего не выполняется.</value>
+    <comment>заголовок пустого состояния по центру списка</comment>
+  </data>
+  <data name="Runs_Empty_Hint" xml:space="preserve">
+    <value>Запуск — хоткеем макроса, появлением процесса или кнопкой ▸ в режиме «Макросы».</value>
+    <comment>пояснение под ним; глиф ▸ здесь тот же, что на кнопке запуска в библиотеке</comment>
+  </data>
+
+  <!-- ======== Режим «Лог» — шапка ======== -->
+  <data name="Log_Header_Empty" xml:space="preserve">
+    <value>лента пуста</value>
+    <comment>сводка в шапке, пока в ленте нет ни одной записи</comment>
+  </data>
+  <data name="Log_Header_Entries_One" xml:space="preserve">
+    <value>{0} запись</value>
+    <comment>сводка в шапке: сколько записей панель держит; форма для 1, 21, 31…</comment>
+  </data>
+  <data name="Log_Header_Entries_Few" xml:space="preserve">
+    <value>{0} записи</value>
+    <comment>она же, форма для 2–4, 22–24…</comment>
+  </data>
+  <data name="Log_Header_Entries_Many" xml:space="preserve">
+    <value>{0} записей</value>
+    <comment>она же, форма для 5–20, 25–30…</comment>
+  </data>
+  <data name="Log_Header_Shown" xml:space="preserve">
+    <value> · показано {0}</value>
+    <comment>хвост сводки, когда фильтр что-то отсёк; {0} = сколько строк видно. Начинается с пробела — приклеивается к предыдущей части</comment>
+  </data>
+  <data name="Log_Header_Problems" xml:space="preserve">
+    <value> · проблем: {0}</value>
+    <comment>хвост сводки: предупреждений и хуже; {0} = сколько. Тоже начинается с пробела</comment>
+  </data>
+  <data name="Log_Header_LevelFilterTip" xml:space="preserve">
+    <value>Фильтр на стороне панели. Ниже уровня, заданного в appsettings.json демона, записи сюда просто не приходят.</value>
+    <comment>подсказка выпадающего списка уровня в шапке</comment>
+  </data>
+  <data name="Log_Level_All" xml:space="preserve">
+    <value>все записи</value>
+    <comment>пункт фильтра уровня; список шириной 170 px</comment>
+  </data>
+  <data name="Log_Level_Debug" xml:space="preserve">
+    <value>отладка и выше</value>
+    <comment>пункт фильтра уровня</comment>
+  </data>
+  <data name="Log_Level_Information" xml:space="preserve">
+    <value>информация и выше</value>
+    <comment>пункт фильтра уровня</comment>
+  </data>
+  <data name="Log_Level_Warning" xml:space="preserve">
+    <value>предупреждения и выше</value>
+    <comment>пункт фильтра уровня</comment>
+  </data>
+  <data name="Log_Level_Error" xml:space="preserve">
+    <value>только ошибки</value>
+    <comment>пункт фильтра уровня</comment>
+  </data>
+  <data name="Log_Header_SearchWatermark" xml:space="preserve">
+    <value>поиск по строке</value>
+    <comment>водяной знак поля поиска в шапке; поле шириной 230 px</comment>
+  </data>
+  <data name="Log_Header_SearchTip" xml:space="preserve">
+    <value>Ищет в сообщении, источнике и тексте исключения; регистр не важен</value>
+    <comment>подсказка поля поиска</comment>
+  </data>
+  <data name="Log_Header_AutoScrollTip" xml:space="preserve">
+    <value>Держать ленту на последней записи. Снимите, чтобы читать: на живом демоне она едет сама.</value>
+    <comment>подсказка галочки автопрокрутки</comment>
+  </data>
+  <data name="Log_Header_AutoScroll" xml:space="preserve">
+    <value>автопрокрутка</value>
+    <comment>подпись галочки автопрокрутки в шапке</comment>
+  </data>
+  <data name="Log_Header_Clear" xml:space="preserve">
+    <value>Очистить</value>
+    <comment>кнопка в шапке: убрать то, что накопила панель</comment>
+  </data>
+  <data name="Log_Header_ClearTip" xml:space="preserve">
+    <value>Убирает то, что накопила панель. Журнал демона не трогается — переподключение принесёт его обратно.</value>
+    <comment>подсказка к ней</comment>
+  </data>
+
+  <!-- ======== Режим «Лог» — полоса пропуска и лента ======== -->
+  <data name="Log_Gap_Count" xml:space="preserve">
+    <value>пропущено записей: {0}</value>
+    <comment>жёлтая полоса под шапкой; {0} = сколько записей демон выбросил из-за переполнения очереди</comment>
+  </data>
+  <data name="Log_Gap_Hint" xml:space="preserve">
+    <value>очередь демона переполнялась — в ленте пропуск; полный журнал в logs/ рядом с SmartMacro.Daemon.exe</value>
+    <comment>пояснение рядом с ним в той же полосе; обрезается многоточием, а не переносится</comment>
+  </data>
+  <data name="Log_Row_ExpandTip" xml:space="preserve">
+    <value>Показать стек</value>
+    <comment>подсказка шеврона у строки, к которой приехало исключение</comment>
+  </data>
+
+  <!-- ======== Режим «Лог» — пустые состояния ======== -->
+  <data name="Log_Empty_Title" xml:space="preserve">
+    <value>Демон пока ничего не записал.</value>
+    <comment>заголовок пустоты, когда записей не было вовсе</comment>
+  </data>
+  <data name="Log_Cleared_Title" xml:space="preserve">
+    <value>Лента очищена.</value>
+    <comment>заголовок пустоты после кнопки «Очистить» — отдельный, потому что «ничего не записал» было бы враньём про демон</comment>
+  </data>
+  <data name="Log_Cleared_Hint" xml:space="preserve">
+    <value>Журнал демона это не тронуло — там всё на месте. Следующая запись появится здесь, а всё, что было, лежит файлами в logs/ рядом с SmartMacro.Daemon.exe.</value>
+    <comment>пояснение под заголовком «Лента очищена»; ширина блока 460 px</comment>
+  </data>
+  <data name="Log_Empty_Hint" xml:space="preserve">
+    <value>Лента показывает последнюю тысячу строк журнала демона и всё, что он пишет дальше. Тот же журнал целиком лежит файлами в logs/ рядом с SmartMacro.Daemon.exe.</value>
+    <comment>пояснение под заголовком «Демон пока ничего не записал»</comment>
+  </data>
+  <data name="Log_FilteredOut_Title" xml:space="preserve">
+    <value>Под фильтр не попала ни одна запись.</value>
+    <comment>заголовок третьего пустого состояния: записи есть, но фильтр отсёк все</comment>
+  </data>
+
+  <!-- ======== Режим «Настройки» — шапка ======== -->
+  <data name="Settings_Header_Path" xml:space="preserve">
+    <value>всё в одной папке · {0}</value>
+    <comment>приписка в шапке; {0} = путь к settings.json. ⚠️ стоит в звёздной колонке и обрезается многоточием — полный путь есть в подсказке</comment>
+  </data>
+  <data name="Settings_Header_Changes_One" xml:space="preserve">
+    <value>{0} изменение не применено</value>
+    <comment>жёлтая приписка рядом с «Применить»; форма для 1, 21, 31…</comment>
+  </data>
+  <data name="Settings_Header_Changes_Few" xml:space="preserve">
+    <value>{0} изменения не применены</value>
+    <comment>она же, форма для 2–4, 22–24…</comment>
+  </data>
+  <data name="Settings_Header_Changes_Many" xml:space="preserve">
+    <value>{0} изменений не применены</value>
+    <comment>она же, форма для 5–20, 25–30… ⚠️ до выноса согласования по сотням не было: «21 изменений»</comment>
+  </data>
+  <data name="Settings_Header_RunDiagnostics" xml:space="preserve">
+    <value>Проверить среду</value>
+    <comment>кнопка в шапке; запускает семь проверок и заполняет полосу внизу экрана</comment>
+  </data>
+  <data name="Settings_Header_RunDiagnosticsTip" xml:space="preserve">
+    <value>Права, шаблоны, масштаб экрана, хоткеи, папка на запись, автозапуск и канал с демоном</value>
+    <comment>подсказка к ней. ⚠️ перечисление проверок написано в четырёх местах — здесь, в Settings_Diagnostics_Hint, в сводке и у самой проверки; добавили проверку — обойдите все</comment>
+  </data>
+  <data name="Settings_Header_OpenFolder" xml:space="preserve">
+    <value>Открыть папку</value>
+    <comment>кнопка в шапке; подсказка — сам путь</comment>
+  </data>
+  <data name="Settings_Header_Reset" xml:space="preserve">
+    <value>Сброс к умолчаниям</value>
+    <comment>кнопка в шапке</comment>
+  </data>
+  <data name="Settings_Header_ResetTip" xml:space="preserve">
+    <value>Перезапишет settings.json заводскими значениями. Макросы и шаблоны не тронет.</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Settings_Header_Revert" xml:space="preserve">
+    <value>Отменить</value>
+    <comment>кнопка в шапке: вернуть поля к тому, что сейчас в файле</comment>
+  </data>
+  <data name="Settings_Header_RevertTip" xml:space="preserve">
+    <value>Вернуть поля к тому, что сейчас у демона</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Settings_Header_Apply" xml:space="preserve">
+    <value>Применить</value>
+    <comment>акцентная кнопка в шапке; редактор копит правки и отдаёт их только по ней</comment>
+  </data>
+
+  <!-- ======== Режим «Настройки» — плитка «Наблюдение» ======== -->
+  <data name="Settings_Watch_Title" xml:space="preserve">
+    <value>Наблюдение</value>
+    <comment>заголовок плитки</comment>
+  </data>
+  <data name="Settings_Watch_Subtitle" xml:space="preserve">
+    <value>два разных цикла</value>
+    <comment>приписка рядом с заголовком</comment>
+  </data>
+  <data name="Settings_Watch_ProcessPoll" xml:space="preserve">
+    <value>Поиск новых процессов</value>
+    <comment>подпись первого поля</comment>
+  </data>
+  <data name="Settings_Watch_ProcessPollHint" xml:space="preserve">
+    <value>— заметить запуск клиента</value>
+    <comment>приписка справа от неё</comment>
+  </data>
+  <data name="Settings_Watch_WindowPoll" xml:space="preserve">
+    <value>Проверка живости окон</value>
+    <comment>подпись второго поля</comment>
+  </data>
+  <data name="Settings_Watch_WindowPollHint" xml:space="preserve">
+    <value>— заметить закрытие</value>
+    <comment>приписка справа от неё</comment>
+  </data>
+  <data name="Settings_Watch_SecondsUnit" xml:space="preserve">
+    <value>с</value>
+    <comment>единица измерения справа от обоих полей; одна буква, колонка узкая</comment>
+  </data>
+
+  <!-- ======== Режим «Настройки» — плитка «Журнал» ======== -->
+  <data name="Settings_Log_Title" xml:space="preserve">
+    <value>Журнал</value>
+    <comment>заголовок плитки</comment>
+  </data>
+  <data name="Settings_Log_Subtitle" xml:space="preserve">
+    <value>применяется сразу</value>
+    <comment>приписка: единственная настройка экрана, которая не ждёт «Применить»</comment>
+  </data>
+  <data name="Settings_Log_LevelTip" xml:space="preserve">
+    <value>Минимальный уровень, ниже которого записи не покидают демон</value>
+    <comment>подсказка выпадающего списка уровня</comment>
+  </data>
+  <data name="Settings_Log_Hint" xml:space="preserve">
+    <value>Живёт до перезапуска демона: постоянный уровень — в appsettings.json. Debug пишет каждое сообщение окну — это десятки МБ в час на десяти клиентах.</value>
+    <comment>пояснение под списком; оба факта названы прямо, потому что настройка, молча не пережившая перезапуск, читается как сломанная</comment>
+  </data>
+
+  <!-- ======== Режим «Настройки» — плитка «Профили процессов» ======== -->
+  <data name="Settings_Profiles_Title" xml:space="preserve">
+    <value>Профили процессов</value>
+    <comment>заголовок плитки</comment>
+  </data>
+  <data name="Settings_Profiles_Subtitle" xml:space="preserve">
+    <value>за кем следить и как будить окна перед вводом</value>
+    <comment>приписка рядом с заголовком</comment>
+  </data>
+  <data name="Settings_Profiles_ColProcess" xml:space="preserve">
+    <value>ПРОЦЕСС</value>
+    <comment>шапка таблицы, звёздная колонка</comment>
+  </data>
+  <data name="Settings_Profiles_ColWake" xml:space="preserve">
+    <value>ПОБУДКА</value>
+    <comment>шапка таблицы, колонка 86 px</comment>
+  </data>
+  <data name="Settings_Profiles_ColSettle" xml:space="preserve">
+    <value>ОСЕДАНИЕ</value>
+    <comment>шапка таблицы, колонка 74 px</comment>
+  </data>
+  <data name="Settings_Profiles_ColDeactivate" xml:space="preserve">
+    <value>ДЕАКТИВ.</value>
+    <comment>шапка таблицы, колонка 74 px; сокращено именно из-за неё</comment>
+  </data>
+  <data name="Settings_Profiles_ColInput" xml:space="preserve">
+    <value>ВВОД</value>
+    <comment>шапка таблицы, колонка 132 px</comment>
+  </data>
+  <data name="Settings_Profiles_NameWatermark" xml:space="preserve">
+    <value>имя процесса без .exe</value>
+    <comment>водяной знак поля имени в строке профиля</comment>
+  </data>
+  <data name="Settings_Profiles_WakeYes" xml:space="preserve">
+    <value>есть</value>
+    <comment>колонка «ПОБУДКА»: у процесса есть сигнал пробуждения. Само ЧИСЛО сигнала в интерфейс не выводится — это добытый реверсом костыль под одну игру, а не настройка</comment>
+  </data>
+  <data name="Settings_Profiles_WakeNo" xml:space="preserve">
+    <value>не нужен</value>
+    <comment>колонка «ПОБУДКА»: обычный процесс, пробуждение пропускается</comment>
+  </data>
+  <data name="Settings_Profiles_WakeTooltipYes" xml:space="preserve">
+    <value>Окна этого процесса замораживаются в фоне, и перед вводом им уходит WM_ACTIVATEAPP с магическим значением. Значение добыто реверсом клиента и проставлено по имени процесса; править его — только в settings.json, и только если у вашей сборки игры оно другое.</value>
+    <comment>подсказка колонки «ПОБУДКА» у процесса с сигналом</comment>
+  </data>
+  <data name="Settings_Profiles_WakeTooltipNo" xml:space="preserve">
+    <value>Обычный процесс: пробуждение пропускается, ввод уходит сразу. Так и должно быть у всего, кроме клиентов игры.</value>
+    <comment>подсказка той же колонки у процесса без сигнала</comment>
+  </data>
+  <data name="Settings_Profiles_SettleTip" xml:space="preserve">
+    <value>Пауза после сигнала побудки, мс. Ниже 150 PW начинает терять ввод.</value>
+    <comment>подсказка поля «ОСЕДАНИЕ»</comment>
+  </data>
+  <data name="Settings_Profiles_DeactivateTip" xml:space="preserve">
+    <value>Пауза перед деактивацией, мс — время на разбор очереди ввода.</value>
+    <comment>подсказка поля «ДЕАКТИВ.»</comment>
+  </data>
+  <data name="Settings_Profiles_Remove" xml:space="preserve">
+    <value>Убрать профиль — за окнами этого процесса демон следить перестанет</value>
+    <comment>подсказка крестика в конце строки профиля</comment>
+  </data>
+  <data name="Settings_Profiles_NewWatermark" xml:space="preserve">
+    <value>имя процесса, например elementclient_64</value>
+    <comment>водяной знак поля добавления профиля в подвале плитки; поле 220 px</comment>
+  </data>
+  <data name="Settings_Profiles_Add" xml:space="preserve">
+    <value>+ Профиль</value>
+    <comment>кнопка рядом с ним</comment>
+  </data>
+  <data name="Settings_Profiles_AddHint" xml:space="preserve">
+    <value>узнанному имени сигнал побудки проставится сам</value>
+    <comment>приписка справа; обрезается многоточием</comment>
+  </data>
+  <data name="Settings_Profiles_SettleName" xml:space="preserve">
+    <value>Оседание</value>
+    <comment>имя поля в сообщении об ошибке ввода — подставляется в Settings_Profiles_BadNumber</comment>
+  </data>
+  <data name="Settings_Profiles_DeactivateName" xml:space="preserve">
+    <value>Деактивация</value>
+    <comment>то же для второго поля</comment>
+  </data>
+  <data name="Settings_Profiles_BadNumber" xml:space="preserve">
+    <value>{0} у профиля «{1}»: «{2}» — это не целое число.</value>
+    <comment>замечание в полосе «Не применено»; {0} = имя поля, {1} = процесс, {2} = набранное значение</comment>
+  </data>
+
+  <!-- ======== Режим «Настройки» — плитка «Ввод по умолчанию» ======== -->
+  <data name="Settings_Input_Title" xml:space="preserve">
+    <value>Ввод по умолчанию</value>
+    <comment>заголовок плитки</comment>
+  </data>
+  <data name="Settings_Input_Subtitle" xml:space="preserve">
+    <value>наведение — цена способа</value>
+    <comment>приписка: описание каждого способа висит подсказкой на его строке</comment>
+  </data>
+  <data name="Settings_Input_Inherit" xml:space="preserve">
+    <value>По умолчанию</value>
+    <comment>пункт «взять способ из общей настройки» в ПОФАЙЛОВОМ списке профиля</comment>
+  </data>
+  <data name="Settings_Input_InheritDetail" xml:space="preserve">
+    <value>Берётся способ из «Ввод по умолчанию».</value>
+    <comment>подсказка к нему. Остальные подписи способов живут в Contracts/Settings/InputMethodInfo — копии в панели нет намеренно</comment>
+  </data>
+  <data name="Settings_Input_Hint" xml:space="preserve">
+    <value>Клики всегда уходят PostMessage и настройке не подчиняются: они доходили надёжно всегда. Спорной была только клавиатура.</value>
+    <comment>пояснение под списком способов</comment>
+  </data>
+
+  <!-- ======== Режим «Настройки» — плитка «Распознавание шаблонов» ======== -->
+  <data name="Settings_Vision_Title" xml:space="preserve">
+    <value>Распознавание шаблонов</value>
+    <comment>заголовок плитки</comment>
+  </data>
+  <data name="Settings_Vision_Threshold" xml:space="preserve">
+    <value>Порог совпадения — умолчание</value>
+    <comment>подпись ползунка; справа от неё печатается само число</comment>
+  </data>
+  <data name="Settings_Vision_Hint" xml:space="preserve">
+    <value>Умолчание для тех шагов, где порог не задан. Шаг вправе задать свой — тогда это значение к нему не относится.</value>
+    <comment>пояснение под ползунком</comment>
+  </data>
+
+  <!-- ======== Режим «Настройки» — плитка «Запуск и права» ======== -->
+  <data name="Settings_Startup_Title" xml:space="preserve">
+    <value>Запуск и права</value>
+    <comment>заголовок плитки</comment>
+  </data>
+  <data name="Settings_Startup_RunAtLogon" xml:space="preserve">
+    <value>Запускать при входе в систему</value>
+    <comment>первая галочка</comment>
+  </data>
+  <data name="Settings_Startup_RunAtLogonHint" xml:space="preserve">
+    <value>поднимать демон вместе с сеансом</value>
+    <comment>пояснение под ней; ⚠️ стоит ОТДЕЛЬНОЙ строкой, а не внутри галочки — иначе квадратик оказывается напротив второй строки текста</comment>
+  </data>
+  <data name="Settings_Startup_RunElevated" xml:space="preserve">
+    <value>Работать с правами администратора</value>
+    <comment>вторая галочка</comment>
+  </data>
+  <data name="Settings_Startup_RunElevatedHint" xml:space="preserve">
+    <value>нужно, чтобы доставлять ввод в клиенты, запущенные с повышением</value>
+    <comment>пояснение под ней, тоже отдельной строкой</comment>
+  </data>
+  <data name="Settings_Startup_MechanismHeader" xml:space="preserve">
+    <value>СПОСОБ</value>
+    <comment>надзаголовок строки, называющей выбранный механизм автозапуска</comment>
+  </data>
+  <data name="Settings_Startup_MechanismNone" xml:space="preserve">
+    <value>автозапуск выключен</value>
+    <comment>обе галочки сняты</comment>
+  </data>
+  <data name="Settings_Startup_MechanismRunKey" xml:space="preserve">
+    <value>ключ Run в HKCU</value>
+    <comment>только автозапуск</comment>
+  </data>
+  <data name="Settings_Startup_MechanismElevatedOnly" xml:space="preserve">
+    <value>автозапуска нет; повышение запрашивается при ручном старте</value>
+    <comment>только повышение</comment>
+  </data>
+  <data name="Settings_Startup_MechanismTask" xml:space="preserve">
+    <value>задача в Планировщике, наивысшие права</value>
+    <comment>обе галочки: ключ реестра поднять процесс с повышением не умеет, поэтому Планировщик</comment>
+  </data>
+  <data name="Settings_Startup_RestartNote" xml:space="preserve">
+    <value>Смена прав требует перезапуска демона: повышение нельзя получить на лету.</value>
+    <comment>жёлтое предупреждение в подвале плитки; без него пользователь снимет галочку, увидит чистую панель и решит, что применилось</comment>
+  </data>
+  <data name="Settings_Startup_UipiNote" xml:space="preserve">
+    <value>Сняв права, вы сломаете ввод в окна игры, запущенной от администратора: UIPI заблокирует и сообщения, и захват экрана. Обе галочки вместе возможны только через Планировщик — ключ реестра не умеет поднимать процесс с повышением.</value>
+    <comment>второе предупреждение там же; без него причину «макросы перестали доходить до игры» будут искать неделю спустя</comment>
+  </data>
+
+  <!-- ======== Режим «Настройки» — замечания и статус применения ======== -->
+  <data name="Settings_Issues_Header" xml:space="preserve">
+    <value>Не применено:</value>
+    <comment>заголовок красной полосы со списком замечаний валидатора настроек</comment>
+  </data>
+  <data name="Settings_Status_NotApplied" xml:space="preserve">
+    <value>не применено</value>
+    <comment>статус рядом с заголовком «Диагностика среды»; три места — своя проверка, вердикт валидатора и ответ демона</comment>
+  </data>
+  <data name="Settings_Status_Applied" xml:space="preserve">
+    <value>применено</value>
+    <comment>тот же статус после успешной записи файла</comment>
+  </data>
+  <data name="Settings_Status_NoAnswer" xml:space="preserve">
+    <value>демон не ответил</value>
+    <comment>тот же статус, когда канал молчит</comment>
+  </data>
+  <data name="Settings_Status_Reverted" xml:space="preserve">
+    <value>правки отменены</value>
+    <comment>тот же статус после кнопки «Отменить»</comment>
+  </data>
+  <data name="Settings_Status_Reset" xml:space="preserve">
+    <value>сброшено к умолчаниям</value>
+    <comment>тот же статус после кнопки «Сброс к умолчаниям»</comment>
+  </data>
+  <data name="Settings_Status_FileChanged" xml:space="preserve">
+    <value>файл настроек изменился — «Отменить» покажет новое</value>
+    <comment>тот же статус, когда settings.json поправили снаружи, а форма наполовину заполнена: правки не затираются, меняется лишь то, к чему вернёт «Отменить»</comment>
+  </data>
+  <data name="Settings_Field_ProcessPoll" xml:space="preserve">
+    <value>Поиск новых процессов</value>
+    <comment>имя поля в замечании валидатора — подставляется в Settings_BadNumber</comment>
+  </data>
+  <data name="Settings_Field_WindowPoll" xml:space="preserve">
+    <value>Проверка живости окон</value>
+    <comment>то же для второго поля</comment>
+  </data>
+  <data name="Settings_BadNumber" xml:space="preserve">
+    <value>{0}: «{1}» — это не целое число.</value>
+    <comment>замечание в полосе «Не применено»; {0} = имя поля, {1} = набранное значение</comment>
+  </data>
+
+  <!-- ======== Режим «Настройки» — полоса диагностики среды ======== -->
+  <data name="Settings_Diagnostics_Title" xml:space="preserve">
+    <value>Диагностика среды</value>
+    <comment>заголовок полосы внизу экрана</comment>
+  </data>
+  <data name="Settings_Diagnostics_NotRun" xml:space="preserve">
+    <value>проверка не запускалась</value>
+    <comment>сводка рядом с заголовком, пока «Проверить среду» не нажимали</comment>
+  </data>
+  <data name="Settings_Diagnostics_Summary" xml:space="preserve">
+    <value>проверка от {0} · {1} из {2} в порядке</value>
+    <comment>она же после проверки; {0} = время, {1} = сколько в порядке, {2} = всего проверок</comment>
+  </data>
+  <data name="Settings_Diagnostics_ChannelTitle" xml:space="preserve">
+    <value>Канал с демоном</value>
+    <comment>название единственной проверки, которую делает сама панель: демон не может честно замерить своё же время ответа. Остальные шесть приезжают от демона. Два места</comment>
+  </data>
+  <data name="Settings_Diagnostics_ChannelFailed" xml:space="preserve">
+    <value>демон не ответил — движок не работает, макросы не запускаются</value>
+    <comment>деталь этой проверки при провале; карточка 416 px</comment>
+  </data>
+  <data name="Settings_Diagnostics_ChannelOk" xml:space="preserve">
+    <value>отвечает, {0} мс</value>
+    <comment>деталь той же проверки при успехе; {0} = время ответа. Компактная строка 270 px</comment>
+  </data>
+  <data name="Settings_Diagnostics_Hint" xml:space="preserve">
+    <value>Права, файлы шаблонов, масштаб экрана, регистрация хоткеев, папка на запись и время ответа демона. Почти всё, что здесь ломается, ломается снаружи программы.</value>
+    <comment>текст вместо карточек, пока проверку не запускали. ⚠️ перечисление проверок здесь неполное — автозапуск в нём не назван, хотя проверяется; см. Settings_Header_RunDiagnosticsTip</comment>
+  </data>
+
+  <!-- ======== Диалог «Имя занято» (единственное модальное окно панели) ======== -->
+  <data name="Dialog_NameConflict_WindowTitle" xml:space="preserve">
+    <value>Имя занято</value>
+    <comment>заголовок окна в списке задач Windows</comment>
+  </data>
+  <data name="Dialog_NameConflict_Title" xml:space="preserve">
+    <value>Имя занято</value>
+    <comment>заголовок в своей строке заголовка</comment>
+  </data>
+  <data name="Dialog_NameConflict_CloseTip" xml:space="preserve">
+    <value>Отмена</value>
+    <comment>подсказка крестика</comment>
+  </data>
+  <data name="Dialog_NameConflict_Heading" xml:space="preserve">
+    <value>Макрос «{0}» в библиотеке уже есть</value>
+    <comment>первая строка вопроса; {0} = занятое имя. Окно шириной 440 px</comment>
+  </data>
+  <data name="Dialog_NameConflict_ActionSave" xml:space="preserve">
+    <value>Сохранение под этим именем заменит его.</value>
+    <comment>вторая строка, когда спрашивают при сохранении</comment>
+  </data>
+  <data name="Dialog_NameConflict_ActionImport" xml:space="preserve">
+    <value>Импорт под этим именем заменит его.</value>
+    <comment>она же при импорте</comment>
+  </data>
+  <data name="Dialog_NameConflict_LossUnreadable" xml:space="preserve">
+    <value>Его бандл не читается, так что неизвестно даже, что в нём: {0} Замена уничтожит файл целиком.</value>
+    <comment>красная плашка, когда существующий бандл не читается; {0} = вердикт читателя (он заканчивается точкой, поэтому пробел после — единственный разделитель)</comment>
+  </data>
+  <data name="Dialog_NameConflict_Templates_One" xml:space="preserve">
+    <value>{0} шаблон</value>
+    <comment>перечисление того, что будет потеряно; форма для 1, 21, 31…</comment>
+  </data>
+  <data name="Dialog_NameConflict_Templates_Few" xml:space="preserve">
+    <value>{0} шаблона</value>
+    <comment>она же, форма для 2–4, 22–24…</comment>
+  </data>
+  <data name="Dialog_NameConflict_Templates_Many" xml:space="preserve">
+    <value>{0} шаблонов</value>
+    <comment>она же, форма для 5–20, 25–30…</comment>
+  </data>
+  <data name="Dialog_NameConflict_Submacros_One" xml:space="preserve">
+    <value>{0} под-макрос</value>
+    <comment>то же для функций; форма для 1, 21…</comment>
+  </data>
+  <data name="Dialog_NameConflict_Submacros_Few" xml:space="preserve">
+    <value>{0} под-макроса</value>
+    <comment>она же, форма для 2–4, 22–24…</comment>
+  </data>
+  <data name="Dialog_NameConflict_Submacros_Many" xml:space="preserve">
+    <value>{0} под-макросов</value>
+    <comment>она же, форма для 5–20, 25–30…</comment>
+  </data>
+  <data name="Dialog_NameConflict_LossNothing" xml:space="preserve">
+    <value>Ни шаблонов, ни под-макросов в нём нет — потеряется только его граф.</value>
+    <comment>красная плашка, когда терять, кроме графа, нечего</comment>
+  </data>
+  <data name="Dialog_NameConflict_LossList" xml:space="preserve">
+    <value>Будет потеряно: {0}.</value>
+    <comment>она же с перечнем; {0} = «11 шаблонов, 2 под-макроса». Цена замены названа числами намеренно: «Заменить?» без уточнения — вопрос, на который отвечают не читая</comment>
+  </data>
+  <data name="Dialog_NameConflict_FreeName" xml:space="preserve">
+    <value>Взять имя «{0}»</value>
+    <comment>подпись средней кнопки; {0} = свободное имя с суффиксом</comment>
+  </data>
+  <data name="Dialog_NameConflict_Cancel" xml:space="preserve">
+    <value>Отмена</value>
+    <comment>правая кнопка — она же действие по умолчанию (Esc, Enter и фокус при открытии)</comment>
+  </data>
+  <data name="Dialog_NameConflict_Replace" xml:space="preserve">
+    <value>Заменить</value>
+    <comment>красная кнопка: заменить существующий макрос вместе со всем, что в нём лежит</comment>
+  </data>
+
+  <!-- ======== Отказы при старте панели (нативные окна сообщений — логгера ещё нет) ======== -->
+  <data name="Dialog_Startup_LoggerFailed" xml:space="preserve">
+    <value>Не удалось поднять журнал панели.
+
+{0}
+
+Чаще всего это каталог программы, недоступный для записи: SmartMacro хранит журналы и макросы рядом со своим исполняемым файлом. Распакуйте папку туда, куда можно писать, и запустите ещё раз.</value>
+    <comment>окно сообщения при старте, когда не создался журнал; {0} = текст исключения. Заголовок окна — «SmartMacro», он же имя программы, и переводу не подлежит. Переводы строк в значении — настоящие: это абзацы в окне сообщения</comment>
+  </data>
+  <data name="Dialog_Startup_NoDaemon" xml:space="preserve">
+    <value>Не удалось подключиться к службе SmartMacro.
+
+Запустите daemon\SmartMacro.Daemon.exe вручную и откройте панель ещё раз.
+Подробности — в logs/smartmacro-ui-*.log.</value>
+    <comment>окно сообщения при старте, когда демон не отвечает и поднять его не удалось</comment>
+  </data>
+  <data name="Dialog_DaemonLost" xml:space="preserve">
+    <value>Служба SmartMacro остановлена — панель будет закрыта.
+
+Запустите SmartMacro.Daemon.exe и откройте панель заново.</value>
+    <comment>окно сообщения, когда демон пропал во время работы: обычно это «Выход» в трее. Показывается один раз — цикл переподключения не должен складывать окна стопкой</comment>
+  </data>
+
+  <!-- ======== Отказы канала — текст исключения попадает в строки состояния редактора ======== -->
+  <data name="Dialog_Ipc_NotConnected" xml:space="preserve">
+    <value>нет соединения с демоном</value>
+    <comment>текст исключения запроса; подставляется в строки вида «Не удалось сохранить: {0}»</comment>
+  </data>
+  <data name="Dialog_Ipc_RejectedSilently" xml:space="preserve">
+    <value>запрос отклонён без описания причины</value>
+    <comment>то же, когда демон ответил отказом без пояснения</comment>
+  </data>
+  <data name="Dialog_Ipc_Broken" xml:space="preserve">
+    <value>соединение с демоном разорвано</value>
+    <comment>то же, когда труба порвалась прямо под записью</comment>
+  </data>
+  <data name="Dialog_Ipc_Disconnected" xml:space="preserve">
+    <value>демон отключился</value>
+    <comment>то же для запросов, оставшихся без ответа при обрыве</comment>
+  </data>
+</root>
