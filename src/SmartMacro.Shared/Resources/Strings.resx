@@ -300,6 +300,30 @@
     <value>Сохранить</value>
     <comment>главная (акцентная) кнопка панели инструментов; правее неё ничего нет</comment>
   </data>
+  <data name="Editor_Toolbar_SaveTip" xml:space="preserve">
+    <value>Записать немедленно. Правки и так сохраняются сами, но переименование файла и выбор стороны при правке снаружи — только отсюда</value>
+    <comment>подсказка кнопки «Сохранить»; объясняет, зачем она нужна при автосохранении</comment>
+  </data>
+  <data name="Editor_Toolbar_SaveStateSaved" xml:space="preserve">
+    <value>сохранено</value>
+    <comment>подпись состояния записи посреди панели инструментов, приглушённая; строчная буква намеренно — это состояние, а не сообщение</comment>
+  </data>
+  <data name="Editor_Toolbar_SaveStatePending" xml:space="preserve">
+    <value>правки ещё не записаны</value>
+    <comment>та же подпись, пока идёт отсчёт затишья (3 с после последней правки)</comment>
+  </data>
+  <data name="Editor_Toolbar_SaveStateInputErrors" xml:space="preserve">
+    <value>не записано: сперва поправьте поля</value>
+    <comment>та же подпись, когда автосохранение стоит из-за недонабранного поля (например, «две секунды» в задержке): в файл уехало бы не то, что на экране</comment>
+  </data>
+  <data name="Editor_Toolbar_RenamePending" xml:space="preserve">
+    <value>Enter — переименовать файл в «{0}»</value>
+    <comment>та же подпись, когда в поле имени набрано не то, как называется файл; {0} = набранное имя. Автосохранение пишет в старое имя и НЕ переименовывает</comment>
+  </data>
+  <data name="Editor_Toolbar_SaveStateTip" xml:space="preserve">
+    <value>Правки записываются сами через несколько секунд после последней</value>
+    <comment>подсказка к подписи состояния записи</comment>
+  </data>
 
   <!-- ======== Режим «Макросы» — отладчик в панели инструментов ======== -->
   <data name="Editor_Debug_Pause" xml:space="preserve">
@@ -1326,15 +1350,23 @@
   </data>
   <data name="Editor_Status_DiscardedChanges" xml:space="preserve">
     <value>Несохранённые изменения в «{0}» отброшены.</value>
-    <comment>красная строка при переходе на другой макрос; {0} = имя брошенного макроса</comment>
+    <comment>красная строка при переходе на другой макрос; {0} = имя брошенного макроса. С автосохранением случается редко: уходя с макроса, редактор его дописывает, и остаётся эта строка только там, где дописать было нельзя (недонабранное поле либо расхождение с диском)</comment>
   </data>
   <data name="Editor_Status_CannotOpen" xml:space="preserve">
     <value>«{0}» не открывается: {1}</value>
     <comment>красная строка при клике по нечитаемой строке библиотеки; {0} = имя, {1} = вердикт читателя</comment>
   </data>
-  <data name="Editor_Status_Draft" xml:space="preserve">
-    <value>Черновик — не сохранён.</value>
-    <comment>статус сразу после «+ Новый макрос»: на диске файла ещё нет</comment>
+  <data name="Editor_NewMacro_Name" xml:space="preserve">
+    <value>новый-макрос</value>
+    <comment>имя, под которым «+ Новый макрос» СРАЗУ заводит файл; занято — берётся «новый-макрос-2» и далее. Это и подпись в поле имени, и основа имени файла .hsm, поэтому: без \ / : * ? " &lt; &gt; | и покороче — поле шириной 170 px</comment>
+  </data>
+  <data name="Editor_Status_Created" xml:space="preserve">
+    <value>Макрос «{0}» создан — файл уже в папке.</value>
+    <comment>статус сразу после «+ Новый макрос»; {0} = имя. Состояния «черновик» больше нет: файл заводится первым действием</comment>
+  </data>
+  <data name="Editor_Status_CreateFailed" xml:space="preserve">
+    <value>Не удалось создать макрос: {0}</value>
+    <comment>красная строка, когда файл нового макроса не записался; {0} = сообщение файловой системы. Редактор при этом не открывается — показывать макрос, которого нет в папке, значило бы врать</comment>
   </data>
   <data name="Editor_Status_DeleteFailed" xml:space="preserve">
     <value>Не удалось удалить «{0}»: {1}</value>
@@ -1390,7 +1422,7 @@
   </data>
   <data name="Editor_Status_SaveBlocked" xml:space="preserve">
     <value>Сохранение отменено: исправьте ошибки.</value>
-    <comment>красная строка: сохранение остановлено валидатором. Три места — недонабранные поля, негодное имя файла и ошибки графа</comment>
+    <comment>красная строка: записать НЕЧЕГО. Осталось два места — недонабранные поля строк и негодное имя файла; ошибки ГРАФА записи больше не мешают (см. Editor_Status_SavedWithErrors)</comment>
   </data>
   <data name="Editor_Status_SaveNameTaken" xml:space="preserve">
     <value>Сохранение отменено: имя «{0}» занято.</value>
@@ -1407,6 +1439,10 @@
   <data name="Editor_Status_SavedWithWarnings" xml:space="preserve">
     <value>Сохранено с предупреждениями ({0}).</value>
     <comment>он же, когда валидатор нашёл предупреждения (они записи не мешают); {0} = сколько</comment>
+  </data>
+  <data name="Editor_Status_SavedWithErrors" xml:space="preserve">
+    <value>Сохранено, но в макросе ошибок: {0} — демон не вооружит его триггеры.</value>
+    <comment>он же, когда валидатор нашёл ОШИБКИ. Записи они больше не мешают (граф невалиден ровно тогда, когда над ним работают), но по хоткею такой макрос не запустится; та же формулировка, что у Macros_Row_HotkeyUnarmed. {0} = сколько ошибок</comment>
   </data>
   <data name="Editor_Status_Reloaded" xml:space="preserve">
     <value>Перезагружено с диска.</value>

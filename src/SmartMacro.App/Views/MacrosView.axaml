@@ -1062,6 +1062,11 @@
                      — это имя файла, и позволить переписать его жестом, который выглядит как
                      переименование функции, нельзя. -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <!-- Enter / уход фокуса ПЕРЕИМЕНОВЫВАЮТ файл, Esc отменяет набранное.
+                         Автосохранение сюда не смотрит: оно пишет в загруженное имя, иначе
+                         каждое нажатие клавиши здесь заводило бы новый .hsm. Пока набранное
+                         расходится с именем файла, об этом говорит подпись состояния записи
+                         посреди полосы. -->
                     <TextBox Width="170"
                              Height="26"
                              Padding="8,0"
@@ -1071,7 +1076,9 @@
                              IsVisible="{Binding !IsSubmacroOpen}"
                              IsEnabled="{Binding HasOpenMacro}"
                              ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_MacroNameTip}"
-                             Text="{Binding MacroName, Mode=TwoWay}" />
+                             Text="{Binding MacroName, Mode=TwoWay}"
+                             KeyDown="OnMacroNameKeyDown"
+                             LostFocus="OnMacroNameLostFocus" />
 
                     <Button Classes="ghost"
                             Height="26"
@@ -1239,6 +1246,18 @@
                 <!-- Обратная связь живёт посреди полосы: она про макрос целиком, а не про то,
                      что инспектор случайно показывает прямо сейчас. -->
                 <StackPanel Grid.Column="6" Margin="14,0" VerticalAlignment="Center" Spacing="1">
+                    <!-- Подпись СОСТОЯНИЯ записи: «сохранено» / «правки ещё не записаны» /
+                         «Enter — переименовать». Отдельно от строки статуса ниже намеренно — та
+                         однократная, и мигать в ней словом «Сохранено» каждые несколько секунд
+                         значило бы затирать «Макрос удалён» и «Импортировано». Строк в этом стеке
+                         по-прежнему не больше трёх разом: при ChangedOnDisk эта гаснет, потому
+                         что жёлтая строка ниже говорит то же самое и точнее. -->
+                    <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
+                               Foreground="{DynamicResource NocturneTextFaintBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               IsVisible="{Binding SaveStateText, Converter={x:Static conv:NotNullToBoolConverter.Instance}}"
+                               ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_SaveStateTip}"
+                               Text="{Binding SaveStateText}" />
                     <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
                                Foreground="{DynamicResource NocturneWarningBrush}"
                                TextTrimming="CharacterEllipsis"
@@ -1276,6 +1295,9 @@
                         IsEnabled="{Binding HasOpenMacro}"
                         ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_AutoLayoutTip}"
                         Click="OnAutoLayoutClicked" />
+                <!-- Кнопка осталась, хотя пишет автосохранение: за ней три вещи, которых оно не
+                     делает и делать не должно, — переименовать файл, выбрать свою сторону при
+                     правке снаружи и записать немедленно. -->
                 <Button Grid.Column="10"
                         Content="{x:Static res:Strings.Editor_Toolbar_Save}"
                         Classes="accent"
@@ -1283,6 +1305,7 @@
                         Padding="16,0"
                         Margin="6,0,0,0"
                         IsEnabled="{Binding HasOpenMacro}"
+                        ToolTip.Tip="{x:Static res:Strings.Editor_Toolbar_SaveTip}"
                         Click="OnSaveClicked" />
             </Grid>
         </Border>

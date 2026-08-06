@@ -221,8 +221,14 @@ public class MacroEditorViewModelTests
         await Assert.That(vm.IsDirty()).IsFalse();
     }
 
+    // РАЗВОРОТ ПРЕЖНЕГО ПОВЕДЕНИЯ: ошибка валидации записи больше не мешает.
+    //
+    // «Сохранение отменено: исправьте ошибки» появилось, когда сохранение было ручным и редким. С
+    // автосохранением отказ несовместим — граф невалиден ровно тогда, когда над ним работают, —
+    // а две кнопки, ведущие себя по-разному, были бы хуже обеих. Предохранитель стоит на стороне
+    // исполнителя и стоял там до этой правки: демон не вооружает триггеры макроса с ошибкой.
     [Test]
-    public async Task Save_BlockedByAValidationError_RendersTheIssues_AndTheEditorStaysDirty()
+    public async Task Save_WithAValidationError_WritesAnyway_AndSaysTheMacroWillNotBeArmed()
     {
         using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
@@ -236,17 +242,19 @@ public class MacroEditorViewModelTests
             StartNodeId = Ids.Of("find"),
             Nodes = [new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "Btn" }],
         });
-        // Правка — чтобы утверждение «после отказа правки всё ещё не сохранены» можно было
-        // наблюдать.
-        vm.MacroName = "битый-2";
 
         var saved = await vm.SaveAsync();
 
-        await Assert.That(saved).IsFalse();
-        await Assert.That(daemon.Count).IsEqualTo(0);
+        await Assert.That(saved).IsTrue();
+        await Assert.That(daemon.Find("битый")).IsNotNull();
+        await Assert.That(vm.IsDirty()).IsFalse();
+        // Замечания при этом никуда не делись — их и стало видно вместо красной строки «отменено».
         await Assert.That(vm.Issues.Any(i => i.IsError)).IsTrue();
-        await Assert.That(vm.ErrorMessage).IsNotNull();
-        await Assert.That(vm.IsDirty()).IsTrue();
+        await Assert.That(vm.ErrorMessage).IsNull();
+        // Статус обязан назвать цену: по клавише такой макрос не запустится.
+        await Assert.That(vm.StatusMessage).Contains("не вооружит");
+        // И то же самое видно, не открывая макрос, — красным «!» на строке библиотеки.
+        await Assert.That(vm.Macros.Single(m => m.Name == "битый").ErrorCount).IsGreaterThan(0);
     }
 
     [Test]
@@ -583,18 +591,19 @@ public class MacroEditorViewModelTests
         await Assert.That(vm.ShowPickMacroHint).IsTrue();
     }
 
-    // Черновик при пустой библиотеке — законное состояние, и подсказка обязана уйти с дороги
-    // его графа: иначе «библиотека пуста» легло бы поверх нод, которые пользователь только что
+    // Создание макроса уводит с пустого состояния СРАЗУ, потому что файл появляется сразу:
+    // черновика, живущего только в памяти панели, больше нет. Подсказки при этом обязаны молчать
+    // обе — иначе «библиотека пуста» легло бы поверх нод, которые пользователь только что
     // расставил.
     [Test]
-    public async Task DraftOnAnEmptyLibrary_ShowsNeitherHint()
+    public async Task NewMacro_LeavesTheEmptyLibraryState_AtOnce()
     {
         using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
 
         vm.NewMacro();
 
-        await Assert.That(vm.IsLibraryEmpty).IsTrue();
+        await Assert.That(vm.IsLibraryEmpty).IsFalse();
         await Assert.That(vm.ShowEmptyLibraryHint).IsFalse();
         await Assert.That(vm.ShowPickMacroHint).IsFalse();
     }
@@ -706,8 +715,12 @@ public class MacroEditorViewModelTests
         await Assert.That(vm.SelectedMacro?.Name).IsEqualTo("своё");
     }
 
+    // Закрывает #16 и снимает состояние «черновик»: файл заводится ПЕРВЫМ ДЕЙСТВИЕМ, под
+    // свободным именем. Прежде «+ Новый макрос» открывал граф, которого на диске не было, и всё,
+    // что с ним делали до первого «Сохранить», жило только в памяти панели, — то есть ровно то
+    // место, которое автосохранение не покрывало бы.
     [Test]
-    public async Task NewMacro_ProducesASaveableDraftThatIsNotYetInTheLibrary()
+    public async Task NewMacro_WritesItsFileAtOnce_UnderAFreeName()
     {
         using var daemon = new Panel();
         using var vm = CreateEditor(daemon);
@@ -716,10 +729,17 @@ public class MacroEditorViewModelTests
 
         await Assert.That(vm.HasOpenMacro).IsTrue();
         await Assert.That(vm.Nodes).Count().IsEqualTo(1);
-        await Assert.That(daemon.Count).IsEqualTo(0);
-
-        await Assert.That(await vm.SaveAsync()).IsTrue();
         await Assert.That(daemon.Count).IsEqualTo(1);
+        await Assert.That(File.Exists(daemon.Library.PathFor(vm.MacroName))).IsTrue();
+        // Строка библиотеки появилась и подсвечена — макрос настоящий с первой секунды.
+        await Assert.That(vm.SelectedMacro?.Name).IsEqualTo(vm.MacroName);
+        await Assert.That(vm.IsDirty()).IsFalse();
+
+        // Второй забирает следующее свободное имя, а не спорит за занятое.
+        var first = vm.MacroName;
+        vm.NewMacro();
+        await Assert.That(vm.MacroName).IsNotEqualTo(first);
+        await Assert.That(daemon.Count).IsEqualTo(2);
     }
 
     [Test]

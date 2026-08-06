@@ -311,9 +311,10 @@ public sealed class ValidationIssueViewModel
 /// Демон эти файлы только читает. Четыре следствия, которые стоит знать, прежде чем править класс:
 ///
 ///   * <b>Валидатор — местный, и он же демонский.</b> <see cref="MacroGraphValidator"/> живёт в
-///     <c>Shared</c>: панель гоняет его до записи (ошибка блокирует сохранение, предупреждение —
-///     нет), демон — при загрузке библиотеки. Один код, одна опись шаблонов, один вердикт;
-///     разойтись им негде, и потому «почему хоткей молчит» панель объясняет без запросов.
+///     <c>Shared</c>: панель гоняет его на каждой записи, демон — при загрузке библиотеки. Один
+///     код, одна опись шаблонов, один вердикт; разойтись им негде, и потому «почему хоткей
+///     молчит» панель объясняет без запросов. <b>Записи ошибка не мешает</b> — см.
+///     <see cref="SaveAsync"/>.
 ///   * <b>Эха собственной записи ждать не надо.</b> Файл записан к моменту возврата из
 ///     <see cref="SaveAsync"/>, снимок библиотеки перечитан там же. Наблюдатель принесёт то же
 ///     самое содержимое спустя гашение дребезга, и <see cref="ApplyLibrary"/> узнает его по
@@ -325,15 +326,29 @@ public sealed class ValidationIssueViewModel
 ///     <c>MacrosChanged</c> теперь значит «демон перечитал папку и перерегистрировал хоткеи», и
 ///     единственный правильный ответ на него — перечитать <c>GetHotkeyFailures</c>.
 ///
+/// <b>Состояния «черновик» здесь нет: панель сохраняет макрос сама.</b> Файл заводится в момент
+/// создания (<see cref="NewMacro"/>), а дальше правки записываются ПО ЗАТИХАНИЮ — через
+/// <see cref="AutoSaveQuietTicks"/> тиков после последней, — см. <see cref="TickAutoSave"/>. Три
+/// следствия, о которых стоит знать, прежде чем что-то здесь «упрощать»:
+///
+///   * <b>По затиханию, а не по таймеру.</b> Каждая запись будит демона: он перечитывает папку,
+///     перерегистрирует ВСЕ хоткеи и целиком сбрасывает кэш шаблонов. По таймеру это были бы
+///     десятки пробуждений за сеанс правки у движка, который может прямо сейчас вести игру.
+///   * <b>Пишем и с ошибками валидации.</b> Граф невалиден ровно тогда, когда над ним работают, —
+///     отказ записи и автосохранение несовместимы. Предохранитель стоит на другой стороне:
+///     демон не вооружает невалидный макрос, а строка библиотеки несёт красный «!».
+///   * <b>Автосохранение НИКОГДА не переименовывает и никогда не спрашивает.</b> Пишет оно в
+///     ЗАГРУЖЕННОЕ имя (<c>_loadedName</c>), а не в набираемое, иначе каждое нажатие в поле имени
+///     плодило бы файлы. Переименование поэтому осталось ручным — <see cref="CommitRenameAsync"/>.
+///
 /// Всё, что имеет форму Avalonia, держится снаружи намеренно, чтобы класс целиком можно было
 /// гонять headless против поддельного <see cref="IIpcClient"/> и настоящей библиотеки во временной
 /// папке, — а это важно, потому что отображение «граф ↔ VM» и есть то место, где завелась бы тихая
-/// потеря данных.
+/// потеря данных. Часы автосохранения по той же причине живут в виде и дёргают
+/// <see cref="TickAutoSave"/>: тест гоняет их вручную, никаких настоящих задержек.
 /// </summary>
 public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 {
-    private const string DraftName = "новый-макрос";
-
     private readonly IIpcClient _client;
     private readonly MacroLibrary _macros;
     private readonly IMacroLauncher? _launcher;
@@ -349,8 +364,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private NodeRowViewModel? _selectedNode;
     private bool _suppressSelectionReload;
 
-    // Имя открытого сейчас макроса в том виде, в каком оно есть в библиотеке. null = черновик,
-    // который ещё не сохраняли.
+    // Имя открытого сейчас макроса в том виде, в каком оно есть в библиотеке — то есть основа
+    // имени ЕГО ФАЙЛА. Файл заводится в момент создания макроса, поэтому у открытого макроса это
+    // поле не бывает пустым: состояния «черновик, которого ещё нет на диске» больше нет.
     private string? _loadedName;
 
     // Сериализованное состояние редактора на момент последней загрузки или сохранения — опора
@@ -386,6 +402,33 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     private bool _changedOnDisk;
     private string? _errorMessage;
     private string? _statusMessage;
+
+    // ---- автосохранение ---------------------------------------------------------------
+    //
+    // Содержимое бандла на ПРОШЛОМ тике часов; совпало — значит между тиками ничего не правили.
+    // Опора «по затиханию» строится именно на сравнении содержимого, а не на крючках в местах
+    // правки: мест этих десятки (строка ноды, ребро, триггер, имя, стартовая нода, перетаскивание
+    // коробки, правка функции), и забытое означало бы правку, которая не сохранится НИКОГДА.
+    private string? _seenJson;
+    private int _quietTicks;
+
+    // Идёт запись — не начинаем вторую. Несёт и время, пока открыт вопрос о занятом имени:
+    // модальный диалог крутит свой цикл диспетчера, то есть часы во время него тикают.
+    private bool _writeInFlight;
+
+    // Дирти-флаг, снятый последним тиком: подпись состояния читает его, чтобы не сериализовать
+    // бандл заново на каждое нажатие клавиши в поле имени.
+    private bool _dirtySeen;
+    private string? _saveStateText;
+
+    // Почему автосохранение стоит, если стоит. Поле, а не разовое присваивание подписи: тик
+    // пересчитывает подпись каждые полсекунды, и разовое сообщение мигало бы, сменяясь обратно на
+    // «правки ещё не записаны».
+    private string? _autoSaveBlocked;
+
+    // Имя, на которое уже ответили отказом. Нужно ровно затем, чтобы уход фокуса из поля имени
+    // не спрашивал про одно и то же занятое имя снова и снова.
+    private string? _renameRefused;
 
     private readonly MacroRunTracker _runs = new();
 
@@ -465,15 +508,26 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     public ObservableCollection<MacroListItemViewModel> Macros { get; } = [];
 
     /// <summary>
-    /// Выбранная запись библиотеки. Присвоение загружает этот граф в редактор; несохранённые
-    /// правки открытого до того графа отбрасываются (с сообщением — модального подтверждения в
-    /// этом заходе нет).
+    /// Выбранная запись библиотеки. Присвоение загружает этот граф в редактор, дописав перед этим
+    /// тот, с которого уходим: «переключился» не имеет права значить «потерял последние секунды
+    /// правки». Отброшены правки будут, только если дописать их было нельзя (недонабранные поля
+    /// либо расхождение с диском) — тогда об этом говорит красная строка.
     /// </summary>
     public MacroListItemViewModel? SelectedMacro
     {
         get => _selectedMacro;
         set
         {
+            if (!_suppressSelectionReload && value is not null
+                && !string.Equals(_selectedMacro?.Name, value.Name, StringComparison.Ordinal))
+            {
+                FlushAutoSave();
+                // Запись выше могла пересобрать библиотеку, а с ней и все строки; берём живую с
+                // тем же именем, иначе подсветка осталась бы на объекте, которого в дереве нет.
+                value = Macros.FirstOrDefault(item => string.Equals(item.Name, value.Name, StringComparison.Ordinal))
+                        ?? value;
+            }
+
             if (!SetField(ref _selectedMacro, value) || _suppressSelectionReload)
             {
                 return;
@@ -527,9 +581,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Канва свободна, и выбирать не из чего: «библиотека пуста, вот где взять примеры».
-    /// Именно ЭТИМ открывается свежая установка. Условие с <see cref="HasOpenMacro"/>
-    /// обязательно: черновик несохранённого макроса тоже живёт при пустой библиотеке, и
-    /// подсказка легла бы поверх его графа.
+    /// Именно ЭТИМ открывается свежая установка.
+    ///
+    /// Условие с <see cref="HasOpenMacro"/> с приходом автосохранения стало избыточным —
+    /// создание макроса заводит файл сразу, так что «открыт макрос при пустой библиотеке» больше
+    /// не бывает, — но оставлено: подсказка на весь экран поверх чьего-то графа стоит дороже
+    /// лишнего условия.
     /// </summary>
     public bool ShowEmptyLibraryHint => !HasOpenMacro && IsLibraryEmpty;
 
@@ -587,13 +644,42 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// Правимое имя открытого графа. Сохранение под другим именем переименовывает макрос: демон
     /// ключуется по основе имени файла, поэтому переименование — это «записать новый файл,
     /// удалить старый», чем эта VM и занимается, ведь операции переименования в протоколе нет.
+    ///
+    /// <b>Набранное здесь имя автосохранение НЕ подхватывает.</b> Оно пишет в
+    /// <c>_loadedName</c> — иначе каждое нажатие клавиши в этом поле заводило бы новый файл, а
+    /// «pw-l», «pw-lo», «pw-log» лежали бы в папке вместе с «pw-login». Переименование поэтому
+    /// осталось ручным жестом: Enter, уход фокуса или «Сохранить»
+    /// (<see cref="CommitRenameAsync"/>), а до тех пор о нём напоминает
+    /// <see cref="SaveStateText"/>.
     /// </summary>
     [AllowNull]
     public string MacroName
     {
         get => _macroName;
-        set => SetField(ref _macroName, value ?? string.Empty);
+        set
+        {
+            if (!SetField(ref _macroName, value ?? string.Empty))
+            {
+                return;
+            }
+
+            // Набрали другое — прежний отказ забыт, спросить можно снова.
+            _renameRefused = null;
+            OnPropertyChanged(nameof(IsRenamePending));
+            RefreshSaveState();
+        }
     }
+
+    /// <summary>
+    /// В поле имени набрано не то, как называется файл: переименование ждёт подтверждения.
+    /// Только для графа верхнего уровня — у функции правится <see cref="SubmacroName"/>, а он
+    /// именем файла не является.
+    /// </summary>
+    public bool IsRenamePending =>
+        HasOpenMacro
+        && _openSubmacroId is null
+        && _loadedName is { } loaded
+        && !string.Equals(_macroName.Trim(), loaded, StringComparison.Ordinal);
 
     /// <summary>
     /// Подпись открытого ПОД-макроса. Пусто, когда на канве родитель.
@@ -1350,11 +1436,21 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// Открытый граф изменили на диске, пока здесь были несохранённые правки. Редактор
     /// отказывается затирать любую из сторон и вместо этого показывает подсказку; чистый
     /// редактор просто молча перечитывает.
+    ///
+    /// <b>Пока флаг поднят, автосохранение стоит.</b> Иначе оно затёрло бы чужую правку через
+    /// несколько секунд, ничего не спросив, — то есть само стало бы той бедой, ради которой этот
+    /// флаг и заведён. Сторону выбирает человек: «Перечитать» или «Сохранить».
     /// </summary>
     public bool ChangedOnDisk
     {
         get => _changedOnDisk;
-        private set => SetField(ref _changedOnDisk, value);
+        private set
+        {
+            if (SetField(ref _changedOnDisk, value))
+            {
+                RefreshSaveState();
+            }
+        }
     }
 
     /// <summary>Блокирующая беда (провалившееся сохранение, плохое имя). Красным.</summary>
@@ -1369,6 +1465,25 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     {
         get => _statusMessage;
         set => SetField(ref _statusMessage, value);
+    }
+
+    /// <summary>
+    /// Постоянная подпись о состоянии записи: «сохранено», «правки ещё не записаны», «жду, пока
+    /// поправят поля», «Enter — переименовать».
+    ///
+    /// <b>Отдельно от <see cref="StatusMessage"/>, и это не украшение.</b> Индикатор
+    /// несохранённого при автосохранении почти всегда чист, и если бы каждая запись мигала
+    /// словом «Сохранено» в общей строке статуса, она затирала бы «Макрос удалён», «Импортировано»
+    /// и прочие однократные сообщения по нескольку раз в минуту. Здесь же СОСТОЯНИЕ: меняется
+    /// дважды за приступ правки, а не на каждое нажатие.
+    ///
+    /// <c>null</c> — когда сказать нечего: макрос не открыт либо про запись уже говорит жёлтая
+    /// строка <see cref="ChangedOnDisk"/>, и второй фразы рядом с ней не нужно.
+    /// </summary>
+    public string? SaveStateText
+    {
+        get => _saveStateText;
+        private set => SetField(ref _saveStateText, value);
     }
 
     // ---- команды библиотеки -----------------------------------------------------------
@@ -1416,34 +1531,57 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Открывает свежий черновик: одна нода Delay, чтобы граф сразу был валиден и сохраняем, а
-    /// не начинал жизнь с нарушения правила «стартовая нода должна существовать». До
-    /// <see cref="SaveAsync"/> на диск не пишется ничего.
+    /// Заводит новый макрос: одна нода Delay, чтобы граф сразу был валиден, — и <b>сразу файл в
+    /// папке</b>, под свободным именем.
+    ///
+    /// <b>Черновика больше нет, и это решение.</b> Прежде «+ Новый макрос» открывал граф, которого
+    /// на диске не существовало, и всё, что с ним делали до первого «Сохранить», жило только в
+    /// памяти панели. С автосохранением такое состояние стало бы единственным, которое оно не
+    /// покрывает, — то есть ровно тем местом, где работа и терялась бы. Файл заводится первым
+    /// действием, дальше правки дописываются сами.
+    ///
+    /// Имя берётся из <see cref="Strings.Editor_NewMacro_Name"/> и разводится
+    /// <see cref="MacroLibrary.FreeName"/> до свободного: «новый-макрос-2», «новый-макрос-3». Оно
+    /// же — имя файла, поэтому годится в имена NTFS по построению.
     /// </summary>
     public void NewMacro()
     {
-        // Подпись выдаётся здесь, а не через NodeRowViewModel.Create: черновик строится из
+        ErrorMessage = null;
+        // Уходя с открытого макроса, дописываем его: создание нового не повод потерять последние
+        // секунды правки прежнего.
+        FlushAutoSave();
+
+        // Подпись ноды выдаётся здесь, а не через NodeRowViewModel.Create: граф строится из
         // модели, а не из строк редактора, — зато выглядит она ровно так же, как у ноды,
         // добавленной кнопкой.
         var first = new DelayNode { Ms = 1000, DisplayName = "delay-1" };
-        LoadGraph(new MacroGraph
+        var name = _macros.FreeName(Strings.Editor_NewMacro_Name);
+        var graph = new MacroGraph
         {
-            Name = UniqueDraftName(),
+            Name = name,
             StartNodeId = first.Id,
             Nodes = [first],
-        });
+        };
 
-        // У черновика ещё нет файла: сбрасываем дисковую личность, чтобы горячая перезагрузка
-        // его не трогала, а «Сохранить» создавало, а не переименовывало.
-        _loadedName = null;
-        _diskJson = string.Empty;
-        // LoadGraph выше навёл браузер шаблонов на имя черновика; файла под ним нет, так что
-        // навести надо заново — уже на «ничего».
-        SyncTemplateUsage();
-        _suppressSelectionReload = true;
-        SelectedMacro = null;
-        _suppressSelectionReload = false;
-        StatusMessage = Strings.Editor_Status_Draft;
+        try
+        {
+            // Foreign, а не Own: имя свободно по построению, и если кто-то занял его между
+            // FreeName и записью, отказать правильнее, чем затереть чужой бандл.
+            _macros.Save(graph, [], renamedFrom: null, MacroSaveTarget.Foreign);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // Открывать нечего: граф из одной ноды не жалко, а редактор, показывающий макрос,
+            // которого нет в папке, врал бы про главное обещание этого экрана.
+            ErrorMessage = string.Format(CultureInfo.CurrentCulture, Strings.Editor_Status_CreateFailed, ex.Message);
+            Log.Warning(ex, "Не удалось создать макрос '{Macro}'", name);
+            return;
+        }
+
+        ApplyLibrary(_macros.Entries);
+        LoadGraph(TryGet(name)?.Graph ?? graph);
+        SelectByName(name);
+        StatusMessage = string.Format(CultureInfo.CurrentCulture, Strings.Editor_Status_Created, name);
     }
 
     /// <summary>
@@ -1498,51 +1636,65 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     public async Task<string?> ImportMacroAsync(string sourcePath)
     {
         ErrorMessage = null;
+        // Импорт открывает импортированное, то есть уводит с открытого макроса, — дописываем его
+        // до того, как вопрос о занятом имени встанет в диалог: пока диалог открыт,
+        // автосохранение стоит.
+        FlushAutoSave();
 
-        string? targetName = null;
-        var replace = false;
-        var stem = Path.GetFileNameWithoutExtension(sourcePath);
-        if (TryGet(stem) is { } occupant)
-        {
-            switch (await AskAboutTakenNameAsync(MacroNameConflictKind.Import, occupant).ConfigureAwait(true))
-            {
-                case MacroNameConflictChoice.Replace:
-                    replace = true;
-                    break;
-
-                case MacroNameConflictChoice.FreeName:
-                    targetName = _macros.FreeName(stem);
-                    break;
-
-                default:
-                    StatusMessage = string.Format(CultureInfo.CurrentCulture,
-                        Strings.Editor_Status_ImportCancelled, stem);
-                    return null;
-            }
-        }
-
-        string name;
+        // Затвор держится ВКЛЮЧАЯ время, пока открыт вопрос о занятом имени: модальный диалог
+        // крутит свой цикл диспетчера, то есть часы автосохранения во время него тикают.
+        _writeInFlight = true;
         try
         {
-            name = _macros.Import(sourcePath, targetName, replace);
-        }
-        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
-        {
-            ErrorMessage = string.Format(CultureInfo.CurrentCulture,
-                Strings.Editor_Status_ImportFailed, ex.Message);
-            Log.Warning(ex, "Импорт макроса из {Path} не выполнен", sourcePath);
-            return null;
-        }
+            string? targetName = null;
+            var replace = false;
+            var stem = Path.GetFileNameWithoutExtension(sourcePath);
+            if (TryGet(stem) is { } occupant)
+            {
+                switch (await AskAboutTakenNameAsync(MacroNameConflictKind.Import, occupant).ConfigureAwait(true))
+                {
+                    case MacroNameConflictChoice.Replace:
+                        replace = true;
+                        break;
 
-        ApplyLibrary(_macros.Entries);
-        if (TryGet(name) is { Graph: { } graph } entry)
-        {
-            LoadGraph(graph, entry.Submacros);
-            SelectByName(name);
-        }
+                    case MacroNameConflictChoice.FreeName:
+                        targetName = _macros.FreeName(stem);
+                        break;
 
-        StatusMessage = string.Format(CultureInfo.CurrentCulture, Strings.Editor_Status_Imported, name);
-        return name;
+                    default:
+                        StatusMessage = string.Format(CultureInfo.CurrentCulture,
+                            Strings.Editor_Status_ImportCancelled, stem);
+                        return null;
+                }
+            }
+
+            string name;
+            try
+            {
+                name = _macros.Import(sourcePath, targetName, replace);
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+            {
+                ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                    Strings.Editor_Status_ImportFailed, ex.Message);
+                Log.Warning(ex, "Импорт макроса из {Path} не выполнен", sourcePath);
+                return null;
+            }
+
+            ApplyLibrary(_macros.Entries);
+            if (TryGet(name) is { Graph: { } graph } entry)
+            {
+                LoadGraph(graph, entry.Submacros);
+                SelectByName(name);
+            }
+
+            StatusMessage = string.Format(CultureInfo.CurrentCulture, Strings.Editor_Status_Imported, name);
+            return name;
+        }
+        finally
+        {
+            _writeInFlight = false;
+        }
     }
 
     /// <summary>
@@ -2015,23 +2167,294 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary><c>true</c>, когда состояние редактора отличается от последнего загруженного или сохранённого.</summary>
+    /// <summary>
+    /// <c>true</c>, когда состояние редактора отличается от последнего загруженного или
+    /// сохранённого. Незавершённое переименование сюда НЕ входит — оно не про содержимое, и
+    /// держит его <see cref="IsRenamePending"/>; довод — у <see cref="SerializeForAutoSave"/>.
+    /// </summary>
     public bool IsDirty() =>
-        HasOpenMacro && !string.Equals(_loadedJson, SerializeCurrent(), StringComparison.Ordinal);
+        HasOpenMacro && !string.Equals(_loadedJson, SerializeForAutoSave(), StringComparison.Ordinal);
+
+    // ---- автосохранение ------------------------------------------------------------------
 
     /// <summary>
-    /// Проверяет открытый граф и записывает его в <c>macros/{имя}.hsm</c>.
+    /// Период часов автосохранения. Сами часы — <c>DispatcherTimer</c> в виде (тип Avalonia, а
+    /// эта VM гоняется headless); отсюда вид берёт и период, чтобы «через сколько» было записано
+    /// в одном месте, а не по половине на файл.
+    /// </summary>
+    public static readonly TimeSpan AutoSaveTick = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// Сколько тиков подряд содержимое бандла должно не меняться, чтобы запись состоялась:
+    /// <b>6 × 500 мс = 3 секунды затишья</b>. Правка происходит между тиками, поэтому тот тик, на
+    /// котором её замечают, в отсчёт не входит, и от последнего нажатия клавиши до файла проходит
+    /// от 3 до 3,5 секунд.
     ///
-    /// <b>Пишет ПАНЕЛЬ, и с волны F3 это единственный автор.</b> Отсюда три заслона, все местные:
-    /// сперва должны разобраться собственные поля каждой строки (недонабранного числа не видит
-    /// никакой валидатор, только получившийся из него граф), затем имя должно годиться в имя
-    /// файла, затем общий <see cref="MacroGraphValidator"/> не должен найти ОШИБОК. Предупреждения
-    /// записи не мешают и показываются рядом с «Сохранено».
+    /// <b>Почему по затиханию и почему именно три секунды.</b> Каждая запись будит демона: он
+    /// перечитывает папку, ПЕРЕРЕГИСТРИРУЕТ ВСЕ ХОТКЕИ и целиком сбрасывает кэш шаблонов, — и
+    /// делает это, возможно, посреди прогона по живым клиентам. По таймеру («каждые N секунд»)
+    /// это были бы десятки пробуждений за сеанс правки; по затиханию приступ правки любой длины
+    /// стоит РОВНО ОДНОГО.
     ///
-    /// Тот же валидатор с той же описью шаблонов прогонит демон, когда прочитает этот файл;
-    /// разойтись им негде — код один и живёт в <c>Shared</c>. Ошибка, всё же попавшая в папку
-    /// (правкой руками, чужой сборкой), стоит макросу вооружённых триггеров, о чём строка
-    /// библиотеки и говорит.
+    /// Три секунды выбраны с трёх сторон сразу: это на порядок больше 300 мс гашения дребезга у
+    /// наблюдателя демона (значит две записи подряд — это два события, а не смазанный поток);
+    /// это заведомо больше паузы внутри набираемого слова, так что имя или тег, набранные с
+    /// обычной скоростью, дают одну запись, а не по одной на слог; и это больше двухсекундного
+    /// окна, в котором обработчик <c>RunMacro</c> у демона считает бандл «только что записанным» и
+    /// перечитывает папку, — то есть ▸ через паузу после правки не платит ничего лишнего, а ▸
+    /// сразу после записи платит ровно там, где демон и правда отстал.
+    ///
+    /// Цена названа: при сбое панели теряется работа последних трёх секунд. Прежде терялось всё
+    /// с момента последнего «Сохранить».
+    /// </summary>
+    public const int AutoSaveQuietTicks = 6;
+
+    /// <summary>
+    /// Тик часов автосохранения. Вызывается видом; ничего Avalonia-образного здесь нет
+    /// намеренно — тест дёргает этот метод напрямую и не ждёт ни одной настоящей задержки.
+    ///
+    /// <b>Затишье определяется сравнением СОДЕРЖИМОГО, а не крючками в местах правки.</b> Мест
+    /// этих десятки — строка ноды, ребро, триггер, имя, стартовая нода, перетаскивание коробки,
+    /// правка функции, — и забытое означало бы правку, которая не сохранится никогда. Сравнение
+    /// же смотрит ровно на то, на что смотрит признак «есть несохранённое», так что пропустить
+    /// изменение оно не может по построению. Стоит это одной сериализации бандла на тик
+    /// (десятки микросекунд) и только пока открыт макрос.
+    /// </summary>
+    public void TickAutoSave()
+    {
+        if (!HasOpenMacro || _writeInFlight)
+        {
+            return;
+        }
+
+        var current = SerializeForAutoSave();
+        if (!string.Equals(current, _seenJson, StringComparison.Ordinal))
+        {
+            // Между тиками правили — часы затишья начинаются заново.
+            _seenJson = current;
+            _quietTicks = 0;
+            SetDirtySeen(!string.Equals(current, _loadedJson, StringComparison.Ordinal));
+            return;
+        }
+
+        if (string.Equals(current, _loadedJson, StringComparison.Ordinal))
+        {
+            _quietTicks = 0;
+            SetDirtySeen(false);
+            return;
+        }
+
+        SetDirtySeen(true);
+        if (++_quietTicks < AutoSaveQuietTicks)
+        {
+            return;
+        }
+
+        _quietTicks = 0;
+        AutoSave();
+    }
+
+    /// <summary>
+    /// Записывает прямо сейчас, не дожидаясь затишья, — но по тем же правилам, что и оно (в своё
+    /// имя, без вопросов, молча).
+    ///
+    /// Зовётся там, где открытый макрос вот-вот перестанет быть открытым: переключение на другой
+    /// макрос, создание, импорт и закрытие окна панели. Без этого «переключился через секунду
+    /// после правки» стоило бы правки, а именно от этого автосохранение и заводилось.
+    /// </summary>
+    public void FlushAutoSave()
+    {
+        if (!HasOpenMacro || _writeInFlight || !IsDirty())
+        {
+            return;
+        }
+
+        _quietTicks = 0;
+        AutoSave();
+    }
+
+    /// <summary>
+    /// Запись без единого вопроса: в загруженное имя, поверх своего же файла.
+    ///
+    /// Три вещи, которых здесь НЕТ и которым здесь не место:
+    /// <list type="bullet">
+    ///   <item><b>Переименования.</b> Пишем в <c>_loadedName</c>, даже если в поле имени набрано
+    ///     другое; имя внутри графа подменяется тем же, чтобы читатель не встречал расхождение
+    ///     «стем файла против поля Name» и не писал об этом в журнал на каждой загрузке.</item>
+    ///   <item><b>Вопросов.</b> <see cref="IMacroNameConflictPrompt"/> отсюда недостижим по
+    ///     построению: своё имя занять нельзя. Модальное окно раз в несколько секунд было бы
+    ///     издевательством.</item>
+    ///   <item><b>Отказа по ошибкам валидации.</b> Граф невалиден ровно тогда, когда над ним
+    ///     работают. Замечания при этом обновляются — панель проблем становится живым
+    ///     подсказчиком, — а не вооружает такой макрос демон.</item>
+    /// </list>
+    ///
+    /// Стоит же автосохранение в двух случаях, и оба видны на экране: недонабранное поле (иначе в
+    /// файл уехало бы не то, что на экране) и расхождение с диском (иначе чужая правка была бы
+    /// затёрта молча).
+    /// </summary>
+    private void AutoSave()
+    {
+        if (_loadedName is not { } name)
+        {
+            return;
+        }
+
+        if (ChangedOnDisk)
+        {
+            // Про это уже говорит жёлтая строка панели инструментов, и выбор стороны — за
+            // человеком: «Перечитать» либо «Сохранить».
+            return;
+        }
+
+        CommitCanvasGraph();
+        var submacros = BuildSubmacros();
+        var graph = BuildParentGraph();
+        var inputErrors = InputErrors();
+        if (inputErrors.Count > 0)
+        {
+            // ⚠️ ЕДИНСТВЕННОЕ, ЧТО МЫ ВСЁ ЖЕ НЕ ПИШЕМ, и это не непоследовательность рядом с
+            // «пишем даже с ошибками валидации». Ошибка валидации — про граф, КОТОРЫЙ ПОЛУЧИЛСЯ;
+            // ошибка ввода — про граф, которого не получилось:
+            //   * «две секунды» в поле задержки BuildGraph превращает в Ms = 0. Файл разошёлся бы
+            //     с экраном МОЛЧА — без единого замечания, потому что получившийся граф
+            //     безупречен;
+            //   * незаполненное поле (шаблон, тег, клавиша) валидатор НЕ ловит вовсе, значит
+            //     демон такой макрос вооружит и по клавише запустит недоделанную ноду.
+            // Цена названа: пока поле не поправят, не записывается ВЕСЬ бандл. Поэтому причина и
+            // едет сразу в два места — в подпись состояния и в панель замечаний.
+            ShowIssues(
+                inputErrors,
+                MacroGraphValidator.ValidateBundle(graph, submacros, Templates.Inventory),
+                submacros);
+            _autoSaveBlocked = Strings.Editor_Toolbar_SaveStateInputErrors;
+            RefreshSaveState();
+            return;
+        }
+
+        _autoSaveBlocked = null;
+        if (!string.Equals(graph.Name, name, StringComparison.Ordinal))
+        {
+            graph = WithName(graph, name);
+        }
+
+        ShowIssues([], MacroGraphValidator.ValidateBundle(graph, submacros, Templates.Inventory), submacros);
+        Write(graph, submacros, renamedFrom: null, MacroSaveTarget.Own, name);
+    }
+
+    /// <summary>Собственные ошибки ввода строк — то, чего не видит никакой валидатор графа.</summary>
+    private List<string> InputErrors() =>
+    [
+        .. Triggers.SelectMany(row => row.GetInputErrors())
+            .Concat(Nodes.SelectMany(row => row.GetInputErrors())),
+    ];
+
+    /// <summary>Тот же граф под другим именем. <c>MacroGraph</c> — не record, <c>with</c> тут нет.</summary>
+    private static MacroGraph WithName(MacroGraph graph, string name) => new()
+    {
+        Name = name,
+        Triggers = graph.Triggers,
+        StartNodeId = graph.StartNodeId,
+        Nodes = graph.Nodes,
+    };
+
+    /// <summary>
+    /// Общая для ручной и автоматической записи часть: сдвинуть опоры, записать, перечитать папку.
+    /// </summary>
+    /// <returns><c>false</c> — файловая система отказала; опоры возвращены, причина в <see cref="ErrorMessage"/>.</returns>
+    private bool Write(
+        MacroGraph graph,
+        IReadOnlyList<MacroSubmacro> submacros,
+        string? renamedFrom,
+        MacroSaveTarget target,
+        string name)
+    {
+        // Опорные значения сдвигаются ДО записи, и это не педантизм: библиотека поднимает своё
+        // Changed изнутри Save, то есть ApplyLibrary отработает раньше, чем сюда вернётся
+        // управление. Со старыми опорами он опознал бы наш собственный файл как чужую правку и
+        // на мгновение зажёг «изменён на диске».
+        var previousName = _loadedName;
+        var previousLoadedJson = _loadedJson;
+        var previousDiskJson = _diskJson;
+        _loadedName = name;
+        _loadedJson = SerializeForAutoSave();
+        _diskJson = MacroGraphJson.Serialize(graph);
+        _seenJson = _loadedJson;
+
+        try
+        {
+            // renamedFrom едет вместе с графом: под НОВЫМ именем бандла ещё нет, и без подсказки
+            // не от чего унаследовать шаблоны, под-макросы и паспорт переименованного макроса.
+            // Под-макросы передаются СПИСКОМ, а не наследуются: редактор держит их все, и только
+            // он знает, что среди них удалили.
+            _macros.Save(graph, submacros, renamedFrom, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // Сюда же приходят оба отказа записи, заведённые ради сохранности вложений:
+            // «имя занято» (кто-то занял его между вопросом и записью) и «свой бандл не
+            // читается». Оба — IOException с готовым объяснением, и пересказывать их своими
+            // словами незачем: вердикт читателя точнее любого пересказа.
+            _loadedName = previousName;
+            _loadedJson = previousLoadedJson;
+            _diskJson = previousDiskJson;
+            ErrorMessage = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Status_SaveFailed, ex.Message);
+            Log.Warning(ex, "Запись макроса '{Macro}' не выполнена", name);
+            return false;
+        }
+
+        if (renamedFrom is not null)
+        {
+            // Переименование: имя И ЕСТЬ основа имени файла, поэтому старый файл должен уйти.
+            // Порядок важен — сперва записать, потом удалить, чтобы сбой между этими шагами
+            // оставил две копии, а не ноль.
+            try
+            {
+                _macros.Delete(renamedFrom);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warning(ex, "Переименование: старый файл '{Macro}' не удалён", renamedFrom);
+            }
+        }
+
+        ApplyLibrary(_macros.Entries);
+        // Бандл теперь есть (а при переименовании — под новым именем): браузер шаблонов обязан
+        // перенацелиться, иначе кнопка «+ файл…» продолжит говорить «сохраните макрос».
+        SyncTemplateUsage();
+        ChangedOnDisk = false;
+        _autoSaveBlocked = null;
+        // Имя файла могло стать другим (переименование) — значит, «переименование ждёт» могло
+        // погаснуть, а вычисляется оно из _loadedName, о котором привязке никто не сообщал.
+        OnPropertyChanged(nameof(IsRenamePending));
+        SetDirtySeen(false);
+        return true;
+    }
+
+    // ---- ручное сохранение ---------------------------------------------------------------
+
+    /// <summary>
+    /// Проверяет открытый граф и записывает его в <c>macros/{имя}.hsm</c> — <b>под тем именем,
+    /// которое набрано в поле</b>, то есть с переименованием, если оно там другое.
+    ///
+    /// <b>Зачем кнопка осталась, когда пишет автосохранение.</b> Ровно за тем, чего оно не делает
+    /// и делать не должно: переименовать файл, выбрать свою сторону при расхождении с диском и
+    /// записать НЕМЕДЛЕННО, не досиживая затишья.
+    ///
+    /// <b>Ошибка валидации записи больше НЕ мешает, и это разворот прежнего поведения.</b>
+    /// «Сохранение отменено: исправьте ошибки» появилось, когда сохранение было ручным и редким;
+    /// с автосохранением две кнопки вели бы себя по-разному, а граф невалиден ровно тогда, когда
+    /// над ним работают. Предохранитель стоит на стороне исполнителя и стоял там до этой правки:
+    /// демон валидирует бандл при загрузке и НЕ ВООРУЖАЕТ триггеры макроса с ошибкой
+    /// (<c>MacroGraphStore.Armed</c>), а строка библиотеки несёт красный «!» и объясняет молчащую
+    /// клавишу. Тот же валидатор с той же описью шаблонов гоняет панель — разойтись им негде,
+    /// код один и живёт в <c>Shared</c>.
+    ///
+    /// Два заслона всё же остались, и оба про то, что записать НЕЧЕГО, а не про то, что записанное
+    /// нехорошо: недонабранные поля строк (иначе в файл уехало бы не то, что на экране) и имя, не
+    /// годящееся в имя файла (иначе «имя содержит /» дошло бы до пользователя невнятно упавшим
+    /// вводом-выводом).
     ///
     /// Запись АТОМАРНА: целиком во временный файл рядом, затем <c>ReplaceFile</c>, — так что
     /// наблюдатель демона не поймает половину, а читающий прямо сейчас демон не порвётся. Механизм
@@ -2050,9 +2473,22 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        var inputErrors = Triggers.SelectMany(row => row.GetInputErrors())
-            .Concat(Nodes.SelectMany(row => row.GetInputErrors()))
-            .ToList();
+        // Затвор держится на всё время метода, включая ожидание ответа о занятом имени: модальный
+        // диалог крутит свой цикл диспетчера, и часы автосохранения во время него тикают.
+        _writeInFlight = true;
+        try
+        {
+            return await SaveCoreAsync(cancellationToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            _writeInFlight = false;
+        }
+    }
+
+    private async Task<bool> SaveCoreAsync(CancellationToken cancellationToken)
+    {
+        var inputErrors = InputErrors();
         foreach (var error in inputErrors)
         {
             AddIssue(new ValidationIssueViewModel(error, isError: true));
@@ -2085,19 +2521,12 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         // Опись шаблонов подаётся ТА ЖЕ, что увидит он: перечень бандла у панели уже есть, его
         // держит браузер шаблонов. Расхождение двух прогонов одного валидатора — ровно та ложь,
         // которой этот проект избегает у бейджа целей.
+        //
+        // ⚠️ Вердикт СМОТРЯТ, а не подчиняются ему: ошибка записи не мешает (см. примечание к
+        // методу). Стоит она макросу вооружённых триггеров, о чём говорят и статус ниже, и
+        // красный «!» на строке библиотеки.
         var issues = MacroGraphValidator.ValidateBundle(graph, submacros, Templates.Inventory).ToList();
-        if (issues.Any(issue => issue.Severity == ValidationSeverity.Error))
-        {
-            // Предупреждения едут вместе с ошибками — пусть пользователь сразу увидит всё, что
-            // всё равно попросят исправить.
-            foreach (var issue in issues)
-            {
-                AddIssue(IssueRow(issue, submacros));
-            }
-
-            ErrorMessage = Strings.Editor_Status_SaveBlocked;
-            return false;
-        }
+        var errors = issues.Count(issue => issue.Severity == ValidationSeverity.Error);
 
         var previousName = _loadedName;
 
@@ -2150,52 +2579,9 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             ? null
             : previousName;
 
-        // Опорные значения сдвигаются ДО записи, и это не педантизм: библиотека поднимает своё
-        // Changed изнутри Save, то есть ApplyLibrary отработает раньше, чем сюда вернётся
-        // управление. Со старыми опорами он опознал бы наш собственный файл как чужую правку и
-        // на мгновение зажёг «изменён на диске».
-        var previousLoadedJson = _loadedJson;
-        var previousDiskJson = _diskJson;
-        _loadedName = name;
-        _loadedJson = SerializeCurrent();
-        _diskJson = MacroGraphJson.Serialize(graph);
-
-        try
+        if (!Write(graph, submacros, renamedFrom, target, name))
         {
-            // renamedFrom едет вместе с графом: под НОВЫМ именем бандла ещё нет, и без подсказки
-            // не от чего унаследовать шаблоны, под-макросы и паспорт переименованного макроса.
-            // Под-макросы передаются СПИСКОМ, а не наследуются: редактор держит их все, и только
-            // он знает, что среди них удалили.
-            _macros.Save(graph, submacros, renamedFrom, target);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            // Сюда же приходят оба отказа записи, заведённые ради сохранности вложений:
-            // «имя занято» (кто-то занял его между вопросом и записью) и «свой бандл не
-            // читается». Оба — IOException с готовым объяснением, и пересказывать их своими
-            // словами незачем: вердикт читателя точнее любого пересказа.
-            _loadedName = previousName;
-            _loadedJson = previousLoadedJson;
-            _diskJson = previousDiskJson;
-            ErrorMessage = string.Format(CultureInfo.CurrentCulture,
-                Strings.Editor_Status_SaveFailed, ex.Message);
-            Log.Warning(ex, "Запись макроса '{Macro}' не выполнена", name);
             return false;
-        }
-
-        if (renamedFrom is not null)
-        {
-            // Переименование: имя И ЕСТЬ основа имени файла, поэтому старый файл должен уйти.
-            // Порядок важен — сперва записать, потом удалить, чтобы сбой между этими шагами
-            // оставил две копии, а не ноль.
-            try
-            {
-                _macros.Delete(renamedFrom);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                Log.Warning(ex, "Переименование: старый файл '{Macro}' не удалён", renamedFrom);
-            }
         }
 
         foreach (var issue in issues)
@@ -2203,17 +2589,59 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             AddIssue(IssueRow(issue, submacros));
         }
 
-        ApplyLibrary(_macros.Entries);
-        // Бандл теперь есть (а при переименовании — под новым именем): браузер шаблонов обязан
-        // перенацелиться, иначе кнопка «+ файл…» продолжит говорить «сохраните макрос».
-        SyncTemplateUsage();
-        ChangedOnDisk = false;
         SelectByName(name);
-        StatusMessage = Issues.Count > 0
-            ? string.Format(CultureInfo.CurrentCulture,
-                Strings.Editor_Status_SavedWithWarnings, Issues.Count)
-            : Strings.Editor_Status_Saved;
+        RefreshSaveState();
+        StatusMessage = (errors, Issues.Count) switch
+        {
+            ( > 0, _) => string.Format(CultureInfo.CurrentCulture, Strings.Editor_Status_SavedWithErrors, errors),
+            (0, > 0) => string.Format(CultureInfo.CurrentCulture, Strings.Editor_Status_SavedWithWarnings, Issues.Count),
+            _ => Strings.Editor_Status_Saved,
+        };
         return true;
+    }
+
+    /// <summary>
+    /// Переименовывает файл открытого макроса в то, что набрано в поле имени.
+    ///
+    /// <b>Переименование осталось РУЧНЫМ жестом, и это следствие того, куда пишет
+    /// автосохранение.</b> Оно пишет в загруженное имя; подхватывай оно набираемое, «pw-l»,
+    /// «pw-lo» и «pw-log» легли бы в папку вместе с «pw-login». Значит, момент «имя набрано
+    /// целиком» обязан назвать человек, и называет он его тремя равнозначными способами: Enter в
+    /// поле, уход фокуса из него и кнопка «Сохранить». До тех пор о незавершённом переименовании
+    /// говорит <see cref="SaveStateText"/> — молча теряться ему не с чего.
+    /// </summary>
+    /// <param name="force">
+    /// <c>true</c> — Enter: пробуем даже то имя, на котором только что отказали. Уход фокуса
+    /// (<c>false</c>) отказанное имя пропускает, иначе один и тот же вопрос о занятом имени
+    /// вставал бы модальным окном на каждый щелчок мимо поля.
+    /// </param>
+    public async Task<bool> CommitRenameAsync(bool force = false)
+    {
+        if (!IsRenamePending)
+        {
+            return false;
+        }
+
+        var wanted = _macroName.Trim();
+        if (!force && string.Equals(wanted, _renameRefused, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var saved = await SaveAsync().ConfigureAwait(true);
+        _renameRefused = saved ? null : wanted;
+        OnPropertyChanged(nameof(IsRenamePending));
+        RefreshSaveState();
+        return saved;
+    }
+
+    /// <summary>Esc в поле имени: вернуть то, как файл называется на самом деле.</summary>
+    public void CancelRename()
+    {
+        if (_loadedName is { } name)
+        {
+            MacroName = name;
+        }
     }
 
     /// <summary>
@@ -2265,7 +2693,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// модель. Точка входа для всего, что открывает макрос.
     /// </summary>
     /// <param name="graph">Граф верхнего уровня; его имя становится именем открытого макроса.</param>
-    /// <param name="submacros">Под-макросы бандла; <c>null</c> — их нет (черновик).</param>
+    /// <param name="submacros">Под-макросы бандла; <c>null</c> — функций у него нет.</param>
     public void LoadGraph(MacroGraph graph, IReadOnlyList<MacroSubmacro>? submacros = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
@@ -2276,14 +2704,31 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         _parkedParent = null;
         _loadedName = graph.Name;
         MacroName = graph.Name;
-        LoadCanvasGraph(graph);
+        // Единственное место, откуда опоры «есть несохранённые правки» и «изменили снаружи»
+        // берутся заново: они про БАНДЛ, а переключение канвы бандла не меняет.
+        LoadCanvasGraph(graph, freshBundle: true);
     }
 
     /// <summary>
     /// Кладёт ОДИН граф бандла на канву. Не трогает ни <c>_loadedName</c>, ни модель бандла: этим
     /// же путём ходит переключение между макросом и его функциями.
     /// </summary>
-    private void LoadCanvasGraph(MacroGraph graph)
+    /// <param name="graph">Граф, который станет содержимым канвы.</param>
+    /// <param name="freshBundle">
+    /// <c>true</c> — это загрузка ДРУГОГО БАНДЛА, и опоры «есть несохранённые правки» и
+    /// «изменили снаружи» надо взять заново. <c>false</c> — просто переключили канву внутри того
+    /// же бандла (вошли в функцию, вернулись к родителю, завели функцию).
+    ///
+    /// ⚠️ <b>Разделение появилось не для красоты.</b> Опоры сдвигались ЗДЕСЬ и безусловно, то
+    /// есть на каждом переключении графа. Из этого следовали две беды, обе тихие: правка
+    /// родителя, после которой вошли в функцию, объявлялась сохранённой (<c>IsDirty</c>
+    /// отвечал «нет», и закрытие редактора её теряло), а <c>_diskJson</c> начинал держать граф
+    /// ФУНКЦИИ — тогда как <see cref="ApplyLibrary"/> сравнивает с ним граф ВЕРХНЕГО УРОВНЯ с
+    /// диска. Любое событие наблюдателя при открытой функции читалось поэтому как чужая правка и
+    /// на чистом редакторе перезагружало бандл целиком, выбрасывая функцию, которую в этот момент
+    /// правили. С автосохранением, где записи часты, второе стреляло бы регулярно.
+    /// </param>
+    private void LoadCanvasGraph(MacroGraph graph, bool freshBundle = false)
     {
         foreach (var row in Nodes)
         {
@@ -2351,15 +2796,24 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(StartNode));
         ResetView();
 
-        // Опора для «есть несохранённые правки» — собственный round trip редактора, а не файл:
-        // загрузка нормализует пару-тройку форм, и эта нормализация правкой пользователя не
-        // является.
-        _loadedJson = SerializeCurrent();
-        _diskJson = MacroGraphJson.Serialize(graph);
-        ChangedOnDisk = false;
+        if (freshBundle)
+        {
+            // Опора для «есть несохранённые правки» — собственный round trip редактора, а не
+            // файл: загрузка нормализует пару-тройку форм, и эта нормализация правкой
+            // пользователя не является.
+            _loadedJson = SerializeForAutoSave();
+            _diskJson = MacroGraphJson.Serialize(graph);
+            ChangedOnDisk = false;
+            ErrorMessage = null;
+            StatusMessage = null;
+            ResetAutoSaveClock();
+        }
+        else
+        {
+            RefreshSaveState();
+        }
+
         SelectedNode = null;
-        ErrorMessage = null;
-        StatusMessage = null;
         SyncCurrentFlags();
 
         // Сперва точки — чтобы к моменту, когда переключатель ниже зажжёт коробку, она уже была
@@ -3286,6 +3740,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         HasOpenMacro = false;
         ChangedOnDisk = false;
         SelectedNode = null;
+        ResetAutoSaveClock();
         RebuildChoices();
         RebuildSubmacroChoices();
         SyncCurrentFlags();
@@ -3580,24 +4035,6 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         }
     }
 
-    private string UniqueDraftName()
-    {
-        var used = Macros.Select(item => item.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (!used.Contains(DraftName))
-        {
-            return DraftName;
-        }
-
-        for (var i = 2;; i++)
-        {
-            var candidate = string.Create(CultureInfo.InvariantCulture, $"{DraftName}-{i}");
-            if (!used.Contains(candidate))
-            {
-                return candidate;
-            }
-        }
-    }
-
     /// <summary>
     /// Слепок ВСЕГО БАНДЛА одной строкой — опора для «есть ли несохранённые правки».
     ///
@@ -3605,11 +4042,21 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// сравнение по одному графу считало бы её отсутствующей ровно до тех пор, пока пользователь
     /// не вернётся на родителя. Порядок под-макросов берётся из модели и потому устойчив.
     /// </summary>
-    private string SerializeCurrent()
+    /// <param name="nameOverride">
+    /// Чем подменить имя графа верхнего уровня, либо <c>null</c> — брать как есть. См.
+    /// <see cref="SerializeForAutoSave"/>.
+    /// </param>
+    private string SerializeCurrent(string? nameOverride = null)
     {
         try
         {
-            var parts = new List<string> { MacroGraphJson.Serialize(BuildParentGraph()) };
+            var parent = BuildParentGraph();
+            if (nameOverride is { } name && !string.Equals(parent.Name, name, StringComparison.Ordinal))
+            {
+                parent = WithName(parent, name);
+            }
+
+            var parts = new List<string> { MacroGraphJson.Serialize(parent) };
             parts.AddRange(BuildSubmacros().Select(submacro =>
                 submacro.Id.ToString("D") + MacroGraphJson.Serialize(submacro.Graph)));
             return string.Join("\0", parts);
@@ -3622,6 +4069,20 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             return Guid.NewGuid().ToString();
         }
     }
+
+    /// <summary>
+    /// Слепок бандла в том виде, в каком его ЗАПИШЕТ автосохранение: имя графа — ЗАГРУЖЕННОЕ, а
+    /// не набранное в поле.
+    ///
+    /// ⚠️ Найдено на живой панели, ни сборка, ни тесты этого не видят. Набор нового имени
+    /// попадает в обычный слепок, значит читается как правка, — и приступ переименования стоил
+    /// лишней записи файла с полностью совпадающим содержимым, то есть лишнего пробуждения
+    /// демона (перечитать папку, перерегистрировать все хоткеи, сбросить кэш шаблонов). Сравнивать
+    /// надо ровно то, что уедет на диск: раз имя автосохранение не меняет, то и правкой оно для
+    /// него не является. Переименование при этом не теряется — его держит
+    /// <see cref="IsRenamePending"/> и подпись состояния.
+    /// </summary>
+    private string SerializeForAutoSave() => SerializeCurrent(_loadedName);
 
     // Замечание валидатора в строку панели — вместе с ПОДПИСЬЮ под-макроса, если оно про его
     // ноду. Валидатор носит только id (имена он не резолвит принципиально), а печатать guid
@@ -3641,6 +4102,83 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     {
         Issues.Clear();
         OnPropertyChanged(nameof(HasIssues));
+    }
+
+    /// <summary>
+    /// Заново наполняет панель замечаний — тем же составом, каким её наполняет ручное сохранение.
+    ///
+    /// <b>Автосохранение обязано это делать, иначе оно стало бы тихим.</b> Пока запись отказывала
+    /// на ошибке, список замечаний открывался нажатием «Сохранить», и нажатие было моментом, когда
+    /// пользователь про ошибку узнавал. Теперь ошибка записи не мешает, так что единственное, что
+    /// её показывает, — эта панель (плюс красный «!» на строке библиотеки). Пересборка происходит
+    /// в затишье, то есть заведомо не под рукой у щёлкающего по замечаниям.
+    /// </summary>
+    private void ShowIssues(
+        IReadOnlyList<string> inputErrors,
+        IEnumerable<ValidationIssue> issues,
+        IReadOnlyList<MacroSubmacro> submacros)
+    {
+        ClearIssues();
+        foreach (var error in inputErrors)
+        {
+            AddIssue(new ValidationIssueViewModel(error, isError: true));
+        }
+
+        foreach (var issue in issues)
+        {
+            AddIssue(IssueRow(issue, submacros));
+        }
+    }
+
+    // ---- подпись состояния записи ----------------------------------------------------------
+
+    /// <summary>
+    /// Забывает всё, что часы автосохранения успели насчитать: открыт другой граф, и затишье над
+    /// прежним значения не имеет.
+    /// </summary>
+    private void ResetAutoSaveClock()
+    {
+        _seenJson = _loadedJson;
+        _quietTicks = 0;
+        _autoSaveBlocked = null;
+        _renameRefused = null;
+        OnPropertyChanged(nameof(IsRenamePending));
+        SetDirtySeen(false);
+    }
+
+    private void SetDirtySeen(bool dirty)
+    {
+        _dirtySeen = dirty;
+        RefreshSaveState();
+    }
+
+    /// <summary>
+    /// Пересчитывает <see cref="SaveStateText"/> — состояние, а не событие.
+    ///
+    /// Порядок важен: незавершённое переименование важнее всего остального (это единственное, что
+    /// сохранится ТОЛЬКО по прямому действию), «изменён на диске» уже сказано жёлтой строкой
+    /// рядом, дальше — причина, по которой автосохранение стоит, и лишь потом обычная пара
+    /// «не записано / записано».
+    /// </summary>
+    private void RefreshSaveState()
+    {
+        if (!HasOpenMacro)
+        {
+            SaveStateText = null;
+            return;
+        }
+
+        if (IsRenamePending)
+        {
+            SaveStateText = string.Format(CultureInfo.CurrentCulture,
+                Strings.Editor_Toolbar_RenamePending, _macroName.Trim());
+            return;
+        }
+
+        SaveStateText = ChangedOnDisk
+            ? null
+            : _autoSaveBlocked
+              ?? (_dirtySeen ? Strings.Editor_Toolbar_SaveStatePending : Strings.Editor_Toolbar_SaveStateSaved);
     }
 
     /// <summary>
