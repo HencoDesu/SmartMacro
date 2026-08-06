@@ -30,7 +30,7 @@ public class MacroTemplateAnalysisTests
             "pw-boot",
             new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "ServerSelectButton" },
             new WaitForElementNode { Id = Ids.Of("wait"), DisplayName = "wait", Template = "CharacterSelectButton", TimeoutMs = 1000 },
-            new RecognizeTagNode { Id = Ids.Of("recognize"), DisplayName = "recognize", TemplateSet = "classes", Region = Region }));
+            new MatchTemplateSetNode { Id = Ids.Of("recognize"), DisplayName = "recognize", TemplateSet = "classes", Region = Region }));
 
         // Наборы первыми, дальше по имени: раздел «наборы» в браузере идёт над одиночными.
         await Assert.That(usage.Select(u => $"{(u.IsSet ? "набор" : "файл")}:{u.Name}"))
@@ -64,7 +64,7 @@ public class MacroTemplateAnalysisTests
         var usage = MacroTemplateAnalysis.Analyze(Macro(
             "оба",
             new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "classes" },
-            new RecognizeTagNode { Id = Ids.Of("recognize"), DisplayName = "recognize", TemplateSet = "classes", Region = Region }));
+            new MatchTemplateSetNode { Id = Ids.Of("recognize"), DisplayName = "recognize", TemplateSet = "classes", Region = Region }));
 
         await Assert.That(usage).Count().IsEqualTo(2);
         await Assert.That(usage.Count(u => u.IsSet)).IsEqualTo(1);

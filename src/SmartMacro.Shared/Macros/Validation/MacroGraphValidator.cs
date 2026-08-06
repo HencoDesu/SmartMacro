@@ -12,7 +12,9 @@ namespace SmartMacro.Macros.Validation;
 ///
 /// Ошибки: несуществующий или пустой StartNodeId; дубликаты id нод; рёбра в несуществующие
 /// ноды; ClickNode, у которого заданы оба или ни одного из Point/PointVar; порог совпадения вне
-/// диапазона (0; 1]; и правило контекста — макрос, способный ЗАПУСТИТЬСЯ САМ без контекстного
+/// диапазона (0; 1]; пустое имя переменной результата у <see cref="MatchTemplateSetNode"/> (её
+/// запись — единственный наблюдаемый результат этой ноды); и правило контекста — макрос,
+/// способный ЗАПУСТИТЬСЯ САМ без контекстного
 /// окна (то есть у него есть триггеры, но нет <see cref="ProcessAppearedTrigger"/>), не имеет
 /// права содержать ДОСТИЖИМУЮ условную ноду или ноду действия без селектора (упрощённое правило
 /// по §0.2 плана; подпрогоны RunMacro с Target, которые контекст всё же дали бы, намеренно не
@@ -235,6 +237,23 @@ public static class MacroGraphValidator
             }
         }
 
+        // Имя переменной результата у сопоставления с набором.
+        //
+        // ОШИБКА, а не предупреждение, и это единственное обязательное текстовое поле в модели.
+        // Довод — в том, что нода производит: с волны переименования она не вешает тег и не
+        // трогает окно вовсе, её единственный наблюдаемый результат — запись в переменную. Без
+        // имени переменной остаётся развилка «совпало / не совпало» с выброшенным результатом,
+        // то есть нода, которая честно тратит тик зрения по десяти клиентам и ничего не отдаёт.
+        // Ошибка не запрещает сохранение (это правило снято автосохранением), но снимает макрос с
+        // боевого взвода — ровно то, чего такая нода и заслуживает.
+        foreach (var node in byId.Values.OfType<MatchTemplateSetNode>())
+        {
+            if (string.IsNullOrWhiteSpace(node.ResultVar))
+            {
+                issues.Add(Error(node, Strings.Validation_Node_ResultVarMissing));
+            }
+        }
+
         // Шаблоны, которых в бандле нет.
         //
         // ПРЕДУПРЕЖДЕНИЕ, а не ошибка, и это выбор, а не осторожность. Ошибка запрещает
@@ -280,7 +299,7 @@ public static class MacroGraphValidator
             {
                 switch (byId[id])
                 {
-                    case FindElementNode or WaitForElementNode or RecognizeTagNode:
+                    case FindElementNode or WaitForElementNode or MatchTemplateSetNode:
                         issues.Add(Error(byId[id], Strings.Validation_Node_ConditionalNeedsContextWindow));
                         break;
                     case KeyPressNode { Target: null } or ClickNode { Target: null } or AddTagNode { Target: null }
@@ -329,7 +348,7 @@ public static class MacroGraphValidator
     ///
     /// <b>Зачем оно вообще.</b> Подпрогон получает КОПИЮ переменных родителя, и обратной записи
     /// нет (§5.3). Решение сохранено — оно уже было и оно безопаснее, — но обязано перестать быть
-    /// молчаливым. Живой пример из спеки: <c>RecognizeTag</c> пишет <c>tag</c>, <c>SetIcon</c>
+    /// молчаливым. Живой пример из спеки: <c>MatchTemplateSet</c> пишет <c>tag</c>, <c>SetIcon</c>
     /// читает <c>{tag}</c>. Пока обе ноды внутри одного под-макроса — работает; разнеси их, и
     /// прогон оборвётся на чтении неопределённой переменной, а связать этот отказ с причиной
     /// пользователь не сможет никак.
@@ -407,7 +426,7 @@ public static class MacroGraphValidator
     {
         FindElementNode n => n.MatchThreshold,
         WaitForElementNode n => n.MatchThreshold,
-        RecognizeTagNode n => n.MatchThreshold,
+        MatchTemplateSetNode n => n.MatchThreshold,
         _ => null,
     };
 

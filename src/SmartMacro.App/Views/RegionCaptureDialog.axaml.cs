@@ -46,10 +46,22 @@ public partial class RegionCaptureDialog : Window
         None,
         Pan,
         Select,
+        Pick,
     }
 
     private readonly RegionCaptureRequest _request;
     private readonly IWindowCaptureService? _capture;
+    private readonly RegionCaptureSink? _commit;
+
+    /// <summary>
+    /// Имена, уже занятые в наборе. Начинается снимком из запроса и РАСТЁТ на каждое сохранение.
+    ///
+    /// ⚠️ Без роста предупреждение «такое имя уже есть» работало бы только на первом заходе, а
+    /// кнопка «Сохранить и дальше» существует ради одиннадцати заходов подряд — и вторая
+    /// «Лучник» там куда вероятнее первой. Сравнение регистронезависимое: файловая система у
+    /// бандла всё равно такая, и «лучник» затёр бы «Лучник» молча.
+    /// </summary>
+    private readonly HashSet<string> _taken;
 
     private Bitmap? _frame;
     private int _frameWidth;
@@ -66,29 +78,47 @@ public partial class RegionCaptureDialog : Window
     private Point _selectionAnchor;
 
     private ScreenRect _selection;
+    private ScreenPoint? _point;
+    private int _saved;
     private bool _busy;
 
     /// <summary>
     /// Ответ. ПОЛЕ С УМОЛЧАНИЕМ, а не результат <c>ShowDialog&lt;T&gt;</c>, — по той же причине,
     /// что и в вопросе о занятом имени: закрыть окно можно крестиком, Esc, Alt+F4 и системой, и
     /// все эти пути обязаны означать «ничего не вырезали».
+    ///
+    /// ⚠️ После «Сохранить и дальше» здесь лежит последняя УЛОЖЕННАЯ вырезка, и «Отмена» её не
+    /// стирает: файлы уже в бандле, и вернуть <c>null</c> значило бы оставить ноду с пустой
+    /// областью при полном наборе шаблонов.
     /// </summary>
     private RegionCaptureResult? _result;
+
+    /// <summary>Ответ режима точки. Та же логика поля с умолчанием.</summary>
+    private ScreenPoint? _pointResult;
+
+    /// <summary><c>true</c> — окно открыто ради координат клика, а не ради вырезки.</summary>
+    private bool IsPointMode => _request.Kind == RegionCaptureKind.Point;
 
     // Дизайнеру нужен конструктор без параметров; приложение пользуется перегрузкой с запросом.
     public RegionCaptureDialog()
         : this(
             new RegionCaptureRequest(RegionCaptureKind.Template, string.Empty, string.Empty, null,
                 string.Empty, [], []),
-            capture: null)
+            capture: null,
+            commit: null)
     {
     }
 
-    public RegionCaptureDialog(RegionCaptureRequest request, IWindowCaptureService? capture)
+    public RegionCaptureDialog(
+        RegionCaptureRequest request,
+        IWindowCaptureService? capture,
+        RegionCaptureSink? commit)
     {
         ArgumentNullException.ThrowIfNull(request);
         _request = request;
         _capture = capture;
+        _commit = commit;
+        _taken = new HashSet<string>(request.ExistingNames, StringComparer.OrdinalIgnoreCase);
 
         InitializeComponent();
         DataContext = request;
@@ -97,9 +127,34 @@ public partial class RegionCaptureDialog : Window
         WindowPicker.ItemsSource = request.Windows.Select(WindowChoice.From).ToList();
         WindowPicker.SelectedIndex = request.Windows.Count > 0 ? 0 : -1;
 
+        ApplyMode();
         RefreshFrameChrome();
-        RefreshSelectionChrome();
+        RefreshMarks();
         RefreshVerdict();
+    }
+
+    /// <summary>
+    /// Расставляет то, что зависит только от режима и за время жизни окна не меняется.
+    ///
+    /// Одним методом и в конструкторе, а не привязками: режимов три, различий между ними
+    /// пять, и разбросанные по разметке <c>IsVisible</c> с конвертерами читались бы хуже, чем
+    /// пять строк подряд.
+    /// </summary>
+    private void ApplyMode()
+    {
+        NameRow.IsVisible = !IsPointMode;
+        // Кнопка «дальше» — только у набора: у одиночного шаблона второго файла не бывает, а у
+        // точки нет файла вовсе. Без обратного вызова класть тоже некуда (путь дизайнера).
+        SaveAndNextButton.IsVisible = _request.Kind == RegionCaptureKind.Tag && _commit is not null;
+
+        if (!IsPointMode)
+        {
+            return;
+        }
+
+        TitleText.Text = Strings.Dialog_Region_TitlePoint;
+        AcceptButton.Content = Strings.Dialog_Region_AcceptPoint;
+        ViewHintText.Text = Strings.Dialog_Region_ViewHintPoint;
     }
 
     /// <summary>Показывает окно модально над <paramref name="owner"/>. <c>null</c> — отменили.</summary>
@@ -107,6 +162,13 @@ public partial class RegionCaptureDialog : Window
     {
         await ShowDialog(owner);
         return _result;
+    }
+
+    /// <summary>То же самое для режима точки. <c>null</c> — отменили.</summary>
+    public async Task<ScreenPoint?> AskPointAsync(Window owner)
+    {
+        await ShowDialog(owner);
+        return _pointResult;
     }
 
     /// <summary>
@@ -272,14 +334,16 @@ public partial class RegionCaptureDialog : Window
         Surface.Width = _frameWidth;
         Surface.Height = _frameHeight;
 
-        // Выделение переживает пересъёмку — «снять заново» затем и нужно, чтобы поймать нужное
-        // состояние интерфейса, не потеряв уже намеченную рамку, — но не переезд на кадр меньшего
-        // размера: рамка за краем нового кадра указывает на область, которой в окне нет.
-        if (_selection.X + _selection.Width > _frameWidth || _selection.Y + _selection.Height > _frameHeight)
-        {
-            _selection = default;
-        }
-
+        // ⚠️ Выделение и точка переживают пересъёмку — ради этого «снять эту же область в другом
+        // окне» и существует, — и НЕ СБРАСЫВАЮТСЯ на кадре меньшего размера, хотя раньше
+        // сбрасывались молча. Теперь это ОТКАЗ вслух (см. RefreshVerdict): кадр другого размера
+        // означает окно другого размера, а набор, у которого одиннадцать шаблонов сняты одной
+        // рамкой, ровно этим и ценен.
+        //
+        // Почему отказ, а не обрезка: подрезанная по краю кадра рамка дала бы шаблон ДРУГОГО
+        // РАЗМЕРА, а сопоставление сравнивает патч фиксированного размера — то есть в наборе
+        // появился бы файл, который просто другой. Это та же несогласованность, от которой
+        // кнопка спасает, только незаметная.
         if (fit)
         {
             ZoomToFit();
@@ -291,14 +355,58 @@ public partial class RegionCaptureDialog : Window
 
         ShowProblem(null);
         RefreshFrameChrome();
-        RefreshSelectionChrome();
+        RefreshMarks();
         RefreshVerdict();
+    }
+
+    /// <summary>
+    /// Помещается ли уже намеченная рамка (или точка) в текущий кадр.
+    ///
+    /// Пустая рамка помещается всегда: «ещё ничего не выделили» — это не отказ, а начало работы.
+    /// </summary>
+    private bool MarkFitsFrame()
+    {
+        if (_frame is null)
+        {
+            return true;
+        }
+
+        if (_point is { } point && (point.X >= _frameWidth || point.Y >= _frameHeight))
+        {
+            return false;
+        }
+
+        return _selection is not { Width: > 0, Height: > 0 }
+               || (_selection.X + _selection.Width <= _frameWidth
+                   && _selection.Y + _selection.Height <= _frameHeight);
     }
 
     // ---- панорама, масштаб, выделение ----------------------------------------------------
 
     /// <summary>Экран → пиксели кадра. Единственное место перевода; см. заметку на классе.</summary>
     private Point ToFrame(Point screen) => new((screen.X - _panX) / _zoom, (screen.Y - _panY) / _zoom);
+
+    /// <summary>
+    /// Экран → НОМЕР ПИКСЕЛЯ кадра, для режима точки.
+    ///
+    /// ⚠️ <b>Округление вниз, а не к ближайшему, и это не мелочь.</b> У рамки координаты лежат
+    /// НА ГРАНИЦАХ пикселей, поэтому там <c>Math.Round</c> прав. Точка же адресует САМ ПИКСЕЛЬ, а
+    /// пиксель <c>N</c> занимает на кадре промежуток <c>[N, N+1)</c>: при увеличении в восемь раз
+    /// он показан квадратом в 8 экранных точек, и <c>Round</c> отдавал бы соседний пиксель
+    /// каждый раз, когда человек целится в правую или нижнюю половину того, на который смотрит.
+    /// На кадре 3840×2160 промах на пиксель — это промах мимо кнопки, ради которой сюда и
+    /// пришли, и заметен он был бы только в игре.
+    ///
+    /// Подрезка по <c>размер − 1</c>, а не по размеру: пикселя с номером <c>_frameWidth</c> не
+    /// существует, а щелчок точно по правому краю кадра — обычное дело.
+    /// </summary>
+    private ScreenPoint ToPixel(Point screen)
+    {
+        var frame = ToFrame(screen);
+        return new ScreenPoint(
+            Math.Clamp((int)Math.Floor(frame.X), 0, Math.Max(0, _frameWidth - 1)),
+            Math.Clamp((int)Math.Floor(frame.Y), 0, Math.Max(0, _frameHeight - 1)));
+    }
 
     private void OnSurfacePointerPressed(object? sender, PointerPressedEventArgs e)
     {
@@ -328,10 +436,21 @@ public partial class RegionCaptureDialog : Window
             return;
         }
 
-        _gesture = Gesture.Select;
-        _selectionAnchor = ToFrame(point.Position);
-        _selection = default;
-        RefreshSelectionChrome();
+        if (IsPointMode)
+        {
+            // Тащить разрешено намеренно: прицелиться в пиксель проще, поставив точку рядом и
+            // подведя её, чем попадая с первого щелчка.
+            _gesture = Gesture.Pick;
+            _point = ToPixel(point.Position);
+        }
+        else
+        {
+            _gesture = Gesture.Select;
+            _selectionAnchor = ToFrame(point.Position);
+            _selection = default;
+        }
+
+        RefreshMarks();
         RefreshVerdict();
         e.Pointer.Capture(Viewport);
         e.Handled = true;
@@ -353,8 +472,16 @@ public partial class RegionCaptureDialog : Window
             return;
         }
 
-        _selection = Between(_selectionAnchor, ToFrame(position));
-        RefreshSelectionChrome();
+        if (_gesture == Gesture.Pick)
+        {
+            _point = ToPixel(position);
+        }
+        else
+        {
+            _selection = Between(_selectionAnchor, ToFrame(position));
+        }
+
+        RefreshMarks();
         RefreshVerdict();
     }
 
@@ -453,8 +580,16 @@ public partial class RegionCaptureDialog : Window
         var hairline = 1 / _zoom;
         SelectionBox.StrokeThickness = hairline;
         RegionBox.StrokeThickness = hairline;
+        PointPixel.StrokeThickness = hairline;
 
         ZoomText.Text = string.Create(CultureInfo.InvariantCulture, $"{Math.Round(_zoom * 100)}%");
+
+        // Перекрестье живёт в тех же координатах кадра, поэтому его толщина тоже компенсируется:
+        // иначе на 12% оно исчезало бы, а на 800% закрывало бы половину пикселя, в который целятся.
+        if (_point is not null)
+        {
+            PlacePointMarks();
+        }
     }
 
     /// <summary>Прямоугольник между двумя точками кадра — целыми пикселями и в его границах.</summary>
@@ -493,9 +628,22 @@ public partial class RegionCaptureDialog : Window
         ZoomGroup.IsVisible = has;
     }
 
-    private void RefreshSelectionChrome()
+    /// <summary>
+    /// Обводки на кадре: рамка выделения с областью-запасом либо перекрестье точки. Один метод на
+    /// оба режима, потому что взаимоисключающи они целиком: что не показано, то и погашено.
+    /// </summary>
+    private void RefreshMarks()
     {
-        var live = _selection is { Width: > 0, Height: > 0 };
+        var hasPoint = IsPointMode && _point is not null;
+        PointCrossH.IsVisible = hasPoint;
+        PointCrossV.IsVisible = hasPoint;
+        PointPixel.IsVisible = hasPoint;
+        if (hasPoint)
+        {
+            PlacePointMarks();
+        }
+
+        var live = !IsPointMode && _selection is { Width: > 0, Height: > 0 };
         SelectionBox.IsVisible = live;
         RegionBox.IsVisible = live;
         ShowShade(live);
@@ -515,6 +663,36 @@ public partial class RegionCaptureDialog : Window
         Place(ShadeLeft, new ScreenRect(0, _selection.Y, _selection.X, _selection.Height));
         Place(ShadeRight, new ScreenRect(_selection.X + _selection.Width, _selection.Y,
             Math.Max(0, _frameWidth - _selection.X - _selection.Width), _selection.Height));
+    }
+
+    /// <summary>
+    /// Ставит перекрестье и квадратик выбранного пикселя.
+    ///
+    /// Полосы перекрестья тоньше одного пикселя кадра и растут обратно масштабу — на 12% они
+    /// иначе исчезли бы вовсе, а на 800% закрыли бы тот самый пиксель, в который целятся.
+    /// </summary>
+    private void PlacePointMarks()
+    {
+        if (_point is not { } point)
+        {
+            return;
+        }
+
+        var hairline = Math.Min(1, 1 / _zoom);
+        var centreX = point.X + 0.5;
+        var centreY = point.Y + 0.5;
+
+        Canvas.SetLeft(PointCrossH, 0);
+        Canvas.SetTop(PointCrossH, centreY - (hairline / 2));
+        PointCrossH.Width = Math.Max(0, _frameWidth);
+        PointCrossH.Height = hairline;
+
+        Canvas.SetLeft(PointCrossV, centreX - (hairline / 2));
+        Canvas.SetTop(PointCrossV, 0);
+        PointCrossV.Width = hairline;
+        PointCrossV.Height = Math.Max(0, _frameHeight);
+
+        Place(PointPixel, new ScreenRect(point.X, point.Y, 1, 1));
     }
 
     private void ShowShade(bool visible)
@@ -540,6 +718,12 @@ public partial class RegionCaptureDialog : Window
     /// </summary>
     private void RefreshVerdict()
     {
+        if (IsPointMode)
+        {
+            RefreshPointVerdict();
+            return;
+        }
+
         var name = NameBox.Text?.Trim() ?? string.Empty;
         PathText.Text = _request.PathPreview(name);
 
@@ -558,6 +742,8 @@ public partial class RegionCaptureDialog : Window
             MeasureText.Text = string.Empty;
         }
 
+        var fits = MarkFitsFrame();
+
         string? problem = null;
         if (_frame is null)
         {
@@ -567,6 +753,12 @@ public partial class RegionCaptureDialog : Window
         {
             problem = Strings.Dialog_Region_NoSelection;
         }
+        else if (!fits)
+        {
+            // Кадр меньше уже намеченной рамки. Отказ, а не обрезка — довод у ShowFrame.
+            problem = string.Format(CultureInfo.CurrentCulture,
+                Strings.Dialog_Region_SelectionOutsideFrame, _frameWidth, _frameHeight);
+        }
         else if (name.Length == 0)
         {
             problem = Strings.Dialog_Region_NameEmpty;
@@ -575,10 +767,11 @@ public partial class RegionCaptureDialog : Window
         {
             problem = Strings.Dialog_Region_NameBad;
         }
-        else if (_request.ExistingNames.Contains(name, StringComparer.OrdinalIgnoreCase))
+        else if (_taken.Contains(name))
         {
             // Предупреждение, а не запрет: заменить свой же шаблон свежей вырезкой — это ровно то,
-            // ради чего сюда чаще всего и приходят второй раз.
+            // ради чего сюда чаще всего и приходят второй раз. Список растёт по ходу захода,
+            // поэтому вторая «Лучник» подряд предупреждение получит.
             problem = string.Format(CultureInfo.CurrentCulture, Strings.Dialog_Region_NameTaken, name);
         }
 
@@ -586,8 +779,40 @@ public partial class RegionCaptureDialog : Window
         ProblemText.IsVisible = problem is not null;
         // Занятое имя кнопку НЕ гасит: заменить свой же шаблон свежей вырезкой — обычное дело, и
         // предупреждения об этом достаточно. Негодное имя гасит: файл лёг бы туда, где нода его
-        // никогда не найдёт.
-        AcceptButton.IsEnabled = !_busy && _frame is not null && live && _request.IsNameUsable(name);
+        // никогда не найдёт. Не поместившаяся рамка гасит тоже, и по той же причине.
+        var usable = !_busy && _frame is not null && live && fits && _request.IsNameUsable(name);
+        AcceptButton.IsEnabled = usable;
+        SaveAndNextButton.IsEnabled = usable;
+    }
+
+    /// <summary>Тот же вердикт для режима точки: отсчёт, претензия, доступность кнопки.</summary>
+    private void RefreshPointVerdict()
+    {
+        PathText.Text = string.Empty;
+
+        var fits = MarkFitsFrame();
+        MeasureText.Text = _point is { } point
+            ? string.Format(CultureInfo.CurrentCulture, Strings.Dialog_Region_PointMeasure, point.X, point.Y)
+            : string.Empty;
+
+        string? problem = null;
+        if (_frame is null)
+        {
+            problem = null;
+        }
+        else if (_point is null)
+        {
+            problem = Strings.Dialog_Region_NoPoint;
+        }
+        else if (!fits)
+        {
+            problem = string.Format(CultureInfo.CurrentCulture,
+                Strings.Dialog_Region_SelectionOutsideFrame, _frameWidth, _frameHeight);
+        }
+
+        ProblemText.Text = problem ?? string.Empty;
+        ProblemText.IsVisible = problem is not null;
+        AcceptButton.IsEnabled = !_busy && _frame is not null && _point is not null && fits;
     }
 
     private void SetBusy(bool busy, string? note)
@@ -626,15 +851,81 @@ public partial class RegionCaptureDialog : Window
     /// </summary>
     private void OnAcceptClicked(object? sender, RoutedEventArgs e)
     {
-        if (_frame is not { } frame || _selection is not { Width: > 0, Height: > 0 })
+        if (IsPointMode)
+        {
+            if (_point is not null && MarkFitsFrame())
+            {
+                _pointResult = _point;
+                Close();
+            }
+
+            return;
+        }
+
+        if (TakeCrop() is not null)
+        {
+            Close();
+        }
+    }
+
+    /// <summary>
+    /// «Сохранить и дальше»: кладёт вырезку и переходит к следующему окну ТОЙ ЖЕ рамкой.
+    ///
+    /// <b>Порядок несущий.</b> Сперва сохранить, потом менять кадр: наоборот — и вырезка уехала
+    /// бы из уже подменённого окна. Рамка при этом не трогается вообще: она и есть то, ради чего
+    /// кнопка существует, и любой её пересчёт под новый кадр вернул бы одиннадцать чуть разных
+    /// шаблонов.
+    ///
+    /// Окно переключается по кругу и только когда их больше одного: у кадра, взятого файлом с
+    /// диска, выбор окна пуст, и прыгать на первое попавшееся значило бы подменить картинку без
+    /// спроса.
+    /// </summary>
+    private void OnSaveAndNextClicked(object? sender, RoutedEventArgs e)
+    {
+        if (TakeCrop() is not { } crop)
         {
             return;
+        }
+
+        _saved++;
+        _taken.Add(crop.Name);
+        NameBox.Text = string.Empty;
+
+        // ⚠️ Отчёт живёт в СВОЕЙ строке, а не в отсчёте выделения. Смена окна ниже запускает
+        // снимок, а тот в конце зовёт RefreshVerdict, который отсчёт перепишет: «сохранено»
+        // мигнуло бы и исчезло ровно тогда, когда его читают.
+        SavedText.Text = string.Format(
+            CultureInfo.CurrentCulture, Strings.Dialog_Region_Saved, crop.Name, _saved);
+
+        var windows = WindowPicker.ItemCount;
+        if (windows > 1 && WindowPicker.SelectedIndex >= 0)
+        {
+            // SelectionChanged сам снимет следующий кадр; выделение переживёт пересъёмку.
+            WindowPicker.SelectedIndex = (WindowPicker.SelectedIndex + 1) % windows;
+        }
+
+        RefreshVerdict();
+        NameBox.Focus(NavigationMethod.Tab);
+    }
+
+    /// <summary>
+    /// Вырезает выделение и отдаёт его редактору. <c>null</c> — не вышло, и окно остаётся
+    /// открытым с объяснением внизу.
+    ///
+    /// <b>Вырезка идёт ТОЧНО по выделению</b>, а запас достаётся только области ноды: шаблон с
+    /// полями вокруг — это шаблон, который сопоставляется с фоном, а фон в игре меняется.
+    /// </summary>
+    private RegionCaptureResult? TakeCrop()
+    {
+        if (_frame is not { } frame || _selection is not { Width: > 0, Height: > 0 } || !MarkFitsFrame())
+        {
+            return null;
         }
 
         var name = NameBox.Text?.Trim() ?? string.Empty;
         if (!_request.IsNameUsable(name))
         {
-            return;
+            return null;
         }
 
         byte[] png;
@@ -647,11 +938,22 @@ public partial class RegionCaptureDialog : Window
             Log.Warning(ex, "Вырезка {Rect} из кадра не удалась", _selection);
             ShowProblem(string.Format(CultureInfo.CurrentCulture,
                 Strings.Dialog_Region_CropFailed, ex.Message));
-            return;
+            return null;
         }
 
-        _result = new RegionCaptureResult(name, png, _selection, _frameWidth, _frameHeight);
-        Close();
+        var crop = new RegionCaptureResult(name, png, _selection, _frameWidth, _frameHeight);
+
+        // Кладёт РЕДАКТОР: диалог не знает ни про бандл, ни про библиотеку макросов. Отказ
+        // остаётся здесь — окно не закрывается, имя не стирается, чинить придётся на месте.
+        if (_commit?.Invoke(crop) is { } refusal)
+        {
+            ShowProblem(string.Format(
+                CultureInfo.CurrentCulture, Strings.Dialog_Region_SaveFailed, name, refusal));
+            return null;
+        }
+
+        _result = crop;
+        return crop;
     }
 
     /// <summary>

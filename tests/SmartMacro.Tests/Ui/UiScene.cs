@@ -350,7 +350,7 @@ internal sealed class UiScene : IDisposable
         StartNodeId = Ids.Of("распознать-1"),
         Nodes =
         [
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("распознать-1"), DisplayName = "распознать-1", TemplateSet = "classes",
                 Region = new ScreenRect(1200, 400, 900, 600), ResultVar = "класс",

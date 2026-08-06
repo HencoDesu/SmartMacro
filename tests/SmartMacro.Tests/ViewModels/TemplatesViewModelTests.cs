@@ -141,7 +141,7 @@ public class TemplatesViewModelTests
         using var vm = Create(library, Macro(
             Macro1,
             new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "ServerSelectButton" },
-            new RecognizeTagNode
+            new MatchTemplateSetNode
                 { Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "classes", Region = Region }));
 
         var button = vm.Templates.Single(t => t.Name == "ServerSelectButton");
@@ -149,7 +149,7 @@ public class TemplatesViewModelTests
         var orphan = vm.Templates.Single(t => t.Name == "Ничей");
 
         await Assert.That(Msg.Arg(button.UsageText, Strings.Editor_Templates_UsedBy_One)).IsEqualTo("1");
-        // RecognizeTag называет НАБОР целиком, поэтому ссылка достаётся каждому его файлу: иначе
+        // matchTemplateSet называет НАБОР целиком, поэтому ссылка достаётся каждому его файлу: иначе
         // «Лучник.png не используется» было бы враньём про шаблон, которым опознают лучника.
         await Assert.That(Msg.Arg(archer.UsageText, Strings.Editor_Templates_UsedBy_One)).IsEqualTo("1");
         await Assert.That(orphan.IsUnused).IsTrue();

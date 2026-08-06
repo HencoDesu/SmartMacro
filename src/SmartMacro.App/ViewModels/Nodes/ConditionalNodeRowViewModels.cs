@@ -49,8 +49,8 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
 
     /// <summary>
     /// Набор, в который ляжет вырезка, либо <c>null</c> — корень <c>templates/</c>. У
-    /// <c>RecognizeTag</c> это набор самой ноды: она называет его целиком, а вырезка становится
-    /// одним из его тегов.
+    /// <c>MatchTemplateSet</c> это набор самой ноды: она называет его целиком, а вырезка
+    /// становится одним из его тегов.
     /// </summary>
     public abstract string? CaptureSet { get; }
 
@@ -63,7 +63,7 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
 
     /// <summary>
     /// Принимает имя, под которым шаблон лёг в бандл. <c>Find</c>/<c>Wait</c> вписывают его в
-    /// поле шаблона; <c>RecognizeTag</c> не делает НИЧЕГО — он называет набор, а не файл, и
+    /// поле шаблона; <c>MatchTemplateSet</c> не делает НИЧЕГО — он называет набор, а не файл, и
     /// подставить туда тег значило бы сломать ноду ровно тем, что выглядит как забота.
     /// </summary>
     public abstract void ApplyCapturedName(string name);
@@ -324,27 +324,28 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
 }
 
 /// <summary>
-/// Редактор <see cref="RecognizeTagNode"/>: лучшее совпадение НАБОРА шаблонов по области.
+/// Редактор <see cref="MatchTemplateSetNode"/>: лучшее совпадение НАБОРА шаблонов по области.
 /// Область здесь обязательна (в отличие от Find/Wait) — сопоставлять целый набор с целым окном
 /// и медленно, и неоднозначно.
+///
+/// Галочки «вешать тег на окно» здесь больше нет: нода отдаёт ЗНАЧЕНИЕ, а разметку окна делает
+/// отдельная нода «Добавить тег» с подстановкой <c>{переменной}</c>.
 /// </summary>
-public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
+public sealed class MatchTemplateSetNodeRowViewModel : ConditionalNodeRowViewModel
 {
     private string _templateSet;
     private string _resultVar;
-    private bool _applyTag;
 
-    public RecognizeTagNodeRowViewModel(RecognizeTagNode node)
+    public MatchTemplateSetNodeRowViewModel(MatchTemplateSetNode node)
         : base(node, node.MatchThreshold, Strings.Node_Edge_Matched, node.Matched, Strings.Node_Edge_NotMatched, node.NotMatched)
     {
         _templateSet = node.TemplateSet;
         _resultVar = node.ResultVar;
-        _applyTag = node.ApplyTag;
         Region = RegionEditorViewModel.FromRect(node.Region);
         TrackRegion(Region);
     }
 
-    public override string TypeLabel => Strings.Node_Type_RecognizeTag;
+    public override string TypeLabel => Strings.Node_Type_MatchTemplateSet;
 
     public override string Summary =>
         Join(_templateSet.Length > 0
@@ -383,14 +384,14 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
         // templates/classes/.
     }
 
-    /// <summary>Повесить на контекстное окно тег с именем победившего шаблона.</summary>
-    public bool ApplyTag
-    {
-        get => _applyTag;
-        set => SetField(ref _applyTag, value);
-    }
-
-    /// <summary>Переменная прогона, куда пишется победившее имя (умолчание модели — <c>"tag"</c>).</summary>
+    /// <summary>
+    /// Переменная прогона, куда пишется победившее имя (умолчание модели — <c>"tag"</c>).
+    ///
+    /// Пустое значение — ошибка ВАЛИДАТОРА, а не ввода, и это разные вещи: ошибка ввода запретила
+    /// бы запись бандла, а строка прекрасно превращается в ноду и без имени переменной — просто
+    /// нода получается бессмысленная. Правило живёт в общем валидаторе (<c>Shared</c>), значит
+    /// демон судит о ней теми же словами и не вооружает такой макрос.
+    /// </summary>
     [AllowNull]
     public string ResultVar
     {
@@ -398,7 +399,7 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
         set => SetField(ref _resultVar, value ?? string.Empty);
     }
 
-    public override MacroNode ToNode() => new RecognizeTagNode
+    public override MacroNode ToNode() => new MatchTemplateSetNode
     {
         Id = Id,
         DisplayName = DisplayName,
@@ -406,7 +407,6 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
         TemplateSet = _templateSet,
         Region = Region.ToRect(),
         MatchThreshold = MatchThresholdOrNull,
-        ApplyTag = _applyTag,
         ResultVar = _resultVar,
         Matched = PositiveEdge.TargetId,
         NotMatched = NegativeEdge.TargetId,
@@ -418,12 +418,6 @@ public sealed class RecognizeTagNodeRowViewModel : ConditionalNodeRowViewModel
         {
             yield return string.Format(
                 CultureInfo.CurrentCulture, Strings.Node_Error_TemplateSetMissing, DisplayName);
-        }
-
-        if (string.IsNullOrWhiteSpace(_resultVar))
-        {
-            yield return string.Format(
-                CultureInfo.CurrentCulture, Strings.Node_Error_ResultVarMissing, DisplayName);
         }
 
         foreach (var error in Region.GetInputErrors(DisplayName))

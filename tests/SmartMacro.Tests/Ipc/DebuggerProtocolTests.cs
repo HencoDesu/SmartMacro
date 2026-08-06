@@ -309,12 +309,11 @@ public class DebuggerProtocolTests
             StartNodeId = Ids.Of("recognize-class"),
             Nodes =
             [
-                new RecognizeTagNode
+                new MatchTemplateSetNode
                 {
                     Id = Ids.Of("recognize-class"), DisplayName = "recognize-class",
                     TemplateSet = "classes",
                     Region = new ScreenRect(0, 0, 160, 35),
-                    ApplyTag = false,
                 },
             ],
         };

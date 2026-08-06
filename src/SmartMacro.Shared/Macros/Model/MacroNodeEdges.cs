@@ -38,7 +38,7 @@ public static class MacroNodeEdges
             RunSubmacroNode n => [("Next", n.Next)],
             FindElementNode n => [("Found", n.Found), ("NotFound", n.NotFound)],
             WaitForElementNode n => [("Found", n.Found), ("Timeout", n.Timeout)],
-            RecognizeTagNode n => [("Matched", n.Matched), ("NotMatched", n.NotMatched)],
+            MatchTemplateSetNode n => [("Matched", n.Matched), ("NotMatched", n.NotMatched)],
             _ => [],
         };
     }
@@ -65,7 +65,7 @@ public static class MacroNodeEdges
             RunSubmacroNode n => n with { Next = map(n.Next) },
             FindElementNode n => n with { Found = map(n.Found), NotFound = map(n.NotFound) },
             WaitForElementNode n => n with { Found = map(n.Found), Timeout = map(n.Timeout) },
-            RecognizeTagNode n => n with { Matched = map(n.Matched), NotMatched = map(n.NotMatched) },
+            MatchTemplateSetNode n => n with { Matched = map(n.Matched), NotMatched = map(n.NotMatched) },
             _ => node,
         };
     }

@@ -57,9 +57,8 @@ public class MacroGraphJsonTests
         await Assert.That(find.Region).IsEqualTo(new ScreenRect(1, 2, 3, 4));
         await Assert.That(find.NotFound).IsNull();
 
-        var recognize = (RecognizeTagNode)reloaded.Nodes[10];
-        await Assert.That(recognize.ApplyTag).IsFalse();
-        await Assert.That(recognize.ResultVar).IsEqualTo("класс");
+        var match = (MatchTemplateSetNode)reloaded.Nodes[10];
+        await Assert.That(match.ResultVar).IsEqualTo("класс");
     }
 
     [Test]
@@ -70,7 +69,7 @@ public class MacroGraphJsonTests
         foreach (var discriminator in new[]
                  {
                      "keyPress", "click", "delay", "addTag", "removeTag", "setIcon",
-                     "submacro", "findElement", "waitForElement", "recognizeTag",
+                     "submacro", "findElement", "waitForElement", "matchTemplateSet",
                      "hotkey", "process",
                  })
         {
@@ -86,7 +85,7 @@ public class MacroGraphJsonTests
     [Test]
     public async Task Deserialize_AppliesDocumentedDefaults()
     {
-        // Await, ApplyTag, ResultVar и Triggers опущены — обязаны сработать значения по умолчанию.
+        // Await, ResultVar и Triggers опущены — обязаны сработать значения по умолчанию.
         const string json =
             """
             {
@@ -94,7 +93,7 @@ public class MacroGraphJsonTests
               "StartNodeId": "11111111-1111-1111-1111-111111111111",
               "Nodes": [
                 { "$type": "submacro", "Id": "11111111-1111-1111-1111-111111111111", "SubmacroId": "22222222-2222-2222-2222-222222222222" },
-                { "$type": "recognizeTag", "Id": "22222222-2222-2222-2222-222222222222", "TemplateSet": "классы",
+                { "$type": "matchTemplateSet", "Id": "22222222-2222-2222-2222-222222222222", "TemplateSet": "классы",
                   "Region": { "X": 0, "Y": 0, "Width": 10, "Height": 10 } }
               ]
             }
@@ -107,14 +106,62 @@ public class MacroGraphJsonTests
         await Assert.That(run.Await).IsTrue();
         await Assert.That(run.Next).IsNull();
         await Assert.That(run.Target).IsNull();
-        var recognize = (RecognizeTagNode)graph.Nodes[1];
-        await Assert.That(recognize.ApplyTag).IsTrue();
-        await Assert.That(recognize.ResultVar).IsEqualTo("tag");
+        var match = (MatchTemplateSetNode)graph.Nodes[1];
+        await Assert.That(match.ResultVar).IsEqualTo("tag");
         // Порог не задан — значит, слой зрения возьмёт своё умолчание, а не ноль.
-        await Assert.That(recognize.MatchThreshold).IsNull();
+        await Assert.That(match.MatchThreshold).IsNull();
         // Подписи в файле нет — показывать ноду будут по имени семейства.
-        await Assert.That(recognize.DisplayName).IsEqualTo(string.Empty);
-        await Assert.That(MacroNodeNames.Display(recognize)).IsEqualTo("recognize");
+        await Assert.That(match.DisplayName).IsEqualTo(string.Empty);
+        await Assert.That(MacroNodeNames.Display(match)).IsEqualTo("match");
+    }
+
+    // ⚠️ Читатель обязан отличать «повреждён» от «есть тип, которого я не знаю»: после
+    // переименования RecognizeTag → MatchTemplateSet все прежние бандлы перестают разбираться
+    // разом, и вердикт «файл повреждён» отправил бы чинить целый файл.
+    [Test]
+    public async Task UnknownNodeType_IsNamed_SoTheFileCanBeFoundByEye()
+    {
+        const string json =
+            """
+            {
+              "Name": "м",
+              "StartNodeId": "11111111-1111-1111-1111-111111111111",
+              "Nodes": [ { "$type": "recognizeTag", "Id": "11111111-1111-1111-1111-111111111111" } ]
+            }
+            """;
+
+        await Assert.That(MacroGraphJson.TryFindUnknownType(json, out var name, out var isTrigger)).IsTrue();
+        await Assert.That(name).IsEqualTo("recognizeTag");
+        await Assert.That(isTrigger).IsFalse();
+    }
+
+    [Test]
+    public async Task UnknownTriggerType_IsNamedToo_AndSaysItIsATrigger()
+    {
+        const string json =
+            """
+            {
+              "Name": "м",
+              "Triggers": [ { "$type": "voice", "Phrase": "го" } ],
+              "StartNodeId": "11111111-1111-1111-1111-111111111111",
+              "Nodes": []
+            }
+            """;
+
+        await Assert.That(MacroGraphJson.TryFindUnknownType(json, out var name, out var isTrigger)).IsTrue();
+        await Assert.That(name).IsEqualTo("voice");
+        await Assert.That(isTrigger).IsTrue();
+    }
+
+    // Знакомый граф и вовсе оборванный файл — оба «незнакомого типа не нашли»: во втором случае
+    // вердикт «повреждён» и есть правда, и подменять его догадкой нельзя.
+    [Test]
+    public async Task AGoodGraphAndABrokenFileBothReportNoUnknownType()
+    {
+        await Assert.That(MacroGraphJson.TryFindUnknownType(
+            MacroGraphJson.Serialize(BuildFullGraph()), out _, out _)).IsFalse();
+        await Assert.That(MacroGraphJson.TryFindUnknownType("{ это не json ", out _, out _)).IsFalse();
+        await Assert.That(MacroGraphJson.TryFindUnknownType(string.Empty, out _, out _)).IsFalse();
     }
 
     [Test]
@@ -190,7 +237,7 @@ public class MacroGraphJsonTests
             StartNodeId = Ids.Of("r"),
             Nodes =
             [
-                new RecognizeTagNode
+                new MatchTemplateSetNode
                 {
                     Id = Ids.Of("r"), DisplayName = "recognize-1", TemplateSet = "classes",
                     Region = new ScreenRect(0, 0, 10, 10), MatchThreshold = 0.82,
@@ -198,7 +245,7 @@ public class MacroGraphJsonTests
             ],
         };
 
-        var reloaded = (RecognizeTagNode)MacroGraphJson.Deserialize(MacroGraphJson.Serialize(graph)).Nodes[0];
+        var reloaded = (MatchTemplateSetNode)MacroGraphJson.Deserialize(MacroGraphJson.Serialize(graph)).Nodes[0];
 
         await Assert.That(reloaded.MatchThreshold).IsEqualTo(0.82);
         await Assert.That(reloaded.DisplayName).IsEqualTo("recognize-1");

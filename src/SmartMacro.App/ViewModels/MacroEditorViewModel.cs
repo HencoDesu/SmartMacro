@@ -2227,7 +2227,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         var set = node.CaptureSet;
         if (node.CaptureKind == RegionCaptureKind.Tag && set is null)
         {
-            // Класть некуда: RecognizeTag называет НАБОР, и без него у файла нет пути внутри
+            // Класть некуда: MatchTemplateSet называет НАБОР, и без него у файла нет пути внутри
             // бандла. Отказ вслух, а не погашенная кнопка: пользователь нажал ровно ту кнопку,
             // которая ему нужна, и обязан узнать, чего не хватает.
             ErrorMessage = string.Format(CultureInfo.CurrentCulture,
@@ -2238,14 +2238,22 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         RegionCaptureResult? result;
         try
         {
-            result = await _regions.AskAsync(new RegionCaptureRequest(
-                node.CaptureKind,
-                macroName,
-                node.DisplayName,
-                set,
-                node.CaptureName,
-                Templates.NamesIn(set),
-                Windows.Windows)).ConfigureAwait(true);
+            result = await _regions.AskAsync(
+                new RegionCaptureRequest(
+                    node.CaptureKind,
+                    macroName,
+                    node.DisplayName,
+                    set,
+                    node.CaptureName,
+                    Templates.NamesIn(set),
+                    Windows.Windows),
+                // Кладём КАЖДУЮ вырезку сразу и не выходя из диалога: «Сохранить и дальше»
+                // отправляет сюда по одиннадцать штук за заход, и накопить их до закрытия значило
+                // бы потерять всё, если окно закроют крестиком. Отказ едет обратно строкой, и
+                // диалог показывает его у себя — там, где его можно исправить.
+                crop => Templates.Add(set, crop.Name, crop.Png)
+                    ? null
+                    : Templates.ImportProblem ?? crop.Name).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -2257,13 +2265,6 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         if (result is null)
         {
             return; // отменили — законный и частый исход
-        }
-
-        if (!Templates.Add(set, result.Name, result.Png))
-        {
-            ErrorMessage = Templates.ImportProblem ?? string.Format(
-                CultureInfo.CurrentCulture, Strings.Editor_Region_Failed, result.Name);
-            return;
         }
 
         node.ApplyCapturedName(result.Name);
@@ -2292,6 +2293,58 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         StatusMessage = string.Format(CultureInfo.CurrentCulture,
             Strings.Editor_Region_Captured,
             MacroBundleFormat.TemplatePath(set, result.Name));
+    }
+
+    /// <summary>
+    /// Снимает окно, даёт щёлкнуть по пикселю и кладёт его координаты в поля X/Y ноды клика.
+    ///
+    /// <b>Это замена способу, который до сих пор был единственным:</b> навести курсор в игре,
+    /// запустить макрос и пойти читать в журнале, чем <c>CursorPositionProvider</c> засеял
+    /// переменную <c>cursor</c>. Ради одной пары чисел приходилось делать прогон.
+    ///
+    /// <b>Прежний способ остаётся и остаётся нужным</b> — он про другое: «кликни туда, куда я
+    /// сейчас показываю», то есть про ЖИВУЮ точку во время прогона, а не про зафиксированную в
+    /// ноде. Кнопка ему не замена, а альтернатива.
+    ///
+    /// В бандл здесь ничего не пишется, поэтому нет ни отказа «сначала откройте макрос», ни
+    /// <c>FlushAutoSave</c>: правка полей — обычная правка, и её подхватит затишье, как любую
+    /// другую.
+    /// </summary>
+    /// <param name="row">Нода, из инспектора которой нажали. Не нода клика — ничего не делаем.</param>
+    public async Task PickClickPointAsync(NodeRowViewModel? row)
+    {
+        if (_regions is null || row is not ClickNodeRowViewModel node)
+        {
+            return;
+        }
+
+        ScreenPoint? point;
+        try
+        {
+            point = await _regions.AskPointAsync(new RegionCaptureRequest(
+                RegionCaptureKind.Point,
+                _loadedName ?? string.Empty,
+                node.DisplayName,
+                Set: null,
+                SuggestedName: string.Empty,
+                ExistingNames: [],
+                Windows.Windows)).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = string.Format(CultureInfo.CurrentCulture, Strings.Editor_Point_Failed, ex.Message);
+            return;
+        }
+
+        if (point is not { } picked)
+        {
+            return; // отменили
+        }
+
+        node.ApplyPickedPoint(picked);
+        ErrorMessage = null;
+        StatusMessage = string.Format(
+            CultureInfo.CurrentCulture, Strings.Editor_Point_Picked, picked.X, picked.Y);
     }
 
     // ---- автосохранение ------------------------------------------------------------------

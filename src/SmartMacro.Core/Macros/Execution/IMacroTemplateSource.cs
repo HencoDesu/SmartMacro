@@ -31,7 +31,7 @@ public interface IMacroTemplateSource
 
     /// <summary>
     /// Именованный набор в виде «тег → байты PNG» — то, что несёт
-    /// <c>RecognizeTagNode.TemplateSet</c>. Неизвестный набор даёт пустой словарь, и тогда нода
+    /// <c>MatchTemplateSetNode.TemplateSet</c>. Неизвестный набор даёт пустой словарь, и тогда нода
     /// просто никогда ни с чем не совпадёт.
     /// </summary>
     IReadOnlyDictionary<string, byte[]> GetSet(string setName);

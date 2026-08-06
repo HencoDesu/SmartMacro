@@ -64,7 +64,7 @@ public class MacroCanvasTests
             },
             new DelayNode
                 { Id = Ids.Of("await-stats"), DisplayName = "await-stats", Ms = 500, Next = Ids.Of("recognize") },
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("recognize"), DisplayName = "recognize",
                 TemplateSet = "classes",
@@ -920,7 +920,7 @@ public class MacroCanvasTests
     [Test]
     public async Task BoxSummary_FollowsTheFieldsItDescribes()
     {
-        var row = (RecognizeTagNodeRowViewModel)NodeRowViewModel.FromNode(new RecognizeTagNode
+        var row = (MatchTemplateSetNodeRowViewModel)NodeRowViewModel.FromNode(new MatchTemplateSetNode
         {
             Id = Ids.Of("r"), DisplayName = "r",
             TemplateSet = "classes",

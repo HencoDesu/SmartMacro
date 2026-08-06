@@ -21,7 +21,7 @@ public enum MacroNodeKind
     RunSubmacro,
     FindElement,
     WaitForElement,
-    RecognizeTag,
+    MatchTemplateSet,
 }
 
 /// <summary>Один пункт всплывающего меню «добавить ноду»: тип плюс его русская подпись.</summary>
@@ -190,7 +190,7 @@ public sealed class RegionEditorViewModel : ObservableObject
         };
     }
 
-    /// <summary>Форма «значение есть всегда» — для нод, у которых область обязательна (RecognizeTag).</summary>
+    /// <summary>Форма «значение есть всегда» — для нод, у которых область обязательна (MatchTemplateSet).</summary>
     public ScreenRect ToRect() => new(
         NodeInput.ParseInt(_xText) ?? 0,
         NodeInput.ParseInt(_yText) ?? 0,
@@ -745,7 +745,7 @@ public abstract class NodeRowViewModel : ObservableObject
             RunSubmacroNode n => new RunSubmacroNodeRowViewModel(n),
             FindElementNode n => new FindElementNodeRowViewModel(n),
             WaitForElementNode n => new WaitForElementNodeRowViewModel(n),
-            RecognizeTagNode n => new RecognizeTagNodeRowViewModel(n),
+            MatchTemplateSetNode n => new MatchTemplateSetNodeRowViewModel(n),
             _ => throw new NotSupportedException($"No editor for node type {node.GetType().Name}."),
         };
         row.Editor = node.Editor;
@@ -776,7 +776,7 @@ public abstract class NodeRowViewModel : ObservableObject
             MacroNodeKind.RunSubmacro => new RunSubmacroNode { SubmacroId = Guid.Empty },
             MacroNodeKind.FindElement => new FindElementNode { Template = string.Empty },
             MacroNodeKind.WaitForElement => new WaitForElementNode { Template = string.Empty, TimeoutMs = 10_000 },
-            MacroNodeKind.RecognizeTag => new RecognizeTagNode { TemplateSet = string.Empty, Region = default },
+            MacroNodeKind.MatchTemplateSet => new MatchTemplateSetNode { TemplateSet = string.Empty, Region = default },
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown node kind."),
         };
 
@@ -795,6 +795,6 @@ public abstract class NodeRowViewModel : ObservableObject
         new(MacroNodeKind.RunSubmacro, Strings.Node_Type_RunSubmacroMenu),
         new(MacroNodeKind.FindElement, Strings.Node_Type_FindElement),
         new(MacroNodeKind.WaitForElement, Strings.Node_Type_WaitForElement),
-        new(MacroNodeKind.RecognizeTag, Strings.Node_Type_RecognizeTag),
+        new(MacroNodeKind.MatchTemplateSet, Strings.Node_Type_MatchTemplateSetMenu),
     ];
 }

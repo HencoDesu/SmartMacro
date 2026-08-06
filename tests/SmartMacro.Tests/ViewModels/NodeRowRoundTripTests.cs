@@ -116,12 +116,11 @@ public class NodeRowRoundTripTests
                 Found = Ids.Of("recognize"),
                 Timeout = null,
             },
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("recognize"), DisplayName = "recognize",
                 TemplateSet = "classes",
                 Region = new ScreenRect(3200, 1060, 160, 35),
-                ApplyTag = false,
                 ResultVar = "cls",
                 Matched = null,
                 NotMatched = Ids.Of("key"),
@@ -170,7 +169,7 @@ public class NodeRowRoundTripTests
         foreach (var node in graph.Nodes)
         {
             var row = NodeRowViewModel.FromNode(node);
-            var expected = node is not (DelayNode or FindElementNode or WaitForElementNode or RecognizeTagNode);
+            var expected = node is not (DelayNode or FindElementNode or WaitForElementNode or MatchTemplateSetNode);
             await Assert.That(row.HasTarget).IsEqualTo(expected);
         }
     }
@@ -292,10 +291,10 @@ public class NodeRowRoundTripTests
     [Test]
     public async Task Region_IsMandatoryForRecognize_AndKeepsZeroes()
     {
-        var row = (RecognizeTagNodeRowViewModel)NodeRowViewModel.FromNode(
-            new RecognizeTagNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = default });
+        var row = (MatchTemplateSetNodeRowViewModel)NodeRowViewModel.FromNode(
+            new MatchTemplateSetNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = default });
 
-        await Assert.That(((RecognizeTagNode)row.ToNode()).Region).IsEqualTo(default(ScreenRect));
+        await Assert.That(((MatchTemplateSetNode)row.ToNode()).Region).IsEqualTo(default(ScreenRect));
     }
 
     // ---- триггеры -------------------------------------------------------------------------

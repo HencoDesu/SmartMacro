@@ -36,7 +36,7 @@ public static class MacroNodeNames
             RunSubmacroNode => "sub",
             FindElementNode => "find",
             WaitForElementNode => "wait",
-            RecognizeTagNode => "recognize",
+            MatchTemplateSetNode => "match",
             // Новый тип ноды, о котором здесь ещё не знают. «node» лучше пустой строки: подпись
             // всё равно уникализируется номером, а сломать показ отсутствие ветки не должно.
             _ => "node",

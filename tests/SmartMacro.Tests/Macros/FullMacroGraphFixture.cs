@@ -90,12 +90,11 @@ public static class FullMacroGraphFixture
                 Found = Ids.Of("recognize"),
                 Timeout = null,
             },
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("recognize"), DisplayName = "recognize",
                 TemplateSet = "классы",
                 Region = new ScreenRect(5, 6, 7, 8),
-                ApplyTag = false,
                 ResultVar = "класс",
                 Matched = null,
                 NotMatched = null,

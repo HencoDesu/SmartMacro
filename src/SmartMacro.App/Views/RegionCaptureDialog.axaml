@@ -63,6 +63,7 @@
                     PointerPressed="OnTitleBarPointerPressed">
                 <Grid ColumnDefinitions="Auto,*,Auto" Margin="11.2,0,0,0">
                     <TextBlock Grid.Column="0"
+                               x:Name="TitleText"
                                Text="{x:Static res:Strings.Dialog_Region_Title}"
                                FontSize="11.5"
                                FontWeight="Medium"
@@ -183,6 +184,22 @@
                                    StrokeDashArray="3,3"
                                    Fill="Transparent"
                                    IsHitTestVisible="False" />
+                        <!-- Режим точки. Перекрестье во весь кадр видно на любом масштабе, а
+                             квадратик в один пиксель — только на большом, и это ровно то
+                             разделение труда, которое нужно: сперва «примерно туда», потом
+                             «вот в этот пиксель». -->
+                        <Rectangle x:Name="PointCrossH"
+                                   Fill="{DynamicResource NocturneAccentBrush}"
+                                   Opacity="0.55"
+                                   IsHitTestVisible="False" />
+                        <Rectangle x:Name="PointCrossV"
+                                   Fill="{DynamicResource NocturneAccentBrush}"
+                                   Opacity="0.55"
+                                   IsHitTestVisible="False" />
+                        <Rectangle x:Name="PointPixel"
+                                   Stroke="{DynamicResource NocturneAccentBrush}"
+                                   Fill="Transparent"
+                                   IsHitTestVisible="False" />
                     </Canvas>
 
                     <TextBlock x:Name="EmptyState"
@@ -203,7 +220,8 @@
                     BorderThickness="0,1,0,0"
                     Padding="11.2,8.4">
                 <StackPanel Spacing="5.6">
-                    <Grid ColumnDefinitions="88,220,*">
+                    <!-- В режиме точки имени не спрашивают вовсе: файла нет, класть некуда. -->
+                    <Grid x:Name="NameRow" ColumnDefinitions="88,220,*">
                         <TextBlock Grid.Column="0"
                                    Classes="label"
                                    Margin="0,0,8.4,0"
@@ -227,10 +245,14 @@
                     </Grid>
 
                     <TextBlock x:Name="MeasureText" Classes="hint" TextWrapping="Wrap" />
+                    <!-- Своя строка, а не отсчёт: смена окна после «Сохранить и дальше» запускает
+                         снимок, а тот перепишет отсчёт, и отчёт о сохранении мигнул бы и исчез. -->
+                    <TextBlock x:Name="SavedText" Classes="hint" TextWrapping="Wrap" />
                     <TextBlock x:Name="ProblemText" Classes="problem" />
 
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Grid.Column="0"
+                                   x:Name="ViewHintText"
                                    Classes="hint"
                                    VerticalAlignment="Center"
                                    TextWrapping="Wrap"
@@ -240,6 +262,12 @@
                                     Content="{x:Static res:Strings.Dialog_Region_Cancel}"
                                     IsCancel="True"
                                     Click="OnCancelClicked" />
+                            <!-- Только в режиме набора: у одиночного шаблона второго файла не
+                                 бывает, а у точки нет файла вовсе. -->
+                            <Button x:Name="SaveAndNextButton"
+                                    Content="{x:Static res:Strings.Dialog_Region_SaveAndNext}"
+                                    ToolTip.Tip="{x:Static res:Strings.Dialog_Region_SaveAndNextTip}"
+                                    Click="OnSaveAndNextClicked" />
                             <Button x:Name="AcceptButton"
                                     Classes="accent"
                                     Content="{x:Static res:Strings.Dialog_Region_Accept}"

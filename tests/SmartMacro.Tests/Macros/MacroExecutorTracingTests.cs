@@ -150,7 +150,7 @@ public class MacroExecutorTracingTests
             Ids.Of("found"),
             new WaitForElementNode { Id = Ids.Of("found"), DisplayName = "found", Template = "ChatPanelButtons", TimeoutMs = 1, Found = Ids.Of("lost") },
             new WaitForElementNode { Id = Ids.Of("lost"), DisplayName = "lost", Template = "Nope", TimeoutMs = 1, Timeout = Ids.Of("tag") },
-            new RecognizeTagNode { Id = Ids.Of("tag"), DisplayName = "tag", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) });
+            new MatchTemplateSetNode { Id = Ids.Of("tag"), DisplayName = "tag", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) });
 
         await harness.Executor.RunAsync(graph, harness.Context(ExecutorHarness.Window, observer: observer),
             CancellationToken.None);

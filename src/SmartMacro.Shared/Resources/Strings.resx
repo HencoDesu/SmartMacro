@@ -896,15 +896,15 @@
   </data>
   <data name="Node_Field_TemplateSet" xml:space="preserve">
     <value>набор</value>
-    <comment>подпись поля набора шаблонов у ноды «Распознать тег»</comment>
+    <comment>подпись поля набора шаблонов у ноды «Сопоставить с набором»</comment>
   </data>
   <data name="Node_Field_ResultVar" xml:space="preserve">
     <value>результат</value>
-    <comment>подпись поля переменной результата у ноды «Распознать тег»</comment>
+    <comment>подпись поля переменной результата у ноды «Сопоставить с набором»</comment>
   </data>
-  <data name="Node_Recognize_ApplyTag" xml:space="preserve">
-    <value>вешать тег на окно</value>
-    <comment>галочка у ноды «Распознать тег»</comment>
+  <data name="Node_MatchSet_ResultHint" xml:space="preserve">
+    <value>имя победившего шаблона; поле обязательно — больше нода ничего не отдаёт. При промахе переменная не пишется.</value>
+    <comment>подсказка под полем «результат» ноды «Сопоставить с набором», инспектор шириной около 380 px, переносится по словам. Говорит две вещи, обе неочевидные: поле обязательно (валидатор считает пустое ошибкой) и промах переменную не трогает.</comment>
   </data>
 
   <!-- ======== Каталог нод — подписи типов (шапка коробки, заголовок инспектора, меню «+ Нода») ======== -->
@@ -940,9 +940,13 @@
     <value>Ждать элемент</value>
     <comment>то же для ноды ожидания шаблона</comment>
   </data>
-  <data name="Node_Type_RecognizeTag" xml:space="preserve">
-    <value>Распознать тег</value>
-    <comment>то же для ноды распознавания набора шаблонов</comment>
+  <data name="Node_Type_MatchTemplateSetMenu" xml:space="preserve">
+    <value>Сопоставить с набором</value>
+    <comment>пункт меню «+ Нода» для ноды сопоставления с набором шаблонов — ПОЛНАЯ форма. Прежнее «Распознать тег» врало: нода больше не вешает тег, а только пишет имя победившего шаблона в переменную.</comment>
+  </data>
+  <data name="Node_Type_MatchTemplateSet" xml:space="preserve">
+    <value>Набор шаблонов</value>
+    <comment>⚠️ короткая форма той же ноды — в шапке коробки и в заголовке инспектора, ровно как у саб-макроса рядом. Полная «Сопоставить с набором» сталкивалась в заголовке инспектора с подсказкой «двойной клик — правка на месте» пиксель в пиксель; найдено глазами на живой панели.</comment>
   </data>
   <data name="Node_Type_RunSubmacroMenu" xml:space="preserve">
       <value>Запустить саб-макрос</value>
@@ -980,7 +984,7 @@
   </data>
   <data name="Node_Edge_Matched" xml:space="preserve">
     <value>Распознано</value>
-    <comment>исход «набор распознан» у ноды «Распознать тег»</comment>
+    <comment>исход «в наборе нашёлся победитель» у ноды «Сопоставить с набором»</comment>
   </data>
   <data name="Node_Edge_NotMatched" xml:space="preserve">
     <value>Не распознано</value>
@@ -1012,7 +1016,7 @@
   </data>
   <data name="Node_Summary_TemplateSet" xml:space="preserve">
     <value>набор {0}</value>
-    <comment>кусок сводки ноды «Распознать тег»; {0} = имя набора</comment>
+    <comment>кусок сводки ноды «Сопоставить с набором»; {0} = имя набора</comment>
   </data>
   <data name="Node_Summary_Seconds" xml:space="preserve">
     <value>{0} с</value>
@@ -1070,11 +1074,7 @@
   </data>
   <data name="Node_Error_TemplateSetMissing" xml:space="preserve">
     <value>[{0}] набор шаблонов не задан.</value>
-    <comment>{0} = подпись ноды «Распознать тег»</comment>
-  </data>
-  <data name="Node_Error_ResultVarMissing" xml:space="preserve">
-    <value>[{0}] имя переменной результата не задано.</value>
-    <comment>{0} = подпись ноды «Распознать тег»</comment>
+    <comment>{0} = подпись ноды «Сопоставить с набором»</comment>
   </data>
   <data name="Node_Error_Region" xml:space="preserve">
     <value>[{0}] регион {1}: «{2}» — не целое число.</value>
@@ -1196,7 +1196,7 @@
   </data>
   <data name="Editor_Variables_SlotResult" xml:space="preserve">
     <value>результат распознавания</value>
-    <comment>то же — поле «результат» у ноды «Распознать тег»</comment>
+    <comment>то же — поле «результат» у ноды «Сопоставить с набором»</comment>
   </data>
   <data name="Editor_Variables_SlotPoint" xml:space="preserve">
     <value>в точке клика</value>
@@ -1237,8 +1237,8 @@
       <comment>вместо поля набора, пока макрос не сохранён ни разу</comment>
   </data>
   <data name="Editor_Templates_Empty" xml:space="preserve">
-      <value>Шаблонов в макросе нет. Действия Find/Wait/Recognize без них всегда уходят по «не найдено».</value>
-      <comment>пустое состояние списка шаблонов</comment>
+      <value>Шаблонов в макросе нет. Действия Find/Wait/Match без них всегда уходят по «не найдено».</value>
+      <comment>пустое состояние списка шаблонов. Имена семейств латиницей — те же, что в подписях нод по умолчанию (find-1, wait-2, match-3)</comment>
   </data>
   <data name="Editor_Templates_Delete" xml:space="preserve">
     <value>Убрать из бандла</value>
@@ -1248,7 +1248,7 @@
   <!-- ======== Режим «Макросы» — вырезка шаблона со свежего снимка окна ======== -->
   <data name="Editor_Region_Capture" xml:space="preserve">
     <value>Выделить на снимке…</value>
-    <comment>кнопка в инспекторе нод Find / Wait / Recognize, прямо над четырьмя полями области</comment>
+    <comment>кнопка в инспекторе нод Find / Wait / Match, прямо над четырьмя полями области</comment>
   </data>
   <data name="Editor_Region_CaptureTip" xml:space="preserve">
     <value>Снять окно и вырезать шаблон мышью. Кадр берётся так же, как его берёт зрение.</value>
@@ -1260,10 +1260,26 @@
   </data>
   <data name="Editor_Region_NoTemplateSet" xml:space="preserve">
     <value>Нет набора шаблонов у «{0}» — вырезку некуда класть.</value>
-    <comment>красная строка: RecognizeTag называет НАБОР, и без него у файла нет пути внутри бандла. {0} = подпись ноды. ⚠️ Строка ошибки в панели инструментов узкая — длиннее примерно 58 знаков обрезается многоточием посреди слова. Найдено глазами.</comment>
+    <comment>красная строка: «Сопоставить с набором» называет НАБОР, и без него у файла нет пути внутри бандла. {0} = подпись ноды. ⚠️ Строка ошибки в панели инструментов узкая — длиннее примерно 58 знаков обрезается многоточием посреди слова. Найдено глазами.</comment>
   </data>
   <data name="Editor_Region_Failed" xml:space="preserve">
     <value>Не удалось вырезать шаблон: {0}</value>
+    <comment>красная строка; {0} = сообщение отказа (демон не знает окна, PrintWindow отказал, файл не прочитался)</comment>
+  </data>
+  <data name="Editor_Point_Pick" xml:space="preserve">
+    <value>Указать на снимке…</value>
+    <comment>кнопка в инспекторе ноды «Клик», под полями X и Y. Заменяет прежний способ добывать координату: навести курсор в игре, запустить макрос и пойти читать в журнале, чем засеялась переменная cursor.</comment>
+  </data>
+  <data name="Editor_Point_PickTip" xml:space="preserve">
+    <value>Снять окно и щёлкнуть по нужному пикселю. Галочка «брать точку из переменной» при этом снимется: у ноды либо числа, либо переменная.</value>
+    <comment>подсказка к ней; вторая фраза обязательна — Point и PointVar взаимоисключающие, и валидатор считает ошибкой оба сразу</comment>
+  </data>
+  <data name="Editor_Point_Picked" xml:space="preserve">
+    <value>Точка X={0} Y={1} взята со снимка.</value>
+    <comment>подпись состояния после удачного выбора точки. «X=… Y=…», а не «{0},{1}»: по-русски запятая — десятичный разделитель</comment>
+  </data>
+  <data name="Editor_Point_Failed" xml:space="preserve">
+    <value>Не удалось выбрать точку: {0}</value>
     <comment>красная строка; {0} = сообщение отказа (демон не знает окна, PrintWindow отказал, файл не прочитался)</comment>
   </data>
   <data name="Editor_Region_Captured" xml:space="preserve">
@@ -2057,7 +2073,7 @@
   </data>
   <data name="Dialog_Region_NameLabelTag" xml:space="preserve">
     <value>тег</value>
-    <comment>она же для ноды Recognize: файл ляжет в набор, а основа его имени и станет тегом</comment>
+    <comment>она же для ноды «Сопоставить с набором»: файл ляжет в набор, а основа его имени и станет кандидатом в теги</comment>
   </data>
   <data name="Dialog_Region_Measure" xml:space="preserve">
     <value>выделено X={0} Y={1} · {2}×{3} → область ноды {4}×{5} (то же выделение с запасом в {6} px с каждой стороны)</value>
@@ -2098,6 +2114,46 @@
   <data name="Dialog_Region_Cancel" xml:space="preserve">
     <value>Отмена</value>
     <comment>вторая кнопка; она же Esc и крестик</comment>
+  </data>
+  <data name="Dialog_Region_SaveAndNext" xml:space="preserve">
+    <value>Сохранить и дальше</value>
+    <comment>третья кнопка, ТОЛЬКО в режиме набора: кладёт вырезку в макрос, не закрывая диалог, и переходит к следующему окну с той же самой рамкой. Ради неё волна и делалась: одиннадцать классов режутся из одного места экрана у разных персонажей.</comment>
+  </data>
+  <data name="Dialog_Region_SaveAndNextTip" xml:space="preserve">
+    <value>Положить вырезку в макрос и снять следующее окно ТОЙ ЖЕ рамкой. Диалог остаётся открытым.</value>
+    <comment>подсказка к ней</comment>
+  </data>
+  <data name="Dialog_Region_Saved" xml:space="preserve">
+    <value>«{0}» сохранён · снято: {1}</value>
+    <comment>подпись под кадром после «Сохранить и дальше»; {0} = имя тега, {1} = сколько вырезок уже положено за этот заход</comment>
+  </data>
+  <data name="Dialog_Region_SaveFailed" xml:space="preserve">
+    <value>Не удалось положить «{0}» в макрос: {1}</value>
+    <comment>претензия внизу диалога, когда запись бандла отказала; {0} = имя, {1} = причина от библиотеки макросов. Диалог при этом НЕ закрывается и имя не стирается — чинить придётся здесь же.</comment>
+  </data>
+  <data name="Dialog_Region_SelectionOutsideFrame" xml:space="preserve">
+    <value>Кадр {0}×{1} меньше рамки — эта же область в нём не помещается. Возьмите окно того же размера или выделите заново.</value>
+    <comment>претензия, когда снятое окно оказалось меньше уже намеченной рамки. {0}×{1} = размер нового кадра. ОТКАЗ, а не обрезка: обрезанная вырезка была бы шаблоном ДРУГОГО размера, а весь смысл набора в том, что все его шаблоны сняты одним и тем же прямоугольником.</comment>
+  </data>
+  <data name="Dialog_Region_TitlePoint" xml:space="preserve">
+    <value>ВЫБОР ТОЧКИ</value>
+    <comment>подпись в строке заголовка вместо Dialog_Region_Title, когда диалог открыт ради координат клика</comment>
+  </data>
+  <data name="Dialog_Region_AcceptPoint" xml:space="preserve">
+    <value>Взять точку</value>
+    <comment>главная кнопка в режиме точки вместо «Вырезать»: положить координаты в поля X/Y ноды клика</comment>
+  </data>
+  <data name="Dialog_Region_NoPoint" xml:space="preserve">
+    <value>Щёлкните по нужному пикселю кадра левой кнопкой.</value>
+    <comment>претензия внизу диалога в режиме точки, пока точка не выбрана</comment>
+  </data>
+  <data name="Dialog_Region_PointMeasure" xml:space="preserve">
+    <value>точка X={0} Y={1} · увеличьте масштаб, чтобы попасть в нужный пиксель</value>
+    <comment>отсчёт под кадром в режиме точки. «X=…​ Y=…», а не «699,85», по той же причине, что у Dialog_Region_Measure: по-русски запятая — десятичный разделитель. Вторая половина — не украшение: на кадре 3840×2160 во весь экран один пиксель меньше точки.</comment>
+  </data>
+  <data name="Dialog_Region_ViewHintPoint" xml:space="preserve">
+    <value>Левая кнопка — поставить точку (можно тащить), средняя или правая — панорама, колесо — масштаб.</value>
+    <comment>подсказка под кадром в режиме точки вместо Dialog_Region_ViewHint</comment>
   </data>
 
   <data name="Dialog_Startup_LoggerFailed" xml:space="preserve">
@@ -2230,6 +2286,10 @@ SmartMacro продолжит работу без них, но ввод и за�
   <data name="Validation_Node_MatchThresholdOutOfRange" xml:space="preserve">
     <value>Порог совпадения {0} вне диапазона (0; 1].</value>
     <comment>ОШИБКА на ноде зрения. {0} — само число, уже отформатированное как «0.###». Ноль означал бы «совпадает что угодно», больше единицы — «не совпадёт никогда»; и то и другое не настройка точности, а выключенная нода.</comment>
+  </data>
+  <data name="Validation_Node_ResultVarMissing" xml:space="preserve">
+      <value>Не задано имя переменной результата — сопоставление некуда положить.</value>
+      <comment>ОШИБКА на ноде «Сопоставить с набором», список замечаний в редакторе и строка библиотеки. Единственное обязательное текстовое поле в модели: запись в переменную — весь наблюдаемый результат этой ноды, без неё остаётся развилка «совпало / не совпало» с выброшенным значением.</comment>
   </data>
   <data name="Validation_Node_TemplateMissing" xml:space="preserve">
       <value>В макросе нет шаблона «{0}» — действие всегда будет иметь результат «не найдено».</value>
@@ -2521,6 +2581,14 @@ SmartMacro продолжит работу без них, но ввод и за�
   <data name="Bundle_Read_GraphUnreadable" xml:space="preserve">
     <value>Запись «{0}» не читается: {1}</value>
     <comment>Вердикт читателя: запись графа не распаковывается. {0} — имя записи, {1} — сообщение распаковщика. Дословно совпадает с Bundle_Read_MetadataUnreadable.</comment>
+  </data>
+  <data name="Bundle_Read_UnknownNodeType" xml:space="preserve">
+    <value>В «{0}» есть действие типа «{1}», которого эта сборка не знает.</value>
+    <comment>Вердикт читателя: JSON целый, версия формата своя, но $type ноды не из каталога. НЕ «повреждён» и НЕ «сделан другой версией формата» — обе формулировки увели бы не туда. {0} — имя записи (nodes.json или submacro/…), {1} — сам дискриминатор латиницей, как он написан в файле: по нему файл ищут глазами.</comment>
+  </data>
+  <data name="Bundle_Read_UnknownTriggerType" xml:space="preserve">
+    <value>В «{0}» есть триггер типа «{1}», которого эта сборка не знает.</value>
+    <comment>То же самое про $type триггера. Раздельно с Bundle_Read_UnknownNodeType, потому что искать в файле придётся в разных местах.</comment>
   </data>
   <data name="Bundle_Read_SubmacroMalformed" xml:space="preserve">
       <value>Саб-макрос «{0}» не разбирается: {1}</value>

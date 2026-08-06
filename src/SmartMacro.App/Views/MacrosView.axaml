@@ -789,6 +789,25 @@
                     ToolTip.Tip="{x:Static res:Strings.Editor_Region_CaptureTip}"
                     Click="OnCaptureRegionClicked" />
         </DataTemplate>
+
+        <!-- Та же кнопка для ноды клика, только берёт со снимка одну ТОЧКУ. Видна лишь при
+             буквальных X/Y: у переменной координат нет, и подставлять их туда нечего. Прежний
+             способ добыть координату (навести курсор, запустить макрос, прочитать в журнале, чем
+             засеялся cursor) остаётся — он про живую точку во время прогона. -->
+        <DataTemplate x:Key="PointPickButton"
+                      DataType="{x:Type nodes:ClickNodeRowViewModel}"
+                      x:DataType="nodes:ClickNodeRowViewModel">
+            <Button Classes="ghost"
+                    HorizontalAlignment="Left"
+                    Margin="64,0,0,0"
+                    Padding="0"
+                    MinWidth="0"
+                    IsVisible="{Binding UseLiteralPoint}"
+                    FontSize="{DynamicResource NocturneFontSizeMicro}"
+                    Content="{x:Static res:Strings.Editor_Point_Pick}"
+                    ToolTip.Tip="{x:Static res:Strings.Editor_Point_PickTip}"
+                    Click="OnPickPointClicked" />
+        </DataTemplate>
     </UserControl.Resources>
 
     <UserControl.DataTemplates>
@@ -853,6 +872,7 @@
                         <TextBox Grid.Column="1" Classes="numeric" Margin="2,0,0,0" Text="{Binding YText, Mode=TwoWay}" />
                     </Grid>
                 </Grid>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PointPickButton}" />
                 <Grid ColumnDefinitions="64,*" IsVisible="{Binding UseVariable}">
                     <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_PointVar}" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="cursor" Text="{Binding PointVar, Mode=TwoWay}" />
@@ -963,7 +983,7 @@
             </StackPanel>
         </DataTemplate>
 
-        <DataTemplate DataType="{x:Type nodes:RecognizeTagNodeRowViewModel}" x:DataType="nodes:RecognizeTagNodeRowViewModel">
+        <DataTemplate DataType="{x:Type nodes:MatchTemplateSetNodeRowViewModel}" x:DataType="nodes:MatchTemplateSetNodeRowViewModel">
             <StackPanel Spacing="5.6">
                 <Grid ColumnDefinitions="64,*">
                     <TextBlock Grid.Column="0" Classes="label"
@@ -981,7 +1001,13 @@
                     <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_ResultVar}" />
                     <TextBox Grid.Column="1" Classes="mono" Watermark="tag" Text="{Binding ResultVar, Mode=TwoWay}" />
                 </Grid>
-                <CheckBox Content="{x:Static res:Strings.Node_Recognize_ApplyTag}" IsChecked="{Binding ApplyTag, Mode=TwoWay}" Margin="64,0,0,0" />
+                <!-- Галочки «вешать тег на окно» здесь больше нет: нода отдаёт значение, а окно
+                     размечает отдельная нода «Добавить тег» с подстановкой {переменной}. Подсказка
+                     говорит и это, и то, что промах переменную не трогает. -->
+                <TextBlock Classes="hint"
+                           Margin="64,0,0,0"
+                           TextWrapping="Wrap"
+                           Text="{x:Static res:Strings.Node_MatchSet_ResultHint}" />
             </StackPanel>
         </DataTemplate>
 

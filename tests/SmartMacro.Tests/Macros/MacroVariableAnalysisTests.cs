@@ -27,7 +27,7 @@ public class MacroVariableAnalysisTests
         // В точности панель переменных из макета 1d: «{tag} · строка · пишет recognize-class ·
         // читает set-icon (в пути к иконке)».
         var graph = Graph(
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("recognize-class"), DisplayName = "recognize-class",
                 TemplateSet = "classes",
@@ -50,7 +50,7 @@ public class MacroVariableAnalysisTests
     public async Task TagComesBeforeCursor_BecauseSomethingActuallyWritesIt()
     {
         var graph = Graph(
-            new RecognizeTagNode { Id = Ids.Of("recognize"), DisplayName = "recognize", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) },
+            new MatchTemplateSetNode { Id = Ids.Of("recognize"), DisplayName = "recognize", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) },
             new SetIconNode { Id = Ids.Of("icon"), DisplayName = "icon", IconPath = "{tag}.png" });
 
         // Порядок, в котором рисует панель: переменная с писателем сверху, всегда присутствующая
@@ -167,7 +167,7 @@ public class MacroVariableAnalysisTests
     [Test]
     public async Task AWriteNobodyReadsIsReportedAsUnread()
     {
-        var graph = Graph(new RecognizeTagNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) });
+        var graph = Graph(new MatchTemplateSetNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1) });
 
         await Assert.That(Var(graph, "tag").IsRead).IsFalse();
     }
@@ -176,7 +176,7 @@ public class MacroVariableAnalysisTests
     public async Task SeveralReadersOfOneVariableAreAllListed()
     {
         var graph = Graph(
-            new RecognizeTagNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1), Matched = Ids.Of("a") },
+            new MatchTemplateSetNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1), Matched = Ids.Of("a") },
             new AddTagNode { Id = Ids.Of("a"), DisplayName = "a", Tag = "{tag}-готов", Next = Ids.Of("i") },
             new SetIconNode { Id = Ids.Of("i"), DisplayName = "i", IconPath = "{tag}.png" });
 
@@ -206,7 +206,7 @@ public class MacroVariableAnalysisTests
     public async Task BlankVariableNamesAreIgnored()
     {
         var graph = Graph(
-            new RecognizeTagNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "s", Region = new ScreenRect(0, 0, 1, 1), ResultVar = "  " },
+            new MatchTemplateSetNode { Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "s", Region = new ScreenRect(0, 0, 1, 1), ResultVar = "  " },
             new ClickNode { Id = Ids.Of("c"), DisplayName = "c", PointVar = string.Empty });
 
         await Assert.That(MacroVariableAnalysis.Analyze(graph).Select(v => v.Name))

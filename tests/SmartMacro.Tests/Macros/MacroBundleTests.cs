@@ -245,6 +245,61 @@ public class MacroBundleTests
         }
     }
 
+    // ⚠️ Бандл, сделанный ДО переименования RecognizeTag → MatchTemplateSet, — не повреждённый
+    // файл и не файл чужой версии формата: он целый, версия у него своя, и не хватает ровно
+    // одного — типа ноды. Читатель обязан сказать именно это и НАЗВАТЬ тип, иначе искать в файле
+    // нечего. Раньше здесь стоял вердикт «повреждён» с английской строкой каркаса.
+    [Test]
+    public async Task Read_OfAGraphWithAnUnknownNodeType_NamesTheTypeInsteadOfCryingCorruption()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = Path.Combine(dir, "прошлая-нода.hsm");
+            MacroBundleWriter.Write(path, Content());
+            ReplaceEntry(path, MacroBundleFormat.GraphEntry,
+                """
+                {
+                  "Name": "прошлая-нода",
+                  "StartNodeId": "11111111-1111-1111-1111-111111111111",
+                  "Nodes": [ { "$type": "recognizeTag", "Id": "11111111-1111-1111-1111-111111111111" } ]
+                }
+                """);
+
+            var read = MacroBundleReader.Read(path);
+
+            await Assert.That(read.GraphFault).IsEqualTo(MacroBundleFault.UnknownType);
+            await Assert.That(read.GraphMessage!).Contains("recognizeTag");
+            await Assert.That(read.GraphMessage!).Contains(MacroBundleFormat.GraphEntry);
+            // Паспорт при этом цел, и строка библиотеки покажет настоящее имя автора.
+            await Assert.That(read.Metadata.IsOk).IsTrue();
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+
+    // Обратная сторона того же: по-настоящему битый JSON обязан остаться «повреждён». Разбор
+    // незнакомого типа не имеет права подменять собой честный вердикт.
+    [Test]
+    public async Task Read_OfTrulyBrokenJson_StaysMalformed()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = Path.Combine(dir, "битый.hsm");
+            MacroBundleWriter.Write(path, Content());
+            ReplaceEntry(path, MacroBundleFormat.GraphEntry, "{ \"Nodes\": [ ");
+
+            await Assert.That(MacroBundleReader.Read(path).GraphFault).IsEqualTo(MacroBundleFault.Malformed);
+        }
+        finally
+        {
+            DeleteTempDir(dir);
+        }
+    }
+
     // ── Отказы, которые обязаны звучать по-разному ────────────────────────────────────────
 
     [Test]
@@ -411,7 +466,7 @@ public class MacroBundleTests
             // И это видно снаружи, без распаковки: имя макроса лежит в файле открытым текстом.
             var raw = Encoding.UTF8.GetString(File.ReadAllBytes(path));
             await Assert.That(raw).Contains("\"Name\": \"полный\"");
-            await Assert.That(raw).Contains("\"$type\": \"recognizeTag\"");
+            await Assert.That(raw).Contains("\"$type\": \"matchTemplateSet\"");
         }
         finally
         {

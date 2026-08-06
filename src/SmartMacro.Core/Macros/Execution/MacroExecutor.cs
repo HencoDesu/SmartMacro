@@ -456,7 +456,7 @@ public sealed partial class MacroExecutor
                     DetailIfTracing(trace, () => string.Format(
                         CultureInfo.CurrentCulture, Strings.Run_Detail_WaitTimedOut, n.Template, n.TimeoutMs)));
             }
-            case RecognizeTagNode n:
+            case MatchTemplateSetNode n:
             {
                 var hwnd = RequireContext(n, context);
                 var set = ResolveTemplateSet(context, macro.Name, n, n.TemplateSet);
@@ -468,19 +468,22 @@ public sealed partial class MacroExecutor
                 }
 
                 await HoldForRunAsync(context, [hwnd], HookOn.Capture, ct).ConfigureAwait(false);
-                var tag = await _primitives.RecognizeAsync(hwnd, set, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
-                if (tag is not null)
+                var match = await _primitives.RecognizeAsync(hwnd, set, n.Region, n.MatchThreshold, ct).ConfigureAwait(false);
+                if (match is not null)
                 {
-                    SetVariable(trace, context, n, n.ResultVar, tag);
-                    if (n.ApplyTag)
-                    {
-                        _windows.AddTag(hwnd, tag);
-                    }
-
+                    // Значение — и только оно. Тег на окно эта нода больше не вешает: разметка
+                    // окна — отдельное действие, и для него есть AddTagNode с подстановкой
+                    // {переменной}, которую мы сейчас записали.
+                    SetVariable(trace, context, n, n.ResultVar, match);
                     return new NodeStep(n.Matched, RunOutcomes.Matched,
-                        DetailIfTracing(trace, () => $"{n.TemplateSet} → {tag}"));
+                        DetailIfTracing(trace, () => $"{n.TemplateSet} → {match}"));
                 }
 
+                // ПРОМАХ НЕ ПИШЕТ НИЧЕГО — ни пустой строки, ни прошлого значения. Уходим по
+                // NotMatched, и переменная остаётся такой, какой была (обычно — неопределённой).
+                // На этом стоит статический разбор переменных: ветка «не совпало», ведущая к
+                // чтению {переменной}, честно оборвёт прогон, а не подставит пустоту, из которой
+                // получился бы тег с пустым именем или путь к иконке «Assets/ClassIcons/.png».
                 return new NodeStep(n.NotMatched, RunOutcomes.NotMatched, DetailIfTracing(trace, () => n.TemplateSet));
             }
             default:
