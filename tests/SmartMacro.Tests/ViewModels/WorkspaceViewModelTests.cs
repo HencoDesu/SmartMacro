@@ -1,7 +1,8 @@
-using SmartMacro.App.Mvvm;
+﻿using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -115,8 +116,9 @@ public class WorkspaceViewModelTests
         await Assert.That(vm.IdentifiedCount).IsEqualTo(1);
         await Assert.That(vm.UntaggedCount).IsEqualTo(1);
         await Assert.That(vm.HasUntagged).IsTrue();
-        await Assert.That(vm.WindowsSummaryText).IsEqualTo("1 опознано · 1 без тегов");
-        await Assert.That(vm.UntaggedHeaderText).IsEqualTo("НЕ ОПОЗНАНО · 1");
+        await Assert.That(Msg.Args(vm.WindowsSummaryText, Strings.Windows_Header_IdentifiedAndUntagged))
+            .IsEquivalentTo(new[] { "1", "1" });
+        await Assert.That(Msg.Arg(vm.UntaggedHeaderText, Strings.Windows_Untagged_Header)).IsEqualTo("1");
     }
 
     [Test]
@@ -178,7 +180,7 @@ public class WorkspaceViewModelTests
         using var vm = CreateVm(client);
 
         await Assert.That(vm.HasNoWindows).IsTrue();
-        await Assert.That(vm.WindowsSummaryText).IsEqualTo("нет окон под управлением");
+        await Assert.That(vm.WindowsSummaryText).IsEqualTo(Strings.Windows_Header_Empty);
     }
 
     [Test]

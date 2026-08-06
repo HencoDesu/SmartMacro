@@ -2,6 +2,7 @@ using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Macros;
 
@@ -28,7 +29,11 @@ public class MacroGraphValidatorTests
         // Макрос загрузочного вида с триггером по процессу: условные ноды и действия без цели
         // здесь в порядке.
         var graph = Graph(Ids.Of("w"), [Process],
-            new WaitForElementNode { Id = Ids.Of("w"), DisplayName = "w", Template = "мир", TimeoutMs = 60000, Found = Ids.Of("k"), Timeout = null },
+            new WaitForElementNode
+            {
+                Id = Ids.Of("w"), DisplayName = "w", Template = "мир", TimeoutMs = 60000, Found = Ids.Of("k"),
+                Timeout = null
+            },
             new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.C, Next = Ids.Of("d") },
             new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 100, Next = null });
 
@@ -41,8 +46,13 @@ public class MacroGraphValidatorTests
     public async Task CleanHotkeyMacro_WithSelectorsEverywhere_Passes()
     {
         var graph = Graph(Ids.Of("k"), [Hotkey],
-            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8, Target = AnySelector, Next = Ids.Of("c") },
-            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", Point = new ScreenPoint(1, 2), Target = AnySelector, Next = Ids.Of("d") },
+            new KeyPressNode
+                { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8, Target = AnySelector, Next = Ids.Of("c") },
+            new ClickNode
+            {
+                Id = Ids.Of("c"), DisplayName = "c", Point = new ScreenPoint(1, 2), Target = AnySelector,
+                Next = Ids.Of("d")
+            },
             new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 100, Next = null });
 
         var issues = MacroGraphValidator.Validate(graph);
@@ -60,7 +70,7 @@ public class MacroGraphValidatorTests
 
         var startErrors = Errors(issues).Where(i => i.NodeId is null).ToList();
         await Assert.That(startErrors).Count().IsEqualTo(1);
-        await Assert.That(startErrors[0].Message).Contains("Стартовая нода");
+        await Assert.That(Msg.Is(startErrors[0].Message, Strings.Validation_Graph_StartNodeMissing)).IsTrue();
     }
 
     [Test]
@@ -72,33 +82,43 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.Message.Contains("Дубликат"))).IsTrue();
+        await Assert.That(Errors(issues).Any(i => Msg.Is(i.Message, Strings.Validation_Node_DuplicateId))).IsTrue();
     }
 
     [Test]
     public async Task EdgeToUnknownNode_IsError()
     {
         var graph = Graph(Ids.Of("f"), [Process],
-            new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "т", Found = Ids.Of("есть"), NotFound = Ids.Of("нету") },
+            new FindElementNode
+            {
+                Id = Ids.Of("f"), DisplayName = "f", Template = "т", Found = Ids.Of("есть"), NotFound = Ids.Of("нету")
+            },
             new DelayNode { Id = Ids.Of("есть"), DisplayName = "есть", Ms = 1, Next = null });
 
         var issues = MacroGraphValidator.Validate(graph);
 
         var edgeErrors = Errors(issues).Where(i => i.NodeName == "f").ToList();
         await Assert.That(edgeErrors).Count().IsEqualTo(1);
-        // Цель ребра не называется: ноды с таким id в графе нет, а важно, ЧЕЙ исход повис.
-        await Assert.That(edgeErrors[0].Message).Contains("NotFound");
+        // Цель ребра не называется: ноды с таким id в графе нет, а важно, ЧЕЙ исход повис, —
+        // и это ровно то, что подставляется в сообщение.
+        await Assert.That(Msg.Arg(edgeErrors[0].Message, Strings.Validation_Node_EdgeToMissingNode))
+            .IsEqualTo("NotFound");
     }
 
     [Test]
     public async Task ClickNode_BothPointAndPointVar_IsError()
     {
         var graph = Graph(Ids.Of("c"), [Process],
-            new ClickNode { Id = Ids.Of("c"), DisplayName = "c", Point = new ScreenPoint(1, 1), PointVar = "cursor", Next = null });
+            new ClickNode
+            {
+                Id = Ids.Of("c"), DisplayName = "c", Point = new ScreenPoint(1, 1), PointVar = "cursor", Next = null
+            });
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.NodeName == "c" && i.Message.Contains("ровно одно"))).IsTrue();
+        await Assert.That(Errors(issues)
+                .Any(i => i.NodeName == "c" && Msg.Is(i.Message, Strings.Validation_Node_ClickNeedsExactlyOnePoint)))
+            .IsTrue();
     }
 
     [Test]
@@ -109,7 +129,9 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.NodeName == "c" && i.Message.Contains("ровно одно"))).IsTrue();
+        await Assert.That(Errors(issues)
+                .Any(i => i.NodeName == "c" && Msg.Is(i.Message, Strings.Validation_Node_ClickNeedsExactlyOnePoint)))
+            .IsTrue();
     }
 
     [Test]
@@ -120,7 +142,15 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.NodeName == "f" && i.Message.Contains("контекстное окно"))).IsTrue();
+        // Сообщений про контекстное окно ДВА — проверке условия и действию, — и различаются они
+        // только первым словосочетанием. Пока утверждалось «в тексте есть „контекстное окно“»,
+        // тест проходил и на перепутанной ветке; теперь называется то, которое здесь верно, и
+        // отвергается соседнее.
+        var contextErrors = Errors(issues).Where(i => i.NodeName == "f").ToList();
+        await Assert.That(contextErrors
+            .Any(i => Msg.Is(i.Message, Strings.Validation_Node_ConditionalNeedsContextWindow))).IsTrue();
+        await Assert.That(contextErrors
+            .Any(i => Msg.Is(i.Message, Strings.Validation_Node_ActionNeedsContextWindow))).IsFalse();
     }
 
     [Test]
@@ -142,7 +172,12 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.NodeName == "k" && i.Message.Contains("контекстное окно"))).IsTrue();
+        // Зеркало предыдущего теста: здесь виновато ДЕЙСТВИЕ, и сообщение должно быть его.
+        var contextErrors = Errors(issues).Where(i => i.NodeName == "k").ToList();
+        await Assert.That(contextErrors
+            .Any(i => Msg.Is(i.Message, Strings.Validation_Node_ActionNeedsContextWindow))).IsTrue();
+        await Assert.That(contextErrors
+            .Any(i => Msg.Is(i.Message, Strings.Validation_Node_ConditionalNeedsContextWindow))).IsFalse();
     }
 
     // Послабление W0.2b: в граф БЕЗ триггеров можно войти только через веер селектора или через
@@ -182,7 +217,10 @@ public class MacroGraphValidatorTests
         var triggered = Graph(Ids.Of("k"), [Hotkey], nodes);
 
         await Assert.That(Errors(MacroGraphValidator.Validate(libraryOnly))).Count().IsEqualTo(0);
-        await Assert.That(Errors(MacroGraphValidator.Validate(triggered)).Any(i => i.Message.Contains("контекстное окно"))).IsTrue();
+        await Assert
+            .That(Errors(MacroGraphValidator.Validate(triggered))
+                .Any(i => Msg.Is(i.Message, Strings.Validation_Node_ActionNeedsContextWindow)))
+            .IsTrue();
     }
 
     [Test]
@@ -197,7 +235,7 @@ public class MacroGraphValidatorTests
         await Assert.That(Errors(issues)).Count().IsEqualTo(0);
         var unreachable = Warnings(issues).Where(i => i.NodeName == "f").ToList();
         await Assert.That(unreachable).Count().IsEqualTo(1);
-        await Assert.That(unreachable[0].Message).Contains("недостижима");
+        await Assert.That(Msg.Is(unreachable[0].Message, Strings.Validation_Node_Unreachable)).IsTrue();
     }
 
     [Test]
@@ -209,7 +247,9 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Warnings(issues).Any(i => i.NodeName == "остров" && i.Message.Contains("недостижима"))).IsTrue();
+        await Assert.That(Warnings(issues)
+                .Any(i => i.NodeName == "остров" && Msg.Is(i.Message, Strings.Validation_Node_Unreachable)))
+            .IsTrue();
     }
 
     [Test]
@@ -221,7 +261,8 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Warnings(issues).Any(i => i.Message.Contains("вхолостую"))).IsTrue();
+        await Assert.That(Warnings(issues).Any(i => Msg.Is(i.Message, Strings.Validation_Graph_LoopWithoutDelay)))
+            .IsTrue();
     }
 
     [Test]
@@ -232,7 +273,8 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Warnings(issues).Any(i => i.Message.Contains("вхолостую"))).IsTrue();
+        await Assert.That(Warnings(issues).Any(i => Msg.Is(i.Message, Strings.Validation_Graph_LoopWithoutDelay)))
+            .IsTrue();
     }
 
     [Test]
@@ -251,7 +293,11 @@ public class MacroGraphValidatorTests
     public async Task CycleThroughWaitForElement_IsNotAHotLoop()
     {
         var graph = Graph(Ids.Of("w"), [Process],
-            new WaitForElementNode { Id = Ids.Of("w"), DisplayName = "w", Template = "т", TimeoutMs = 1000, Found = null, Timeout = Ids.Of("k") },
+            new WaitForElementNode
+            {
+                Id = Ids.Of("w"), DisplayName = "w", Template = "т", TimeoutMs = 1000, Found = null,
+                Timeout = Ids.Of("k")
+            },
             new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F1, Next = Ids.Of("w") });
 
         var issues = MacroGraphValidator.Validate(graph);
@@ -273,11 +319,14 @@ public class MacroGraphValidatorTests
         var issues = MacroGraphValidator.Validate(graph);
 
         await Assert.That(Errors(issues)).IsEmpty();
-        var duplicates = Warnings(issues).Where(i => i.Message.Contains("носит больше одной ноды")).ToList();
+        var duplicates = Warnings(issues).Where(i => Msg.Is(i.Message, Strings.Validation_Node_DuplicateName)).ToList();
         // Помечены ОБЕ: клик по замечанию должен подсвечивать ту ноду, о которой оно говорит.
         await Assert.That(duplicates).Count().IsEqualTo(2);
         await Assert.That(duplicates.Select(i => i.NodeId))
             .IsEquivalentTo(new Guid?[] { Ids.Of("a"), Ids.Of("b") });
+        // И обе называют спорную подпись — сообщение «где-то есть дубликат» не действие.
+        await Assert.That(duplicates.Select(i => Msg.Arg(i.Message, Strings.Validation_Node_DuplicateName)))
+            .IsEquivalentTo(new[] { "Клик", "Клик" });
     }
 
     [Test]
@@ -298,7 +347,7 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph);
 
-        await Assert.That(Errors(issues).Any(i => i.Message.Contains("Порог совпадения")))
+        await Assert.That(Errors(issues).Any(i => Msg.Is(i.Message, Strings.Validation_Node_MatchThresholdOutOfRange)))
             .IsEqualTo(!expectedClean);
     }
 
@@ -324,9 +373,10 @@ public class MacroGraphValidatorTests
         var issues = MacroGraphValidator.Validate(graph, MacroTemplateInventory.Empty);
 
         await Assert.That(Errors(issues)).IsEmpty();
-        var missing = Warnings(issues).Single(i => i.Message.Contains("нет шаблона"));
+        var missing = Warnings(issues).Single(i => Msg.Is(i.Message, Strings.Validation_Node_TemplateMissing));
         await Assert.That(missing.NodeId).IsEqualTo(Ids.Of("f"));
-        await Assert.That(missing.Message).Contains("КнопкаКоторойНет");
+        await Assert.That(Msg.Arg(missing.Message, Strings.Validation_Node_TemplateMissing))
+            .IsEqualTo("КнопкаКоторойНет");
     }
 
     // ПРЕДУПРЕЖДЕНИЕ, а не ошибка: ошибка запрещает сохранение, а «набрал имя → импортировал
@@ -356,7 +406,12 @@ public class MacroGraphValidatorTests
 
         var issues = MacroGraphValidator.Validate(graph, MacroTemplateInventory.Empty);
 
-        await Assert.That(Warnings(issues).Single(i => i.Message.Contains("набора")).Message).Contains("classes");
+        var missingSet = Warnings(issues).Single();
+        // Ровно то, что обещает имя теста: выбран ключ ПРО НАБОР, а не про отдельный файл.
+        await Assert.That(Msg.Is(missingSet.Message, Strings.Validation_Node_TemplateSetMissing)).IsTrue();
+        await Assert.That(Msg.Is(missingSet.Message, Strings.Validation_Node_TemplateMissing)).IsFalse();
+        await Assert.That(Msg.Arg(missingSet.Message, Strings.Validation_Node_TemplateSetMissing))
+            .IsEqualTo("classes");
     }
 
     [Test]

@@ -1,5 +1,6 @@
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Ipc;
 
@@ -37,14 +38,20 @@ internal static class RunEvents
     /// <summary>
     /// Припаркован на точке останова. В <c>Detail</c> уезжает то самое русское слово, которое
     /// кладёт туда демон, — панель показывает его как есть, поэтому подделка обязана совпадать.
+    /// Отсюда и ресурс вместо литерала: с литералом «совпадать» держалось до первой вычитки.
     /// </summary>
     public static RunEventDto Breakpoint(RunWalkDto walk, int elapsedMs, string node) =>
-        new(walk.WalkId, RunEventKind.BreakpointHit, elapsedMs, Ids.Of(node), Detail: "брейкпоинт",
-            NodeName: node);
+        new(walk.WalkId, RunEventKind.BreakpointHit, elapsedMs, Ids.Of(node),
+            Detail: Strings.Run_PauseReason_Breakpoint, NodeName: node);
 
-    /// <summary>Припаркован по любой другой причине.</summary>
-    public static RunEventDto Paused(RunWalkDto walk, int elapsedMs, string node, string reason = "пауза") =>
-        new(walk.WalkId, RunEventKind.Paused, elapsedMs, Ids.Of(node), Detail: reason, NodeName: node);
+    /// <summary>
+    /// Припаркован по любой другой причине. <paramref name="reason"/> по умолчанию —
+    /// <c>null</c>, а не сама причина: значение параметра по умолчанию обязано быть константой
+    /// времени компиляции, а ресурс ею не является.
+    /// </summary>
+    public static RunEventDto Paused(RunWalkDto walk, int elapsedMs, string node, string? reason = null) =>
+        new(walk.WalkId, RunEventKind.Paused, elapsedMs, Ids.Of(node),
+            Detail: reason ?? Strings.Run_PauseReason_Paused, NodeName: node);
 
     public static RunEventDto Resumed(RunWalkDto walk, int elapsedMs, string node) =>
         new(walk.WalkId, RunEventKind.Resumed, elapsedMs, Ids.Of(node), NodeName: node);

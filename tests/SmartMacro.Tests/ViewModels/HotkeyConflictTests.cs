@@ -1,4 +1,4 @@
-using FakeItEasy;
+﻿using FakeItEasy;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.Services;
 using SmartMacro.App.ViewModels;
@@ -7,6 +7,7 @@ using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -82,7 +83,10 @@ public class HotkeyConflictTests
 
         row!.KeyName = "F23";
 
-        await Assert.That(row.Conflict).IsEqualTo("уже занят pw-immunity");
+        // Столкновение В БИБЛИОТЕКЕ называет виновника — по имени его и искать. Отказ Windows
+        // выглядел бы иначе, и различить их обязательно: чинят их по-разному.
+        await Assert.That(Msg.Arg(row.Conflict, Strings.Editor_Hotkey_ConflictOther)).IsEqualTo("pw-immunity");
+        await Assert.That(row.Conflict).IsNotEqualTo(Strings.Editor_Hotkey_ConflictSystem);
         await Assert.That(row.HasConflict).IsTrue();
     }
 
@@ -131,7 +135,9 @@ public class HotkeyConflictTests
         second.KeyName = "F13";
 
         await Assert.That(first.Conflict).IsNull();
-        await Assert.That(second.Conflict).IsEqualTo("уже задан в этом макросе");
+        // Свой же макрос — отдельный ключ: «уже занят X» отправило бы искать чужой файл.
+        await Assert.That(second.Conflict).IsEqualTo(Strings.Editor_Hotkey_ConflictSelf);
+        await Assert.That(Msg.Is(second.Conflict, Strings.Editor_Hotkey_ConflictOther)).IsFalse();
     }
 
     // Два свежих поля выбора, в которых ничего не привязано, — это не столкновение; макрос,
@@ -168,7 +174,7 @@ public class HotkeyConflictTests
 
         row.KeyName = string.Empty;
         row.MouseButton = MouseButton.XButton1;
-        await Assert.That(row.Conflict).IsEqualTo("уже занят pw-cursor");
+        await Assert.That(Msg.Arg(row.Conflict, Strings.Editor_Hotkey_ConflictOther)).IsEqualTo("pw-cursor");
     }
 
     [Test]
@@ -187,7 +193,7 @@ public class HotkeyConflictTests
         daemon.Add(Graph("pw-immunity", new HotkeyTrigger(HotkeyModifiers.None, VirtualKey.F23)));
         daemon.Client.RaiseEvent(IpcMessageTypes.MacrosChanged);
 
-        await Assert.That(row.Conflict).IsEqualTo("уже занят pw-immunity");
+        await Assert.That(Msg.Arg(row.Conflict, Strings.Editor_Hotkey_ConflictOther)).IsEqualTo("pw-immunity");
     }
 
     // ---- отказы при регистрации --------------------------------------------------------------
@@ -202,7 +208,10 @@ public class HotkeyConflictTests
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(daemon.Macros[0]);
 
-        await Assert.That(Hotkey(vm).Conflict).IsEqualTo("занят другим приложением");
+        // Отказ RegisterHotKey — НЕ библиотечное столкновение: виновника назвать нечем, чинится
+        // он перепривязкой, и ключ поэтому другой.
+        await Assert.That(Hotkey(vm).Conflict).IsEqualTo(Strings.Editor_Hotkey_ConflictSystem);
+        await Assert.That(Msg.Is(Hotkey(vm).Conflict, Strings.Editor_Hotkey_ConflictOther)).IsFalse();
     }
 
     // Когда аккорд делят два макроса, демон регистрирует один, а второму Windows отказывает, —
@@ -235,7 +244,7 @@ public class HotkeyConflictTests
         using var vm = CreateEditor(daemon);
         vm.LoadGraph(daemon.Macros[1]);
 
-        await Assert.That(Hotkey(vm).Conflict).IsEqualTo("уже занят pw-immunity");
+        await Assert.That(Msg.Arg(Hotkey(vm).Conflict, Strings.Editor_Hotkey_ConflictOther)).IsEqualTo("pw-immunity");
     }
 
     // Ловушка, ради закрытия которой это и существует: хоткей, умерший при старте демона, на
@@ -277,7 +286,10 @@ public class HotkeyConflictTests
         daemon.Failures.Add(new HotkeyFailureDto("баг-госта", HotkeyModifiers.Win, VirtualKey.L));
         await vm.ResumeHotkeysAsync();
 
-        await Assert.That(Hotkey(vm).Conflict).IsEqualTo("занят другим приложением");
+        // Отказ RegisterHotKey — НЕ библиотечное столкновение: виновника назвать нечем, чинится
+        // он перепривязкой, и ключ поэтому другой.
+        await Assert.That(Hotkey(vm).Conflict).IsEqualTo(Strings.Editor_Hotkey_ConflictSystem);
+        await Assert.That(Msg.Is(Hotkey(vm).Conflict, Strings.Editor_Hotkey_ConflictOther)).IsFalse();
         A.CallTo(() => suspension.ResumeAsync(A<CancellationToken>._)).MustHaveHappenedOnceExactly();
     }
 

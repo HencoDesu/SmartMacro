@@ -1,4 +1,4 @@
-using SmartMacro.Resources;
+﻿using SmartMacro.Resources;
 using SmartMacro.App.Services;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -49,14 +49,17 @@ public class MacroNameConflictTests
     {
         var loss = Conflict(0, fault: "Бандл сделан более новой версией формата (v7); эта сборка читает v0.").Loss;
 
-        await Assert.That(loss).Contains("более новой версией формата");
-        await Assert.That(loss).Contains("уничтожит файл целиком");
+        // Вердикт читателя уехал внутрь предупреждения дословно — на нём и держится «внутри
+        // неизвестно что», а числа шаблонов тут быть не может по определению.
+        await Assert.That(Msg.Arg(loss, Strings.Dialog_NameConflict_LossUnreadable))
+            .Contains("более новой версией формата");
+        await Assert.That(Msg.Is(loss, Strings.Dialog_NameConflict_LossList)).IsFalse();
     }
 
     [Test]
     public async Task TheFreeNameIsSpelledOutOnTheButton()
     {
-        await Assert.That(Conflict(1).FreeNameLabel).IsEqualTo("Взять имя «pw-login-2»");
+        await Assert.That(Msg.Arg(Conflict(1).FreeNameLabel, Strings.Dialog_NameConflict_FreeName)).IsEqualTo("pw-login-2");
     }
 
     // Импорт и сохранение — разные глаголы: «импорт заменит его» на кнопке «Сохранить» читался бы
@@ -67,7 +70,9 @@ public class MacroNameConflictTests
         var save = Conflict(1).Action;
         var import = Conflict(1) with { Kind = MacroNameConflictKind.Import };
 
-        await Assert.That(save).Contains("Сохранение");
-        await Assert.That(import.Action).Contains("Импорт");
+        await Assert.That(save).IsEqualTo(Strings.Dialog_NameConflict_ActionSave);
+        await Assert.That(import.Action).IsEqualTo(Strings.Dialog_NameConflict_ActionImport);
+        // И они РАЗНЫЕ — ровно то, чего требует имя теста.
+        await Assert.That(import.Action).IsNotEqualTo(save);
     }
 }

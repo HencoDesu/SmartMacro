@@ -1,7 +1,8 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using SmartMacro.App.ViewModels.Nodes;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.ViewModels;
 
@@ -181,8 +182,12 @@ public class NodeRowRoundTripTests
         var wait = NodeRowViewModel.FromNode(new WaitForElementNode { Id = Ids.Of("w"), DisplayName = "w", Template = "t", TimeoutMs = 1 });
         var key = NodeRowViewModel.FromNode(new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A });
 
-        await Assert.That(find.Edges.Select(e => e.Label)).IsEquivalentTo(new[] { "Найдено", "Не найдено" });
-        await Assert.That(wait.Edges.Select(e => e.Label)).IsEquivalentTo(new[] { "Найдено", "Таймаут" });
+        // Семейство ноды выбирает НАБОР исходов: у Find это найдено/не найдено, у Wait —
+        // найдено/таймаут. Проверяется выбор ключей, а не то, какими словами они подписаны.
+        await Assert.That(find.Edges.Select(e => e.Label))
+            .IsEquivalentTo(new[] { Strings.Node_Edge_Found, Strings.Node_Edge_NotFound });
+        await Assert.That(wait.Edges.Select(e => e.Label))
+            .IsEquivalentTo(new[] { Strings.Node_Edge_Found, Strings.Node_Edge_Timeout });
         await Assert.That(key.Edges).Count().IsEqualTo(1);
     }
 

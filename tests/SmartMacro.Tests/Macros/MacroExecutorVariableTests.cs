@@ -1,6 +1,7 @@
-using SmartMacro.Macros.Execution;
+﻿using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Macros;
 
@@ -79,7 +80,9 @@ public class MacroExecutorVariableTests
             await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window, variables), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("ровно одно");
+        // Названа виноватая нода: в графе их бывает много, а «ровно одно из Point / PointVar»
+        // без адреса не подсказывает, какую открыть.
+        await Assert.That(Msg.Arg(result.Error, Strings.Run_Abort_ClickNeedsExactlyOnePoint)).IsEqualTo("c");
     }
 
     [Test]
@@ -91,7 +94,9 @@ public class MacroExecutorVariableTests
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("ровно одно");
+        // Названа виноватая нода: в графе их бывает много, а «ровно одно из Point / PointVar»
+        // без адреса не подсказывает, какую открыть.
+        await Assert.That(Msg.Arg(result.Error, Strings.Run_Abort_ClickNeedsExactlyOnePoint)).IsEqualTo("c");
     }
 
     [Test]

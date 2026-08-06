@@ -1,6 +1,7 @@
 using SmartMacro.Macros.Analysis;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Macros;
 
@@ -99,9 +100,11 @@ public class MacroExtractionTests
         var result = MacroExtraction.Extract(graph, [Ids.Of("x"), Ids.Of("y")], "ф");
 
         await Assert.That(result.IsOk).IsFalse();
-        await Assert.That(result.Refusal!).Contains("2 входа");
-        await Assert.That(result.Refusal!).Contains("«x»");
-        await Assert.That(result.Refusal!).Contains("«y»");
+        // Отказ существует ради того, чтобы НАЗВАТЬ виноватое: и сколько входов, и какие именно.
+        var refusal = Msg.Args(result.Refusal, Strings.Extraction_Refused_ManyEntries);
+        await Assert.That(refusal[0]).IsEqualTo("2");
+        await Assert.That(refusal[1]).Contains("«x»");
+        await Assert.That(refusal[1]).Contains("«y»");
     }
 
     /// <summary>Выходы в разные места: куда идти после функции, выбирать надо снаружи.</summary>
@@ -119,8 +122,7 @@ public class MacroExtractionTests
         var result = MacroExtraction.Extract(graph, [Ids.Of("find")], "ф");
 
         await Assert.That(result.IsOk).IsFalse();
-        await Assert.That(result.Refusal!).Contains("ведут в разные места");
-        await Assert.That(result.Refusal!).Contains("«x»");
+        await Assert.That(Msg.Arg(result.Refusal, Strings.Extraction_Refused_ManyExits)).Contains("«x»");
     }
 
     /// <summary>
@@ -141,7 +143,10 @@ public class MacroExtractionTests
         var result = MacroExtraction.Extract(graph, [Ids.Of("find")], "ф");
 
         await Assert.That(result.IsOk).IsFalse();
-        await Assert.That(result.Refusal!).Contains("заканчивает прогон");
+        // Именно смешанный случай, а не «выходы в разные места»: разница в том, что одна из
+        // веток прогон ЗАКАНЧИВАЛА, и после извлечения продолжила бы.
+        await Assert.That(Msg.Arg(result.Refusal, Strings.Extraction_Refused_MixedExits)).Contains("«x»");
+        await Assert.That(Msg.Is(result.Refusal, Strings.Extraction_Refused_ManyExits)).IsFalse();
     }
 
     [Test]
@@ -161,7 +166,7 @@ public class MacroExtractionTests
         var result = MacroExtraction.Extract(graph, [Ids.Of("call")], "ф");
 
         await Assert.That(result.IsOk).IsFalse();
-        await Assert.That(result.Refusal!).Contains("плоские");
+        await Assert.That(Msg.Is(result.Refusal, Strings.Extraction_Refused_ContainsCall)).IsTrue();
     }
 
     [Test]
@@ -173,7 +178,7 @@ public class MacroExtractionTests
             "всё");
 
         await Assert.That(result.IsOk).IsFalse();
-        await Assert.That(result.Refusal!).Contains("весь макрос целиком");
+        await Assert.That(Msg.Is(result.Refusal, Strings.Extraction_Refused_WholeGraph)).IsTrue();
     }
 
     [Test]
@@ -182,7 +187,7 @@ public class MacroExtractionTests
         var result = MacroExtraction.Extract(Chain(), [], "ф");
 
         await Assert.That(result.IsOk).IsFalse();
-        await Assert.That(result.Refusal!).Contains("Ничего не выделено");
+        await Assert.That(Msg.Is(result.Refusal, Strings.Extraction_Refused_NothingSelected)).IsTrue();
     }
 
     /// <summary>

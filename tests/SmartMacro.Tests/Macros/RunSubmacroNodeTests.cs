@@ -1,6 +1,7 @@
-using SmartMacro.Macros.Execution;
+﻿using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Macros;
 
@@ -15,11 +16,16 @@ public class RunSubmacroNodeTests
 {
     /// <summary>Под-макрос, нажимающий F9 в своём контекстном окне.</summary>
     private static MacroGraph SubPressingF9(string name = "суб") =>
-        ExecutorHarness.Graph(name, Ids.Of("k"), new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F9, Next = null });
+        ExecutorHarness.Graph(name, Ids.Of("k"),
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F9, Next = null });
 
-    private static MacroGraph ParentRunning(Guid submacroId, bool await_ = true, TargetSelector? target = null) =>
+    private static MacroGraph ParentRunning(Guid submacroId, bool awaited = true, TargetSelector? target = null) =>
         ExecutorHarness.Graph("родитель", Ids.Of("r"),
-            new RunSubmacroNode { Id = Ids.Of("r"), DisplayName = "r", SubmacroId = submacroId, Await = await_, Target = target, Next = Ids.Of("after") },
+            new RunSubmacroNode
+            {
+                Id = Ids.Of("r"), DisplayName = "r", SubmacroId = submacroId, Await = awaited, Target = target,
+                Next = Ids.Of("after")
+            },
             new KeyPressNode { Id = Ids.Of("after"), DisplayName = "after", Key = VirtualKey.F1, Next = null });
 
     [Test]
@@ -75,7 +81,7 @@ public class RunSubmacroNodeTests
         // поэтому ставим затвор ДО запуска и смотрим на состояние завершения: при Await=false
         // родитель обязан дойти до своей ноды Next (и записать её), даже если потомок висит.
         var runTask = h.Executor.RunAsync(
-            ParentRunning(sub, await_: false), h.Context(ExecutorHarness.Window), CancellationToken.None);
+            ParentRunning(sub, awaited: false), h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         // Родитель завершится, только если он НЕ ждал потомка за затвором… но и его собственное
         // нажатие F1 тоже за затвором. Открываем затвор и проверяем, что оба нажатия дошли, а
@@ -130,7 +136,14 @@ public class RunSubmacroNodeTests
             ParentRunning(outer), h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("вложенность плоская");
+        // Сообщение ДВУСЛОЙНОЕ, и прежнее Contains("вложенность плоская") этого не показывало:
+        // снаружи — «родитель оборвался из-за функции», внутри — сама причина. Разбираются оба
+        // слоя, потому что склеить их обратно в одну проверку значит снова не знать, который врёт.
+        var aborted = Msg.Args(result.Error, Strings.Run_Abort_SubmacroAborted);
+        await Assert.That(aborted[0]).IsEqualTo("родитель");
+        await Assert.That(aborted[1]).IsEqualTo("внешний");
+        await Assert.That(Msg.Args(aborted[2], Strings.Run_Abort_NestedSubmacro))
+            .IsEquivalentTo(new[] { "родитель", "внешний" });
         // До нажатия клавиши во внутреннем не дошло.
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
     }
@@ -209,7 +222,9 @@ public class RunSubmacroNodeTests
             ParentRunning(Guid.NewGuid()), h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("под-макрос, которого в этом макросе нет");
+        // Названы макрос и действие вызова — по ним ноду и искать в редакторе.
+        await Assert.That(Msg.Args(result.Error, Strings.Run_Abort_SubmacroNotFound))
+            .IsEquivalentTo(new[] { "родитель", "r" });
     }
 
     [Test]
@@ -225,7 +240,13 @@ public class RunSubmacroNodeTests
             ParentRunning(sub), h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("суб");
+        // Родитель называет функцию И ПЕРЕДАЁТ ЕЁ ПРИЧИНУ: «оборван» без причины отправил бы
+        // читателя искать её в другом месте. Раньше здесь сверялось одно слово «суб», которое
+        // прошло бы и на сообщении вовсе без причины.
+        var aborted = Msg.Args(result.Error, Strings.Run_Abort_SubmacroAborted);
+        await Assert.That(aborted[0]).IsEqualTo("родитель");
+        await Assert.That(aborted[1]).IsEqualTo("суб");
+        await Assert.That(Msg.Arg(aborted[2], Strings.Run_Variable_NotDefined)).IsEqualTo("нет");
         // Next родителя так и не отработал.
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
     }

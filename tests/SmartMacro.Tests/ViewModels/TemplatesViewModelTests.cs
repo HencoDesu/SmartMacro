@@ -1,8 +1,9 @@
-using System.Text;
+﻿using System.Text;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.ViewModels;
 
@@ -101,7 +102,7 @@ public class TemplatesViewModelTests
     {
         using var library = WithTemplates(
             (null, "Большой", Png(210, 44, padding: 36_000)),
-            ("classes", "Мелкий", Png(96, 18, padding: 430)));
+            ("classes", "Мелкий", Png(padding: 430)));
         using var vm = Create(library);
 
         var big = vm.Templates.Single(t => t.Name == "Большой");
@@ -124,7 +125,7 @@ public class TemplatesViewModelTests
         using var library = WithTemplates((null, "Сломанный", Encoding.UTF8.GetBytes("не png")));
         using var vm = Create(library);
 
-        await Assert.That(vm.Templates[0].SizeText).IsEqualTo("не PNG");
+        await Assert.That(vm.Templates[0].SizeText).IsEqualTo(Strings.Editor_Templates_NotPng);
         await Assert.That(vm.Templates[0].IsDecodable).IsFalse();
     }
 
@@ -140,18 +141,21 @@ public class TemplatesViewModelTests
         using var vm = Create(library, Macro(
             Macro1,
             new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "ServerSelectButton" },
-            new RecognizeTagNode { Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "classes", Region = Region }));
+            new RecognizeTagNode
+                { Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "classes", Region = Region }));
 
         var button = vm.Templates.Single(t => t.Name == "ServerSelectButton");
         var archer = vm.Templates.Single(t => t.Name == "Лучник");
         var orphan = vm.Templates.Single(t => t.Name == "Ничей");
 
-        await Assert.That(button.UsageText).IsEqualTo("1 нода");
+        await Assert.That(Msg.Arg(button.UsageText, Strings.Editor_Templates_UsedBy_One)).IsEqualTo("1");
         // RecognizeTag называет НАБОР целиком, поэтому ссылка достаётся каждому его файлу: иначе
         // «Лучник.png не используется» было бы враньём про шаблон, которым опознают лучника.
-        await Assert.That(archer.UsageText).IsEqualTo("1 нода");
+        await Assert.That(Msg.Arg(archer.UsageText, Strings.Editor_Templates_UsedBy_One)).IsEqualTo("1");
         await Assert.That(orphan.IsUnused).IsTrue();
-        await Assert.That(orphan.UsageText).IsEqualTo("не используется");
+        // «Не используется» — отдельный ключ, а не «0 нод»: ноль в форме счётчика читался бы
+        // как ошибка подсчёта.
+        await Assert.That(orphan.UsageText).IsEqualTo(Strings.Editor_Templates_Unused);
     }
 
     // Имя, набранное в ноде, обязано снять пометку «не используется» НЕМЕДЛЕННО: редактор подаёт
@@ -163,12 +167,14 @@ public class TemplatesViewModelTests
         using var vm = Create(library);
         await Assert.That(vm.Templates[0].IsUnused).IsTrue();
 
-        vm.ShowMacro(Macro1, [Macro(
-            Macro1,
-            new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "Кнопка" })]);
+        vm.ShowMacro(Macro1, [
+            Macro(
+                Macro1,
+                new FindElementNode { Id = Ids.Of("find"), DisplayName = "find", Template = "Кнопка" })
+        ]);
 
         await Assert.That(vm.Templates[0].IsUnused).IsFalse();
-        await Assert.That(vm.Templates[0].UsageText).IsEqualTo("1 нода");
+        await Assert.That(Msg.Arg(vm.Templates[0].UsageText, Strings.Editor_Templates_UsedBy_One)).IsEqualTo("1");
     }
 
     [Test]
@@ -266,7 +272,8 @@ public class TemplatesViewModelTests
 
         await Assert.That(ok).IsFalse();
         await Assert.That(vm.HasImportProblem).IsTrue();
-        await Assert.That(vm.ImportProblem).Contains("не читается");
+        // Назван ИМЯ ШАБЛОНА, а не имя файла: под этим именем его и будут искать ноды.
+        await Assert.That(Msg.Arg(vm.ImportProblem, Strings.Editor_Templates_AddFailedUnreadable)).IsEqualTo("A");
     }
 
     [Test]
@@ -319,14 +326,15 @@ public class TemplatesViewModelTests
     {
         // Размер известен из перечня, а панель превью — это картинка размером с ладонь: файл
         // больше мегабайта в ней всё равно не разглядеть, а декодирование держит память Skia.
-        using var library = WithTemplates((null, "Огромный", Png(padding: (int)TemplatesViewModel.MaxPreviewBytes + 1)));
+        using var library =
+            WithTemplates((null, "Огромный", Png(padding: (int)TemplatesViewModel.MaxPreviewBytes + 1)));
         using var vm = Create(library);
 
         vm.Selected = vm.Templates[0];
 
         await Assert.That(vm.HasPreview).IsFalse();
         await Assert.That(vm.HasPreviewProblem).IsTrue();
-        await Assert.That(vm.PreviewProblem).Contains("потолк");
+        await Assert.That(Msg.Is(vm.PreviewProblem, Strings.Editor_Templates_PreviewTooBig)).IsTrue();
     }
 
     [Test]

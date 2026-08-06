@@ -1,7 +1,9 @@
+﻿using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Macros;
 
@@ -310,8 +312,14 @@ public class MacroBundleTests
 
             await Assert.That(read.Metadata.Fault).IsEqualTo(MacroBundleFault.UnsupportedVersion);
             await Assert.That(read.Metadata.FormatVersion).IsEqualTo(7);
-            await Assert.That(read.Metadata.Message).Contains("v7");
-            await Assert.That(read.Metadata.Message).Contains("более новой");
+            // Сообщение называет ОБЕ версии и то, в какую сторону они разошлись: «более ранней»
+            // здесь была бы прямо противоположная новость.
+            await Assert.That(Msg.Args(read.Metadata.Message, Strings.Bundle_Read_VersionMismatch))
+                .IsEquivalentTo(new[]
+                {
+                    Strings.Bundle_Read_VersionNewer, "7",
+                    MacroBundleFormat.CurrentVersion.ToString(CultureInfo.InvariantCulture),
+                });
             // Граф чужой версии даже не пробуем разбирать, и причина у отказа та же самая.
             await Assert.That(read.GraphFault).IsEqualTo(MacroBundleFault.UnsupportedVersion);
         }

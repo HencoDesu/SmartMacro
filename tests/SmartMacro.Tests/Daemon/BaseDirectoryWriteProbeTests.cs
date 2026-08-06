@@ -1,4 +1,5 @@
-using SmartMacro.Daemon;
+﻿using SmartMacro.Daemon;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Daemon;
 
@@ -78,8 +79,7 @@ public class BaseDirectoryWriteProbeTests
 
         // Текст показывается в единственном окне, которое пользователь увидит: без пути он не
         // поймёт, о каком каталоге речь, а без причины — почему именно.
-        await Assert.That(text).Contains(@"C:\Program Files\SmartMacro\");
-        await Assert.That(text).Contains("Отказано в доступе.");
-        await Assert.That(text).Contains("Распакуйте");
+        await Assert.That(Msg.Args(text, Strings.Startup_WriteProbe_Failed))
+            .IsEquivalentTo(new[] { @"C:\Program Files\SmartMacro\", "Отказано в доступе." });
     }
 }

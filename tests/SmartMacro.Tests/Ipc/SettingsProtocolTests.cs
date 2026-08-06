@@ -1,6 +1,7 @@
-using FakeItEasy;
+﻿using FakeItEasy;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Resources;
 using SmartMacro.Contracts.Settings;
 
 namespace SmartMacro.Tests.Ipc;
@@ -168,7 +169,7 @@ public class SettingsProtocolTests
             .Single(r => r.Id == DiagnosticIds.Hotkeys);
 
         await Assert.That(hotkeys.Status).IsEqualTo(DiagnosticStatus.Warning);
-        await Assert.That(hotkeys.Title).Contains("приостановлены");
+        await Assert.That(hotkeys.Title).IsEqualTo(Strings.Diag_Hotkeys_Suspended_Title);
     }
 
     // Шаблон, которого нет на диске, обязан находиться ДО прогона, а не всплывать строкой в

@@ -1,7 +1,8 @@
-using SmartMacro.Contracts.Dto;
+﻿using SmartMacro.Contracts.Dto;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Macros;
 
@@ -104,7 +105,7 @@ public class MacroExecutorTracingTests
         var details = observer.OfKind(Exit).ToDictionary(e => e.NodeName!, e => e.Detail);
         await Assert.That(details["click"]).IsEqualTo("1192,1805");
         await Assert.That(details["key"]).IsEqualTo("C");
-        await Assert.That(details["wait"]).IsEqualTo("500 мс");
+        await Assert.That(Msg.Arg(details["wait"], Strings.Run_Detail_Delay)).IsEqualTo("500");
         await Assert.That(observer.OfKind(Exit).All(e => e.Outcome == RunOutcomes.Ok)).IsTrue();
     }
 
@@ -160,7 +161,9 @@ public class MacroExecutorTracingTests
             RunOutcomes.Found, RunOutcomes.Timeout, RunOutcomes.NotMatched,
         });
         await Assert.That(exits[0].Detail).IsEqualTo("ChatPanelButtons @ 1190,1802");
-        await Assert.That(exits[1].Detail).IsEqualTo("Nope · лимит 1 мс");
+        // Деталь таймаута несёт и имя шаблона, и сам лимит.
+        await Assert.That(Msg.Args(exits[1].Detail, Strings.Run_Detail_WaitTimedOut))
+            .IsEquivalentTo(new[] { "Nope", "1" });
     }
 
     [Test]
@@ -178,7 +181,7 @@ public class MacroExecutorTracingTests
         var exit = observer.OfKind(Exit).Single();
         await Assert.That(exit.NodeName).IsEqualTo("a");
         await Assert.That(exit.Outcome).IsEqualTo(RunOutcomes.Error);
-        await Assert.That(exit.Detail).Contains("нет селектора Target");
+        await Assert.That(Msg.Arg(exit.Detail, Strings.Run_Abort_NodeNeedsTargetOrContext)).IsEqualTo("a");
         await Assert.That(observer.OfKind(WalkEnd).Single().Outcome).IsEqualTo(RunOutcomes.Aborted);
     }
 

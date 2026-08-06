@@ -1,7 +1,8 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 using SmartMacro.App.ViewModels;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Ui;
 
@@ -92,7 +93,7 @@ public partial class UiNotificationTests
         Checkpoint(scene, problems, "извлекли под-макрос", () => editor.ExtractSubmacro("вынесенное"));
 
         Checkpoint(scene, problems, "выбрали ноду вызова",
-            () => editor.SelectedNode = editor.Nodes.FirstOrDefault(node => node.TypeLabel == "Под-макрос"));
+            () => editor.SelectedNode = editor.Nodes.FirstOrDefault(node => node.TypeLabel == Strings.Node_Type_RunSubmacro));
 
         Checkpoint(scene, problems, "вошли в функцию", () =>
         {

@@ -4,9 +4,9 @@ using SmartMacro.App.ViewModels.Canvas;
 using SmartMacro.App.ViewModels.Nodes;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
-using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -38,12 +38,32 @@ public class MacroCanvasTests
         StartNodeId = Ids.Of("wait-server"),
         Nodes =
         [
-            new WaitForElementNode { Id = Ids.Of("wait-server"), DisplayName = "wait-server", Template = "A", TimeoutMs = 1000, Found = Ids.Of("click-server") },
-            new ClickNode { Id = Ids.Of("click-server"), DisplayName = "click-server", Point = new ScreenPoint(1, 2), Next = Ids.Of("wait-char") },
-            new WaitForElementNode { Id = Ids.Of("wait-char"), DisplayName = "wait-char", Template = "B", TimeoutMs = 1000, Found = Ids.Of("click-char") },
-            new ClickNode { Id = Ids.Of("click-char"), DisplayName = "click-char", Point = new ScreenPoint(3, 4), Next = Ids.Of("open-stats") },
-            new KeyPressNode { Id = Ids.Of("open-stats"), DisplayName = "open-stats", Key = VirtualKey.C, Next = Ids.Of("await-stats") },
-            new DelayNode { Id = Ids.Of("await-stats"), DisplayName = "await-stats", Ms = 500, Next = Ids.Of("recognize") },
+            new WaitForElementNode
+            {
+                Id = Ids.Of("wait-server"), DisplayName = "wait-server", Template = "A", TimeoutMs = 1000,
+                Found = Ids.Of("click-server")
+            },
+            new ClickNode
+            {
+                Id = Ids.Of("click-server"), DisplayName = "click-server", Point = new ScreenPoint(1, 2),
+                Next = Ids.Of("wait-char")
+            },
+            new WaitForElementNode
+            {
+                Id = Ids.Of("wait-char"), DisplayName = "wait-char", Template = "B", TimeoutMs = 1000,
+                Found = Ids.Of("click-char")
+            },
+            new ClickNode
+            {
+                Id = Ids.Of("click-char"), DisplayName = "click-char", Point = new ScreenPoint(3, 4),
+                Next = Ids.Of("open-stats")
+            },
+            new KeyPressNode
+            {
+                Id = Ids.Of("open-stats"), DisplayName = "open-stats", Key = VirtualKey.C, Next = Ids.Of("await-stats")
+            },
+            new DelayNode
+                { Id = Ids.Of("await-stats"), DisplayName = "await-stats", Ms = 500, Next = Ids.Of("recognize") },
             new RecognizeTagNode
             {
                 Id = Ids.Of("recognize"), DisplayName = "recognize",
@@ -52,7 +72,8 @@ public class MacroCanvasTests
                 Matched = Ids.Of("set-icon"),
                 NotMatched = Ids.Of("close-stats"),
             },
-            new SetIconNode { Id = Ids.Of("set-icon"), DisplayName = "set-icon", IconPath = "x.png", Next = Ids.Of("close-stats") },
+            new SetIconNode
+                { Id = Ids.Of("set-icon"), DisplayName = "set-icon", IconPath = "x.png", Next = Ids.Of("close-stats") },
             new KeyPressNode { Id = Ids.Of("close-stats"), DisplayName = "close-stats", Key = VirtualKey.C },
         ],
     };
@@ -142,7 +163,11 @@ public class MacroCanvasTests
             StartNodeId = Ids.Of("placed"),
             Nodes =
             [
-                new DelayNode { Id = Ids.Of("placed"), DisplayName = "placed", Ms = 1, Next = Ids.Of("stray"), Editor = new NodeEditorInfo(600, 300) },
+                new DelayNode
+                {
+                    Id = Ids.Of("placed"), DisplayName = "placed", Ms = 1, Next = Ids.Of("stray"),
+                    Editor = new NodeEditorInfo(600, 300)
+                },
                 new DelayNode { Id = Ids.Of("stray"), DisplayName = "stray", Ms = 1 },
             ],
         });
@@ -180,12 +205,22 @@ public class MacroCanvasTests
         {
             Name = "конец",
             StartNodeId = Ids.Of("wait"),
-            Nodes = [new WaitForElementNode { Id = Ids.Of("wait"), DisplayName = "wait", Template = "A", TimeoutMs = 1, Found = null, Timeout = null }],
+            Nodes =
+            [
+                new WaitForElementNode
+                {
+                    Id = Ids.Of("wait"), DisplayName = "wait", Template = "A", TimeoutMs = 1, Found = null,
+                    Timeout = null
+                }
+            ],
         });
 
         await Assert.That(CanvasEdgeRouter.BuildAll(rows)).IsEmpty();
         await Assert.That(rows[0].Edges.All(edge => edge.IsEnd)).IsTrue();
-        await Assert.That(rows[0].Edges[1].BoxLabel).IsEqualTo("таймаут → конец");
+        // Свёрнутая коробка говорит про конец прямо в строке порта, а не рисует ребро в
+        // терминальную ноду; и подставлен в подпись ИМЕННО исход «таймаут», а не соседний.
+        await Assert.That(Msg.Arg(rows[0].Edges[1].BoxLabel, Strings.Node_Edge_BoxLabelEnd))
+            .IsEqualTo(Strings.Node_Edge_Timeout.ToLowerInvariant());
     }
 
     [Test]
@@ -210,8 +245,15 @@ public class MacroCanvasTests
             StartNodeId = Ids.Of("a"),
             Nodes =
             [
-                new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("b"), Editor = new NodeEditorInfo(0, 0) },
-                new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 1, Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch, 0) },
+                new DelayNode
+                {
+                    Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("b"), Editor = new NodeEditorInfo(0, 0)
+                },
+                new DelayNode
+                {
+                    Id = Ids.Of("b"), DisplayName = "b", Ms = 1,
+                    Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch, 0)
+                },
             ],
         });
 
@@ -233,8 +275,15 @@ public class MacroCanvasTests
             StartNodeId = Ids.Of("a"),
             Nodes =
             [
-                new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("b"), Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch * 2, 0) },
-                new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 1, Editor = new NodeEditorInfo(0, CanvasMetrics.RowPitch) },
+                new DelayNode
+                {
+                    Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("b"),
+                    Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch * 2, 0)
+                },
+                new DelayNode
+                {
+                    Id = Ids.Of("b"), DisplayName = "b", Ms = 1, Editor = new NodeEditorInfo(0, CanvasMetrics.RowPitch)
+                },
             ],
         });
 
@@ -260,9 +309,21 @@ public class MacroCanvasTests
             StartNodeId = Ids.Of("a"),
             Nodes =
             [
-                new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("target"), Editor = new NodeEditorInfo(0, 0) },
-                new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 1, Next = Ids.Of("target"), Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch, 0) },
-                new DelayNode { Id = Ids.Of("target"), DisplayName = "target", Ms = 1, Editor = new NodeEditorInfo(0, CanvasMetrics.RowPitch) },
+                new DelayNode
+                {
+                    Id = Ids.Of("a"), DisplayName = "a", Ms = 1, Next = Ids.Of("target"),
+                    Editor = new NodeEditorInfo(0, 0)
+                },
+                new DelayNode
+                {
+                    Id = Ids.Of("b"), DisplayName = "b", Ms = 1, Next = Ids.Of("target"),
+                    Editor = new NodeEditorInfo(CanvasMetrics.ColumnPitch, 0)
+                },
+                new DelayNode
+                {
+                    Id = Ids.Of("target"), DisplayName = "target", Ms = 1,
+                    Editor = new NodeEditorInfo(0, CanvasMetrics.RowPitch)
+                },
             ],
         });
 
@@ -532,12 +593,14 @@ public class MacroCanvasTests
         vm.LoadGraph(BootLike());
 
         await Assert.That(vm.HasSelectedNode).IsFalse();
-        await Assert.That(vm.InspectorTitle).IsEqualTo("Макрос");
+        await Assert.That(vm.InspectorTitle).IsEqualTo(Strings.Editor_Inspector_MacroTitle);
 
         vm.SelectedNode = vm.Nodes.Single(node => node.DisplayName == "await-stats");
 
         await Assert.That(vm.HasSelectedNode).IsTrue();
-        await Assert.That(vm.InspectorTitle).IsEqualTo("Пауза");
+        // Заголовок переключился на ТИП выбранной ноды, а не остался общим «Макрос».
+        await Assert.That(vm.InspectorTitle).IsEqualTo(Strings.Node_Type_Delay);
+        await Assert.That(vm.InspectorTitle).IsNotEqualTo(Strings.Editor_Inspector_MacroTitle);
     }
 
     // ---- та поверхность, которую предстоит наполнить волне D3b ------------------------------------
@@ -555,7 +618,8 @@ public class MacroCanvasTests
         await Assert.That(vm.Nodes.Any(node => node.IsExecuting)).IsFalse();
         // Пустой текст отличает «ничего не запускалось» от «ничего не записывается»: полосу
         // питают только пока подписку держат «Макросы».
-        await Assert.That(vm.RunLogEmptyText).IsEqualTo("лог пишется, пока открыт режим «Макросы»");
+        await Assert.That(vm.RunLogEmptyText).IsEqualTo(Strings.Editor_RunLog_EmptyUnsubscribed);
+        await Assert.That(vm.RunLogEmptyText).IsNotEqualTo(Strings.Editor_RunLog_EmptyRecorded);
     }
 
     [Test]
@@ -568,7 +632,8 @@ public class MacroCanvasTests
 
         await Assert.That(vm.Nodes.Where(node => node.IsExecuting).Select(node => node.DisplayName))
             .IsEquivalentTo(new[] { "recognize" });
-        await Assert.That(vm.CanvasEdges.Single(edge => edge.Source.DisplayName == "recognize" && edge.OutcomeIndex == 0).IsActive)
+        await Assert.That(vm.CanvasEdges
+                .Single(edge => edge.Source.DisplayName == "recognize" && edge.OutcomeIndex == 0).IsActive)
             .IsTrue();
 
         vm.ExecutingNodeId = null;
@@ -601,9 +666,13 @@ public class MacroCanvasTests
         await Assert.That(vm.RunLog).Count().IsEqualTo(1);
         await Assert.That(ReferenceEquals(vm.RunLog[0], openRow)).IsTrue();
         await Assert.That(openRow.Elapsed).IsEqualTo("0:00.0");
-        await Assert.That(openRow.Outcome).IsEqualTo("нашёл");
+        await Assert.That(openRow.Outcome).IsEqualTo(Strings.Editor_RunLog_OutcomeFound);
         await Assert.That(openRow.OutcomeIsAccent).IsTrue();
-        await Assert.That(openRow.Detail).IsEqualTo("A @ 1190,1802 · 1.2 с");
+        // Деталь демона перенесена дословно, а длительность приписана в форме СЕКУНД — 1200 мс
+        // выше порога. Разделитель « · » собирает сама view-model, он не из ресурсов.
+        await Assert.That(openRow.Detail).StartsWith("A @ 1190,1802 · ");
+        await Assert.That(Msg.Arg(openRow.Detail.Split(" · ")[^1], Strings.Editor_RunLog_DurationSec))
+            .IsEqualTo("1.2");
         await Assert.That(openRow.IsCurrent).IsFalse();
 
         // Подсветка следует за обходчиком, по одной коробке за раз.
@@ -612,8 +681,11 @@ public class MacroCanvasTests
             .IsEquivalentTo(new[] { "click-server" });
         await Assert.That(vm.CanvasEdges.Single(edge => edge.Source.DisplayName == "click-server").IsActive).IsTrue();
         daemon.Push(RunEvents.Exited(walk, 1240, "click-server", RunOutcomes.Ok, "PostMessage 1192,1805", 40));
-        await Assert.That(vm.RunLog[1].Detail).IsEqualTo("PostMessage 1192,1805 · 40 мс");
-        await Assert.That(vm.RunLog[1].Outcome).IsEqualTo("ок");
+        // …а здесь 40 мс не дотягивают до секунды, и выбрана форма МИЛЛИСЕКУНД.
+        await Assert.That(vm.RunLog[1].Detail).StartsWith("PostMessage 1192,1805 · ");
+        await Assert.That(Msg.Arg(vm.RunLog[1].Detail.Split(" · ")[^1], Strings.Editor_RunLog_DurationMs))
+            .IsEqualTo("40");
+        await Assert.That(vm.RunLog[1].Outcome).IsEqualTo(Strings.Editor_RunLog_OutcomeOk);
         await Assert.That(vm.RunLog[1].OutcomeIsAccent).IsFalse();
         await Assert.That(vm.RunLog[1].Elapsed).IsEqualTo("0:01.2");
 
@@ -731,7 +803,8 @@ public class MacroCanvasTests
             {
                 // То, чем отвечает демон: обходы, уже находящиеся в полёте, и помеченные как
                 // таковые.
-                new RunWalkDto(Guid.NewGuid(), Guid.NewGuid(), "pw-boot", 0x140804, 0, DateTimeOffset.UtcNow, FromStart: false),
+                new RunWalkDto(Guid.NewGuid(), Guid.NewGuid(), "pw-boot", 0x140804, 0, DateTimeOffset.UtcNow,
+                    FromStart: false),
             });
         using var vm = CreateEditor(client);
         vm.LoadGraph(BootLike());
@@ -740,8 +813,10 @@ public class MacroCanvasTests
 
         await Assert.That(vm.HasRuns).IsTrue();
         await Assert.That(vm.HasRunLogNotice).IsTrue();
-        await Assert.That(vm.RunLogNotice).IsEqualTo("начало прогона не записано");
-        await Assert.That(vm.RunLogEmptyText).IsEqualTo("прогонов ещё не было");
+        await Assert.That(vm.RunLogNotice).IsEqualTo(Strings.Editor_RunLog_NoticePartial);
+        // Подписка есть — значит пусто уже по другой причине, и текст обязан быть другим.
+        await Assert.That(vm.RunLogEmptyText).IsEqualTo(Strings.Editor_RunLog_EmptyRecorded);
+        await Assert.That(vm.RunLogEmptyText).IsNotEqualTo(Strings.Editor_RunLog_EmptyUnsubscribed);
 
         // О выброшенной пачке тоже сообщают — иначе получился бы лог с невидимой дырой. Обе
         // причины складываются: выбран по-прежнему тот обход, к которому подключились посреди
@@ -749,7 +824,10 @@ public class MacroCanvasTests
         // успел что-то выбросить.
         var walk = RunEvents.Walk("pw-boot", hwnd: 0x2);
         client.RaiseEvent(IpcMessageTypes.RunEvents, new RunEventBatch([RunEvents.Started(walk)], Dropped: 12));
-        await Assert.That(vm.RunLogNotice).IsEqualTo("начало прогона не записано · пропущено событий: 12");
+        // Обе причины сложились в одну строку, и вторая несёт ЧИСЛО выброшенных событий.
+        var notice = vm.RunLogNotice!.Split(" · ");
+        await Assert.That(notice[0]).IsEqualTo(Strings.Editor_RunLog_NoticePartial);
+        await Assert.That(Msg.Arg(notice[1], Strings.Editor_RunLog_NoticeDropped)).IsEqualTo("12");
     }
 
     [Test]
@@ -816,7 +894,8 @@ public class MacroCanvasTests
         // Зацикленный макрос не имеет права раздувать панель без предела.
         for (var i = 0; i < MacroRunViewModel.MaxRows + 25; i++)
         {
-            daemon.Push(RunEvents.Entered(walk, i, "await-stats"), RunEvents.Exited(walk, i, "await-stats", RunOutcomes.Ok, null, 1));
+            daemon.Push(RunEvents.Entered(walk, i, "await-stats"),
+                RunEvents.Exited(walk, i, "await-stats", RunOutcomes.Ok, null, 1));
         }
 
         await Assert.That(vm.RunLog).Count().IsEqualTo(MacroRunViewModel.MaxRows);
@@ -829,7 +908,8 @@ public class MacroCanvasTests
     public async Task ConditionalBoxesAreTallerThanActionBoxes()
     {
         var action = NodeRowViewModel.FromNode(new DelayNode { Id = Ids.Of("d"), DisplayName = "d", Ms = 1 });
-        var conditional = NodeRowViewModel.FromNode(new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "t" });
+        var conditional = NodeRowViewModel.FromNode(new FindElementNode
+            { Id = Ids.Of("f"), DisplayName = "f", Template = "t" });
 
         await Assert.That(action.IsConditional).IsFalse();
         await Assert.That(conditional.IsConditional).IsTrue();
@@ -846,7 +926,10 @@ public class MacroCanvasTests
             TemplateSet = "classes",
             Region = new ScreenRect(0, 0, 160, 35),
         });
-        await Assert.That(row.Summary).IsEqualTo("набор classes · 160×35");
+        // Подпись несёт имя набора и размеры области; « · » и «160×35» собирает view-model сама.
+        await Assert.That(Msg.Arg(row.Summary.Split(" · ")[0], Strings.Node_Summary_TemplateSet))
+            .IsEqualTo("classes");
+        await Assert.That(row.Summary.Split(" · ")[^1]).IsEqualTo("160×35");
 
         var seen = false;
         row.PropertyChanged += (_, e) => seen |= e.PropertyName == nameof(NodeRowViewModel.Summary);
@@ -856,7 +939,8 @@ public class MacroCanvasTests
         row.Region.WidthText = "320";
 
         await Assert.That(seen).IsTrue();
-        await Assert.That(row.Summary).IsEqualTo("набор classes · 320×35");
+        // Изменилась ровно ширина — вот она и в подписи.
+        await Assert.That(row.Summary.Split(" · ")[^1]).IsEqualTo("320×35");
     }
 
     // D4 заменила простую текстовую фишку на коробке живым бейджем; Summary теперь — это только
@@ -864,14 +948,19 @@ public class MacroCanvasTests
     [Test]
     public async Task TargetSummary_DescribesTheSelectorInWords()
     {
-        var row = NodeRowViewModel.FromNode(new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A });
-        await Assert.That(row.Target!.Summary).IsEqualTo("контекст-окно");
+        var row = NodeRowViewModel.FromNode(
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A });
+        // Три разных ключа на три состояния селектора — тест как раз про выбор между ними:
+        // «нет селектора», «селектор есть и пуст» и «есть исключение».
+        await Assert.That(row.Target!.Summary).IsEqualTo(Strings.Editor_Targets_TextContext);
 
         row.Target.UseSelector = true;
-        await Assert.That(row.Target.Summary).IsEqualTo("все окна");
+        await Assert.That(row.Target.Summary).IsEqualTo(Strings.Editor_Targets_TextAll);
+        await Assert.That(row.Target.Summary).IsNotEqualTo(Strings.Editor_Targets_TextContext);
 
         row.Target.ExcludeText = "Склад";
-        await Assert.That(row.Target.Summary).IsEqualTo("кроме Склад");
+        await Assert.That(Msg.Arg(row.Target.Summary, Strings.Editor_Targets_TextExcludeOnly))
+            .IsEqualTo("Склад");
     }
 
     // Фишка появляется на коробке, только когда нода отходит от значения по умолчанию. Волна D4
@@ -880,7 +969,8 @@ public class MacroCanvasTests
     [Test]
     public async Task TargetChip_IsOnlyDrawnWhenTheNodeRoutesByTags()
     {
-        var row = NodeRowViewModel.FromNode(new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A });
+        var row = NodeRowViewModel.FromNode(
+            new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A });
         await Assert.That(row.ShowsTargetChip).IsFalse();
 
         var seen = false;
@@ -900,18 +990,6 @@ public class MacroCanvasTests
             Guid.NewGuid(),
             new MacroGraph { Name = name, StartNodeId = only.Id, Nodes = [only] });
     }
-
-    /// <summary>Строка папки без самой папки: группировка смотрит только на имя.</summary>
-    private static MacroBundleEntry Entry(MacroGraph graph) => new(
-        graph.Name,
-        graph.Name + ".hsm",
-        graph,
-        MacroBundleMetadata.CreateNew(graph.Name),
-        [],
-        [],
-        [],
-        MacroBundleFault.None,
-        null);
 
     private static MacroGraph Graph(string name) => new()
     {

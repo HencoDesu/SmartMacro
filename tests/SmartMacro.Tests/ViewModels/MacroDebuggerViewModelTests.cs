@@ -1,4 +1,4 @@
-using SmartMacro.Resources;
+﻿using SmartMacro.Resources;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
 using SmartMacro.App.ViewModels.Nodes;
@@ -94,7 +94,7 @@ public class MacroDebuggerViewModelTests
         await Assert.That(editor.CanPause).IsTrue();
         await Assert.That(editor.CanStop).IsTrue();
         await Assert.That(editor.CanResume).IsFalse();
-        await Assert.That(editor.DebugStateText).IsEqualTo("выполняется");
+        await Assert.That(editor.DebugStateText).IsEqualTo(Strings.Editor_Debug_StateRunning);
     }
 
     [Test]
@@ -122,7 +122,8 @@ public class MacroDebuggerViewModelTests
     public async Task PauseIsShownAsPENDING_UntilTheDaemonConfirmsIt()
     {
         var daemon = Daemon();
-        daemon.Respond(IpcMessageTypes.DebugCommand, new DebugAckDto(Accepted: true, Paused: false, PauseRequested: true));
+        daemon.Respond(IpcMessageTypes.DebugCommand,
+            new DebugAckDto(Accepted: true, Paused: false, PauseRequested: true));
         var editor = Opened(daemon);
         var walk = RunEvents.Walk("pw-boot", hwnd: 0x1);
         daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "a"));
@@ -132,7 +133,8 @@ public class MacroDebuggerViewModelTests
         // «Паузу» уважают на ближайшей границе нод, а WaitForElement способен оттянуть эту границу
         // на минуту. Без отдельного состояния кнопка просто сереет, и больше не меняется ничего, —
         // а нашлось это, когда на такое посмотрели вживую.
-        await Assert.That(editor.DebugStateText).IsEqualTo("пауза…");
+        await Assert.That(editor.DebugStateText).IsEqualTo(Strings.Editor_Debug_StatePausing);
+        await Assert.That(editor.DebugStateText).IsNotEqualTo(Strings.Editor_Debug_StatePaused);
         await Assert.That(editor.SelectedRunPauseVisible).IsTrue();
         await Assert.That(editor.PauseNotice).IsEqualTo(Strings.Editor_Debug_PauseRequested);
         await Assert.That(editor.SelectedRunIsPaused).IsFalse();
@@ -143,8 +145,11 @@ public class MacroDebuggerViewModelTests
         daemon.Push(RunEvents.Entered(walk, 900, "b"), RunEvents.Paused(walk, 900, "b"));
 
         await Assert.That(editor.SelectedRunIsPaused).IsTrue();
-        await Assert.That(editor.PauseNotice).IsEqualTo("пауза: b");
-        await Assert.That(editor.DebugStateText).IsEqualTo("на паузе · пауза");
+        // Пилюля называет ПРИЧИНУ и ноду, на которой встали; причина здесь — обычная пауза.
+        await Assert.That(Msg.Args(editor.PauseNotice, Strings.Editor_Debug_PausedAt))
+            .IsEquivalentTo(new[] { Strings.Run_PauseReason_Paused, "b" });
+        await Assert.That(Msg.Arg(editor.DebugStateText, Strings.Editor_Debug_StatePaused))
+            .IsEqualTo(Strings.Run_PauseReason_Paused);
         await Assert.That(editor.CanResume).IsTrue();
     }
 
@@ -159,7 +164,9 @@ public class MacroDebuggerViewModelTests
         // Состояние парковки то же самое, рисуется иначе — красная пилюля из макета.
         await Assert.That(editor.SelectedRunIsPaused).IsTrue();
         await Assert.That(editor.SelectedRunAtBreakpoint).IsTrue();
-        await Assert.That(editor.PauseNotice).IsEqualTo("брейкпоинт: c");
+        // Ровно то, что обещает имя теста: причина ДРУГАЯ, хотя состояние парковки то же.
+        await Assert.That(Msg.Args(editor.PauseNotice, Strings.Editor_Debug_PausedAt))
+            .IsEquivalentTo(new[] { Strings.Run_PauseReason_Breakpoint, "c" });
     }
 
     [Test]
@@ -180,7 +187,8 @@ public class MacroDebuggerViewModelTests
     public async Task ARejectedCommandSaysTheWalkIsGone_RatherThanLeavingTheButtonLit()
     {
         var daemon = Daemon();
-        daemon.Respond(IpcMessageTypes.DebugCommand, new DebugAckDto(Accepted: false, Paused: false, PauseRequested: false));
+        daemon.Respond(IpcMessageTypes.DebugCommand,
+            new DebugAckDto(Accepted: false, Paused: false, PauseRequested: false));
         var editor = Opened(daemon);
         var walk = RunEvents.Walk("pw-boot", hwnd: 0x1);
         daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "a"));
@@ -188,7 +196,7 @@ public class MacroDebuggerViewModelTests
         await editor.PauseAsync();
 
         await Assert.That(editor.StatusMessage).IsEqualTo(Strings.Editor_Debug_WalkAlreadyFinished);
-        await Assert.That(editor.DebugStateText).IsEqualTo("выполняется");
+        await Assert.That(editor.DebugStateText).IsEqualTo(Strings.Editor_Debug_StateRunning);
     }
 
     [Test]
@@ -205,7 +213,8 @@ public class MacroDebuggerViewModelTests
         await editor.RunToCursorAsync();
 
         var sent = daemon.PayloadsOf<DebugCommandRequest>(IpcMessageTypes.DebugCommand);
-        await Assert.That(sent.Select(r => r.Command)).IsEquivalentTo(new[] { DebugCommand.Step, DebugCommand.RunToNode });
+        await Assert.That(sent.Select(r => r.Command))
+            .IsEquivalentTo(new[] { DebugCommand.Step, DebugCommand.RunToNode });
         await Assert.That(sent.All(r => r.WalkId == walk.WalkId)).IsTrue();
         // «До курсора» целится в ноду, выбранную на канве, а не в смещение относительно обхода.
         await Assert.That(sent[1].NodeId).IsEqualTo(Ids.Of("c"));
@@ -245,8 +254,9 @@ public class MacroDebuggerViewModelTests
 
         // Пауза и шаг работают по ОБХОДУ, а «Стоп» — по ПРОГОНУ, и предложить вместо него отмену
         // одного обхода нечем. Счётчик — это то, чем кнопка признаётся в этой несимметричности.
-        await Assert.That(editor.StopLabel).IsEqualTo("■ Стоп ×3");
-        await Assert.That(editor.StopTooltip).Contains("все 3");
+        await Assert.That(Msg.Arg(editor.StopLabel, Strings.Editor_Debug_StopMany)).IsEqualTo("3");
+        await Assert.That(editor.StopLabel).IsNotEqualTo(Strings.Editor_Debug_Stop);
+        await Assert.That(Msg.Arg(editor.StopTooltip, Strings.Editor_Debug_StopManyTip_Few)).IsEqualTo("3");
 
         await editor.StopSelectedRunAsync();
 
@@ -300,8 +310,8 @@ public class MacroDebuggerViewModelTests
         var b = editor.Nodes.Single(n => n.DisplayName == "b");
 
         await Assert.That(a.IsPassed).IsTrue();
-        await Assert.That(a.PassedTime).IsEqualTo("1.2 с");
-        await Assert.That(a.PassedOutcome).IsEqualTo("ок");
+        await Assert.That(Msg.Arg(a.PassedTime, Strings.Editor_RunLog_DurationSec)).IsEqualTo("1.2");
+        await Assert.That(a.PassedOutcome).IsEqualTo(Strings.Editor_RunLog_OutcomeOk);
         await Assert.That(a.IsExecuting).IsFalse();
         await Assert.That(b.IsExecuting).IsTrue();
         await Assert.That(b.IsPassed).IsFalse();
@@ -473,7 +483,8 @@ public class MacroDebuggerViewModelTests
         editor.ClearBreakpoints();
 
         await Assert.That(editor.HasBreakpoints).IsFalse();
-        await Assert.That(daemon.PayloadsOf<SetBreakpointsRequest>(IpcMessageTypes.SetBreakpoints)[^1].NodeIds).IsEmpty();
+        await Assert.That(daemon.PayloadsOf<SetBreakpointsRequest>(IpcMessageTypes.SetBreakpoints)[^1].NodeIds)
+            .IsEmpty();
     }
 
     // ---- панель переменных ---------------------------------------------------------------
@@ -484,15 +495,21 @@ public class MacroDebuggerViewModelTests
         var editor = Opened(Daemon());
 
         var tag = editor.Variables.Single(v => v.RawName == "tag");
-        await Assert.That(tag.KindText).IsEqualTo("строка");
+        // Тип и слот — ВЫБОР из перечня (строка/точка/значение, тег/иконка/клик/результат), и
+        // проверяется именно выбор. Имена нод рядом — то, что вычислила логика, они литералы.
+        await Assert.That(tag.KindText).IsEqualTo(Strings.Editor_Variables_KindText);
+        await Assert.That(tag.KindText).IsNotEqualTo(Strings.Editor_Variables_KindPoint);
         await Assert.That(tag.WrittenBy).IsEqualTo("c");
         await Assert.That(tag.ReadBy).IsEqualTo("d");
-        await Assert.That(tag.ReadWhere).IsEqualTo("в пути к иконке");
+        await Assert.That(tag.ReadWhere).IsEqualTo(Strings.Editor_Variables_SlotIcon);
         await Assert.That(tag.HasValue).IsFalse();
 
         var cursor = editor.Variables.Single(v => v.RawName == "cursor");
-        await Assert.That(cursor.WrittenBy).IsEqualTo("триггер (сид)");
-        await Assert.That(cursor.ReadBy).IsEqualTo("никто");
+        // cursor не пишет ни одна нода: его сеет триггер, и панель обязана сказать это, а не
+        // «никто не пишет» — иначе читается как ошибка макроса.
+        await Assert.That(cursor.WrittenBy).IsEqualTo(Strings.Editor_Variables_SeededByTrigger);
+        await Assert.That(cursor.WrittenBy).IsNotEqualTo(Strings.Editor_Variables_Undefined);
+        await Assert.That(cursor.ReadBy).IsEqualTo(Strings.Editor_Variables_Nobody);
         await Assert.That(editor.VariableCountText).IsEqualTo("2");
     }
 
@@ -508,7 +525,8 @@ public class MacroDebuggerViewModelTests
             StartNodeId = Ids.Of("click"),
             Nodes =
             [
-                new ClickNode { Id = Ids.Of("click"), DisplayName = "click", PointVar = "cursor", Next = Ids.Of("tag") },
+                new ClickNode
+                    { Id = Ids.Of("click"), DisplayName = "click", PointVar = "cursor", Next = Ids.Of("tag") },
                 new AddTagNode { Id = Ids.Of("tag"), DisplayName = "tag", Tag = "проба-{cursor}" },
             ],
         });
@@ -546,8 +564,10 @@ public class MacroDebuggerViewModelTests
         var editor = Opened(daemon);
         var first = RunEvents.Walk("pw-boot", hwnd: 0x1);
         var second = RunEvents.Walk("pw-boot", hwnd: 0x2);
-        daemon.Push(RunEvents.Started(first), RunEvents.Entered(first, 0, "c"), RunEvents.Variable(first, 1, "tag", "Жрец", "c"));
-        daemon.Push(RunEvents.Started(second), RunEvents.Entered(second, 0, "c"), RunEvents.Variable(second, 1, "tag", "Лучник", "c"));
+        daemon.Push(RunEvents.Started(first), RunEvents.Entered(first, 0, "c"),
+            RunEvents.Variable(first, 1, "tag", "Жрец", "c"));
+        daemon.Push(RunEvents.Started(second), RunEvents.Entered(second, 0, "c"),
+            RunEvents.Variable(second, 1, "tag", "Лучник", "c"));
 
         editor.SelectedRun = editor.Runs.Single(r => r.WalkId == first.WalkId);
         await Assert.That(editor.Variables.Single(v => v.RawName == "tag").Value).IsEqualTo("Жрец");

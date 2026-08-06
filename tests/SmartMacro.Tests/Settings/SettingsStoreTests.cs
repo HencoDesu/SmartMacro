@@ -1,5 +1,6 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Contracts.Settings;
+using SmartMacro.Resources;
 using SmartMacro.Settings;
 
 namespace SmartMacro.Tests.Settings;
@@ -220,12 +221,12 @@ public class SettingsStoreTests
     public async Task DescribeMechanism_NamesAllFourCombinations()
     {
         await Assert.That(AutoStartManager.DescribeMechanism(new StartupSettings
-                { RunAtLogon = false, RunElevated = false })).Contains("выключен");
+                { RunAtLogon = false, RunElevated = false })).IsEqualTo(Strings.Settings_Engine_AutoStart_Off);
         await Assert.That(AutoStartManager.DescribeMechanism(new StartupSettings
-                { RunAtLogon = true, RunElevated = false })).Contains("Run");
+                { RunAtLogon = true, RunElevated = false })).IsEqualTo(Strings.Settings_Engine_AutoStart_RunKey);
         await Assert.That(AutoStartManager.DescribeMechanism(new StartupSettings
-                { RunAtLogon = false, RunElevated = true })).Contains("повышение");
+                { RunAtLogon = false, RunElevated = true })).IsEqualTo(Strings.Settings_Engine_AutoStart_ElevateOnManualStart);
         await Assert.That(AutoStartManager.DescribeMechanism(new StartupSettings
-                { RunAtLogon = true, RunElevated = true })).Contains("Планировщик");
+                { RunAtLogon = true, RunElevated = true })).IsEqualTo(Strings.Settings_Engine_AutoStart_ScheduledTask);
     }
 }

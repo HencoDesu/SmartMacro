@@ -1,3 +1,4 @@
+using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
 using SmartMacro.App.ViewModels.Nodes;
@@ -5,6 +6,7 @@ using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -18,6 +20,12 @@ namespace SmartMacro.Tests.ViewModels;
 // чтобы сказать, кого заденет прогон.
 public class TargetBadgeTests
 {
+    /// <summary>Номера форм множественного числа — то, чем [Arguments] умеет быть.</summary>
+    private const int One = 0;
+
+    private const int Few = 1;
+    private const int Many = 2;
+
     private static WindowCatalog Catalog(params (long Hwnd, string[] Tags)[] windows)
     {
         var catalog = new WindowCatalog();
@@ -33,6 +41,7 @@ public class TargetBadgeTests
         {
             windows.Add((0x140000 + i, ["перс", i == 0 ? "Лучник" : "Жрец"]));
         }
+
         windows.Add((0x140550, ["перс", "Склад"]));
         windows.Add((0x140900, []));
         windows.Add((0x140901, []));
@@ -58,7 +67,7 @@ public class TargetBadgeTests
         var vm = TargetSelectorViewModel.FromSelector(null);
         vm.Windows = Party();
 
-        await Assert.That(vm.BadgeText).IsEqualTo("1 окно · контекст");
+        await Assert.That(vm.BadgeText).IsEqualTo(Strings.Editor_Targets_CountContext);
         await Assert.That(vm.BadgeIsAccent).IsFalse();
         await Assert.That(vm.BadgeIsDanger).IsFalse();
         await Assert.That(vm.ShowsHollowDot).IsTrue();
@@ -70,11 +79,17 @@ public class TargetBadgeTests
     {
         var vm = Selector(Party(), require: "перс", exclude: "Склад");
 
-        await Assert.That(vm.BadgeText).IsEqualTo("8 окон · перс · кроме Склад");
+        // Собранная строка: проверяются ЧАСТИ, которые несёт логика, — счёт, требуемый тег и
+        // исключённый, — и то, что выбрана форма «требование И исключение», а не соседние.
+        var badge = Msg.Args(vm.BadgeText, Strings.Editor_Targets_CountRequireExclude);
+        await Assert.That(Msg.Arg(badge[0], Strings.Editor_Targets_WindowCount_Many)).IsEqualTo("8");
+        await Assert.That(badge[1]).IsEqualTo("перс");
+        await Assert.That(badge[2]).IsEqualTo("Склад");
         await Assert.That(vm.BadgeIsAccent).IsTrue();
         await Assert.That(vm.MatchCount).IsEqualTo(8);
         await Assert.That(vm.TotalCount).IsEqualTo(11);
-        await Assert.That(vm.HitText).IsEqualTo("8 из 11");
+        await Assert.That(Msg.Args(vm.HitText, Strings.Editor_Targets_HitsCount))
+            .IsEquivalentTo(new[] { "8", "11" });
     }
 
     [Test]
@@ -82,7 +97,9 @@ public class TargetBadgeTests
     {
         var vm = Selector(Party(), require: "Инквизитор");
 
-        await Assert.That(vm.BadgeText).IsEqualTo("0 окон · Инквизитор");
+        var badge = Msg.Args(vm.BadgeText, Strings.Editor_Targets_CountRequire);
+        await Assert.That(Msg.Arg(badge[0], Strings.Editor_Targets_WindowCount_Many)).IsEqualTo("0");
+        await Assert.That(badge[1]).IsEqualTo("Инквизитор");
         await Assert.That(vm.BadgeIsDanger).IsTrue();
         await Assert.That(vm.BadgeIsAccent).IsFalse();
         await Assert.That(vm.ShowsDangerDot).IsTrue();
@@ -97,10 +114,11 @@ public class TargetBadgeTests
     {
         var vm = Selector(Catalog(), require: "перс");
 
-        await Assert.That(vm.BadgeText).IsEqualTo("нет окон");
+        // Тихое состояние — это ВЫБОР другого ключа, а не другого цвета при том же тексте.
+        await Assert.That(vm.BadgeText).IsEqualTo(Strings.Editor_Targets_CountNoWindows);
         await Assert.That(vm.BadgeIsDanger).IsFalse();
         await Assert.That(vm.BadgeIsAccent).IsFalse();
-        await Assert.That(vm.HitText).IsEqualTo("нет окон под управлением");
+        await Assert.That(vm.HitText).IsEqualTo(Strings.Editor_Targets_HitsNoWindows);
     }
 
     [Test]
@@ -109,24 +127,46 @@ public class TargetBadgeTests
         var vm = Selector(null, require: "перс");
 
         await Assert.That(vm.TotalCount).IsEqualTo(0);
-        await Assert.That(vm.BadgeText).IsEqualTo("нет окон");
+        await Assert.That(vm.BadgeText).IsEqualTo(Strings.Editor_Targets_CountNoWindows);
     }
 
     // окно / окна / окон, включая исключение для 11–14.
+    //
+    // Ожидание — НОМЕР ФОРМЫ, а не готовая строка: проверять здесь надо, что при 1/2/5 выбраны
+    // разные ключи, а какими словами они записаны — дело вычитки. Номером, а не Strings.X, потому
+    // что [Arguments] принимает только константы времени компиляции.
     [Test]
-    [Arguments(1, "1 окно")]
-    [Arguments(2, "2 окна")]
-    [Arguments(5, "5 окон")]
-    [Arguments(11, "11 окон")]
-    [Arguments(21, "21 окно")]
-    public async Task WindowCount_IsPluralisedInRussian(int count, string expected)
+    [Arguments(1, One)]
+    [Arguments(2, Few)]
+    [Arguments(5, Many)]
+    [Arguments(11, Many)]
+    [Arguments(21, One)]
+    public async Task WindowCount_IsPluralisedInRussian(int count, int expectedForm)
     {
+        string[] forms =
+        [
+            Strings.Editor_Targets_WindowCount_One,
+            Strings.Editor_Targets_WindowCount_Few,
+            Strings.Editor_Targets_WindowCount_Many,
+        ];
         var windows = Enumerable.Range(0, count).Select(i => ((long)(0x200000 + i), new[] { "перс" })).ToArray();
         // Селектор с обоими пустыми списками означает «каждое окно», и счётчик говорит это сам по
         // себе, — так что бейдж здесь не более чем число, и именно это тут и меряется.
         var vm = Selector(Catalog(windows));
 
-        await Assert.That(vm.BadgeText).IsEqualTo(expected);
+        // Выбрана эта форма, и в неё подставлено само число…
+        await Assert.That(Msg.Arg(vm.BadgeText, forms[expectedForm]))
+            .IsEqualTo(count.ToString(CultureInfo.CurrentCulture));
+
+        // …и ни одна из двух других. Без этой половины «согласование» не проверяется вовсе:
+        // «1 окон» тоже подставляет число.
+        for (var form = 0; form < forms.Length; form++)
+        {
+            if (form != expectedForm)
+            {
+                await Assert.That(Msg.Is(vm.BadgeText, forms[form])).IsFalse();
+            }
+        }
     }
 
     // Коробке на канве достаётся счётчик без тегов: в заголовок шириной 210px уже уложены значок
@@ -134,10 +174,18 @@ public class TargetBadgeTests
     [Test]
     public async Task CompactBadge_KeepsTheCountAndDropsTheTags()
     {
-        await Assert.That(Selector(Party(), require: "перс", exclude: "Склад").BadgeCountText).IsEqualTo("8 окон");
-        await Assert.That(Selector(Party(), require: "Инквизитор").BadgeCountText).IsEqualTo("0 окон");
-        await Assert.That(Selector(Catalog(), require: "перс").BadgeCountText).IsEqualTo("нет окон");
-        await Assert.That(TargetSelectorViewModel.FromSelector(null).BadgeCountText).IsEqualTo("контекст");
+        // Совпадение с ГОЛОЙ формой счёта доказывает и число, и то, что тегов в строке нет:
+        // «8 окон · перс · кроме Склад» под формат «{0} окон» не подходит.
+        await Assert.That(Msg.Arg(
+            Selector(Party(), require: "перс", exclude: "Склад").BadgeCountText,
+            Strings.Editor_Targets_WindowCount_Many)).IsEqualTo("8");
+        await Assert.That(Msg.Arg(
+            Selector(Party(), require: "Инквизитор").BadgeCountText,
+            Strings.Editor_Targets_WindowCount_Many)).IsEqualTo("0");
+        await Assert.That(Selector(Catalog(), require: "перс").BadgeCountText)
+            .IsEqualTo(Strings.Editor_Targets_CountNoWindows);
+        await Assert.That(TargetSelectorViewModel.FromSelector(null).BadgeCountText)
+            .IsEqualTo(Strings.Editor_Targets_CompactContext);
     }
 
     // ---- полоски доли ----------------------------------------------------------------------
@@ -174,7 +222,7 @@ public class TargetBadgeTests
         await Assert.That(vm.MissedWindows.All(w => w.IsExcluded)).IsTrue();
 
         // До окон без тегов маршрут не проложить вовсе, поэтому их считают, а не называют.
-        await Assert.That(vm.UntaggedText).IsEqualTo("2 без тегов");
+        await Assert.That(Msg.Arg(vm.UntaggedText, Strings.Editor_Targets_Untagged)).IsEqualTo("2");
         await Assert.That(vm.HasUntagged).IsTrue();
     }
 
@@ -292,11 +340,13 @@ public class TargetBadgeTests
 
         vm.UseSelector = false;
         await Assert.That(vm.ToSelector()).IsNull();
-        await Assert.That(vm.BadgeText).IsEqualTo("1 окно · контекст");
+        await Assert.That(vm.BadgeText).IsEqualTo(Strings.Editor_Targets_CountContext);
 
         vm.UseSelector = true;
         await Assert.That(vm.ToSelector()!.RequireTags).IsEquivalentTo(new List<string> { "перс" });
-        await Assert.That(vm.BadgeText).IsEqualTo("8 окон · перс · кроме Склад");
+        // Теги пережили круг — это видно по тому, что оба вернулись в бейдж.
+        await Assert.That(Msg.Args(vm.BadgeText, Strings.Editor_Targets_CountRequireExclude).Skip(1))
+            .IsEquivalentTo(new[] { "перс", "Склад" });
     }
 
     // ---- половина, за которую отвечает редактор -----------------------------------------------
@@ -321,13 +371,22 @@ public class TargetBadgeTests
         {
             Name = "тест",
             StartNodeId = Ids.Of("k"),
-            Nodes = [new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A, Target = new TargetSelector { ExcludeTags = ["Склад"] } }],
+            Nodes =
+            [
+                new KeyPressNode
+                {
+                    Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.A,
+                    Target = new TargetSelector { ExcludeTags = ["Склад"] }
+                }
+            ],
         });
 
         var target = editor.Nodes.Single().Target!;
         await Assert.That(editor.Windows.Count).IsEqualTo(2);
         await Assert.That(target.TotalCount).IsEqualTo(2);
-        await Assert.That(target.BadgeText).IsEqualTo("1 окно · кроме Склад");
+        var seeded = Msg.Args(target.BadgeText, Strings.Editor_Targets_CountExclude);
+        await Assert.That(Msg.Arg(seeded[0], Strings.Editor_Targets_WindowCount_One)).IsEqualTo("1");
+        await Assert.That(seeded[1]).IsEqualTo("Склад");
 
         // …и он следует за пушами демона.
         client.RaiseEvent(IpcMessageTypes.WindowTagsChanged, new WindowDto(0x2, "elementclient_64", ["перс"]));

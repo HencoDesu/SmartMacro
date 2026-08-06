@@ -2,6 +2,7 @@ using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Macros.Validation;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Macros;
 
@@ -149,9 +150,10 @@ public class SubmacroBundleTests
 
         var issues = MacroGraphValidator.ValidateBundle(Parent(call), [withTrigger]);
 
-        await Assert.That(issues.Any(i => i.Severity == ValidationSeverity.Error
-                                          && i.SubmacroId == sub.Id
-                                          && i.Message.Contains("триггер"))).IsTrue();
+        var trigger = issues.Single(i => i.Severity == ValidationSeverity.Error && i.SubmacroId == sub.Id);
+        await Assert.That(Msg.Is(trigger.Message, Strings.Validation_Submacro_HasTrigger)).IsTrue();
+        // Виноватая функция названа: в бандле их несколько, и «где-то есть триггер» не действие.
+        await Assert.That(Msg.Arg(trigger.Message, Strings.Validation_Submacro_HasTrigger)).IsEqualTo("опознать");
     }
 
     [Test]
@@ -172,7 +174,7 @@ public class SubmacroBundleTests
 
         await Assert.That(issues.Any(i => i.Severity == ValidationSeverity.Error
                                           && i.SubmacroId == outer.Id
-                                          && i.Message.Contains("вложенность плоская"))).IsTrue();
+                                          && Msg.Is(i.Message, Strings.Validation_Submacro_NestedCall))).IsTrue();
     }
 
     [Test]
@@ -182,9 +184,10 @@ public class SubmacroBundleTests
 
         var issues = MacroGraphValidator.ValidateBundle(Parent(call), []);
 
-        await Assert.That(issues.Any(i => i.Severity == ValidationSeverity.Error
-                                          && i.NodeId == call.Id
-                                          && i.Message.Contains("Под-макроса"))).IsTrue();
+        var error = issues.Single(i => i.Severity == ValidationSeverity.Error && i.NodeId == call.Id);
+        await Assert.That(Msg.Is(error.Message, Strings.Validation_Submacro_NotFound)).IsTrue();
+        // Ссылка на пропавшую функцию и невыбранная функция — разные новости; см. соседний тест.
+        await Assert.That(Msg.Is(error.Message, Strings.Validation_Submacro_NotSelected)).IsFalse();
     }
 
     [Test]
@@ -194,7 +197,10 @@ public class SubmacroBundleTests
 
         var issues = MacroGraphValidator.ValidateBundle(Parent(call), []);
 
-        await Assert.That(issues.Any(i => i.Message == "Под-макрос не выбран.")).IsTrue();
+        // Весь смысл теста — в ВЫБОРЕ между двумя сообщениями: «не выбран» пользователь чинит
+        // выпадающим списком, «нет в макросе» — импортом. Поэтому утверждается и то, и не-то.
+        await Assert.That(issues.Any(i => Msg.Is(i.Message, Strings.Validation_Submacro_NotSelected))).IsTrue();
+        await Assert.That(issues.Any(i => Msg.Is(i.Message, Strings.Validation_Submacro_NotFound))).IsFalse();
     }
 
     /// <summary>
@@ -229,8 +235,11 @@ public class SubmacroBundleTests
         var issues = MacroGraphValidator.ValidateBundle(Parent(call, icon), [sub]);
 
         var warning = issues.Single(i => i.NodeId == call.Id && i.Severity == ValidationSeverity.Warning);
-        await Assert.That(warning.Message).Contains("«tag»");
-        await Assert.That(warning.Message).Contains("КОПИЕЙ");
+        // Форма «одна переменная», и в ней названы обе стороны потери: чья функция и что именно
+        // не вернётся. Раньше здесь сверялось слово «КОПИЕЙ» — то есть объяснение, а не факт.
+        await Assert.That(Msg.Is(warning.Message, Strings.Validation_Submacro_VariableLost_Single)).IsTrue();
+        await Assert.That(Msg.Args(warning.Message, Strings.Validation_Submacro_VariableLost_Single))
+            .IsEquivalentTo(new[] { "опознать", "tag" });
     }
 
     /// <summary>
@@ -284,7 +293,11 @@ public class SubmacroBundleTests
             {
                 Name = "битая",
                 StartNodeId = Ids.Of("k"),
-                Nodes = [new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F1, Next = Ids.Of("призрак") }],
+                Nodes =
+                [
+                    new KeyPressNode
+                        { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F1, Next = Ids.Of("призрак") }
+                ],
             });
         var call = new RunSubmacroNode { Id = Ids.Of("c"), DisplayName = "c", SubmacroId = broken.Id };
 

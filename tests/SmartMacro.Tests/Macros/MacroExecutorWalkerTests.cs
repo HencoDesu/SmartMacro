@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 
 namespace SmartMacro.Tests.Macros;
 
@@ -52,7 +53,10 @@ public class MacroExecutorWalkerTests
         var context = h.Context(ExecutorHarness.Window);
         var graph = ExecutorHarness.Graph("м", Ids.Of("f"),
             new FindElementNode
-                { Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка", FoundPointVar = "btn", Found = Ids.Of("yes"), NotFound = Ids.Of("no") },
+            {
+                Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка", FoundPointVar = "btn", Found = Ids.Of("yes"),
+                NotFound = Ids.Of("no")
+            },
             new KeyPressNode { Id = Ids.Of("yes"), DisplayName = "yes", Key = VirtualKey.F1, Next = null },
             new KeyPressNode { Id = Ids.Of("no"), DisplayName = "no", Key = VirtualKey.F2, Next = null });
 
@@ -70,7 +74,10 @@ public class MacroExecutorWalkerTests
         var context = h.Context(ExecutorHarness.Window);
         var graph = ExecutorHarness.Graph("м", Ids.Of("f"),
             new FindElementNode
-                { Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка", FoundPointVar = "btn", Found = Ids.Of("yes"), NotFound = Ids.Of("no") },
+            {
+                Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка", FoundPointVar = "btn", Found = Ids.Of("yes"),
+                NotFound = Ids.Of("no")
+            },
             new KeyPressNode { Id = Ids.Of("yes"), DisplayName = "yes", Key = VirtualKey.F1, Next = null },
             new KeyPressNode { Id = Ids.Of("no"), DisplayName = "no", Key = VirtualKey.F2, Next = null });
 
@@ -86,7 +93,11 @@ public class MacroExecutorWalkerTests
     {
         var h = new ExecutorHarness();
         var graph = ExecutorHarness.Graph("м", Ids.Of("w"),
-            new WaitForElementNode { Id = Ids.Of("w"), DisplayName = "w", Template = "мир", TimeoutMs = 5000, Found = Ids.Of("yes"), Timeout = null },
+            new WaitForElementNode
+            {
+                Id = Ids.Of("w"), DisplayName = "w", Template = "мир", TimeoutMs = 5000, Found = Ids.Of("yes"),
+                Timeout = null
+            },
             new KeyPressNode { Id = Ids.Of("yes"), DisplayName = "yes", Key = VirtualKey.F1, Next = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
@@ -105,7 +116,10 @@ public class MacroExecutorWalkerTests
         var context = h.Context(ExecutorHarness.Window);
         var graph = ExecutorHarness.Graph("м", Ids.Of("w"),
             new WaitForElementNode
-                { Id = Ids.Of("w"), DisplayName = "w", Template = "мир", TimeoutMs = 5000, FoundPointVar = "pt", Found = null, Timeout = null });
+            {
+                Id = Ids.Of("w"), DisplayName = "w", Template = "мир", TimeoutMs = 5000, FoundPointVar = "pt",
+                Found = null, Timeout = null
+            });
 
         var result = await h.Executor.RunAsync(graph, context, CancellationToken.None);
 
@@ -216,7 +230,10 @@ public class MacroExecutorWalkerTests
                 Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.F8,
                 Target = new TargetSelector { RequireTags = ["нет-таких"] }, Next = Ids.Of("k2"),
             },
-            new KeyPressNode { Id = Ids.Of("k2"), DisplayName = "k2", Key = VirtualKey.F9, Target = new TargetSelector(), Next = null });
+            new KeyPressNode
+            {
+                Id = Ids.Of("k2"), DisplayName = "k2", Key = VirtualKey.F9, Target = new TargetSelector(), Next = null
+            });
 
         var result = await h.Executor.RunAsync(graph, h.Context(window: null), CancellationToken.None);
 
@@ -252,7 +269,10 @@ public class MacroExecutorWalkerTests
         var result = await executor.RunAsync(graph, h.Context(window: null), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("нет контекстного окна");
+        // Сообщений об отсутствии контекста два — «нет селектора Target» (это) и «проверке нужно
+        // окно» (соседний тест). Называется то, которое здесь верно, и отвергается второе.
+        await Assert.That(Msg.Arg(result.Error, Strings.Run_Abort_NodeNeedsTargetOrContext)).IsEqualTo("k");
+        await Assert.That(Msg.Is(result.Error, Strings.Run_Abort_NodeNeedsContextWindow)).IsFalse();
         A.CallTo(primitives).MustNotHaveHappened();
     }
 
@@ -261,12 +281,15 @@ public class MacroExecutorWalkerTests
     {
         var h = new ExecutorHarness();
         var graph = ExecutorHarness.Graph("м", Ids.Of("f"),
-            new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка", Found = null, NotFound = null });
+            new FindElementNode
+                { Id = Ids.Of("f"), DisplayName = "f", Template = "кнопка", Found = null, NotFound = null });
 
         var result = await h.Executor.RunAsync(graph, h.Context(window: null), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("нужно контекстное окно");
+        // Зеркало предыдущего: здесь виновата ПРОВЕРКА УСЛОВИЯ, и сообщение обязано быть её.
+        await Assert.That(Msg.Arg(result.Error, Strings.Run_Abort_NodeNeedsContextWindow)).IsEqualTo("f");
+        await Assert.That(Msg.Is(result.Error, Strings.Run_Abort_NodeNeedsTargetOrContext)).IsFalse();
         await Assert.That(h.Primitives.Calls).Count().IsEqualTo(0);
     }
 
@@ -368,8 +391,8 @@ public class MacroExecutorWalkerTests
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
         // Ноду-призрак назвать нечем: её в графе нет, а голый guid читателю лога ничего не
-        // сообщит. Важно, что обход оборвался и сказал почему.
-        await Assert.That(result.Error!).Contains("ноду, которой в графе нет");
+        // сообщит. Важно, что обход оборвался и сказал почему — и назвал макрос.
+        await Assert.That(Msg.Arg(result.Error, Strings.Run_Abort_EdgeToMissingNode)).IsEqualTo("м");
     }
 
     [Test]
@@ -383,7 +406,9 @@ public class MacroExecutorWalkerTests
         var result = await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Aborted);
-        await Assert.That(result.Error!).Contains("дубликат id ноды");
+        // Названы и макрос, и одна из спорных нод — по голому «дубликат» искать негде.
+        await Assert.That(Msg.Args(result.Error, Strings.Run_Abort_DuplicateNodeId))
+            .IsEquivalentTo(new[] { "м", "k" });
     }
 
     [Test]

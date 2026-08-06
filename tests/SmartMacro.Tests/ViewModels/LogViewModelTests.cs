@@ -1,7 +1,8 @@
-using SmartMacro.App.Mvvm;
+﻿using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -61,7 +62,7 @@ public class LogViewModelTests
 
         await Assert.That(vm.IsEmpty).IsTrue();
         await Assert.That(vm.IsFilteredOut).IsFalse();
-        await Assert.That(vm.SummaryText).IsEqualTo("лента пуста");
+        await Assert.That(vm.SummaryText).IsEqualTo(Strings.Log_Header_Empty);
     }
 
     [Test]
@@ -119,7 +120,8 @@ public class LogViewModelTests
 
         await Assert.That(vm.IsEmpty).IsTrue();
         await Assert.That(vm.WasCleared).IsTrue();
-        await Assert.That(vm.EmptyHint).Contains("не тронуло");
+        // Подсказка после очистки — отдельный ключ: она объясняет, что журнал сервиса цел.
+        await Assert.That(vm.EmptyHint).IsEqualTo(Strings.Log_Cleared_Hint);
 
         // Новая предыстория — новое начало.
         client.Respond(IpcMessageTypes.SubscribeLog, Array.Empty<LogEntryDto>());
@@ -223,7 +225,9 @@ public class LogViewModelTests
         await Assert.That(vm.Rows).IsEmpty();
         await Assert.That(vm.IsEmpty).IsFalse();
         await Assert.That(vm.IsFilteredOut).IsTrue();
-        await Assert.That(vm.SummaryText).IsEqualTo("1 запись · показано 0");
+        // Итог склеен из двух ресурсов: всего записей и сколько осталось после фильтра.
+        await Assert.That(Msg.Parts(vm.SummaryText, Strings.Log_Header_Entries_One, Strings.Log_Header_Shown))
+            .IsEquivalentTo(new[] { "1", "0" });
     }
 
     // ---- счётчики и дыры ------------------------------------------------------------------------
@@ -238,7 +242,8 @@ public class LogViewModelTests
         Push(client, 0, Entry(3, LogLevelDto.Error), Entry(4, LogLevelDto.Debug), Entry(5, LogLevelDto.Fatal));
 
         await Assert.That(vm.ProblemCount).IsEqualTo(3);
-        await Assert.That(vm.SummaryText).IsEqualTo("5 записей · проблем: 3");
+        await Assert.That(Msg.Parts(vm.SummaryText, Strings.Log_Header_Entries_Many, Strings.Log_Header_Problems))
+            .IsEquivalentTo(new[] { "5", "3" });
     }
 
     [Test]
@@ -263,7 +268,7 @@ public class LogViewModelTests
 
         Push(client, 12, Entry(1));
         await Assert.That(vm.HasGap).IsTrue();
-        await Assert.That(vm.GapText).IsEqualTo("пропущено записей: 12");
+        await Assert.That(Msg.Arg(vm.GapText, Strings.Log_Gap_Count)).IsEqualTo("12");
 
         // Дыры накапливаются: две пачки с потерями — это одна дыра большего размера, а не
         // забытая первая.

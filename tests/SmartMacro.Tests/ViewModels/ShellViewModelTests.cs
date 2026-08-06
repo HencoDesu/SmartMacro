@@ -1,10 +1,11 @@
-using FakeItEasy;
+﻿using FakeItEasy;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.Services;
 using SmartMacro.App.ViewModels;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Model;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -63,7 +64,11 @@ public class ShellViewModelTests
         using var shell = CreateShell(new FakeIpcClient());
 
         await Assert.That(shell.Modes.Select(m => m.Title))
-            .IsEquivalentTo(new[] { "Окна", "Макросы", "Прогоны", "Лог" });
+            .IsEquivalentTo(new[]
+            {
+                Strings.Shell_Mode_Windows, Strings.Shell_Mode_Macros,
+                Strings.Shell_Mode_Runs, Strings.Shell_Mode_Log,
+            });
         await Assert.That(shell.CurrentMode).IsEqualTo(ShellMode.Windows);
         await Assert.That(shell.IsWindowsMode).IsTrue();
         await Assert.That(Row(shell, ShellMode.Windows).IsSelected).IsTrue();

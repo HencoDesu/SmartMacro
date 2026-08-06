@@ -1,8 +1,10 @@
+﻿using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Contracts.Settings;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -90,7 +92,9 @@ public class SettingsViewModelTests
 
         await Assert.That(vm.ChangeCount).IsEqualTo(2);
         await Assert.That(vm.IsDirty).IsTrue();
-        await Assert.That(vm.ChangeText).IsEqualTo("2 изменения не применены");
+        // Форма множественного числа плюс само число — «21 изменений» тут уже водилось.
+        await Assert.That(Msg.Arg(vm.ChangeText, Strings.Settings_Header_Changes_Few)).IsEqualTo("2");
+        await Assert.That(Msg.Is(vm.ChangeText, Strings.Settings_Header_Changes_Many)).IsFalse();
         await Assert.That(client.CountOf(IpcMessageTypes.SaveSettings)).IsEqualTo(before);
     }
 
@@ -267,9 +271,10 @@ public class SettingsViewModelTests
         vm.AddProfile();
 
         await Assert.That(vm.Profiles[0].WakesWindows).IsTrue();
-        await Assert.That(vm.Profiles[0].WakeText).IsEqualTo("есть");
+        await Assert.That(vm.Profiles[0].WakeText).IsEqualTo(Strings.Settings_Profiles_WakeYes);
         await Assert.That(vm.Profiles[1].WakesWindows).IsFalse();
-        await Assert.That(vm.Profiles[1].WakeText).IsEqualTo("не нужен");
+        await Assert.That(vm.Profiles[1].WakeText).IsEqualTo(Strings.Settings_Profiles_WakeNo);
+        await Assert.That(vm.Profiles[1].WakeText).IsNotEqualTo(Strings.Settings_Profiles_WakeYes);
 
         await vm.ApplyAsync();
 
@@ -326,7 +331,10 @@ public class SettingsViewModelTests
         await Assert.That(vm.Diagnostics.Select(d => d.Id))
             .IsEquivalentTo(new[] { DiagnosticIds.Channel, DiagnosticIds.Elevation, DiagnosticIds.Templates });
         await Assert.That(vm.ProblemCount).IsEqualTo(1);
-        await Assert.That(vm.DiagnosticsSummary).Contains("2 из 3");
+        // Сводка несёт время проверки и «сколько из скольких» — проверяются оба числа.
+        var summary = Msg.Args(vm.DiagnosticsSummary, Strings.Settings_Diagnostics_Summary);
+        await Assert.That(summary[1]).IsEqualTo("2");
+        await Assert.That(summary[2]).IsEqualTo("3");
     }
 
     // Демон не ответил — это САМ ПО СЕБЕ вердикт, и самый важный: движка нет, макросы не идут.

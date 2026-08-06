@@ -1,10 +1,9 @@
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
 using SmartMacro.App.ViewModels.Nodes;
-using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
-using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -55,7 +54,9 @@ public class SubmacroEditorTests
         Mark(vm, "b", "c");
 
         await Assert.That(vm.CanExtractSubmacro).IsTrue();
-        await Assert.That(vm.ExtractLabel).IsEqualTo("Выделить в под-макрос (2)");
+        // Счётчик на кнопке — не украшение: он однажды застревал на старом значении после
+        // извлечения. Проверяется подставленное ЧИСЛО, слова вокруг свободны.
+        await Assert.That(Msg.Arg(vm.ExtractLabel, Strings.Editor_Toolbar_ExtractCount)).IsEqualTo("2");
         await Assert.That(vm.ExtractSubmacro("опознать")).IsTrue();
 
         // На канве остался родитель: одна нода плюс вызов.
@@ -102,8 +103,9 @@ public class SubmacroEditorTests
 
         await Assert.That(vm.ExtractSubmacro()).IsFalse();
 
-        // Отказ назвал ноды, а граф остался нетронутым.
-        await Assert.That(vm.ErrorMessage!).Contains("«x»");
+        // Отказ назвал ноды, а граф остался нетронутым. Панель обязана донести ИМЕННО отказ
+        // «два входа» — с ним пользователь знает, что делать; «не извлекается» бесполезно.
+        await Assert.That(Msg.Args(vm.ErrorMessage, Strings.Extraction_Refused_ManyEntries)[1]).Contains("«x»");
         await Assert.That(vm.Nodes).Count().IsEqualTo(3);
         await Assert.That(vm.Submacros).IsEmpty();
     }
@@ -207,7 +209,8 @@ public class SubmacroEditorTests
         var id = vm.Submacros.Single().Id;
 
         await Assert.That(vm.DeleteSubmacro(id)).IsFalse();
-        await Assert.That(vm.ErrorMessage!).Contains("«sub-1»");
+        // Названа виноватая нода: «функция ещё нужна» без адреса заставляет искать вызов руками.
+        await Assert.That(Msg.Arg(vm.ErrorMessage, Strings.Editor_Status_SubmacroInUse)).Contains("«sub-1»");
         await Assert.That(vm.Submacros).Count().IsEqualTo(1);
 
         // Убрали вызов — и удаление проходит.

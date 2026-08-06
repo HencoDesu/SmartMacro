@@ -7,6 +7,7 @@ using SmartMacro.Ipc;
 using SmartMacro.Macros.Execution;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Macros;
 using SmartMacro.Windows;
 
@@ -196,7 +197,8 @@ public class DebuggerProtocolTests
 
         // Взвести её до нажатия «Запустить» — это обычный способ ею пользоваться, так что живой
         // обход здесь не требуется, как и сохранённый макрос.
-        await reader.RequestAsync(1, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("b"), Ids.Of("c")]));
+        await reader.RequestAsync(1, IpcMessageTypes.SetBreakpoints,
+            new SetBreakpointsRequest("pw-boot", [Ids.Of("b"), Ids.Of("c")]));
         var reply = await reader.RequestAsync(2, IpcMessageTypes.GetBreakpoints);
 
         var sets = IpcJson.Read<BreakpointSetDto[]>(reply.GetProperty("Payload"))!;
@@ -215,7 +217,8 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
 
-        await reader.RequestAsync(1, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
+        await reader.RequestAsync(1, IpcMessageTypes.SetBreakpoints,
+            new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
         await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", []));
         var reply = await reader.RequestAsync(3, IpcMessageTypes.GetBreakpoints);
 
@@ -257,14 +260,18 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
         await reader.SubscribeAsync(1);
-        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("a")]));
+        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints,
+            new SetBreakpointsRequest("pw-boot", [Ids.Of("a")]));
 
         var run = fixture.RunAsync(Chain());
 
         var events = await reader.UntilAsync(all => all.Any(e => e.Kind == RunEventKind.BreakpointHit));
         var hit = events.Single(e => e.Kind == RunEventKind.BreakpointHit);
         await Assert.That(hit.NodeName).IsEqualTo("a");
-        await Assert.That(hit.Detail).IsEqualTo("брейкпоинт");
+        // Причина паузы — выбор из четырёх (точка останова / пауза / шаг / до курсора), и панель
+        // печатает её как есть. Утверждается именно выбор, а не слова.
+        await Assert.That(hit.Detail).IsEqualTo(Strings.Run_PauseReason_Breakpoint);
+        await Assert.That(hit.Detail).IsNotEqualTo(Strings.Run_PauseReason_Step);
         await Assert.That(fixture.Primitives.Calls).IsEmpty();
 
         var ack = await reader.CommandAsync(3, hit.WalkId, DebugCommand.Step);
@@ -273,7 +280,9 @@ public class DebuggerProtocolTests
         events = await reader.UntilAsync(all => all.Any(e => e.Kind == RunEventKind.Paused));
         var stepped = events.Single(e => e.Kind == RunEventKind.Paused);
         await Assert.That(stepped.NodeName).IsEqualTo("b");
-        await Assert.That(stepped.Detail).IsEqualTo("шаг");
+        // …а после «Шага» — уже другая: остановились не на точке останова, а по команде.
+        await Assert.That(stepped.Detail).IsEqualTo(Strings.Run_PauseReason_Step);
+        await Assert.That(stepped.Detail).IsNotEqualTo(Strings.Run_PauseReason_Breakpoint);
         await Assert.That(events.Any(e => e.Kind == RunEventKind.Resumed && e.NodeName == "a")).IsTrue();
 
         await reader.CommandAsync(4, hit.WalkId, DebugCommand.Resume);
@@ -338,7 +347,8 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
         await reader.SubscribeAsync(1);
-        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
+        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints,
+            new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
 
         var run = fixture.RunAsync(Chain());
         await reader.UntilAsync(all => all.Any(e => e.Kind == RunEventKind.BreakpointHit));
@@ -366,7 +376,8 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
         await reader.SubscribeAsync(1);
-        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
+        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints,
+            new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
 
         var run = fixture.RunAsync(Chain());
         await reader.UntilAsync(all => all.Any(e => e.Kind == RunEventKind.BreakpointHit));
@@ -408,7 +419,8 @@ public class DebuggerProtocolTests
         var (client, serve) = await fixture.ConnectAsync();
         var reader = new Reader(client);
         await reader.SubscribeAsync(1);
-        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
+        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints,
+            new SetBreakpointsRequest("pw-boot", [Ids.Of("b")]));
 
         using var cts = new CancellationTokenSource();
         var run = fixture.RunAsync(Chain(), cts.Token);
@@ -450,7 +462,8 @@ public class DebuggerProtocolTests
         await reader.UntilAsync(all => all.Count > 0);
         control.Stop();
 
-        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints, new SetBreakpointsRequest("pw-boot", [Ids.Of("a")]));
+        await reader.RequestAsync(2, IpcMessageTypes.SetBreakpoints,
+            new SetBreakpointsRequest("pw-boot", [Ids.Of("a")]));
 
         // Тот же путь, но событие срочное: оно обязано прервать выдержку, а не досидеть её.
         var mark = reader.Events.Count;

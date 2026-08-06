@@ -1,3 +1,4 @@
+﻿using System.Globalization;
 using FakeItEasy;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.Services;
@@ -8,6 +9,7 @@ using SmartMacro.Contracts.Ipc;
 using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
+using SmartMacro.Resources;
 using SmartMacro.Tests.Ipc;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -190,7 +192,7 @@ public class MacroEditorViewModelTests
         await Assert.That(vm.StartNodeId).IsEqualTo(first.Id);
         // Каждому ребру обязаны предлагаться обе новые ноды плюс запись «конец прогона».
         await Assert.That(vm.NodeChoices.Select(choice => choice.Display))
-            .IsEquivalentTo(new[] { "— конец —", "key-1", "click-2" });
+            .IsEquivalentTo(new[] { Strings.Node_Edge_End, "key-1", "click-2" });
     }
 
     // ---- что не пускает сохранить ------------------------------------------------------------
@@ -304,7 +306,11 @@ public class MacroEditorViewModelTests
         await Assert.That(saved).IsTrue();
         await Assert.That(vm.Issues.Any(i => !i.IsError)).IsTrue();
         await Assert.That(vm.Issues.Any(i => i.IsError)).IsFalse();
-        await Assert.That(vm.StatusMessage).Contains("предупреждени");
+        // «Сохранено с предупреждениями (N)» — не «Сохранено»; и N обязано совпасть с тем,
+        // что панель показывает в списке замечаний, иначе строка состояния врёт.
+        await Assert.That(Msg.Arg(vm.StatusMessage, Strings.Editor_Status_SavedWithWarnings))
+            .IsEqualTo(vm.Issues.Count(i => !i.IsError).ToString(CultureInfo.CurrentCulture));
+        await Assert.That(vm.StatusMessage).IsNotEqualTo(Strings.Editor_Status_Saved);
         await Assert.That(daemon.Find("с-предупреждением")).IsNotNull();
     }
 
@@ -456,7 +462,9 @@ public class MacroEditorViewModelTests
         var conflict = asked.Single();
         await Assert.That(conflict.Templates).IsEqualTo(2);
         await Assert.That(conflict.FreeName).IsEqualTo("pw-login-2");
-        await Assert.That(conflict.Loss).Contains("2 шаблона");
+        // Форма «два шаблона», а не «2 шаблонов»: согласование здесь и проверяется.
+        await Assert.That(conflict.Loss).Contains(
+            string.Format(CultureInfo.CurrentCulture, Strings.Dialog_NameConflict_Templates_Few, 2));
     }
 
     // Нечитаемый бандл в библиотеке — не выдумка: файл будущей версии формата лежит там
@@ -477,7 +485,7 @@ public class MacroEditorViewModelTests
 
         var conflict = asked.Single();
         await Assert.That(conflict.Fault).IsNotNull();
-        await Assert.That(conflict.Loss).Contains("неизвестно даже, что в нём");
+        await Assert.That(Msg.Is(conflict.Loss, Strings.Dialog_NameConflict_LossUnreadable)).IsTrue();
     }
 
     // ---- импорт под занятым именем ------------------------------------------------------------
@@ -522,7 +530,7 @@ public class MacroEditorViewModelTests
         await Assert.That(daemon.Count).IsEqualTo(1);
         await Assert.That(daemon.Library.Library.TryGet("гость")!.TemplatePaths).IsEmpty();
         await Assert.That(vm.ErrorMessage).IsNull();
-        await Assert.That(vm.StatusMessage).Contains("Импорт отменён");
+        await Assert.That(Msg.Arg(vm.StatusMessage, Strings.Editor_Status_ImportCancelled)).IsEqualTo("гость");
     }
 
     [Test]

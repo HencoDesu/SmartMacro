@@ -1,9 +1,10 @@
-using FakeItEasy;
+﻿using FakeItEasy;
 using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
 using SmartMacro.Ipc;
 using SmartMacro.Macros.Bundle;
 using SmartMacro.Macros.Model;
+using SmartMacro.Resources;
 using SmartMacro.Native;
 using SmartMacro.Tests.Macros;
 
@@ -290,7 +291,8 @@ public class IpcRequestDispatcherTests
         var response = await harness.DispatchAsync(IpcMessageTypes.SuspendHotkeys);
 
         await Assert.That(response.Ok).IsFalse();
-        await Assert.That(response.Error).Contains("соединению");
+        // Отказов «нужно соединение» три, по одному на подписку; здесь обязан быть хоткейный.
+        await Assert.That(response.Error).IsEqualTo(Strings.Ipc_Rejected_HotkeySuspensionNeedsConnection);
         A.CallTo(() => harness.Hotkeys.SuspendAsync(A<CancellationToken>._)).MustNotHaveHappened();
     }
 
