@@ -1,3 +1,4 @@
+using SmartMacro.Resources;
 using SmartMacro.App.Services;
 
 namespace SmartMacro.Tests.ViewModels;
@@ -25,7 +26,13 @@ public class MacroNameConflictTests
     [Test]
     public async Task BothKindsOfAttachmentAreNamed()
     {
-        await Assert.That(Conflict(11, submacros: 2).Loss).IsEqualTo("Будет потеряно: 11 шаблонов, 2 под-макроса.");
+        // Проверяется, что названы ОБА вида вложений и оба числа, а не то, какими словами. Иначе
+        // тест ломался бы от вычитки формулировки, ради возможности которой строки и вынесли.
+        var loss = Conflict(11, submacros: 2).Loss;
+        await Assert.That(loss).Contains("11");
+        await Assert.That(loss).Contains("2");
+        await Assert.That(loss).IsNotEqualTo(Strings.Dialog_NameConflict_LossNothing);
+        await Assert.That(loss).IsNotEqualTo(Strings.Dialog_NameConflict_LossUnreadable);
     }
 
     // Пустой макрос — тоже честный ответ: «ничего страшного» пользователь должен прочитать, а не
@@ -33,7 +40,7 @@ public class MacroNameConflictTests
     [Test]
     public async Task AnEmptyBundleSaysSoOutLoud()
     {
-        await Assert.That(Conflict(0).Loss).Contains("Ни шаблонов, ни под-макросов в нём нет");
+        await Assert.That(Conflict(0).Loss).Contains(Strings.Dialog_NameConflict_LossNothing);
     }
 
     // Про нечитаемый бандл сказать «0 шаблонов» было бы ложью: внутри неизвестно что.

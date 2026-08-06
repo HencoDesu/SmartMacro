@@ -1,3 +1,4 @@
+using SmartMacro.Resources;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels;
 using SmartMacro.App.ViewModels.Nodes;
@@ -133,7 +134,7 @@ public class MacroDebuggerViewModelTests
         // а нашлось это, когда на такое посмотрели вживую.
         await Assert.That(editor.DebugStateText).IsEqualTo("пауза…");
         await Assert.That(editor.SelectedRunPauseVisible).IsTrue();
-        await Assert.That(editor.PauseNotice).IsEqualTo("пауза запрошена — ждём конца ноды");
+        await Assert.That(editor.PauseNotice).IsEqualTo(Strings.Editor_Debug_PauseRequested);
         await Assert.That(editor.SelectedRunIsPaused).IsFalse();
         await Assert.That(editor.CanResume).IsFalse();
         // И попросить об этом дважды нельзя.
@@ -186,7 +187,7 @@ public class MacroDebuggerViewModelTests
 
         await editor.PauseAsync();
 
-        await Assert.That(editor.StatusMessage).IsEqualTo("Обход уже завершился.");
+        await Assert.That(editor.StatusMessage).IsEqualTo(Strings.Editor_Debug_WalkAlreadyFinished);
         await Assert.That(editor.DebugStateText).IsEqualTo("выполняется");
     }
 
@@ -261,8 +262,8 @@ public class MacroDebuggerViewModelTests
         var walk = RunEvents.Walk("pw-boot", hwnd: 0x1);
         daemon.Push(RunEvents.Started(walk), RunEvents.Entered(walk, 0, "a"));
 
-        await Assert.That(editor.StopLabel).IsEqualTo("■ Стоп");
-        await Assert.That(editor.StopTooltip).IsEqualTo("Остановить прогон");
+        await Assert.That(editor.StopLabel).IsEqualTo(Strings.Editor_Debug_Stop);
+        await Assert.That(editor.StopTooltip).IsEqualTo(Strings.Editor_Debug_StopTip);
     }
 
     [Test]
@@ -278,7 +279,7 @@ public class MacroDebuggerViewModelTests
         daemon.Push(RunEvents.Finished(second, 10, RunOutcomes.Completed));
 
         // Пообещать остановить два, когда один уже закончился, — это была бы своя маленькая ложь.
-        await Assert.That(editor.StopLabel).IsEqualTo("■ Стоп");
+        await Assert.That(editor.StopLabel).IsEqualTo(Strings.Editor_Debug_Stop);
     }
 
     // ---- состояние канвы --------------------------------------------------------------------

@@ -64,9 +64,13 @@
     им нельзя в принципе.
   -->
   <ItemGroup>
+    <!-- ⚠️ Ни Generator, ни LastGenOutput здесь БЫТЬ НЕ ДОЛЖНО, хотя соблазн велик.
+         Их заводили с мыслью «пусть студия знает и не порождает второй файл», но работают они
+         наоборот: `Generator` — это и есть указание среде ЗАПУСТИТЬ свой генератор, а
+         `LastGenOutput` обещает `Resources\Strings.Designer.cs`, которого рядом нет. В итоге
+         среда либо ищет несуществующий файл, либо порождает его сама — и тогда класс Strings
+         объявлен дважды. Порождает его здесь ровно один хозяин: задача GenerateResource. -->
     <EmbeddedResource Update="Resources\Strings.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Strings.Designer.cs</LastGenOutput>
       <StronglyTypedFileName>$(IntermediateOutputPath)Strings.Designer.cs</StronglyTypedFileName>
       <StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
       <StronglyTypedNamespace>SmartMacro.Resources</StronglyTypedNamespace>
@@ -74,6 +78,33 @@
       <LogicalName>SmartMacro.Resources.Strings.resources</LogicalName>
       <PublicClass>true</PublicClass>
     </EmbeddedResource>
+
+    <!-- ⚠️ ЭТО ДЛЯ IDE, А НЕ ДЛЯ КОМПИЛЯТОРА, и без него редактор краснеет весь.
+         `GenerateResource` сама выдаёт порождённый файл в Compile — но ВО ВРЕМЯ СБОРКИ, из
+         тела цели. Модель проекта, по которой Rider разрешает имена, строится вычислением, а
+         цели при вычислении не выполняются: класс Strings компилируется прекрасно и при этом
+         «не существует» для редактора. Симптом ровно такой — сборка зелёная, а все шестьсот с
+         лишним обращений подчёркнуты.
+         Дубликат, который добавит цель, снимает DeduplicateGeneratedStrings ниже. -->
+    <Compile Include="$(IntermediateOutputPath)Strings.Designer.cs" Visible="false" />
   </ItemGroup>
+
+  <!-- Схлопывает пару «наш статический Include + Output цели GenerateResource» обратно в одну
+       запись. Без этого компилятор получает один и тот же файл дважды и выдаёт CS2002, а
+       предупреждение в проекте, где гейт — чистая сборка, равносильно поломке.
+
+       Две тонкости, каждая из которых стоила попытки:
+
+       · `BeforeTargets="CoreCompile"`, а НЕ `AfterTargets="GenerateResource"`. На инкрементальной
+         сборке `GenerateResource` пропускается как актуальная — вместе с ней не сработала бы и
+         очистка, и дубликат выжил бы ровно в полной сборке, то есть в той, которой проверяют.
+       · Отбор по имени файла, а не `Remove` по пути: цель кладёт в `Compile` путь в своей форме,
+         и совпасть с написанным здесь он не обязан. Сравнение метаданных от формы не зависит. -->
+  <Target Name="DeduplicateGeneratedStrings" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Compile Remove="@(Compile)" Condition="'%(Filename)%(Extension)' == 'Strings.Designer.cs'" />
+      <Compile Include="$(IntermediateOutputPath)Strings.Designer.cs" Visible="false" />
+    </ItemGroup>
+  </Target>
 
 </Project>
