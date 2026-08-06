@@ -136,10 +136,6 @@
     <value>Настройки демона и диагностика среды</value>
     <comment>подсказка строки «Настройки» в рейке</comment>
   </data>
-  <data name="Shell_Rail_DiagnosticsDot" xml:space="preserve">
-    <value>Проверка среды нашла проблему</value>
-    <comment>подсказка красной точки на строке «Настройки» — место, где у остальных строк счётчик</comment>
-  </data>
 
   <!-- ======== Оболочка — сводка по тегам внизу рейки ======== -->
   <data name="Shell_Tags_Header" xml:space="preserve">
@@ -1606,14 +1602,6 @@
     <value>{0} изменений не применены</value>
     <comment>она же, форма для 5–20, 25–30… ⚠️ до выноса согласования по сотням не было: «21 изменений»</comment>
   </data>
-  <data name="Settings_Header_RunDiagnostics" xml:space="preserve">
-    <value>Проверить среду</value>
-    <comment>кнопка в шапке; запускает семь проверок и заполняет полосу внизу экрана</comment>
-  </data>
-  <data name="Settings_Header_RunDiagnosticsTip" xml:space="preserve">
-    <value>Права, шаблоны, масштаб экрана, хоткеи, папка на запись, автозапуск и канал с демоном</value>
-    <comment>подсказка к ней. ⚠️ перечисление проверок написано в четырёх местах — здесь, в Settings_Diagnostics_Hint, в сводке и у самой проверки; добавили проверку — обойдите все</comment>
-  </data>
   <data name="Settings_Header_OpenFolder" xml:space="preserve">
     <value>Открыть папку</value>
     <comment>кнопка в шапке; подсказка — сам путь</comment>
@@ -1899,36 +1887,6 @@
   <data name="Settings_BadNumber" xml:space="preserve">
     <value>{0}: «{1}» — это не целое число.</value>
     <comment>замечание в полосе «Не применено»; {0} = имя поля, {1} = набранное значение</comment>
-  </data>
-
-  <!-- ======== Режим «Настройки» — полоса диагностики среды ======== -->
-  <data name="Settings_Diagnostics_Title" xml:space="preserve">
-    <value>Диагностика среды</value>
-    <comment>заголовок полосы внизу экрана</comment>
-  </data>
-  <data name="Settings_Diagnostics_NotRun" xml:space="preserve">
-    <value>проверка не запускалась</value>
-    <comment>сводка рядом с заголовком, пока «Проверить среду» не нажимали</comment>
-  </data>
-  <data name="Settings_Diagnostics_Summary" xml:space="preserve">
-    <value>проверка от {0} · {1} из {2} в порядке</value>
-    <comment>она же после проверки; {0} = время, {1} = сколько в порядке, {2} = всего проверок</comment>
-  </data>
-  <data name="Settings_Diagnostics_ChannelTitle" xml:space="preserve">
-      <value>Канал с сервисом</value>
-      <comment>название единственной проверки, которую делает сама панель: демон не может честно замерить своё же время ответа. Остальные шесть приезжают от демона. Два места</comment>
-  </data>
-  <data name="Settings_Diagnostics_ChannelFailed" xml:space="preserve">
-      <value>сервис не ответил — движок не работает, макросы не запускаются</value>
-      <comment>деталь этой проверки при провале; карточка 416 px</comment>
-  </data>
-  <data name="Settings_Diagnostics_ChannelOk" xml:space="preserve">
-    <value>отвечает, {0} мс</value>
-    <comment>деталь той же проверки при успехе; {0} = время ответа. Компактная строка 270 px</comment>
-  </data>
-  <data name="Settings_Diagnostics_Hint" xml:space="preserve">
-    <value>Права, файлы шаблонов, масштаб экрана, регистрация хоткеев, папка на запись и время ответа демона. Почти всё, что здесь ломается, ломается снаружи программы.</value>
-    <comment>текст вместо карточек, пока проверку не запускали. ⚠️ перечисление проверок здесь неполное — автозапуск в нём не назван, хотя проверяется; см. Settings_Header_RunDiagnosticsTip</comment>
   </data>
 
   <!-- ======== Диалог «Имя занято» (единственное модальное окно панели) ======== -->
@@ -2553,190 +2511,5 @@ SmartMacro хранит макросы, настройки, журналы и с
       <value>Через очередь ввода ОС. Единственный способ, который умеет сочетания с модификаторами, но требует переднего плана: SmartMacro отберёт фокус, а действия по десяти окнам пойдут по очереди.</value>
       <comment>Подсказка про «SendInput». Последняя фраза — единственное место, где программа сообщает, что способ есть в модели, но не работает.</comment>
   </data>
-  <data name="Settings_Engine_AutoStart_Off" xml:space="preserve">
-    <value>автозапуск выключен</value>
-    <comment>Строка «способ» в блоке «Запуск и права» и подробность зелёной карточки диагностики: обе галочки сняты. Со строчной буквы: встаёт внутрь фразы.</comment>
-  </data>
-  <data name="Settings_Engine_AutoStart_RunKey" xml:space="preserve">
-    <value>ключ Run в HKCU</value>
-    <comment>Тот же «способ»: запускать при входе без повышения. Ключ Run поднять процесс с правами не умеет — за этим Планировщик.</comment>
-  </data>
-  <data name="Settings_Engine_AutoStart_ElevateOnManualStart" xml:space="preserve">
-    <value>автозапуска нет; повышение запрашивается при ручном старте</value>
-    <comment>Тот же «способ»: повышение просят, а автозапуск не просят. Единственный из четырёх с точкой с запятой внутри.</comment>
-  </data>
-  <data name="Settings_Engine_AutoStart_ScheduledTask" xml:space="preserve">
-    <value>задача в Планировщике, наивысшие права</value>
-    <comment>Тот же «способ»: обе галочки. Создать такую задачу может только администратор — если не вышло, об этом скажет карточка Diag_AutoStart_Failed_Title.</comment>
-  </data>
 
-  <!-- ==================================================================================
-       ПРОВЕРКА СРЕДЫ. Полоса карточек внизу экрана настроек, по кнопке «Проверить среду».
-       У каждой карточки заголовок (крупно) и подробность (мелко). Проверок шесть, в порядке
-       показа: права, шаблоны, масштаб экрана, хоткеи, папка на запись, автозапуск; седьмую,
-       время ответа канала, делает панель. Карточки с проблемами показываются ПЕРВЫМИ.
-       Существует всё это потому, что почти все отказы программы средовые, а выглядят
-       одинаково: макрос просто не работает, и в журнале тихо.
-       ================================================================================== -->
-
-  <data name="Diag_Elevation_Blocked_Title" xml:space="preserve">
-    <value>Ввод в окна с повышением блокируется</value>
-    <comment>ОТКАЗ (красная карточка), проверка прав. Худший из средовых случаев: всё выглядит работающим, а до игры не доходит ничего.</comment>
-  </data>
-  <data name="Diag_Elevation_Blocked_Detail" xml:space="preserve">
-    <value>{0} из {1} отклоняют сообщения: клиенты запущены от администратора, а демон — нет (UIPI). Блокируются и ввод, и захват экрана. Включите «Работать с правами администратора» и перезапустите демон.</value>
-    <comment>Подробность той же карточки. {0} — сколько окон отказало (голое число), {1} — сколько всего окон, уже вместе со словом (Diag_Windows_*). Проверяется настоящей отправкой WM_NULL каждому окну, а не выводом «мы не повышены»: ложная тревога учит не читать диагностику.</comment>
-  </data>
-  <data name="Diag_Elevation_NoWindows_Ok_Title" xml:space="preserve">
-    <value>Права демона</value>
-    <comment>НОРМА (зелёная карточка), проверка прав: окон ещё нет, но демон повышен. Единственный заголовок этой проверки, который не утверждает ничего о вводе, — потому что проверить его не на чем.</comment>
-  </data>
-  <data name="Diag_Elevation_NoWindows_Ok_Detail" xml:space="preserve">
-    <value>администратор; окон пока нет</value>
-    <comment>Подробность той же карточки. Со строчной буквы — как и все короткие подробности-состояния.</comment>
-  </data>
-  <data name="Diag_Elevation_NoWindows_Warning_Title" xml:space="preserve">
-    <value>Демон работает без прав администратора</value>
-    <comment>ПРЕДУПРЕЖДЕНИЕ (жёлтая карточка), проверка прав: окон нет и прав нет. Не отказ: если клиенты тоже запустят обычным пользователем, всё будет работать.</comment>
-  </data>
-  <data name="Diag_Elevation_NoWindows_Warning_Detail" xml:space="preserve">
-    <value>Окон сейчас нет, так что проверить нечего. Но если клиенты запускаются от администратора, ввод в них будет молча отбрасываться (UIPI).</value>
-    <comment>Подробность той же карточки: тот самый случай, когда пользователь ещё не запустил игру и может починить всё заранее.</comment>
-  </data>
-  <data name="Diag_Elevation_Ok_Title" xml:space="preserve">
-    <value>Ввод в окна проходит</value>
-    <comment>НОРМА, проверка прав: окна есть и все приняли WM_NULL.</comment>
-  </data>
-  <data name="Diag_Elevation_Ok_Detail" xml:space="preserve">
-    <value>{0} принимают сообщения{1}</value>
-    <comment>Подробность той же карточки. {0} — число окон вместе со словом (Diag_Windows_*), {1} — Diag_Elevation_Ok_ElevatedSuffix либо пусто. Согласование хромает: при одном окне выходит «1 окно принимают сообщения».</comment>
-  </data>
-  <data name="Diag_Elevation_Ok_ElevatedSuffix" xml:space="preserve">
-    <value>; демон повышен</value>
-    <comment>Хвост Diag_Elevation_Ok_Detail, добавляется, когда демон работает с правами администратора. Начинается с точки с запятой без пробела перед ней — приклеивается вплотную.</comment>
-  </data>
-  <data name="Diag_Windows_One" xml:space="preserve">
-    <value>{0} окно</value>
-    <comment>Число окон с согласованным словом, форма для 1, 21, 31… Встаёт внутрь подробностей проверки прав. Заведено после дефекта «1 окон», найденного глазами на одном клиенте.</comment>
-  </data>
-  <data name="Diag_Windows_Few" xml:space="preserve">
-    <value>{0} окна</value>
-    <comment>То же, форма для 2–4, 22–24…</comment>
-  </data>
-  <data name="Diag_Windows_Many" xml:space="preserve">
-    <value>{0} окон</value>
-    <comment>То же, форма для 0, 5–20, 25… — и она же для нуля.</comment>
-  </data>
-  <data name="Diag_Templates_Ok_Title" xml:space="preserve">
-    <value>Шаблоны на месте</value>
-    <comment>НОРМА, проверка шаблонов: каждое имя, названное нодой, нашлось в бандле своего макроса.</comment>
-  </data>
-  <data name="Diag_Templates_Ok_Detail" xml:space="preserve">
-    <value>файлов {0} в макросах: {1}, все ссылки разрешаются</value>
-    <comment>Подробность той же карточки. {0} — сколько всего файлов-шаблонов, {1} — по скольким макросам они разложены. Порядок слов необычный: «файлов N», а не «N файлов».</comment>
-  </data>
-  <data name="Diag_Templates_Missing_Title" xml:space="preserve">
-    <value>Шаблон в макросе не найден</value>
-    <comment>ОТКАЗ, проверка шаблонов: нода называет имя, которого в бандле нет. Дублирует замечание валидатора намеренно — сюда заходят, когда открывать по очереди десять макросов не хочется.</comment>
-  </data>
-  <data name="Diag_Templates_Missing_Detail" xml:space="preserve">
-    <value>{0} — такого шаблона в бандле нет.</value>
-    <comment>Подробность той же карточки, про ПЕРВУЮ ненайденную ссылку. {0} — готовая пара «макрос → шаблон» (Diag_Templates_Ref_Single или Diag_Templates_Ref_Set).</comment>
-  </data>
-  <data name="Diag_Templates_Missing_More" xml:space="preserve">
-    <value> И ещё ненайденных ссылок: {0}.</value>
-    <comment>Хвост Diag_Templates_Missing_Detail, когда ненайденных ссылок больше одной. {0} — сколько их ещё. НАЧИНАЕТСЯ С ПРОБЕЛА: приклеивается к предыдущей фразе.</comment>
-  </data>
-  <data name="Diag_Templates_Ref_Single" xml:space="preserve">
-    <value>{0} → «{1}»</value>
-    <comment>Ненайденная ссылка на одиночный шаблон, встаёт в дырку {0} у Diag_Templates_Missing_Detail. {0} — имя макроса, {1} — имя шаблона. Макрос называется потому, что одного «Лучник.png нет» мало: непонятно, где искать.</comment>
-  </data>
-  <data name="Diag_Templates_Ref_Set" xml:space="preserve">
-    <value>{0} → набор «{1}»</value>
-    <comment>То же для НАБОРА шаблонов. {0} — имя макроса, {1} — имя набора.</comment>
-  </data>
-  <data name="Diag_DisplayScale_Ok_Title" xml:space="preserve">
-    <value>Масштабирование экрана</value>
-    <comment>НОРМА, проверка масштаба. Заголовок называет предмет, а не вердикт, — в отличие от жёлтого варианта, где в заголовок вписано само число.</comment>
-  </data>
-  <data name="Diag_DisplayScale_Ok_Detail" xml:space="preserve">
-    <value>100% — как при съёмке шаблонов</value>
-    <comment>Подробность той же карточки. Сто процентов вписаны в текст числом: это не настройка, а тот масштаб, при котором сняты все шаблоны и координаты в нодах.</comment>
-  </data>
-  <data name="Diag_DisplayScale_Warning_Title" xml:space="preserve">
-    <value>Масштабирование экрана {0}%</value>
-    <comment>ПРЕДУПРЕЖДЕНИЕ, проверка масштаба. {0} — текущий масштаб в процентах. Не отказ: работать не мешает, но распознавание начнёт промахиваться.</comment>
-  </data>
-  <data name="Diag_DisplayScale_Warning_Detail" xml:space="preserve">
-    <value>Шаблоны и координаты в нодах сняты при 100% — они сдвинутся, и распознавание будет промахиваться без единой ошибки в журнале.</value>
-    <comment>Подробность той же карточки.</comment>
-  </data>
-  <data name="Diag_Hotkeys_Suspended_Title" xml:space="preserve">
-    <value>Глобальные хоткеи приостановлены</value>
-    <comment>ПРЕДУПРЕЖДЕНИЕ, проверка хоткеев, и проверяется это состояние ПЕРВЫМ. Зелёной карточки здесь быть не может: клавиши прямо сейчас молчат.</comment>
-  </data>
-  <data name="Diag_Hotkeys_Suspended_Detail" xml:space="preserve">
-      <value>Сейчас не зарегистрировано ни одного хоткея: так бывает, пока в панели открыт режим «Макросы» — иначе уже занятую клавишу нельзя было бы переназначить. Закройте его, и хоткеи вернутся. Если ни одна панель не открыта, это ошибка: поможет перезапуск демона.</value>
-      <comment>Подробность той же карточки. Последняя фраза — про случай, когда панель убили Диспетчером задач: аренда приостановки отпускается вместе с соединением, но если этого не случилось, лечит только перезапуск.</comment>
-  </data>
-  <data name="Diag_Hotkeys_Ok_Title" xml:space="preserve">
-    <value>Глобальные хоткеи</value>
-    <comment>НОРМА, проверка хоткеев: все привязанные сочетания вооружены.</comment>
-  </data>
-  <data name="Diag_Hotkeys_Ok_Detail" xml:space="preserve">
-    <value>занято {0} из {0}</value>
-    <comment>Подробность той же карточки. {0} — сколько хоткеев привязано; ОБА числа одинаковые по построению (карточка зелёная ровно тогда, когда не вооружено ни одного), поэтому дырка одна и повторяется дважды.</comment>
-  </data>
-  <data name="Diag_Hotkeys_BrokenGraph_Title" xml:space="preserve">
-    <value>Хоткей не вооружён: в макросе ошибка</value>
-    <comment>ОТКАЗ, проверка хоткеев, причина первая: демон намеренно не вооружает триггеры макроса с ошибкой в графе. Отделено от «занято другой программой», потому что действие пользователя разное: починить граф, а не сменить сочетание.</comment>
-  </data>
-  <data name="Diag_Hotkeys_BrokenGraph_Detail" xml:space="preserve">
-    <value>Макросов с ошибками в графе: {0}; первый — «{1}»: {2} По клавише такой макрос не запустится, пока его не починить.</value>
-    <comment>Подробность той же карточки. {0} — сколько таких макросов, {1} — имя первого, {2} — первое замечание валидатора про него. Точки после {2} нет намеренно: замечание приходит уже с точкой, и своя давала бы «…в графе нет.. По клавише».</comment>
-  </data>
-  <data name="Diag_Hotkeys_Taken_Title" xml:space="preserve">
-    <value>Часть хоткеев занята другой программой</value>
-    <comment>ОТКАЗ, проверка хоткеев, причина вторая: Win32 отказал в регистрации, потому что аккордом владеет кто-то ещё. До этой карточки такой отказ уходил в журнал, который никто не читает.</comment>
-  </data>
-  <data name="Diag_Hotkeys_Taken_Detail" xml:space="preserve">
-    <value>Win32 отказал в регистрации {0} из {1}; первый — макрос «{2}». Такой макрос по клавише не запустится.</value>
-    <comment>Подробность той же карточки. {0} — сколько сочетаний не досталось, {1} — сколько всего привязано, {2} — имя первого пострадавшего макроса.</comment>
-  </data>
-  <data name="Diag_Hotkeys_Taken_AlsoBroken" xml:space="preserve">
-    <value> Ещё у {0} макросов ошибка в графе — их хоткеи не вооружены вовсе.</value>
-    <comment>Хвост Diag_Hotkeys_Taken_Detail, когда обе причины совпали. {0} — сколько макросов с ошибкой. НАЧИНАЕТСЯ С ПРОБЕЛА.</comment>
-  </data>
-  <data name="Diag_Folder_Ok_Title" xml:space="preserve">
-    <value>Папка приложения на запись</value>
-    <comment>НОРМА, проверка папки. Подробностью идёт сам путь, без слов. Проверяется созданием и удалением пробного файла, а не выводом из ACL: именно это умозаключение и врёт в интересных случаях.</comment>
-  </data>
-  <data name="Diag_Folder_Failed_Title" xml:space="preserve">
-    <value>Папка приложения не пишется</value>
-    <comment>ОТКАЗ, проверка папки: не сохранится ничего — ни макросы, ни настройки, ни журнал.</comment>
-  </data>
-  <data name="Diag_Folder_Failed_Detail" xml:space="preserve">
-    <value>{0} — сюда не сохранятся ни макросы, ни настройки, ни журнал. Перенесите программу из Program Files или дайте права на папку.</value>
-    <comment>Подробность той же карточки. {0} — путь к папке. То же самое, что говорит окно отказа старта (Startup_WriteProbe_Failed), но другими словами и уже в работающей программе.</comment>
-  </data>
-  <data name="Diag_AutoStart_Ok_Title" xml:space="preserve">
-    <value>Автозапуск</value>
-    <comment>НОРМА, проверка автозапуска: в системе зарегистрировано ровно то, что просят галочки. Подробностью идёт способ (Settings_Engine_AutoStart_*).</comment>
-  </data>
-  <data name="Diag_AutoStart_Failed_Title" xml:space="preserve">
-    <value>Автозапуск не зарегистрирован</value>
-    <comment>ОТКАЗ, проверка автозапуска. Разойтись состояние может и без участия панели: задачу снёс чистильщик, папку перенесли, файл настроек принесли с другой машины.</comment>
-  </data>
-  <data name="Diag_AutoStart_Failed_Detail" xml:space="preserve">
-    <value>Галочки просят «{0}», но в системе этого нет. {1}</value>
-    <comment>Подробность той же карточки. {0} — способ (Settings_Engine_AutoStart_*), {1} — что делать: Diag_AutoStart_Failed_NeedAdmin либо Diag_AutoStart_Failed_SeeLog.</comment>
-  </data>
-  <data name="Diag_AutoStart_Failed_NeedAdmin" xml:space="preserve">
-    <value>Задачу в Планировщике с наивысшими правами может создать только администратор — перезапустите демон от администратора и нажмите «Применить» ещё раз.</value>
-    <comment>Подставляется в дырку {1} у Diag_AutoStart_Failed_Detail, когда просят обе галочки: это единственная реальная причина отказа.</comment>
-  </data>
-  <data name="Diag_AutoStart_Failed_SeeLog" xml:space="preserve">
-      <value>Подробности — в журнале раннера.</value>
-      <comment>Подставляется в ту же дырку в остальных случаях. Отсылка к журналу — признание, что точнее сказать нечем: настоящая причина осталась в строке от реестра или schtasks.</comment>
-  </data>
 </root>

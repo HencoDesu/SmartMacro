@@ -284,16 +284,12 @@
                                                Text="{x:Static res:Strings.Shell_Mode_Settings}"
                                                FontSize="{DynamicResource NocturneFontSizeBody}"
                                                VerticalAlignment="Center" />
-                                    <!-- Красная точка на месте счётчика: проваленная проверка
-                                         среды. Числа здесь быть не может — «сколько сейчас
-                                         есть» у настроек не бывает. -->
-                                    <Border Grid.Column="2"
-                                            Width="6" Height="6"
-                                            CornerRadius="3"
-                                            VerticalAlignment="Center"
-                                            Background="{DynamicResource NocturneDangerBrush}"
-                                            IsVisible="{Binding HasEnvironmentProblems}"
-                                            ToolTip.Tip="{x:Static res:Strings.Shell_Rail_DiagnosticsDot}" />
+                                    <!-- Третья колонка пуста: здесь стояла красная точка
+                                         проваленной проверки среды, и ушла вместе с
+                                         диагностикой. Колонка оставлена, чтобы подпись стояла
+                                         там же, где у строк рейки со счётчиком; числа у
+                                         настроек не бывает — «сколько сейчас есть» к ним не
+                                         применимо. -->
                                 </Grid>
                             </ToggleButton>
                         </Border>

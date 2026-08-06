@@ -1,6 +1,11 @@
 <!--
   «Настройки» — вариант 2c макета (docs/design/opt-2c.html): один экран без прокрутки, плитки в
-  оболочке, диагностика полосой снизу.
+  оболочке. Полосы диагностики, которую макет держал по низу экрана, здесь больше нет — проверка
+  среды удалена целиком.
+
+  ⚠️ СТРОКА СОСТОЯНИЯ («Применено», «Отменено», «файл настроек изменился») ПЕРЕЕХАЛА В ШАПКУ.
+  Она жила в полосе диагностики и к диагностике отношения не имела: снеся полосу вместе с ней,
+  мы бы молча лишили экран единственного ответа на «нажал Применить — и что?».
 
   Раскладка следует макету, но три вещи в ней сделаны иначе, и все три — решения автора, принятые
   ПОСЛЕ картинки:
@@ -75,7 +80,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,*,Auto,Auto">
+    <Grid RowDefinitions="Auto,*,Auto">
 
         <!-- ================================= шапка ================================= -->
         <Border Grid.Row="0"
@@ -107,16 +112,16 @@
                          Макет держит эту строку в полосе прогонов внизу окна, но полоса
                          принадлежит оболочке и говорит про макросы; строка про несохранённую
                          форму там читалась бы как состояние прогона. -->
+                    <TextBlock Text="{Binding Status}"
+                               Classes="aside"
+                               Margin="0,0,4,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource NocturneAccent400Brush}" />
                     <TextBlock Text="{Binding ChangeText}"
                                Classes="aside"
                                Margin="0,0,4,0"
                                Foreground="{DynamicResource NocturneWarningBrush}"
                                IsVisible="{Binding IsDirty}" />
-                    <Button Content="{x:Static res:Strings.Settings_Header_RunDiagnostics}"
-                            Height="23"
-                            Padding="10,0"
-                            ToolTip.Tip="{x:Static res:Strings.Settings_Header_RunDiagnosticsTip}"
-                            Click="OnRunDiagnosticsClicked" />
                     <Button Content="{x:Static res:Strings.Settings_Header_OpenFolder}"
                             Height="23"
                             Padding="10,0"
@@ -585,106 +590,6 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-            </StackPanel>
-        </Border>
-
-        <!-- ============================= диагностика =============================
-             Полосой снизу, а не отдельным разделом: почти все отказы этого приложения
-             средовые, и проваленная проверка обязана быть видна, а не лежать там, куда
-             надо доскроллить. -->
-        <Border Grid.Row="3"
-                Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
-                BorderBrush="{DynamicResource NocturneDividerBrush}"
-                BorderThickness="0,1,0,0"
-                Padding="16,9,16,11">
-            <StackPanel Spacing="8">
-                <StackPanel Orientation="Horizontal" Spacing="10">
-                    <TextBlock Classes="tile" Text="{x:Static res:Strings.Settings_Diagnostics_Title}" />
-                    <TextBlock Classes="aside" Text="{Binding DiagnosticsSummary}" />
-                    <TextBlock Classes="aside"
-                               Text="{Binding Status}"
-                               Foreground="{DynamicResource NocturneAccent400Brush}" />
-                </StackPanel>
-
-                <!-- Провалы и предупреждения — карточками с текстом. -->
-                <ItemsControl ItemsSource="{Binding Diagnostics}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:DiagnosticRowViewModel">
-                            <Panel>
-                                <!-- проблема: карточка -->
-                                <Border Width="416"
-                                        Margin="0,0,8,8"
-                                        Padding="9,7"
-                                        CornerRadius="{DynamicResource NocturneRadiusSm}"
-                                        BorderThickness="1"
-                                        IsVisible="{Binding IsProblem}"
-                                        Background="{Binding Status, Converter={x:Static conv:DiagnosticStatusToBrushConverter.Instance}, ConverterParameter=surface}"
-                                        BorderBrush="{Binding Status, Converter={x:Static conv:DiagnosticStatusToBrushConverter.Instance}, ConverterParameter=border}">
-                                    <Grid ColumnDefinitions="16,*">
-                                        <TextBlock Grid.Column="0"
-                                                   Text="{Binding Glyph}"
-                                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
-                                                   VerticalAlignment="Top"
-                                                   Foreground="{Binding Status, Converter={x:Static conv:DiagnosticStatusToBrushConverter.Instance}}" />
-                                        <StackPanel Grid.Column="1" Spacing="3">
-                                            <TextBlock Text="{Binding Title}"
-                                                       FontSize="{DynamicResource NocturneFontSizeSmall}"
-                                                       TextWrapping="Wrap"
-                                                       Foreground="{Binding Status, Converter={x:Static conv:DiagnosticStatusToBrushConverter.Instance}}" />
-                                            <TextBlock Text="{Binding Detail}"
-                                                       FontSize="{DynamicResource NocturneFontSizeMicro}"
-                                                       TextWrapping="Wrap"
-                                                       Foreground="{DynamicResource NocturneTextMutedBrush}" />
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-
-                                <!-- порядок: компактная строка -->
-                                <Border Width="270"
-                                        Height="26"
-                                        Margin="0,0,8,8"
-                                        Padding="9,0"
-                                        CornerRadius="{DynamicResource NocturneRadiusSm}"
-                                        BorderThickness="1"
-                                        IsVisible="{Binding IsOk}"
-                                        Background="{DynamicResource NocturneSurfaceRaisedBrush}"
-                                        BorderBrush="{DynamicResource NocturneDividerBrush}">
-                                    <Grid ColumnDefinitions="14,Auto,*">
-                                        <TextBlock Grid.Column="0"
-                                                   Text="{Binding Glyph}"
-                                                   FontSize="{DynamicResource NocturneFontSizeMicro}"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource NocturneNeutral500Brush}" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding Title}"
-                                                   FontSize="{DynamicResource NocturneFontSizeSmall}"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource NocturneNeutral300Brush}" />
-                                        <TextBlock Grid.Column="2"
-                                                   Margin="8,0,0,0"
-                                                   Text="{Binding Detail}"
-                                                   FontSize="{DynamicResource NocturneFontSizeMicro}"
-                                                   FontFamily="{DynamicResource NocturneFontFamilyMono}"
-                                                   HorizontalAlignment="Right"
-                                                   VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   ToolTip.Tip="{Binding Detail}"
-                                                   Foreground="{DynamicResource NocturneTextFaintBrush}" />
-                                    </Grid>
-                                </Border>
-                            </Panel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <TextBlock Classes="hint"
-                           IsVisible="{Binding !Diagnostics.Count}"
-                           Text="{x:Static res:Strings.Settings_Diagnostics_Hint}" />
             </StackPanel>
         </Border>
     </Grid>

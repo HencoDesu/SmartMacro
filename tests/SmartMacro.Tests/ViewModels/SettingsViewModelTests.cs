@@ -311,48 +311,6 @@ public class SettingsViewModelTests
         await Assert.That(vm.ChangeCount).IsEqualTo(1);
     }
 
-    // ---- диагностика --------------------------------------------------------------------------
-
-    // Пять проверок делает демон, шестую — время ответа канала — панель: демон не может честно
-    // измерить время ответа самому себе.
-    [Test]
-    public async Task RunDiagnostics_AddsThePanelsOwnChannelCheck()
-    {
-        var client = new FakeIpcClient();
-        client.Respond(IpcMessageTypes.RunDiagnostics, new[]
-        {
-            new DiagnosticDto(DiagnosticIds.Elevation, DiagnosticStatus.Ok, "Права", "ок"),
-            new DiagnosticDto(DiagnosticIds.Templates, DiagnosticStatus.Failed, "Нет шаблона", "подробности"),
-        });
-        using var vm = Create(client);
-
-        await vm.RunDiagnosticsAsync();
-
-        await Assert.That(vm.Diagnostics.Select(d => d.Id))
-            .IsEquivalentTo(new[] { DiagnosticIds.Channel, DiagnosticIds.Elevation, DiagnosticIds.Templates });
-        await Assert.That(vm.ProblemCount).IsEqualTo(1);
-        // Сводка несёт время проверки и «сколько из скольких» — проверяются оба числа.
-        var summary = Msg.Args(vm.DiagnosticsSummary, Strings.Settings_Diagnostics_Summary);
-        await Assert.That(summary[1]).IsEqualTo("2");
-        await Assert.That(summary[2]).IsEqualTo("3");
-    }
-
-    // Демон не ответил — это САМ ПО СЕБЕ вердикт, и самый важный: движка нет, макросы не идут.
-    [Test]
-    public async Task RunDiagnostics_ReportsASilentDaemonAsAFailedChannel()
-    {
-        var client = new FakeIpcClient();
-        client.Fail(IpcMessageTypes.RunDiagnostics, "труба закрыта");
-        using var vm = Create(client);
-
-        await vm.RunDiagnosticsAsync();
-
-        var row = vm.Diagnostics.Single();
-        await Assert.That(row.Id).IsEqualTo(DiagnosticIds.Channel);
-        await Assert.That(row.IsFailed).IsTrue();
-        await Assert.That(vm.ProblemCount).IsEqualTo(1);
-    }
-
     // ---- сброс ------------------------------------------------------------------------------
 
     [Test]

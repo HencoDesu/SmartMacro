@@ -53,50 +53,9 @@ public sealed class InputMethodChoice
 /// <param name="Title">Подпись — латиницей, как в файле журнала и в жетоне режима «Лог».</param>
 public sealed record LogLevelChoice(LogLevelDto Level, string Title);
 
-/// <summary>Одна строка блока диагностики.</summary>
-public sealed class DiagnosticRowViewModel
-{
-    internal DiagnosticRowViewModel(DiagnosticDto dto)
-    {
-        Id = dto.Id;
-        Status = dto.Status;
-        Title = dto.Title;
-        Detail = dto.Detail;
-    }
-
-    public string Id { get; }
-
-    public DiagnosticStatus Status { get; }
-
-    public string Title { get; }
-
-    public string Detail { get; }
-
-    /// <summary>
-    /// Провал и предупреждение рисуются карточкой с текстом, порядок — карточкой не рисуется.
-    ///
-    /// Это не экономия места, а расстановка веса: успешных проверок всегда большинство, и если
-    /// они выглядят так же, как провал, то провал перестаёт бросаться в глаза — то есть блок
-    /// диагностики теряет единственный смысл, ради которого существует.
-    /// </summary>
-    public bool IsProblem => Status != DiagnosticStatus.Ok;
-
-    public bool IsOk => Status == DiagnosticStatus.Ok;
-
-    public bool IsFailed => Status == DiagnosticStatus.Failed;
-
-    /// <summary>Значок: ✕ у провала, ⚑ у предупреждения, ✓ у порядка.</summary>
-    public string Glyph => Status switch
-    {
-        DiagnosticStatus.Failed => "✕",
-        DiagnosticStatus.Warning => "⚑",
-        _ => "✓",
-    };
-}
-
 /// <summary>
-/// Режим «Настройки» — вариант 2c макета: один экран без прокрутки, плитки, диагностика полосой
-/// снизу.
+/// Режим «Настройки» — вариант 2c макета, из которого ушла полоса диагностики: один экран без
+/// прокрутки, плитки.
 ///
 /// <b>Механика важнее списка полей.</b> До этой волны каждая ручка движка приезжала через
 /// <c>IOptions&lt;T&gt;</c>, вычислялась один раз на старте, и любая правка требовала перезапуска
@@ -143,7 +102,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     private bool _runElevated = true;
     private string _newProfileName = string.Empty;
     private string _status = string.Empty;
-    private DateTimeOffset? _checkedAt;
     private bool _busy;
 
     public SettingsViewModel(IIpcClient client, IUiDispatcher? dispatcher = null)
@@ -181,11 +139,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// <summary>Замечания последней попытки применить. Непусто = не сохранено.</summary>
     public ObservableCollection<string> Issues { get; } = [];
 
-    /// <summary>Результаты последней проверки среды.</summary>
-    public ObservableCollection<DiagnosticRowViewModel> Diagnostics { get; } = [];
-
-    /// <summary>Поднимается после любого изменения — по нему оболочка обновляет красную точку на рейке.</summary>
-    public event Action? SettingsChanged;
 
     // ---- редактируемые значения --------------------------------------------------------------
 
@@ -364,29 +317,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
     /// <summary><c>true</c>, когда демон вообще ответил хоть раз.</summary>
     public bool IsLoaded => _snapshot is not null;
 
-    /// <summary>«проверка от 14:22:07 · 5 из 7 в порядке» либо приглашение проверить.</summary>
-    public string DiagnosticsSummary
-    {
-        get
-        {
-            if (Diagnostics.Count == 0)
-            {
-                return Strings.Settings_Diagnostics_NotRun;
-            }
-
-            var ok = Diagnostics.Count(row => row.IsOk);
-            var time = _checkedAt?.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture) ?? "—";
-            return string.Format(
-                CultureInfo.CurrentCulture,
-                Strings.Settings_Diagnostics_Summary,
-                time,
-                ok,
-                Diagnostics.Count);
-        }
-    }
-
-    /// <summary>Сколько проверок не в порядке — красная точка на рейке.</summary>
-    public int ProblemCount => Diagnostics.Count(row => row.IsProblem);
 
     // ---- действия -----------------------------------------------------------------------------
 
@@ -531,37 +461,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         {
             Log.Warning(ex, "Не удалось сменить уровень журнала демона");
         }
-    }
-
-    /// <summary>
-    /// Прогоняет проверки среды. Шесть из семи делает демон; седьмую — время ответа канала —
-    /// панель, потому что демон не может честно измерить время ответа самому себе.
-    /// </summary>
-    public async Task RunDiagnosticsAsync()
-    {
-        var stopwatch = Stopwatch.StartNew();
-        DiagnosticDto[] results;
-        try
-        {
-            results = await _client.RequestAsync<DiagnosticDto[]>(IpcMessageTypes.RunDiagnostics)
-                .ConfigureAwait(false) ?? [];
-        }
-        catch (Exception ex) when (ex is IpcRequestException or TimeoutException or ObjectDisposedException)
-        {
-            Log.Warning(ex, "Проверка среды не выполнена");
-            _dispatcher.Post(() => Fill([
-                new DiagnosticDto(DiagnosticIds.Channel, DiagnosticStatus.Failed, Strings.Settings_Diagnostics_ChannelTitle,
-                    Strings.Settings_Diagnostics_ChannelFailed),
-            ]));
-            return;
-        }
-
-        stopwatch.Stop();
-        var channel = new DiagnosticDto(DiagnosticIds.Channel, DiagnosticStatus.Ok, Strings.Settings_Diagnostics_ChannelTitle,
-            string.Format(CultureInfo.CurrentCulture, Strings.Settings_Diagnostics_ChannelOk,
-                stopwatch.ElapsedMilliseconds));
-
-        _dispatcher.Post(() => Fill([channel, .. results]));
     }
 
     /// <summary>Открывает папку демона в проводнике.</summary>
@@ -762,24 +661,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         return false;
     }
 
-    private void Fill(IReadOnlyList<DiagnosticDto> results)
-    {
-        Diagnostics.Clear();
-        // ПРОВАЛЫ ПЕРВЫМИ, внутри — порядок демона. Найдено глазами: карточка отказа, зажатая
-        // между двумя короткими строками «в порядке», теряется ровно так же, как если бы её не
-        // было, — а блок диагностики существует только ради неё. Успешных проверок всегда
-        // большинство, и приоритет здесь не косметика, а весь смысл полосы.
-        foreach (var dto in results.OrderByDescending(r => (int)r.Status))
-        {
-            Diagnostics.Add(new DiagnosticRowViewModel(dto));
-        }
-
-        _checkedAt = DateTimeOffset.Now;
-        OnPropertyChanged(nameof(DiagnosticsSummary));
-        OnPropertyChanged(nameof(ProblemCount));
-        SettingsChanged?.Invoke();
-    }
-
     private bool SetEdited<T>(ref T field, T value,
         [System.Runtime.CompilerServices.CallerMemberName]
         string? name = null)
@@ -842,7 +723,6 @@ public sealed class SettingsViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanApply));
         OnPropertyChanged(nameof(StartupMechanismText));
         OnPropertyChanged(nameof(ShowsElevationRestartNote));
-        SettingsChanged?.Invoke();
     }
 
     private int CountProfileChanges(IReadOnlyList<ProcessProfileSettings> baseline)

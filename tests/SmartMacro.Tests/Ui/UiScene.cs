@@ -26,9 +26,8 @@ namespace SmartMacro.Tests.Ui;
 ///
 /// <b>Что здесь наполнено и зачем.</b> Окна с тегами (сводка тегов в рейке, бейджи целей),
 /// идущие прогоны (полоса прогона, счётчик рейки, панель отладчика), лента лога с
-/// предупреждениями (счётчик проблем), диагностика с провалом (красная точка у «Настройки»),
-/// отказ регистрации хоткея (⚠ на строке библиотеки) и макрос со всеми видами нод, триггерами,
-/// под-макросом и отметками для извлечения.
+/// предупреждениями (счётчик проблем), отказ регистрации хоткея (⚠ на строке библиотеки) и
+/// макрос со всеми видами нод, триггерами, под-макросом и отметками для извлечения.
 ///
 /// ⚠️ Создавать и трогать ТОЛЬКО внутри <see cref="Ui.RunAsync(Action)"/>: здесь настоящее
 /// <see cref="Window"/>, а у него есть поток.
@@ -265,16 +264,7 @@ internal sealed class UiScene : IDisposable
                 LogLevelDto.Information,
                 @"D:\SmartMacro\settings.json",
                 @"D:\SmartMacro"))
-            .Respond(IpcMessageTypes.SaveSettings, Array.Empty<SettingsIssue>())
-            .Respond(IpcMessageTypes.RunDiagnostics, new[]
-            {
-                new DiagnosticDto("elevation", DiagnosticStatus.Ok, "Права", "Ввод доходит во все три окна"),
-                new DiagnosticDto("templates", DiagnosticStatus.Warning, "Шаблоны",
-                    "«pw-boot» называет templates/Find.png, которого в бандле нет"),
-                new DiagnosticDto("hotkeys", DiagnosticStatus.Failed, "Хоткеи",
-                    "Ctrl+Shift+F1 занят другим приложением — «pw-immunity» не запустится"),
-                new DiagnosticDto("scale", DiagnosticStatus.Ok, "Масштаб экрана", "100% — координаты нод сойдутся"),
-            });
+            .Respond(IpcMessageTypes.SaveSettings, Array.Empty<SettingsIssue>());
 
         return client;
     }

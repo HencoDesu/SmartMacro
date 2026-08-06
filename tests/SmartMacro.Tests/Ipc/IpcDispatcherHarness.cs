@@ -56,8 +56,6 @@ internal sealed class IpcDispatcherHarness : IDisposable
         SettingsFile = new SettingsStore(_baseDirectory, NullLogger<SettingsStore>.Instance);
         LogLevel = new FakeLogLevelSwitch();
         SettingsSnapshots = new SettingsSnapshotProvider(SettingsFile, LogLevel);
-        AutoStart = new AutoStartManager(NullLogger<AutoStartManager>.Instance);
-        Diagnostics = new EnvironmentDiagnostics(Windows, Macros, Hotkeys, SettingsFile, AutoStart);
         Session = new FakeSession(Hotkeys);
 
         Dispatcher = new IpcRequestDispatcher(
@@ -72,7 +70,6 @@ internal sealed class IpcDispatcherHarness : IDisposable
             Debug,
             SettingsFile,
             SettingsSnapshots,
-            Diagnostics,
             NullLogger<IpcRequestDispatcher>.Instance);
     }
 
@@ -120,16 +117,6 @@ internal sealed class IpcDispatcherHarness : IDisposable
 
     /// <summary>Сборщик снимка: он же стоит за <c>GetSettings</c> и за пушем <c>SettingsChanged</c>.</summary>
     public SettingsSnapshotProvider SettingsSnapshots { get; }
-
-    /// <summary>
-    /// Настоящий: проверка «зарегистрирован ли автозапуск» читает реестр и Планировщик. На
-    /// чистой машине там нашего ничего нет, так что при выключенных галочках проверка честно
-    /// говорит «в порядке», ничего не меняя.
-    /// </summary>
-    public AutoStartManager AutoStart { get; }
-
-    /// <summary>Проверки среды за <c>RunDiagnostics</c>.</summary>
-    public EnvironmentDiagnostics Diagnostics { get; }
 
     public WindowRegistry Windows { get; }
 

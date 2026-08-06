@@ -169,23 +169,6 @@ public sealed partial class AutoStartManager
         _ => "ничего не регистрируется",
     };
 
-    /// <summary>
-    /// Как автозапуск описан для человека — та самая строка «способ» в блоке «Запуск и права».
-    /// Живёт здесь, рядом с реализацией, чтобы подпись и поведение не разъехались.
-    /// </summary>
-    /// <param name="startup">Состояние галочек.</param>
-    public static string DescribeMechanism(StartupSettings startup)
-    {
-        ArgumentNullException.ThrowIfNull(startup);
-        return (startup.RunAtLogon, startup.RunElevated) switch
-        {
-            (false, false) => Strings.Settings_Engine_AutoStart_Off,
-            (true, false) => Strings.Settings_Engine_AutoStart_RunKey,
-            (false, true) => Strings.Settings_Engine_AutoStart_ElevateOnManualStart,
-            (true, true) => Strings.Settings_Engine_AutoStart_ScheduledTask,
-        };
-    }
-
     // ---- реестр -----------------------------------------------------------------------------
 
     private string? TrySetRunKey(string executablePath)

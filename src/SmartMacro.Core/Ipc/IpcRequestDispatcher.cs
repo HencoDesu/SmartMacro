@@ -49,7 +49,6 @@ public sealed partial class IpcRequestDispatcher
     private readonly MacroDebugSession _debug;
     private readonly SettingsStore _settingsStore;
     private readonly SettingsSnapshotProvider _settings;
-    private readonly EnvironmentDiagnostics _diagnostics;
     private readonly ILogger<IpcRequestDispatcher> _logger;
 
     // Проставляется конструктором IpcServer, а не через DI, — см. AttachBroadcaster. Null в
@@ -69,12 +68,10 @@ public sealed partial class IpcRequestDispatcher
         MacroDebugSession debug,
         SettingsStore settingsStore,
         SettingsSnapshotProvider settings,
-        EnvironmentDiagnostics diagnostics,
         ILogger<IpcRequestDispatcher> logger)
     {
         _settingsStore = settingsStore;
         _settings = settings;
-        _diagnostics = diagnostics;
         _windows = windows;
         _macros = macros;
         _runs = runs;
@@ -357,13 +354,7 @@ public sealed partial class IpcRequestDispatcher
                 return Ok(request, IpcJson.Write(_settings.Snapshot()));
             }
 
-            // ------------------------------------------------------------ диагностика
-
-            case IpcMessageTypes.RunDiagnostics:
-            {
-                var results = await _diagnostics.RunAsync(cancellationToken).ConfigureAwait(false);
-                return Ok(request, IpcJson.Write<DiagnosticDto[]>([.. results]));
-            }
+            // ------------------------------------------------------------- завершение
 
             case IpcMessageTypes.Shutdown:
                 return ShutdownAsync(request);

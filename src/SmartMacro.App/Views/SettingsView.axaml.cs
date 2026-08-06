@@ -23,8 +23,6 @@ public partial class SettingsView : UserControl
 
     private void OnOpenFolderClicked(object? sender, RoutedEventArgs e) => Vm?.OpenFolder();
 
-    private void OnRunDiagnosticsClicked(object? sender, RoutedEventArgs e) => _ = Vm?.RunDiagnosticsAsync();
-
     private void OnAddProfileClicked(object? sender, RoutedEventArgs e) => Vm?.AddProfile();
 
     // Enter в поле имени — быстрый путь: набрать имя и потянуться за мышью надоедает уже на

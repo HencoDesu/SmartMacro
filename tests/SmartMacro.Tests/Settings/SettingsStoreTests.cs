@@ -213,20 +213,4 @@ public class SettingsStoreTests
             Directory.Delete(directory, recursive: true);
         }
     }
-
-    // Способ выбирается приложением, а не пользователем: галочек две, механизма три. Строка
-    // «способ» на экране обязана называть тот же механизм, который потом и будет зарегистрирован,
-    // поэтому текст живёт рядом с реализацией.
-    [Test]
-    public async Task DescribeMechanism_NamesAllFourCombinations()
-    {
-        await Assert.That(AutoStartManager.DescribeMechanism(new StartupSettings
-                { RunAtLogon = false, RunElevated = false })).IsEqualTo(Strings.Settings_Engine_AutoStart_Off);
-        await Assert.That(AutoStartManager.DescribeMechanism(new StartupSettings
-                { RunAtLogon = true, RunElevated = false })).IsEqualTo(Strings.Settings_Engine_AutoStart_RunKey);
-        await Assert.That(AutoStartManager.DescribeMechanism(new StartupSettings
-                { RunAtLogon = false, RunElevated = true })).IsEqualTo(Strings.Settings_Engine_AutoStart_ElevateOnManualStart);
-        await Assert.That(AutoStartManager.DescribeMechanism(new StartupSettings
-                { RunAtLogon = true, RunElevated = true })).IsEqualTo(Strings.Settings_Engine_AutoStart_ScheduledTask);
-    }
 }

@@ -12,8 +12,9 @@ namespace SmartMacro.App.ViewModels;
 ///
 /// <see cref="Settings"/> здесь шестой член, но НЕ шестой равноправный режим: в полосе он стоит
 /// под разделителем, в самом низу, с шестерёнкой и без счётчика. Счётчики полосы отвечают на
-/// вопрос «сколько сейчас есть», а у настроек такого числа нет; вместо него там красная точка,
-/// означающая проваленную диагностику.
+/// вопрос «сколько сейчас есть», а у настроек такого числа нет. Место счётчика у этой строки
+/// пустует намеренно: занимавшая его красная точка проваленной диагностики ушла вместе с самой
+/// диагностикой, и выдумывать туда число не из чего.
 /// </summary>
 public enum ShellMode
 {
@@ -188,7 +189,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Workspace.Runs.CollectionChanged += OnRunsChanged;
         Editor.Macros.CollectionChanged += OnMacrosChanged;
         Log.LogChanged += OnLogChanged;
-        Settings.SettingsChanged += OnSettingsChanged;
 
         RefreshWindowState();
         RefreshRunState();
@@ -212,7 +212,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// <summary>Лента журнала демона — тело «Лога».</summary>
     public LogViewModel Log { get; }
 
-    /// <summary>Настройки демона и диагностика среды — тело «Настроек».</summary>
+    /// <summary>Настройки демона — тело «Настроек».</summary>
     public SettingsViewModel Settings { get; }
 
     /// <summary>Четыре рабочих строки боковой полосы, в порядке показа.</summary>
@@ -227,14 +227,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     /// </summary>
     public ShellModeViewModel SettingsMode { get; }
 
-    /// <summary>
-    /// Красная точка на строке настроек: последняя проверка среды нашла проблему.
-    ///
-    /// Занимает то место, где у остальных строк счётчик, и это не украшение: почти все отказы
-    /// этого приложения средовые, а проявляются они тем, что макрос «просто не работает». Точка
-    /// — единственное место, где такая поломка видна, не заходя в режим.
-    /// </summary>
-    public bool HasEnvironmentProblems => Settings.ProblemCount > 0;
 
     /// <summary>Тег → сколько окон, самые многочисленные первыми. Единственное место, где весь состав виден сразу.</summary>
     public ObservableCollection<TagSummaryItemViewModel> TagSummary { get; } = [];
@@ -383,7 +375,6 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         Workspace.Runs.CollectionChanged -= OnRunsChanged;
         Editor.Macros.CollectionChanged -= OnMacrosChanged;
         Log.LogChanged -= OnLogChanged;
-        Settings.SettingsChanged -= OnSettingsChanged;
         Workspace.Dispose();
         // Браузер шаблонов освобождает редактор: он его и создал.
         Editor.Dispose();
@@ -422,12 +413,10 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Перечитывает настройки и прогоняет диагностику на входе в режим.
+    /// Перечитывает настройки на входе в режим.
     ///
-    /// Снимок настроек и без того живой — демон толкает <c>SettingsChanged</c>, — так что запрос
-    /// здесь страховочный. А вот диагностика по подписке не приезжает вовсе: она безопасна, но не
-    /// бесплатна (шлёт <c>WM_NULL</c> каждому окну и пишет пробный файл), и гонять её по таймеру
-    /// незачем. Вход в режим — момент, когда она заведомо интересна.
+    /// Снимок и без того живой — демон толкает <c>SettingsChanged</c>, — так что запрос здесь
+    /// страховочный: он закрывает окно между стартом панели и первым пушем.
     /// </summary>
     private void RefreshSettingsOnEntry()
     {
@@ -437,10 +426,7 @@ public sealed class ShellViewModel : ObservableObject, IDisposable
         }
 
         _ = SafeAsync(Settings.RefreshAsync(), "settings");
-        _ = SafeAsync(Settings.RunDiagnosticsAsync(), "diagnostics");
     }
-
-    private void OnSettingsChanged() => OnPropertyChanged(nameof(HasEnvironmentProblems));
 
     /// <summary>
     /// В скобки «„Макросы“ на экране» взяты две вещи: глобальные хоткеи ложатся, а поток

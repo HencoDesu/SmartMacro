@@ -1,13 +1,11 @@
-﻿using FakeItEasy;
-using SmartMacro.Contracts.Dto;
+﻿using SmartMacro.Contracts.Dto;
 using SmartMacro.Contracts.Ipc;
-using SmartMacro.Resources;
 using SmartMacro.Contracts.Settings;
 
 namespace SmartMacro.Tests.Ipc;
 
 // Настроечная часть протокола на настоящем хранилище: GetSettings / SaveSettings / ResetSettings /
-// SetLogLevel / RunDiagnostics.
+// SetLogLevel.
 //
 // Диспетчер здесь — тонкий слой, и проверяется именно то, что делает его тонким: договорённость
 // «пустой массив = записано», отказ, который НЕ пишет, и разделение времени жизни (файл переживает
@@ -126,79 +124,5 @@ public class SettingsProtocolTests
         await Assert.That(seen).Count().IsEqualTo(2);
         await Assert.That(seen[0].Settings.Profiles).IsEmpty();
         await Assert.That(seen[1].LogLevel).IsEqualTo(LogLevelDto.Error);
-    }
-
-    // Пять проверок демона. Ни одна не имеет права упасть на пустой установке: кнопку жмут, когда
-    // что-то уже не работает, и диагностика, которая сама валится, бесполезна вдвойне.
-    [Test]
-    public async Task RunDiagnostics_AnswersEveryCheckOnAnEmptyInstall()
-    {
-        using var harness = new IpcDispatcherHarness();
-
-        var response = await harness.DispatchAsync(IpcMessageTypes.RunDiagnostics);
-        var results = IpcJson.Read<DiagnosticDto[]>(response.Payload)!;
-
-        await Assert.That(response.Ok).IsTrue();
-        await Assert.That(results.Select(r => r.Id)).IsEquivalentTo(new[]
-        {
-            DiagnosticIds.Elevation,
-            DiagnosticIds.Templates,
-            DiagnosticIds.DisplayScale,
-            DiagnosticIds.Hotkeys,
-            DiagnosticIds.FolderWritable,
-            DiagnosticIds.AutoStart,
-        });
-        await Assert.That(results.All(r => r.Title.Length > 0 && r.Detail.Length > 0)).IsTrue();
-        // Временная папка теста заведомо пишется — иначе не было бы и самого теста.
-        await Assert.That(results.Single(r => r.Id == DiagnosticIds.FolderWritable).Status)
-            .IsEqualTo(DiagnosticStatus.Ok);
-    }
-
-    // Пока панель держит приостановку, зарегистрировано НОЛЬ аккордов — а карточка при пустом
-    // списке отказов и целых графах отвечала «занято N из N». Экран, существующий ради вопроса
-    // «почему макрос просто не работает», в этом состоянии активно врал. Предупреждение, а не
-    // отказ: сама приостановка — работающий механизм, но зелёной ей быть нельзя.
-    [Test]
-    public async Task RunDiagnostics_SaysSoWhenHotkeysAreSuspended()
-    {
-        using var harness = new IpcDispatcherHarness();
-        A.CallTo(() => harness.Hotkeys.IsSuspended).Returns(true);
-
-        var response = await harness.DispatchAsync(IpcMessageTypes.RunDiagnostics);
-        var hotkeys = IpcJson.Read<DiagnosticDto[]>(response.Payload)!
-            .Single(r => r.Id == DiagnosticIds.Hotkeys);
-
-        await Assert.That(hotkeys.Status).IsEqualTo(DiagnosticStatus.Warning);
-        await Assert.That(hotkeys.Title).IsEqualTo(Strings.Diag_Hotkeys_Suspended_Title);
-    }
-
-    // Шаблон, которого нет на диске, обязан находиться ДО прогона, а не всплывать строкой в
-    // журнале на его середине. Правило «какой макрос какой шаблон называет» берётся из того же
-    // MacroTemplateAnalysis, что и у браузера шаблонов, — второй копии быть не должно.
-    [Test]
-    public async Task RunDiagnostics_ReportsATemplateNamedByAMacroButMissingOnDisk()
-    {
-        using var harness = new IpcDispatcherHarness();
-        harness.WriteMacro(new SmartMacro.Macros.Model.MacroGraph
-        {
-            Name = "нужен-шаблон",
-            StartNodeId = Ids.Of("n1"),
-            Nodes =
-            [
-                new SmartMacro.Macros.Model.FindElementNode
-                {
-                    Id = Ids.Of("n1"),
-                    DisplayName = "n1",
-                    Template = "КнопкаКоторойНет",
-                },
-            ],
-        });
-
-        var response = await harness.DispatchAsync(IpcMessageTypes.RunDiagnostics);
-        var results = IpcJson.Read<DiagnosticDto[]>(response.Payload)!;
-
-        var templates = results.Single(r => r.Id == DiagnosticIds.Templates);
-        await Assert.That(templates.Status).IsEqualTo(DiagnosticStatus.Failed);
-        await Assert.That(templates.Detail).Contains("КнопкаКоторойНет");
     }
 }

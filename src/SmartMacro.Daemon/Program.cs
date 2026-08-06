@@ -228,7 +228,6 @@ internal static class Program
         services.AddSingleton<ILogLevelSwitch>(_ => new SerilogLevelSwitch(levelSwitch));
         services.AddSingleton<SettingsSnapshotProvider>();
         services.AddSingleton<AutoStartManager>();
-        services.AddSingleton<EnvironmentDiagnostics>();
 
         // Выбор способа доставки нажатия по настройкам, на каждое нажатие. Синглтон, потому что
         // держит обе реализации ввода полями: переключение способа не должно ничего выделять.
