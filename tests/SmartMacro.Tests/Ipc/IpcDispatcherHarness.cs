@@ -104,6 +104,28 @@ internal sealed class IpcDispatcherHarness : IDisposable
 
         public Task SetHotkeySuspensionAsync(bool enabled, CancellationToken cancellationToken = default) =>
             enabled ? _hotkeys.SuspendAsync(cancellationToken) : _hotkeys.ResumeAsync(cancellationToken);
+
+        /// <summary>Аренды побудки, взятые «этим соединением», в порядке обращений.</summary>
+        public List<(long Hwnd, bool Held)> CaptureHooks { get; } = [];
+
+        /// <summary>
+        /// Окна, которые сессия соглашается будить. Настоящая реализация спрашивает реестр; здесь
+        /// это список, потому что <c>WindowRegistry</c> без фасада <c>IGameWindow</c> отдаёт
+        /// <c>null</c> и на настоящем реестре отличить «окна нет» от «окно без фасада» было бы
+        /// нечем.
+        /// </summary>
+        public HashSet<long> KnownWindows { get; } = [];
+
+        public Task<bool> SetCaptureHookAsync(long hwnd, bool held, CancellationToken cancellationToken = default)
+        {
+            if (held && !KnownWindows.Contains(hwnd))
+            {
+                return Task.FromResult(false);
+            }
+
+            CaptureHooks.Add((hwnd, held));
+            return Task.FromResult(true);
+        }
     }
 
     /// <summary>

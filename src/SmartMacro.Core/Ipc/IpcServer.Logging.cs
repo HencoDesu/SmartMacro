@@ -47,4 +47,8 @@ public sealed partial class IpcServer
     [LoggerMessage(LogLevel.Error,
         "IPC: не удалось вернуть хоткеи после разрыва соединения — глобальные аккорды могли остаться снятыми")]
     partial void LogHotkeyResumeOnDisconnectFailed(Exception ex);
+
+    [LoggerMessage(LogLevel.Error,
+        "IPC: не удалось отпустить побудку окон после разрыва соединения — клиент мог остаться размороженным")]
+    partial void LogCaptureHookReleaseOnDisconnectFailed(Exception ex);
 }

@@ -93,8 +93,9 @@ public sealed partial class IpcRequestDispatcher
 
     /// <summary>
     /// Направляет один запрос его обработчику и порождает ответ — без соединения за спиной. Всё
-    /// в каталоге, кроме <c>SubscribeRunEvents</c>, <c>SubscribeLog</c>, <c>DebugCommand</c> и
-    /// пары <c>SuspendHotkeys</c>/<c>ResumeHotkeys</c>, относится к движку, а не к клиенту, и в
+    /// в каталоге, кроме <c>SubscribeRunEvents</c>, <c>SubscribeLog</c>, <c>DebugCommand</c>, пары
+    /// <c>SuspendHotkeys</c>/<c>ResumeHotkeys</c> и пары
+    /// <c>AcquireCaptureHook</c>/<c>ReleaseCaptureHook</c>, относится к движку, а не к клиенту, и в
     /// таком виде работает прекрасно; эти вежливо отказывают.
     /// </summary>
     /// <param name="request">Разобранный конверт.</param>
@@ -165,6 +166,43 @@ public sealed partial class IpcRequestDispatcher
             {
                 var payload = Require<RemoveTagRequest>(request);
                 _windows.RemoveTag((IntPtr)payload.Hwnd, payload.Tag);
+                return Ok(request);
+            }
+
+            // Обе идут ЧЕРЕЗ СЕССИЮ, а не прямо в реестр окон, и по тому же доводу, что пара
+            // Suspend/ResumeHotkeys ниже: побудка — состояние движка, снять которое способна
+            // только панель, а уходит она не только ответным ReleaseCaptureHook. Владельцем
+            // поэтому назначено соединение, и его же finally закрывает все оставшиеся области.
+            case IpcMessageTypes.AcquireCaptureHook:
+            {
+                var payload = Require<CaptureHookRequest>(request);
+                var connection = session
+                                 ?? throw new IpcRequestRejectedException(
+                                     Strings.Ipc_Rejected_CaptureHookNeedsConnection);
+
+                // Ответ возвращается ПОСЛЕ паузы устаканивания — это и есть его смысл: панель
+                // снимает кадр следующей строкой, а PrintWindow по ещё не проснувшемуся клиенту
+                // отдаёт чёрный или устаревший кадр.
+                if (!await connection.SetCaptureHookAsync(payload.Hwnd, held: true, cancellationToken)
+                        .ConfigureAwait(false))
+                {
+                    // Отказ, а не тишина: иначе панель показала бы пользователю чёрный
+                    // прямоугольник и оставила бы его гадать, что не так с игрой.
+                    throw new IpcRequestRejectedException(string.Format(
+                        CultureInfo.CurrentCulture, Strings.Ipc_Rejected_WindowNotFound, payload.Hwnd));
+                }
+
+                return Ok(request);
+            }
+
+            case IpcMessageTypes.ReleaseCaptureHook:
+            {
+                var payload = Require<CaptureHookRequest>(request);
+                var connection = session
+                                 ?? throw new IpcRequestRejectedException(
+                                     Strings.Ipc_Rejected_CaptureHookNeedsConnection);
+                await connection.SetCaptureHookAsync(payload.Hwnd, held: false, cancellationToken)
+                    .ConfigureAwait(false);
                 return Ok(request);
             }
 

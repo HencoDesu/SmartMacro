@@ -148,6 +148,13 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     /// ладонь, а декодирование произвольного блоба в <c>Bitmap</c> держит неуправляемую память
     /// Skia. Файл больше мегабайта в этой рамке всё равно не разглядеть, а его размер строка уже
     /// показывает. Поэтому вместо превью выводится причина.
+    ///
+    /// ⚠️ <b>На диалог выбора области (issue #29) он НЕ распространяется, и это не упущение.</b>
+    /// Кадр 3840×2160 превышает его на порядок, а разглядывание кадра — единственное, ради чего
+    /// то окно существует: применить потолок там значило бы отменить саму возможность. Причина же
+    /// потолка (ладонь и чужая память) там не выполняется — окно во весь экран, картинка ровно
+    /// одна, и закрытие её сразу освобождает. Вырезка, которая из того окна приезжает СЮДА, —
+    /// обычный маленький шаблон и под потолком проходит.
     /// </summary>
     public const long MaxPreviewBytes = 1024 * 1024;
 
@@ -404,12 +411,6 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
         ArgumentNullException.ThrowIfNull(png);
 
-        ImportProblem = null;
-        if (_macroName is not { } macroName)
-        {
-            return false;
-        }
-
         var name = Path.GetFileNameWithoutExtension(fileName);
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -418,7 +419,42 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
             return false;
         }
 
-        var set = string.IsNullOrWhiteSpace(_importSet) ? null : _importSet.Trim();
+        return Add(string.IsNullOrWhiteSpace(_importSet) ? null : _importSet.Trim(), name, png);
+    }
+
+    /// <summary>
+    /// Имена шаблонов, уже лежащие в этом наборе (или в корне, когда <paramref name="set"/> —
+    /// <c>null</c>). Нужны диалогу выбора области, чтобы предупредить о замене.
+    /// </summary>
+    public IReadOnlyList<string> NamesIn(string? set) =>
+    [
+        .. _files
+            .Where(file => string.Equals(file.Set, set, StringComparison.OrdinalIgnoreCase))
+            .Select(file => file.Name)
+    ];
+
+    /// <summary>
+    /// Кладёт PNG в бандл открытого макроса под явными набором и именем.
+    ///
+    /// Отдельно от <see cref="Import"/>, потому что зовущих у этого двое и знают они разное:
+    /// «+ файл…» берёт имя из имени файла и набор из поля рядом с кнопкой, а диалог выбора области
+    /// спрашивает имя у человека и берёт набор у самой ноды.
+    /// </summary>
+    /// <param name="set">Набор (подпапка) либо <c>null</c> — одиночный шаблон в корне.</param>
+    /// <param name="name">Основа имени файла — то, что несёт нода (для набора это тег).</param>
+    /// <param name="png">Содержимое файла.</param>
+    /// <returns><c>false</c>, если макрос не открыт или бандл не принял файл; причина — в <see cref="ImportProblem"/>.</returns>
+    public bool Add(string? set, string name, byte[] png)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(png);
+
+        ImportProblem = null;
+        if (_macroName is not { } macroName)
+        {
+            return false;
+        }
+
         try
         {
             if (!_library.AddTemplate(macroName, set, name, png))

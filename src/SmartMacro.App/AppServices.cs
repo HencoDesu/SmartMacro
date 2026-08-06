@@ -36,6 +36,11 @@ internal sealed class AppServices : IAsyncDisposable
         MacroLauncher = new IpcMacroLauncher(client);
         HotkeySuspension = new IpcHotkeySuspension(client);
         NameConflicts = new DialogMacroNameConflictPrompt();
+        // Снимает САМА панель (PrintWindow живёт в Native, на который она и так ссылается), а
+        // будит окно демон: скобка пробуждения со счётчиком и цепочкой переходов существует в
+        // одном экземпляре, и второй ей не нужен. См. IpcWindowCaptureService.
+        WindowCapture = new IpcWindowCaptureService(client);
+        Regions = new DialogRegionCapturePrompt(WindowCapture);
     }
 
     /// <summary>Папка <c>macros/</c>: панель — её единственный автор, демон только читает (F3).</summary>
@@ -59,6 +64,16 @@ internal sealed class AppServices : IAsyncDisposable
     /// это шов, а не деталь view-model.
     /// </summary>
     public IMacroNameConflictPrompt NameConflicts { get; }
+
+    /// <summary>Свежий кадр игрового окна: аренда побудки у демона плюс <c>PrintWindow</c> здесь.</summary>
+    public IWindowCaptureService WindowCapture { get; }
+
+    /// <summary>
+    /// Диалог «выдели область на свежем снимке окна» — второй и последний шов к модальному окну,
+    /// и здесь он по той же причине, что и первый: редактор обязан оставаться проверяемым
+    /// headless.
+    /// </summary>
+    public IRegionCapturePrompt Regions { get; }
 
     /// <summary>
     /// Собирает оболочку целиком — рейку режимов и обе режимные view-models. Намеренно фабрика, а
@@ -85,7 +100,7 @@ internal sealed class AppServices : IAsyncDisposable
     /// отдельной фабрики у них здесь больше нет.
     /// </summary>
     public MacroEditorViewModel CreateMacroEditorViewModel() =>
-        new(Client, Library, MacroLauncher, HotkeySuspension, Dispatcher, NameConflicts);
+        new(Client, Library, MacroLauncher, HotkeySuspension, Dispatcher, NameConflicts, Regions);
 
     /// <summary>
     /// Собирает view-model ленты журнала, стоящую за режимом «Лог». Своего пути к файлам она,

@@ -362,6 +362,22 @@ public partial class MacrosView : UserControl
     }
 
     /// <summary>
+    /// «Выделить на снимке…» — вся содержательная часть у view-model, здесь только доставка
+    /// строки ноды из <c>DataContext</c> кнопки.
+    ///
+    /// <c>async void</c>, как и соседние обработчики диалогов: обработчик события Avalonia другой
+    /// формы не имеет, а всё, что могло бы упасть, view-model ловит у себя и превращает в красную
+    /// строку.
+    /// </summary>
+    private async void OnCaptureRegionClicked(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm && sender is Button { DataContext: NodeRowViewModel row })
+        {
+            await vm.CaptureRegionAsync(row);
+        }
+    }
+
+    /// <summary>
     /// Декодирование превью шаблона.
     ///
     /// <b>Здесь, а не в конвертере привязки</b>, и это то же решение, что стояло в удалённом

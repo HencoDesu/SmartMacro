@@ -1,0 +1,254 @@
+<!--
+  Выбор области на свежем снимке окна — второе (и последнее) модальное окно панели.
+
+  Оно существует ради ТОЧНОСТИ, а не ради удобства. Кадр здесь приходит тем же путём, каким его
+  берёт зрение: PrintWindow с PW_CLIENTONLY | PW_RENDERFULLCONTENT по разбуженному окну. Шаблон,
+  вырезанный из «Win+Shift+S», отличается от того, что увидит сопоставление, — у композитора
+  рабочего стола своя цветокоррекция, экран мог быть масштабирован, в кадр попадает курсор.
+
+  Почему окно БОЛЬШОЕ и с панорамой: кадр у автора 3840×2160, а панель 1520 шириной. Без
+  масштабирования на нём не разглядеть иконку в 24 px, а без панорамы до правого нижнего угла не
+  добраться.
+
+  Своя строка заголовка и ExtendClientArea — как у главного окна и по той же причине: штатный
+  заголовок Windows рисуется светлым и потемнеть не может. Окно РЕЗИНОВОЕ, в отличие от вопроса о
+  занятом имени: разглядывают тут картинку, и чем её больше, тем лучше.
+
+  Цвета и отступы — только токены Themes/Tokens.axaml.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:services="using:SmartMacro.App.Services"
+        xmlns:res="using:SmartMacro.Resources"
+        x:Class="SmartMacro.App.Views.RegionCaptureDialog"
+        x:DataType="services:RegionCaptureRequest"
+        Width="1180" Height="820"
+        MinWidth="720" MinHeight="520"
+        CanResize="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="-1"
+        Background="{DynamicResource NocturneBgBrush}"
+        Title="{x:Static res:Strings.Dialog_Region_WindowTitle}">
+
+    <Window.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeMicro}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneNeutral600Brush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeMicro}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneTextFaintBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.problem">
+            <Setter Property="FontSize" Value="{DynamicResource NocturneFontSizeSmall}" />
+            <Setter Property="Foreground" Value="{DynamicResource NocturneDangerBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Styles>
+
+    <Border BorderBrush="{DynamicResource NocturneDividerStrongBrush}" BorderThickness="1">
+        <Grid RowDefinitions="30,Auto,*,Auto">
+
+            <!-- ==== строка заголовка ==== -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource NocturneSurfaceRaisedBrush}"
+                    BorderBrush="{DynamicResource NocturneDividerStrongBrush}"
+                    BorderThickness="0,0,0,1"
+                    PointerPressed="OnTitleBarPointerPressed">
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="11.2,0,0,0">
+                    <TextBlock Grid.Column="0"
+                               Text="{x:Static res:Strings.Dialog_Region_Title}"
+                               FontSize="11.5"
+                               FontWeight="Medium"
+                               Foreground="{DynamicResource NocturneNeutral300Brush}"
+                               VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1"
+                               Margin="11.2,0,0,0"
+                               Text="{Binding Heading}"
+                               FontSize="11.5"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource NocturneTextFaintBrush}"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="2"
+                            Classes="ghost"
+                            Content="✕"
+                            Width="38" Height="30" MinWidth="0" Padding="0" CornerRadius="0"
+                            ToolTip.Tip="{x:Static res:Strings.Dialog_Region_CloseTip}"
+                            Click="OnCancelClicked" />
+                </Grid>
+            </Border>
+
+            <!-- ==== откуда кадр ==== -->
+            <Border Grid.Row="1"
+                    Background="{DynamicResource NocturneSurfaceBrush}"
+                    BorderBrush="{DynamicResource NocturneDividerBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="11.2,8.4">
+                <Grid ColumnDefinitions="Auto,220,Auto,Auto,*,Auto">
+                    <TextBlock Grid.Column="0"
+                               Classes="label"
+                               Margin="0,0,8.4,0"
+                               Text="{x:Static res:Strings.Dialog_Region_Window}" />
+                    <ComboBox Grid.Column="1"
+                              x:Name="WindowPicker"
+                              HorizontalAlignment="Stretch"
+                              SelectionChanged="OnWindowPicked" />
+                    <Button Grid.Column="2"
+                            Margin="8.4,0,0,0"
+                            x:Name="RecaptureButton"
+                            Content="{x:Static res:Strings.Dialog_Region_Recapture}"
+                            ToolTip.Tip="{x:Static res:Strings.Dialog_Region_RecaptureTip}"
+                            Click="OnRecaptureClicked" />
+                    <Button Grid.Column="3"
+                            Margin="5.6,0,0,0"
+                            Content="{x:Static res:Strings.Dialog_Region_FromFile}"
+                            ToolTip.Tip="{x:Static res:Strings.Dialog_Region_FromFileTip}"
+                            Click="OnFromFileClicked" />
+
+                    <TextBlock Grid.Column="4"
+                               x:Name="FrameText"
+                               Classes="hint"
+                               Margin="11.2,0"
+                               TextTrimming="CharacterEllipsis" />
+
+                    <!-- ⚠️ Найдено глазами: без кадра масштабировать нечего, а группа всё равно
+                         стояла — с пустым провалом между «−» и «+» там, где обычно проценты.
+                         Управление, которое ничем не управляет, хуже отсутствующего: оно
+                         обещает, что кнопка что-то сделает. -->
+                    <StackPanel Grid.Column="5" x:Name="ZoomGroup" Orientation="Horizontal">
+                        <Button Classes="ghost" Content="−" Width="26" MinWidth="0"
+                                ToolTip.Tip="{x:Static res:Strings.Dialog_Region_ZoomOutTip}"
+                                Click="OnZoomOutClicked" />
+                        <TextBlock x:Name="ZoomText" Classes="hint" Width="46" TextAlignment="Center" />
+                        <Button Classes="ghost" Content="+" Width="26" MinWidth="0"
+                                ToolTip.Tip="{x:Static res:Strings.Dialog_Region_ZoomInTip}"
+                                Click="OnZoomInClicked" />
+                        <Button Margin="5.6,0,0,0"
+                                Content="{x:Static res:Strings.Dialog_Region_ZoomFit}"
+                                ToolTip.Tip="{x:Static res:Strings.Dialog_Region_ZoomFitTip}"
+                                Click="OnZoomFitClicked" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ==== сам кадр ==== -->
+            <Border Grid.Row="2"
+                    x:Name="Viewport"
+                    ClipToBounds="True"
+                    Background="{DynamicResource NocturneBgBrush}"
+                    PointerPressed="OnSurfacePointerPressed"
+                    PointerMoved="OnSurfacePointerMoved"
+                    PointerReleased="OnSurfacePointerReleased"
+                    PointerWheelChanged="OnSurfaceWheel">
+                <Panel>
+                    <!-- Поверхность живёт в координатах КАДРА (пиксели клиентской области), а
+                         масштаб и панорама — это её RenderTransform. Так выделение считается
+                         сразу в тех числах, которые уйдут в ноду, без второго перевода.
+
+                         ⚠️ Left/Top обязательны, и найдено это глазами. Ребёнок Panel с ЯВНЫМИ
+                         Width/Height и выравниванием по умолчанию (Stretch) раскладывается ПО
+                         ЦЕНТРУ доступного места, а кадр 1520×900 больше окна — значит, начало
+                         координат холста уезжало в минус, и перевод «экран → кадр» (который
+                         считает от левого верхнего угла области просмотра) врал на эту разницу:
+                         кадр рисовался не там, где ждали, а выделение попало бы мимо. -->
+                    <Canvas x:Name="Surface"
+                            Background="Transparent"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top">
+                        <Image x:Name="FrameImage"
+                               Canvas.Left="0" Canvas.Top="0"
+                               Stretch="None"
+                               RenderOptions.BitmapInterpolationMode="None" />
+                        <!-- Тонировка вне выделения: четыре прямоугольника, а не Path с дыркой —
+                             геометрию с дыркой пришлось бы пересобирать на каждое движение мыши. -->
+                        <Rectangle x:Name="ShadeTop" Fill="{DynamicResource NocturneScrimBrush}" IsHitTestVisible="False" />
+                        <Rectangle x:Name="ShadeBottom" Fill="{DynamicResource NocturneScrimBrush}" IsHitTestVisible="False" />
+                        <Rectangle x:Name="ShadeLeft" Fill="{DynamicResource NocturneScrimBrush}" IsHitTestVisible="False" />
+                        <Rectangle x:Name="ShadeRight" Fill="{DynamicResource NocturneScrimBrush}" IsHitTestVisible="False" />
+                        <Rectangle x:Name="SelectionBox"
+                                   Stroke="{DynamicResource NocturneAccentBrush}"
+                                   Fill="Transparent"
+                                   IsHitTestVisible="False" />
+                        <!-- Область ноды = выделение с запасом. Рисуется пунктиром отдельно,
+                             потому что это ДРУГОЙ прямоугольник, и увидеть их разницу глазами —
+                             самый короткий способ понять, зачем запас вообще нужен. -->
+                        <Rectangle x:Name="RegionBox"
+                                   Stroke="{DynamicResource NocturneAccent700Brush}"
+                                   StrokeDashArray="3,3"
+                                   Fill="Transparent"
+                                   IsHitTestVisible="False" />
+                    </Canvas>
+
+                    <TextBlock x:Name="EmptyState"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               MaxWidth="420"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"
+                               FontSize="{DynamicResource NocturneFontSizeSmall}"
+                               Foreground="{DynamicResource NocturneTextMutedBrush}" />
+                </Panel>
+            </Border>
+
+            <!-- ==== имя, отсчёт выделения, кнопки ==== -->
+            <Border Grid.Row="3"
+                    Background="{DynamicResource NocturneSurfaceBrush}"
+                    BorderBrush="{DynamicResource NocturneDividerBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="11.2,8.4">
+                <StackPanel Spacing="5.6">
+                    <Grid ColumnDefinitions="88,220,*">
+                        <TextBlock Grid.Column="0"
+                                   Classes="label"
+                                   Margin="0,0,8.4,0"
+                                   Text="{Binding NameLabel}" />
+                        <!-- Height + Padding + VerticalContentAlignment идут вместе: у поля с
+                             заданной высотой вертикальный отступ темы (11.2) срезает хвосты
+                             «р», «у», «д» ровно по базовой линии. Ловушка описана у темы. -->
+                        <TextBox Grid.Column="1"
+                                 x:Name="NameBox"
+                                 Height="26"
+                                 Padding="8,0"
+                                 VerticalContentAlignment="Center"
+                                 FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                 Watermark="{x:Static res:Strings.Dialog_Region_NameWatermark}"
+                                 TextChanged="OnNameChanged" />
+                        <TextBlock Grid.Column="2"
+                                   x:Name="PathText"
+                                   Classes="hint"
+                                   Margin="8.4,0,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Grid>
+
+                    <TextBlock x:Name="MeasureText" Classes="hint" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ProblemText" Classes="problem" />
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0"
+                                   Classes="hint"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Text="{x:Static res:Strings.Dialog_Region_ViewHint}" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5.6">
+                            <Button x:Name="CancelButton"
+                                    Content="{x:Static res:Strings.Dialog_Region_Cancel}"
+                                    IsCancel="True"
+                                    Click="OnCancelClicked" />
+                            <Button x:Name="AcceptButton"
+                                    Classes="accent"
+                                    Content="{x:Static res:Strings.Dialog_Region_Accept}"
+                                    IsDefault="True"
+                                    Click="OnAcceptClicked" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
