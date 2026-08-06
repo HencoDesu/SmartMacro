@@ -768,6 +768,20 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
     /// </summary>
     public ObservableCollection<SubmacroChoiceViewModel> SubmacroChoices { get; } = [];
 
+    /// <summary>
+    /// Имена переменных-ТОЧЕК, уже встречающихся в макросе: <c>cursor</c> и всё, что пишут
+    /// <c>FoundPointVar</c>. Подсказка для полей, которые точку пишут или читают.
+    /// </summary>
+    public ObservableCollection<string> PointVariableChoices { get; } = [];
+
+    /// <summary>
+    /// То же для СТРОК: что пишет «Сопоставить с набором» плюс имена, которые в макросе только
+    /// читают подстановкой <c>{var}</c> и нигде не пишут. Вторые здесь не по недосмотру — это как
+    /// раз тот случай, ради которого список и нужен: тег читается в «Добавить тег», а ноду,
+    /// которая его запишет, только предстоит завести.
+    /// </summary>
+    public ObservableCollection<string> TextVariableChoices { get; } = [];
+
     /// <summary>С чего начинается исполнение. Должна указывать на одну из <see cref="Nodes"/>.</summary>
     public Guid StartNodeId
     {
@@ -3590,6 +3604,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             }
         }
 
+        RebuildVariableChoices();
         OnPropertyChanged(nameof(HasVariables));
         OnPropertyChanged(nameof(VariableCountText));
         SyncVariableValues();
@@ -3599,6 +3614,70 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         HighlightVariable(hovered is null
             ? null
             : Variables.FirstOrDefault(row => string.Equals(row.RawName, hovered, StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// Пересобирает подсказки для полей с именем переменной. Списка два, потому что слоты разного
+    /// вида: точка и строка. Список, предлагающий строку в поле точки, помогает собрать макрос,
+    /// который оборвётся на прогоне, — см. <see cref="IVariableNamingRow"/>.
+    ///
+    /// <b>Когда на канве ФУНКЦИЯ, к её именам добавляются родительские.</b> Под-прогон получает
+    /// КОПИЮ переменных родителя, так что читать их внутри функции законно, и не предложить их
+    /// значило бы заставить набирать руками ровно то, что и так работает. Обратное — запись в
+    /// родительское имя изнутри функции — наружу не вернётся; отдельного запрета здесь нет,
+    /// потому что валидатор уже предупреждает об этом на ноде вызова (F4).
+    /// </summary>
+    private void RebuildVariableChoices()
+    {
+        var points = new List<string>();
+        var texts = new List<string>();
+
+        if (HasOpenMacro)
+        {
+            Collect(BuildGraph());
+
+            // Родитель — только когда открыта функция: у самого верхнего графа BuildParentGraph
+            // вернул бы его же, и каждое имя попало бы в список дважды.
+            if (_openSubmacroId is not null)
+            {
+                Collect(BuildParentGraph());
+            }
+        }
+
+        ReplaceNames(PointVariableChoices, points);
+        ReplaceNames(TextVariableChoices, texts);
+        return;
+
+        void Collect(MacroGraph graph)
+        {
+            foreach (var info in MacroVariableAnalysis.Analyze(graph))
+            {
+                // Unknown — это имя, которое в макросе только подставляют в строку. Такое место
+                // строке и подобает; в поле точки оно было бы подсказкой в никуда.
+                var bucket = info.Kind == VariableKind.Point ? points : texts;
+                if (!bucket.Contains(info.Name, StringComparer.Ordinal))
+                {
+                    bucket.Add(info.Name);
+                }
+            }
+        }
+
+        static void ReplaceNames(ObservableCollection<string> target, List<string> source)
+        {
+            // Список общий и живёт столько же, сколько редактор: пересоздать его нельзя — поля
+            // держат ссылку. Поэтому правим на месте и молчим, когда содержимое не изменилось,
+            // иначе каждое нажатие клавиши закрывало бы раскрытую подсказку.
+            if (target.SequenceEqual(source, StringComparer.Ordinal))
+            {
+                return;
+            }
+
+            target.Clear();
+            foreach (var name in source)
+            {
+                target.Add(name);
+            }
+        }
     }
 
     private void SyncVariableValues()
@@ -3984,6 +4063,16 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
             call.SubmacroChoices = SubmacroChoices;
         }
 
+        // Тот же общий экземпляр: список пополняется в RebuildVariables, и подсказка доезжает
+        // до всех полей сразу. По виду, потому что точка и строка — разные слоты; см.
+        // IVariableNamingRow.
+        if (row is IVariableNamingRow naming)
+        {
+            naming.VariableChoices = naming.VariableSlotKind == VariableKind.Point
+                ? PointVariableChoices
+                : TextVariableChoices;
+        }
+
         // Тот же приём с общим экземпляром, что и у списков выбора: каталог один, и каждый бейдж
         // на canvas пересчитывается, когда окно появляется или получает тег.
         if (row.Target is { } target)
@@ -4041,6 +4130,15 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
                 RebuildVariables();
                 SyncTemplateUsage();
                 break;
+            // Имена переменных перечислены ЯВНО, и это не избыточность. Summary у Find, Wait и
+            // «Сопоставить с набором» их не содержит (там шаблон, область и порог), так что до
+            // этой правки набранное имя не появлялось ни в панели переменных, ни в подсказках
+            // соседних полей — до первой посторонней правки графа. У Клика PointVar в Summary
+            // входит и доехал бы сам, но полагаться на это значит поставить обновление списка в
+            // зависимость от того, что кто-то напишет в однострочной сводке.
+            case nameof(FindElementNodeRowViewModel.FoundPointVar):
+            case nameof(MatchTemplateSetNodeRowViewModel.ResultVar):
+            case nameof(ClickNodeRowViewModel.PointVar):
             case nameof(NodeRowViewModel.Summary):
                 // Набранный в пути к иконке {tag} добавляет читателя — панель обязана показать
                 // его ещё до того, как макрос хоть раз запускали. То же и с именем шаблона:

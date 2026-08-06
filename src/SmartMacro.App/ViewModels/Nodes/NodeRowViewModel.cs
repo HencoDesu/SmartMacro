@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using SmartMacro.App.Mvvm;
 using SmartMacro.App.ViewModels.Canvas;
+using SmartMacro.Macros.Analysis;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
 using SmartMacro.Resources;
@@ -292,6 +293,33 @@ internal static class NodeInput
         value = number;
         return true;
     }
+}
+
+/// <summary>
+/// Строка ноды, у которой есть поле с ИМЕНЕМ переменной. Редактор раздаёт таким строкам общий
+/// список подсказок — тем же приёмом, что <c>NodeChoices</c> исходам и каталог окон бейджам:
+/// экземпляр один, и обновление списка доезжает до всех полей разом.
+///
+/// <b>Список фильтруется по виду, и это не украшение.</b> <c>FoundPointVar</c> и
+/// <c>ClickNode.PointVar</c> держат ТОЧКУ, <c>ResultVar</c> — СТРОКУ. Список, предлагающий
+/// строку в поле точки, не бесполезен, а вреден: он помогает собрать макрос, который оборвётся
+/// на прогоне, и делает это с видом подсказки.
+/// </summary>
+public interface IVariableNamingRow
+{
+    /// <summary>Что это поле держит — по нему редактор выбирает, какой из двух списков отдать.</summary>
+    VariableKind VariableSlotKind { get; }
+
+    /// <summary>Имена, уже встречающиеся в макросе. Набор нового заводит новую переменную.</summary>
+    IReadOnlyList<string> VariableChoices { get; set; }
+
+    /// <summary>
+    /// Кладёт выбранное имя в СВОЁ поле. Нужно потому, что кнопка со списком одна на все четыре
+    /// поля (общий шаблон), а поля называются по-разному: <c>FoundPointVar</c>, <c>ResultVar</c>,
+    /// <c>PointVar</c>. Свести их к одному свойству-псевдониму значило бы завести второй источник
+    /// уведомлений об одном значении — классический способ получить рассинхрон.
+    /// </summary>
+    void ApplyVariableName(string name);
 }
 
 /// <summary>

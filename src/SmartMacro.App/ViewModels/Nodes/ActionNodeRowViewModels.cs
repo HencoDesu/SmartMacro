@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Diagnostics.CodeAnalysis;
 using System.Collections.ObjectModel;
+using SmartMacro.Macros.Analysis;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
 using SmartMacro.Resources;
@@ -80,7 +81,7 @@ public sealed class KeyPressNodeRowViewModel : ActionNodeRowViewModel
 /// оба поданы переключателем, а не двумя независимо заполняемыми полями, — отсюда невозможно
 /// оставить заполненными оба или пустыми оба.
 /// </summary>
-public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
+public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel, IVariableNamingRow
 {
     private string _xText;
     private string _yText;
@@ -145,6 +146,15 @@ public sealed class ClickNodeRowViewModel : ActionNodeRowViewModel
         get => _doubleClick;
         set => SetField(ref _doubleClick, value);
     }
+
+    /// <inheritdoc cref="IVariableNamingRow.VariableSlotKind" />
+    public VariableKind VariableSlotKind => VariableKind.Point;
+
+    /// <inheritdoc cref="IVariableNamingRow.VariableChoices" />
+    public IReadOnlyList<string> VariableChoices { get; set; } = [];
+
+    /// <inheritdoc cref="IVariableNamingRow.ApplyVariableName" />
+    public void ApplyVariableName(string name) => PointVar = name;
 
     /// <summary>
     /// Кладёт точку, выбранную на снимке окна, в поля X и Y.

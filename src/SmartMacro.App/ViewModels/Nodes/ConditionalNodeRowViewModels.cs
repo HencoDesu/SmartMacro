@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Diagnostics.CodeAnalysis;
 using SmartMacro.App.Services;
+using SmartMacro.Macros.Analysis;
 using SmartMacro.Macros.Model;
 using SmartMacro.Native;
 using SmartMacro.Resources;
@@ -137,13 +138,14 @@ public abstract class ConditionalNodeRowViewModel : NodeRowViewModel
 }
 
 /// <summary>Редактор <see cref="FindElementNode"/>: поиск шаблона в один заход.</summary>
-public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
+public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel, IVariableNamingRow
 {
     private string _template;
     private string _foundPointVar;
 
     public FindElementNodeRowViewModel(FindElementNode node)
-        : base(node, node.MatchThreshold, Strings.Node_Edge_Found, node.Found, Strings.Node_Edge_NotFound, node.NotFound)
+        : base(node, node.MatchThreshold, Strings.Node_Edge_Found, node.Found, Strings.Node_Edge_NotFound,
+            node.NotFound)
     {
         _template = node.Template;
         _foundPointVar = node.FoundPointVar ?? string.Empty;
@@ -186,6 +188,15 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
         set => SetField(ref _foundPointVar, value ?? string.Empty);
     }
 
+    /// <inheritdoc cref="IVariableNamingRow.VariableSlotKind" />
+    public VariableKind VariableSlotKind => VariableKind.Point;
+
+    /// <inheritdoc cref="IVariableNamingRow.VariableChoices" />
+    public IReadOnlyList<string> VariableChoices { get; set; } = [];
+
+    /// <inheritdoc cref="IVariableNamingRow.ApplyVariableName" />
+    public void ApplyVariableName(string name) => FoundPointVar = name;
+
     public override MacroNode ToNode() => new FindElementNode
     {
         Id = Id,
@@ -220,7 +231,7 @@ public sealed class FindElementNodeRowViewModel : ConditionalNodeRowViewModel
 }
 
 /// <summary>Редактор <see cref="WaitForElementNode"/>: опрос, пока шаблон не появится или не кончится отведённое время.</summary>
-public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
+public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel, IVariableNamingRow
 {
     private string _template;
     private string _timeoutMsText;
@@ -282,6 +293,15 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
         set => SetField(ref _foundPointVar, value ?? string.Empty);
     }
 
+    /// <inheritdoc cref="IVariableNamingRow.VariableSlotKind" />
+    public VariableKind VariableSlotKind => VariableKind.Point;
+
+    /// <inheritdoc cref="IVariableNamingRow.VariableChoices" />
+    public IReadOnlyList<string> VariableChoices { get; set; } = [];
+
+    /// <inheritdoc cref="IVariableNamingRow.ApplyVariableName" />
+    public void ApplyVariableName(string name) => FoundPointVar = name;
+
     public override MacroNode ToNode() => new WaitForElementNode
     {
         Id = Id,
@@ -331,13 +351,14 @@ public sealed class WaitForElementNodeRowViewModel : ConditionalNodeRowViewModel
 /// Галочки «вешать тег на окно» здесь больше нет: нода отдаёт ЗНАЧЕНИЕ, а разметку окна делает
 /// отдельная нода «Добавить тег» с подстановкой <c>{переменной}</c>.
 /// </summary>
-public sealed class MatchTemplateSetNodeRowViewModel : ConditionalNodeRowViewModel
+public sealed class MatchTemplateSetNodeRowViewModel : ConditionalNodeRowViewModel, IVariableNamingRow
 {
     private string _templateSet;
     private string _resultVar;
 
     public MatchTemplateSetNodeRowViewModel(MatchTemplateSetNode node)
-        : base(node, node.MatchThreshold, Strings.Node_Edge_Matched, node.Matched, Strings.Node_Edge_NotMatched, node.NotMatched)
+        : base(node, node.MatchThreshold, Strings.Node_Edge_Matched, node.Matched, Strings.Node_Edge_NotMatched,
+            node.NotMatched)
     {
         _templateSet = node.TemplateSet;
         _resultVar = node.ResultVar;
@@ -349,8 +370,8 @@ public sealed class MatchTemplateSetNodeRowViewModel : ConditionalNodeRowViewMod
 
     public override string Summary =>
         Join(_templateSet.Length > 0
-                ? string.Format(CultureInfo.CurrentCulture, Strings.Node_Summary_TemplateSet, _templateSet)
-                : null, DescribeRegion(Region), DescribeThreshold);
+            ? string.Format(CultureInfo.CurrentCulture, Strings.Node_Summary_TemplateSet, _templateSet)
+            : null, DescribeRegion(Region), DescribeThreshold);
 
     /// <summary>Имя набора шаблонов; основа имени каждого файла в наборе — кандидат в теги.</summary>
     [AllowNull]
@@ -398,6 +419,15 @@ public sealed class MatchTemplateSetNodeRowViewModel : ConditionalNodeRowViewMod
         get => _resultVar;
         set => SetField(ref _resultVar, value ?? string.Empty);
     }
+
+    /// <inheritdoc cref="IVariableNamingRow.VariableSlotKind" />
+    public VariableKind VariableSlotKind => VariableKind.Text;
+
+    /// <inheritdoc cref="IVariableNamingRow.VariableChoices" />
+    public IReadOnlyList<string> VariableChoices { get; set; } = [];
+
+    /// <inheritdoc cref="IVariableNamingRow.ApplyVariableName" />
+    public void ApplyVariableName(string name) => ResultVar = name;
 
     public override MacroNode ToNode() => new MatchTemplateSetNode
     {

@@ -2,8 +2,10 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
@@ -547,6 +549,23 @@ public partial class MacrosView : UserControl
         }
 
         Viewport.ContextFlyout?.Hide();
+    }
+
+    /// <summary>
+    /// Кладёт выбранное из списка имя переменной в поле той ноды, у которой список открыли.
+    ///
+    /// Строку несёт <c>Content</c>, а строку-ноду — <c>Tag</c>: у элементов списка собственный
+    /// <c>DataContext</c> (само имя), поэтому до строки ноды приходится дотягиваться привязкой к
+    /// <c>DataContext</c> родительского <c>ItemsControl</c>. Какое именно поле заполнять, знает
+    /// сама строка — см. <see cref="IVariableNamingRow.ApplyVariableName"/>.
+    /// </summary>
+    private void OnPickVariableName(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: IVariableNamingRow row, Content: string name } button)
+        {
+            row.ApplyVariableName(name);
+            button.FindLogicalAncestorOfType<Popup>()?.Close();
+        }
     }
 
     private void OnDeleteNodeClicked(object? sender, RoutedEventArgs e)

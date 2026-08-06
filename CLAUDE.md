@@ -16,7 +16,7 @@ The refactoring plan that got us here was **deleted** once it was done — not o
 
 ⚠️ **§13.1 is gone, and that is the point.** It was the `.hsm` decision written up as something not yet built, and it survived three waves as a to-do. With F4 the format is finished, so its contents moved into the sections that describe what exists — the bundle layout and the library in §5.7, templates inside the macro in §8, submacros in §5.1, the panel's authorship in §5.7 and §6.1 — and the reasoning became rows in §14. Do not recreate a "planned format" section.
 
-Gate: `dotnet run --project tests/SmartMacro.Tests` — **944 tests**, and they are expected green before anything is committed.
+Gate: `dotnet run --project tests/SmartMacro.Tests` — **950 tests**, and they are expected green before anything is committed.
 
 ### The «Окна» header has no actions (issue #25, closing #6)
 
@@ -107,6 +107,16 @@ Stage 5 (translating comments to Russian) is deliberately last.
 - **A miss writes NOTHING** — not an empty string, not the previous value. That is load-bearing for `MacroVariableAnalysis`: the `NotMatched` branch leading to a `{tag}` read must abort on an undefined variable rather than hang an empty-named tag on the window or resolve `Assets/ClassIcons/.png`.
 - ⚠️ **Every pre-rename bundle stops parsing at once, and the refusal had to be made honest.** An unknown `$type` reaches `MacroBundleReader` as the same `JsonException` as a truncated brace, so it used to be reported as **Malformed** with the framework's English string attached. New fault `MacroBundleFault.UnknownType` and a Russian verdict naming the discriminator: «В "nodes.json" есть действие типа "recognizeTag", которого эта сборка не знает». It is deliberately neither «повреждён» (the file is intact) nor «сделан другой версией формата» (that is the *version field's* verdict, and faking it is the exact lie the field exists to prevent). The known-type catalogue comes from the model's own `JsonDerivedType` attributes — no second list — and the extra parse lives **only on the failure path**.
 - ⚠️ **The full label collides in the inspector title**, exactly as «Запустить под-макрос» did in F4, and it was found the same way — by eye on the live panel. Hence two strings: `Node_Type_MatchTemplateSetMenu` (full, for «+ Нода») and `Node_Type_MatchTemplateSet` (short, for the box header and the inspector title).
+
+### Variable-name fields offer what the macro already has
+
+The four fields that hold a variable NAME — `FoundPointVar` on Find and Wait, `ResultVar` on the match node, `PointVar` on Click — carry a ▾ next to them listing the names already in the macro. Typing still creates a new one: there are no declarations, a variable exists because a node named it.
+
+- **Two lists, split BY KIND, and that is the whole point.** `MacroVariableAnalysis` already labels each name Point / Text / Unknown, so `IVariableNamingRow.VariableSlotKind` picks which list a row gets. A list offering a string in a point slot is not merely useless — it *helps* build a macro that aborts mid-run, wearing the costume of a hint. Unknown (a name only interpolated into a string, never written) goes with Text: that is exactly the case the list is most useful for — the tag is read in `AddTag`, and the node that will write it is what you are adding.
+- **Inside a submacro the PARENT's names are offered too**, because a sub-run gets a *copy* of the parent's variables and reading them there is legitimate. Writing to one is not (nothing comes back), and there is deliberately no second guard here: `ValidateBundle` already warns about exactly that on the call node (F4).
+- **Typing a name rebuilds the lists at once**, and the property names are listed explicitly in `OnNodeRowChanged` rather than riding on `Summary`. Find/Wait/Match do not put the variable in their `Summary` at all, so before this the freshly typed name reached neither the variables panel nor the neighbouring fields until some unrelated edit — a pre-existing gap the feature would have inherited.
+- ⚠️ **This was an `AutoCompleteBox` first, and it must not become one again.** Picking an item from its dropdown **killed the panel**: `ArgumentOutOfRangeException` inside `AutoCompleteBox.CloseDropDown` → `SelectionModel.SelectedIndex`. Two more turned up before that: the dropdown does not open on focus (it reacts to *text* changes, so a field with a name already in it stayed silent — the "I forget what I called it" case), and its popup rendered in Fluent grey. All three were invisible to build and tests and found by running it. What is there now is `TextBox` + `Button.ghost` + `Flyout` — primitives that already have a Nocturne theme and already work in this panel (same shape as the «+ Нода» menu).
+- **No filtering by what is typed.** With one, a field reading «кнопка» would hide «cursor» until cleared — and swapping one variable for another is precisely why the list exists. A macro has a handful of names; there is nothing to hide.
 
 ### A foreign bundle is not our bundle (case, and unpacking limits)
 

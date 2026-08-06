@@ -71,6 +71,22 @@ public sealed class NotNullToBoolConverter : IValueConverter
 // и любая нода; подменять на лету стало нечего.
 
 /// <summary>
+/// Истина, когда счётчик больше нуля. Нужен там, где видимость зависит от наполненности
+/// коллекции: <c>ObservableCollection</c> уведомляет о своём <c>Count</c>, так что привязка к
+/// нему живая, а вот приводить число к булеву Avalonia сама не обязана.
+/// </summary>
+public sealed class CountToBoolConverter : IValueConverter
+{
+    public static readonly CountToBoolConverter Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is int count && count > 0;
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
 /// Выбирает один из двух токенов Nocturne по булеву значению; какие именно — задаёт параметр
 /// конвертера в виде <c>"TrueKey|FalseKey"</c>, например
 /// <c>"NocturneAccent400Brush|NocturneTextFaintBrush"</c>.

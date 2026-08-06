@@ -61,6 +61,38 @@
             <Setter Property="Padding" Value="2.8,2.8" />
         </Style>
 
+        <!-- Поле с ИМЕНЕМ переменной: подсказывает уже имеющиеся, но принимает любое — набор
+             нового имени заводит новую переменную, объявлений в модели нет.
+
+             ⚠️ IsTextCompletionEnabled ВЫКЛЮЧЕНО намеренно. Дописывание внутри поля выделяет
+             хвост ближайшего совпадения, и завести «tag2» там, где уже есть «tag», стало бы
+             борьбой с полем: каждая набранная буква возвращала бы чужое имя. Поле обязано
+             принимать имя, которое является началом существующего, — иначе оно перестаёт быть
+             полем ввода и становится списком.
+
+             ⚠️ MinimumPrefixLength=0 САМ ПО СЕБЕ списка по фокусу не показывает — проверено
+             глазами: контрол раскрывается на смену ТЕКСТА, а не на получение фокуса, так что
+             поле с уже набранным именем молчало, и «не помнить имя» не работало ровно там, где
+             было нужно. Отсюда OnVariableFieldFocused в code-behind; ноль здесь оставлен, чтобы
+             очищенное поле показывало весь список, а не ждало первой буквы.
+
+             Background прозрачный: внутри контрола сидит обычный TextBox с темой Nocturne, и
+             своя заливка AutoCompleteBox проступала бы под ним темнее соседних полей. -->
+        <!-- Кнопка «▾» рядом с полем имени переменной. Ровно та же высота, что у поля, и никакой
+             рамки: она читается как часть поля, а не как отдельное действие. -->
+        <Style Selector="Button.varpick">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="3,0,0,0" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <!-- Без этого содержимое липнет к верхнему краю растянутой кнопки, и «▾» читается
+                 как случайная точка над полем, а не как его продолжение. -->
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+
         <!-- ========================= строки библиотеки ========================= -->
         <Style Selector="Border.libRow">
             <Setter Property="Height" Value="28" />
@@ -808,6 +840,52 @@
                     ToolTip.Tip="{x:Static res:Strings.Editor_Point_PickTip}"
                     Click="OnPickPointClicked" />
         </DataTemplate>
+
+        <!--
+          Список имён переменных, уже встречающихся в макросе. Один шаблон на все четыре поля:
+          у Find и Wait это «точка →», у «Набора шаблонов» — «в переменную», у Клика — «точка из».
+
+          ⚠️ ЗДЕСЬ БЫЛ AutoCompleteBox, и он отсюда УДАЛЁН — не по вкусу. Выбор элемента из его
+          списка РОНЯЛ ПАНЕЛЬ: ArgumentOutOfRangeException внутри AutoCompleteBox.CloseDropDown →
+          SelectionModel.SelectedIndex. Ни сборка, ни тесты этого не видят; нашлось запуском, на
+          первом же клике по имени. Плюс до того обнаружились ещё два: список не раскрывался по
+          фокусу (контрол реагирует на смену ТЕКСТА), а его подложка приезжала серой мимо темы.
+          Здесь всё собрано из примитивов, у которых своя тема Nocturne и которые в этой панели
+          давно работают, — TextBox, Button.ghost и Flyout, тот же, что у меню «+ Нода».
+
+          Фильтра по набранному тексту нет намеренно: список показывает ВСЕ имена своего вида.
+          Их в макросе единицы, а прятать «cursor» только потому, что в поле уже написано
+          «кнопка», значило бы сломать ровно тот случай, ради которого список и заведён, — смену
+          одной переменной на другую.
+        -->
+        <DataTemplate x:Key="VariablePickButton"
+                      DataType="{x:Type nodes:IVariableNamingRow}"
+                      x:DataType="nodes:IVariableNamingRow">
+            <Button Classes="ghost varpick"
+                    Content="▾"
+                    IsVisible="{Binding VariableChoices.Count, Converter={x:Static conv:CountToBoolConverter.Instance}}"
+                    ToolTip.Tip="{x:Static res:Strings.Node_Field_VariablePickTip}">
+                <Button.Flyout>
+                    <Flyout Placement="BottomEdgeAlignedRight">
+                        <ItemsControl ItemsSource="{Binding VariableChoices}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Button Classes="ghost"
+                                            Content="{Binding}"
+                                            FontFamily="{DynamicResource NocturneFontFamilyMono}"
+                                            Padding="{DynamicResource NocturneInsetField}"
+                                            MinWidth="140"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Left"
+                                            Tag="{Binding $parent[ItemsControl].DataContext}"
+                                            Click="OnPickVariableName" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+        </DataTemplate>
     </UserControl.Resources>
 
     <UserControl.DataTemplates>
@@ -875,7 +953,10 @@
                 <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PointPickButton}" />
                 <Grid ColumnDefinitions="64,*" IsVisible="{Binding UseVariable}">
                     <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_PointVar}" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="cursor" Text="{Binding PointVar, Mode=TwoWay}" />
+                    <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Classes="mono" Watermark="cursor" Text="{Binding PointVar, Mode=TwoWay}" />
+                        <ContentControl Grid.Column="1" Content="{Binding}" ContentTemplate="{StaticResource VariablePickButton}" />
+                    </Grid>
                 </Grid>
                 <StackPanel Orientation="Horizontal" Spacing="11.2">
                     <CheckBox Content="{x:Static res:Strings.Node_Click_UseVariable}" IsChecked="{Binding UseVariable, Mode=TwoWay}" />
@@ -951,7 +1032,12 @@
                 <TextBlock Classes="hint" Text="{x:Static res:Strings.Node_Threshold_Hint}" Margin="64,0,0,0" />
                 <Grid ColumnDefinitions="64,*">
                     <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_FoundPointVar}" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_FoundPointVar_Watermark}" Text="{Binding FoundPointVar, Mode=TwoWay}" />
+                    <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Classes="mono"
+                                 Watermark="{x:Static res:Strings.Node_FoundPointVar_Watermark}"
+                                 Text="{Binding FoundPointVar, Mode=TwoWay}" />
+                        <ContentControl Grid.Column="1" Content="{Binding}" ContentTemplate="{StaticResource VariablePickButton}" />
+                    </Grid>
                 </Grid>
             </StackPanel>
         </DataTemplate>
@@ -978,7 +1064,12 @@
                 <TextBlock Classes="hint" Text="{x:Static res:Strings.Node_Threshold_Hint}" Margin="64,0,0,0" />
                 <Grid ColumnDefinitions="64,*">
                     <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_FoundPointVar}" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="{x:Static res:Strings.Node_FoundPointVar_Watermark}" Text="{Binding FoundPointVar, Mode=TwoWay}" />
+                    <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Classes="mono"
+                                 Watermark="{x:Static res:Strings.Node_FoundPointVar_Watermark}"
+                                 Text="{Binding FoundPointVar, Mode=TwoWay}" />
+                        <ContentControl Grid.Column="1" Content="{Binding}" ContentTemplate="{StaticResource VariablePickButton}" />
+                    </Grid>
                 </Grid>
             </StackPanel>
         </DataTemplate>
@@ -999,7 +1090,10 @@
                 <TextBlock Classes="hint" Text="{x:Static res:Strings.Node_Threshold_Hint}" Margin="64,0,0,0" />
                 <Grid ColumnDefinitions="64,*">
                     <TextBlock Grid.Column="0" Classes="label" Text="{x:Static res:Strings.Node_Field_ResultVar}" />
-                    <TextBox Grid.Column="1" Classes="mono" Watermark="tag" Text="{Binding ResultVar, Mode=TwoWay}" />
+                    <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Classes="mono" Watermark="tag" Text="{Binding ResultVar, Mode=TwoWay}" />
+                        <ContentControl Grid.Column="1" Content="{Binding}" ContentTemplate="{StaticResource VariablePickButton}" />
+                    </Grid>
                 </Grid>
                 <!-- Галочки «вешать тег на окно» здесь больше нет: нода отдаёт значение, а окно
                      размечает отдельная нода «Добавить тег» с подстановкой {переменной}. Подсказка
