@@ -16,9 +16,25 @@ namespace SmartMacro.Daemon;
 /// ресурсы, за которые демон конкурирует, — <c>RegisterHotKey</c>, хук WH_MOUSE_LL, сами
 /// клиенты игры — общемашинные, и экземпляр с повышенными правами, запущенный из другой
 /// сессии (запланированная задача, второй вход по RDP, «запуск от имени другого
-/// пользователя»), проскользнул бы мимо защиты уровня сессии и подрался с первым. Создание
-/// <c>Global\</c>-имени не требует особых привилегий, а демон и так работает с повышенными
-/// правами.
+/// пользователя»), проскользнул бы мимо защиты уровня сессии и подрался с первым.
+/// </para>
+/// <para>
+/// ⚠️ <b>Отказ в доступе читается как «занято», а не как сбой.</b> Имя общемашинное и по
+/// замыслу переживает границу сеанса и пользователя, значит владельцем может оказаться
+/// процесс, чей DACL по умолчанию нас не называет, — и тогда мы не «свободны», а «не имеем
+/// права спросить». Измерено (мьютекс с запрещающей записью в DACL): и
+/// <c>new Mutex(false, name)</c>, и <c>Mutex.TryOpenExisting</c> кидают
+/// <see cref="UnauthorizedAccessException"/>; без перехвата это было бы падение вместо
+/// честного «уже запущено».
+/// </para>
+/// <para>
+/// ⚠️ И сразу — чего здесь НЕТ, чтобы страх не выводили заново. С манифестом
+/// <c>asInvoker</c> один и тот же демон бывает и повышенным, и обычным, и напрашивается
+/// вывод, что обычный не откроет мьютекс повышенного. <b>Проверено на живом повышенном
+/// демоне из обычного процесса того же пользователя: открывается, и <c>WaitOne(0)</c>
+/// честно отвечает «занято».</b> Токен, отфильтрованный UAC, и полный токен несут один и тот
+/// же SID пользователя, а DACL по умолчанию его называет. Перехват выше — про ЧУЖОГО
+/// пользователя, а не про соседний уровень целостности.
 /// </para>
 /// <para>
 /// Public, а не internal, чтобы тесты демона могли гонять семантику захвата и освобождения на
@@ -30,10 +46,13 @@ public sealed class SingleInstanceGuard : IDisposable
     /// <summary>Имя мьютекса, которым демон пользуется на самом деле.</summary>
     public const string DaemonMutexName = @"Global\SmartMacro.Daemon";
 
+    private readonly string _name;
+
     private Mutex? _mutex;
 
-    private SingleInstanceGuard(Mutex mutex)
+    private SingleInstanceGuard(string name, Mutex mutex)
     {
+        _name = name;
         _mutex = mutex;
     }
 
@@ -41,14 +60,25 @@ public sealed class SingleInstanceGuard : IDisposable
     /// Пытается стать единственным экземпляром, обозначенным именем <paramref name="mutexName"/>.
     /// </summary>
     /// <returns>
-    /// Захваченный замок, если этот процесс выиграл гонку (освободить — через Dispose), либо
-    /// <c>null</c>, если замком уже владеет другой процесс.
+    /// Захваченный замок, если этот процесс выиграл гонку (освободить — через
+    /// <see cref="Release"/> или <see cref="Dispose"/>), либо <c>null</c>, если замком уже
+    /// владеет другой процесс.
     /// </returns>
     public static SingleInstanceGuard? TryAcquire(string mutexName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(mutexName);
 
-        var mutex = new Mutex(initiallyOwned: false, mutexName);
+        Mutex mutex;
+        try
+        {
+            mutex = new Mutex(initiallyOwned: false, mutexName);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Объект есть, но он не наш — см. замечание у класса. Это «занято».
+            return null;
+        }
+
         bool acquired;
         try
         {
@@ -65,11 +95,81 @@ public sealed class SingleInstanceGuard : IDisposable
 
         if (acquired)
         {
-            return new SingleInstanceGuard(mutex);
+            return new SingleInstanceGuard(mutexName, mutex);
         }
 
         mutex.Dispose();
         return null;
+    }
+
+    /// <summary>
+    /// Держит ли имя кто-нибудь прямо сейчас.
+    ///
+    /// <b>Вопрос не «свободен ли замок», а «существует ли объект»</b>: имя живёт ровно столько,
+    /// сколько на него открыт хотя бы один дескриптор. Отсюда и единственный вызывающий —
+    /// <c>ElevationRelaunch</c>, которому надо дождаться, что повышенная копия действительно
+    /// поднялась и забрала мьютекс, ПРЕЖДЕ чем исходный процесс выйдет. Опросом, а не
+    /// повторным <see cref="TryAcquire"/>: тот отобрал бы имя у копии, и копия честно решила
+    /// бы, что демон уже запущен, и вышла.
+    /// </summary>
+    public static bool IsTaken(string mutexName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(mutexName);
+
+        try
+        {
+            if (!Mutex.TryOpenExisting(mutexName, out var mutex))
+            {
+                return false;
+            }
+
+            // Дескриптор нужен ровно на время ответа: держать его дальше значило бы своими
+            // руками продлевать жизнь имени и отвечать «занято» на самого себя.
+            mutex.Dispose();
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Существует и недоступен — то же «занято», см. замечание у класса.
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Отпускает замок, не дожидаясь выхода процесса. Идемпотентно.
+    ///
+    /// Заведено ради перезапуска с повышением: повышенная копия попытается взять то же имя,
+    /// пока мы ещё живы, и без явного отпускания увидела бы «уже запущено» и вышла — оставив
+    /// пользователя вообще без демона.
+    /// </summary>
+    public void Release() => Dispose();
+
+    /// <summary>
+    /// Забирает замок обратно после <see cref="Release"/>. Идемпотентно: если замок и не
+    /// отпускали, отвечает <c>true</c>, ничего не трогая.
+    ///
+    /// Вторая половина того же перезапуска: копия не поднялась, работать дальше придётся нам, а
+    /// без замка рядом встал бы второй демон. <c>false</c> означает, что за эти миллисекунды имя
+    /// занял кто-то ещё, — и тогда единственных экземпляров два.
+    /// </summary>
+    public bool TryReacquire()
+    {
+        if (_mutex is not null)
+        {
+            return true;
+        }
+
+        var again = TryAcquire(_name);
+        if (again is null)
+        {
+            return false;
+        }
+
+        // Владение переносим, а не копируем: у второго объекта поле обнуляем, иначе его Dispose
+        // отпустил бы мьютекс, который к тому моменту снова наш.
+        _mutex = again._mutex;
+        again._mutex = null;
+        return true;
     }
 
     public void Dispose()

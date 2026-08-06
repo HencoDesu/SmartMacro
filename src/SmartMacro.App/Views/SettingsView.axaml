@@ -507,28 +507,18 @@
                                    Classes="hint"
                                    Text="{x:Static res:Strings.Settings_Startup_RunElevatedHint}" />
 
-                        <Border Margin="0,9,0,0"
-                                Background="{DynamicResource NocturneSurfaceRowMutedBrush}"
-                                BorderBrush="{DynamicResource NocturneDividerBrush}"
-                                BorderThickness="0,1,0,0"
-                                Padding="12,6">
-                            <Grid ColumnDefinitions="Auto,*">
-                                <TextBlock Grid.Column="0" Classes="eyebrow" Text="{x:Static res:Strings.Settings_Startup_MechanismHeader}" />
-                                <TextBlock Grid.Column="1"
-                                           Margin="9,0,0,0"
-                                           Text="{Binding StartupMechanismText}"
-                                           FontSize="{DynamicResource NocturneFontSizeSmall}"
-                                           Foreground="{DynamicResource NocturneAccent300Brush}"
-                                           TextWrapping="Wrap"
-                                           VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
+                        <!-- Строки «СПОСОБ» здесь больше нет. Она называла один из четырёх
+                             механизмов автозапуска, половина которых исчезла вместе с задачей в
+                             Планировщике, а оставшаяся половина — деталь Windows, а не решение
+                             пользователя: галочки и есть механизм.
 
-                        <!-- ДВА предупреждения, и оба обязательны. Без первого пользователь
+                             ДВА предупреждения, и оба обязательны. Без первого пользователь
                              снимет галочку, увидит чистую панель и решит, что применилось.
                              Без второго он неделю спустя будет искать, почему макросы перестали
-                             доходить до игры, — а причина в галочке, снятой неделю назад. -->
-                        <Border Background="{DynamicResource NocturneWarningSurfaceBrush}"
+                             доходить до игры, — а причина в галочке, снятой неделю назад; вторая
+                             же его фраза объясняет запрос UAC при каждом входе в систему. -->
+                        <Border Margin="0,9,0,0"
+                                Background="{DynamicResource NocturneWarningSurfaceBrush}"
                                 BorderBrush="{DynamicResource NocturneWarningBorderBrush}"
                                 BorderThickness="0,1,0,0"
                                 CornerRadius="0,0,8,8"
@@ -542,7 +532,7 @@
                                 <TextBlock FontSize="{DynamicResource NocturneFontSizeMicro}"
                                            Foreground="{DynamicResource NocturneTextMutedBrush}"
                                            TextWrapping="Wrap"
-                                           Text="{x:Static res:Strings.Settings_Startup_UipiNote}" />
+                                           Text="{x:Static res:Strings.Settings_Startup_ElevationNote}" />
                             </StackPanel>
                         </Border>
                     </StackPanel>

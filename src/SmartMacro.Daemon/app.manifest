@@ -2,17 +2,26 @@
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
   <assemblyIdentity version="1.0.0.0" name="SmartMacro.Daemon"/>
 
-  <!-- QUESTIONABLE: elevation needed only because PW clients are elevated (UIPI). Revisit per plan backlog. -->
   <!--
-    Игровые клиенты Perfect World запускаются elevated (через UAC).
-    UIPI блокирует PostMessage/SendInput и обрезает PrintWindow от менее привилегированных
-    процессов к более привилегированным. Поэтому демон сам должен подниматься на тот же
-    уровень integrity — exe помечен requireAdministrator, при запуске покажется UAC-диалог.
+    asInvoker — и это НЕ упрощение, а условие, без которого галочка «работать с правами
+    администратора» не имеет смысла: у процесса, помеченного requireAdministrator, проверять
+    наличие повышения нечего, он иначе просто не стартует.
+
+    Права по-прежнему нужны — UIPI блокирует SendMessage/PostMessage и обрезает PrintWindow от
+    менее привилегированного процесса к более привилегированному, а клиенты Perfect World
+    запускаются от администратора. Разница в том, КТО их запрашивает: не оболочка при каждом
+    запуске файла, а сам демон при старте и только когда об этом просит настройка
+    (Daemon/ElevationRelaunch). Снявший галочку получает демон без запроса UAC.
+
+    ⚠️ Манифест ПАНЕЛИ асимметричен и остаётся requireAdministrator. Она снимает кадры окон
+    игры через PrintWindow (сегодня — зрение, завтра — диалог выделения области), а из
+    непривилегированного процесса это молча возвращает чёрный кадр. Симметрия здесь была бы
+    красивой и неверной.
   -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>
