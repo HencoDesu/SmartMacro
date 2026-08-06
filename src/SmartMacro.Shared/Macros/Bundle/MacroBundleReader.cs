@@ -339,19 +339,32 @@ public static class MacroBundleReader
                 continue;
             }
 
+            string text;
             try
             {
-                found.Add(new MacroSubmacro(id, MacroGraphJson.Deserialize(ReadText(entry))));
-            }
-            catch (JsonException ex)
-            {
-                faults.Add(string.Format(
-                    CultureInfo.CurrentCulture, Strings.Bundle_Read_SubmacroMalformed, relativePath, ex.Message));
+                text = ReadText(entry);
             }
             catch (Exception ex) when (ex is IOException or InvalidDataException)
             {
                 faults.Add(string.Format(
                     CultureInfo.CurrentCulture, Strings.Bundle_Read_SubmacroUnreadable, relativePath, ex.Message));
+                continue;
+            }
+
+            try
+            {
+                found.Add(new MacroSubmacro(id, MacroGraphJson.Deserialize(text)));
+            }
+            catch (JsonException ex)
+            {
+                // Тот же разбор незнакомого $type, что и у графа верхнего уровня: под-макрос —
+                // обычный граф, и врать про него «повреждён» так же незачем.
+                faults.Add(UnknownTypeVerdict(text, MacroBundleFormat.SubmacroFolder + relativePath)
+                           ?? string.Format(
+                               CultureInfo.CurrentCulture,
+                               Strings.Bundle_Read_SubmacroMalformed,
+                               relativePath,
+                               ex.Message));
             }
         }
 
@@ -462,17 +475,12 @@ public static class MacroBundleReader
                 CultureInfo.CurrentCulture, Strings.Bundle_Read_GraphEntryMissing, MacroBundleFormat.GraphEntry));
         }
 
+        // Распаковка и разбор разнесены по двум try, потому что текст нужен ОБОИМ исходам: на
+        // отказе разбора по нему ищут незнакомый $type (см. UnknownTypeVerdict).
+        string text;
         try
         {
-            return (MacroGraphJson.Deserialize(ReadText(entry)), MacroBundleFault.None, null);
-        }
-        catch (JsonException ex)
-        {
-            return (null, MacroBundleFault.Malformed, string.Format(
-                CultureInfo.CurrentCulture,
-                Strings.Bundle_Read_GraphMalformed,
-                MacroBundleFormat.GraphEntry,
-                ex.Message));
+            text = ReadText(entry);
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException)
         {
@@ -482,7 +490,45 @@ public static class MacroBundleReader
                 MacroBundleFormat.GraphEntry,
                 ex.Message));
         }
+
+        try
+        {
+            return (MacroGraphJson.Deserialize(text), MacroBundleFault.None, null);
+        }
+        catch (JsonException ex)
+        {
+            return UnknownTypeVerdict(text, MacroBundleFormat.GraphEntry) is { } verdict
+                ? (null, MacroBundleFault.UnknownType, verdict)
+                : (null, MacroBundleFault.Malformed, string.Format(
+                    CultureInfo.CurrentCulture,
+                    Strings.Bundle_Read_GraphMalformed,
+                    MacroBundleFormat.GraphEntry,
+                    ex.Message));
+        }
     }
+
+    /// <summary>
+    /// Вердикт «в записи есть тип, которого эта сборка не знает» — или <c>null</c>, если беда
+    /// в чём-то другом.
+    ///
+    /// <b>Отдельный исход, а не оттенок «повреждён».</b> Незнакомый дискриминатор
+    /// <see cref="System.Text.Json"/> сообщает тем же <see cref="JsonException"/>, что и
+    /// оборванную скобку, и до этой развилки читатель объявлял такой бандл ПОВРЕЖДЁННЫМ, приложив
+    /// английскую строку каркаса («Read unrecognized type discriminator id 'recognizeTag'»). Файл
+    /// при этом целый, версия формата — своя, и «повреждён» отправляет чинить не то. Сказать
+    /// «сделан другой версией формата» тоже нельзя: это вердикт поля версии, и подменять его
+    /// догадкой значило бы соврать ровно тем способом, ради недопущения которого поле и заведено.
+    ///
+    /// Разбор здесь ВТОРОЙ и живёт только на пути отказа: успешное чтение за него не платит.
+    /// </summary>
+    private static string? UnknownTypeVerdict(string json, string entryName) =>
+        MacroGraphJson.TryFindUnknownType(json, out var discriminator, out var isTrigger)
+            ? string.Format(
+                CultureInfo.CurrentCulture,
+                isTrigger ? Strings.Bundle_Read_UnknownTriggerType : Strings.Bundle_Read_UnknownNodeType,
+                entryName,
+                discriminator)
+            : null;
 
     private static IReadOnlyList<string> ListFolder(ZipArchive archive, string folder)
     {

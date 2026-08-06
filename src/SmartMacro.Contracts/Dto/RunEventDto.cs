@@ -61,7 +61,7 @@ public enum RunEventKind
     /// о котором сообщается один раз в начале каждого обхода.
     ///
     /// <b>Почему не вычитывать значение из подробностей <see cref="NodeExited"/>.</b>
-    /// Подробности <c>RecognizeTag</c> выглядят как <c>"classes → Жрец"</c>: доставать оттуда
+    /// Подробности <c>MatchTemplateSet</c> выглядят как <c>"classes → Жрец"</c>: доставать оттуда
     /// значение означало бы, что панель разбирает свободную строку, формат которой — дело
     /// демона, и при этом она всё равно никогда не увидела бы <c>cursor</c>, о котором не
     /// сообщает ни одна нода. Частота тут не проблема — это несколько событий на обход, а не
@@ -92,10 +92,10 @@ public static class RunOutcomes
     /// <summary><c>WaitForElementNode</c> сдалась по таймауту.</summary>
     public const string Timeout = "timeout";
 
-    /// <summary><c>RecognizeTagNode</c> опознала тег.</summary>
+    /// <summary><c>MatchTemplateSetNode</c> нашла в наборе победителя.</summary>
     public const string Matched = "matched";
 
-    /// <summary><c>RecognizeTagNode</c> не опознала ничего.</summary>
+    /// <summary><c>MatchTemplateSetNode</c> не совпала ни с одним шаблоном набора.</summary>
     public const string NotMatched = "notMatched";
 
     /// <summary>Нода бросила исключение: плохая переменная, нет контекстного окна, неизвестный подмакрос.</summary>

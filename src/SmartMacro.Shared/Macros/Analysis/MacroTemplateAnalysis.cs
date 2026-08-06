@@ -11,8 +11,8 @@ public enum TemplateSlot
     /// <summary>Одиночный шаблон: <c>WaitForElementNode.Template</c>.</summary>
     WaitTemplate,
 
-    /// <summary>Набор шаблонов: <c>RecognizeTagNode.TemplateSet</c>.</summary>
-    RecognizeSet,
+    /// <summary>Набор шаблонов: <c>MatchTemplateSetNode.TemplateSet</c>.</summary>
+    MatchSet,
 }
 
 /// <summary>Одно место в графе, где макрос называет шаблон.</summary>
@@ -26,7 +26,7 @@ public sealed record TemplateReference(Guid NodeId, string NodeName, TemplateSlo
 /// </summary>
 /// <param name="Name">Имя ровно в том виде, в каком его несёт нода. Регистр важен.</param>
 /// <param name="IsSet">
-/// <c>true</c> — это имя НАБОРА (подпапки), названное <c>RecognizeTag</c>; <c>false</c> — имя
+/// <c>true</c> — это имя НАБОРА (подпапки), названное <c>MatchTemplateSet</c>; <c>false</c> — имя
 /// одиночного файла, названное <c>Find</c>/<c>Wait</c>. Ключ разбора — пара «имя + вид», потому
 /// что папка <c>classes</c> и файл <c>classes.png</c> суть разные вещи и обе законны.
 /// </param>
@@ -54,8 +54,8 @@ public sealed record TemplateUsage(string Name, bool IsSet, IReadOnlyList<Templa
 /// <b>Чистая функция и намеренно в Shared</b>, ровно как <see cref="MacroVariableAnalysis"/>
 /// рядом: нужна только модель, ни файлового ввода-вывода, ни реестра.
 ///
-/// <b>Имена шаблонов НЕ интерполируются.</b> В отличие от тега, пути иконки и имени вызываемого
-/// макроса, <c>Template</c> и <c>TemplateSet</c> уезжают в примитивы такой строкой, какая записана
+/// <b>Имена шаблонов НЕ интерполируются.</b> В отличие от тега и пути иконки,
+/// <c>Template</c> и <c>TemplateSet</c> уезжают в примитивы такой строкой, какая записана
 /// в ноде, — исполнитель не прогоняет их через <see cref="MacroVariableNames.Placeholder"/>.
 /// Поэтому <c>{tag}</c> в имени шаблона здесь считается частью имени, а не чтением переменной:
 /// разбор, который сообщал бы иначе, врал бы про то, что делает движок.
@@ -89,8 +89,8 @@ public static class MacroTemplateAnalysis
                     Add(found, n.Template, isSet: false, node, TemplateSlot.WaitTemplate);
                     break;
 
-                case RecognizeTagNode n:
-                    Add(found, n.TemplateSet, isSet: true, node, TemplateSlot.RecognizeSet);
+                case MatchTemplateSetNode n:
+                    Add(found, n.TemplateSet, isSet: true, node, TemplateSlot.MatchSet);
                     break;
 
                 default:

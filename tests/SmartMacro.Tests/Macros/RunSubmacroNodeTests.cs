@@ -157,10 +157,10 @@ public class RunSubmacroNodeTests
         // Потомок ЧИТАЕТ переменную родителя (в тег) и ПИШЕТ свою собственную (ResultVar).
         var sub = h.AddSubmacro(ExecutorHarness.Graph("суб", Ids.Of("t"),
             new AddTagNode { Id = Ids.Of("t"), DisplayName = "t", Tag = "из-родителя-{п}", Next = Ids.Of("r") },
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 1, 1),
-                ApplyTag = false, ResultVar = "tag", Matched = null, NotMatched = null,
+                ResultVar = "tag", Matched = null, NotMatched = null,
             }));
         var variables = new MacroVariables();
         variables.Set("п", "снаружи");

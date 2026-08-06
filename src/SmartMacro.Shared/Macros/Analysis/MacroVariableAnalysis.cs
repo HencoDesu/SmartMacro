@@ -12,7 +12,7 @@ public enum VariableSlot
     /// <summary>Запись: центр совпадения у <c>FindElement</c> / <c>WaitForElement</c>.</summary>
     FoundPointVar,
 
-    /// <summary>Запись: имя победившего шаблона у <c>RecognizeTag</c>.</summary>
+    /// <summary>Запись: имя победившего шаблона у <c>MatchTemplateSet</c>.</summary>
     ResultVar,
 
     /// <summary>Чтение: <c>ClickNode.PointVar</c> — единственное чтение в модели, идущее не через подстановку.</summary>
@@ -38,7 +38,7 @@ public enum VariableKind
     /// <summary>Экранная точка — <c>cursor</c>, какой-нибудь <c>FoundPointVar</c> или то, что читает <c>PointVar</c>.</summary>
     Point,
 
-    /// <summary>Строка — тег, который записала <c>RecognizeTag</c>.</summary>
+    /// <summary>Строка — имя шаблона, которое записал <c>MatchTemplateSet</c>.</summary>
     Text,
 }
 
@@ -190,7 +190,11 @@ public static class MacroVariableAnalysis
                 Write(found, n.FoundPointVar, node, VariableSlot.FoundPointVar, VariableKind.Point, order);
                 break;
 
-            case RecognizeTagNode n:
+            case MatchTemplateSetNode n:
+                // Запись УСЛОВНАЯ: при промахе нода уходит по NotMatched и переменную не трогает
+                // вовсе. Разбор всё равно числит её писателем, и это правильная сторона ошибки —
+                // «переменную никто не пишет» подняло бы шум на графе, где ветка Matched её пишет
+                // всегда. Цена названа там же, где поведение: у MatchTemplateSetNode.ResultVar.
                 Write(found, n.ResultVar, node, VariableSlot.ResultVar, VariableKind.Text, order);
                 break;
 

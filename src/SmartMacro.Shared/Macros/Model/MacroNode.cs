@@ -39,7 +39,7 @@ public sealed record NodeEditorInfo(double X, double Y);
 [JsonDerivedType(typeof(RunSubmacroNode), typeDiscriminator: "submacro")]
 [JsonDerivedType(typeof(FindElementNode), typeDiscriminator: "findElement")]
 [JsonDerivedType(typeof(WaitForElementNode), typeDiscriminator: "waitForElement")]
-[JsonDerivedType(typeof(RecognizeTagNode), typeDiscriminator: "recognizeTag")]
+[JsonDerivedType(typeof(MatchTemplateSetNode), typeDiscriminator: "matchTemplateSet")]
 public abstract record MacroNode
 {
     /// <summary>

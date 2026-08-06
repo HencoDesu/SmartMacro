@@ -32,7 +32,7 @@ public class MacroDebuggerViewModelTests
         [
             new DelayNode { Id = Ids.Of("a"), DisplayName = "a", Ms = 100, Next = Ids.Of("b") },
             new DelayNode { Id = Ids.Of("b"), DisplayName = "b", Ms = 100, Next = Ids.Of("c") },
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("c"), DisplayName = "c",
                 TemplateSet = "classes",

@@ -200,7 +200,7 @@ public sealed record InputSettings
 /// <summary>
 /// Настройки сопоставителя текста класса в окне характеристик: область обрезки и пороги.
 ///
-/// Живой путь берёт область из ноды <c>RecognizeTag</c>; здешняя нужна диагностическому
+/// Живой путь берёт область из ноды <c>MatchTemplateSet</c>; здешняя нужна диагностическому
 /// <c>DebugBinarizeClassRegion</c> («Дамп» в режиме «Окна»).
 /// </summary>
 public sealed record ClassMatcherSettings

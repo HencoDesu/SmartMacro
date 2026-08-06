@@ -190,7 +190,7 @@ public class MacroGraphValidatorTests
     {
         var graph = Graph(Ids.Of("k"), [],
             new KeyPressNode { Id = Ids.Of("k"), DisplayName = "k", Key = VirtualKey.C, Next = Ids.Of("r") },
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "r",
                 TemplateSet = "classes",
@@ -203,6 +203,45 @@ public class MacroGraphValidatorTests
         var issues = MacroGraphValidator.Validate(graph);
 
         await Assert.That(issues).Count().IsEqualTo(0);
+    }
+
+    // Единственное обязательное текстовое поле в модели, и обязательным оно стало вместе с тем,
+    // что нода перестала вешать тег: запись в переменную — весь её наблюдаемый результат. Без
+    // имени остаётся развилка «совпало / не совпало» с выброшенным значением, то есть тик зрения
+    // по десяти клиентам впустую.
+    [Test]
+    public async Task MatchTemplateSetWithoutAResultVariable_IsAnError()
+    {
+        var graph = Graph(Ids.Of("r"), [],
+            new MatchTemplateSetNode
+            {
+                Id = Ids.Of("r"), DisplayName = "match-1",
+                TemplateSet = "classes",
+                Region = new ScreenRect(0, 0, 10, 10),
+                ResultVar = "   ",
+            });
+
+        var errors = Errors(MacroGraphValidator.Validate(graph));
+
+        await Assert.That(errors).Count().IsEqualTo(1);
+        await Assert.That(errors[0].NodeName).IsEqualTo("match-1");
+        await Assert.That(errors[0].Message).IsEqualTo(Strings.Validation_Node_ResultVarMissing);
+    }
+
+    // Умолчание модели — «tag», так что свежесозданная нода валидна: обязательность поля не
+    // должна означать «каждая новая нода красная».
+    [Test]
+    public async Task AFreshMatchTemplateSetNode_IsValidBecauseTheDefaultIsTag()
+    {
+        var graph = Graph(Ids.Of("r"), [],
+            new MatchTemplateSetNode
+            {
+                Id = Ids.Of("r"), DisplayName = "match-1",
+                TemplateSet = "classes",
+                Region = new ScreenRect(0, 0, 10, 10),
+            });
+
+        await Assert.That(Errors(MacroGraphValidator.Validate(graph))).Count().IsEqualTo(0);
     }
 
     [Test]
@@ -398,7 +437,7 @@ public class MacroGraphValidatorTests
         // «Нет набора» и «нет файла» — разные новости: в первом случае не хватает целой папки, и
         // искать надо не тот же файл.
         var graph = Graph(Ids.Of("r"), [Process],
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "recognize-1", TemplateSet = "classes",
                 Region = new ScreenRect(0, 0, 10, 10),
@@ -419,7 +458,7 @@ public class MacroGraphValidatorTests
     {
         var graph = Graph(Ids.Of("f"), [Process],
             new FindElementNode { Id = Ids.Of("f"), DisplayName = "find-1", Template = "Кнопка", Found = Ids.Of("r") },
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "recognize-1", TemplateSet = "classes",
                 Region = new ScreenRect(0, 0, 10, 10),

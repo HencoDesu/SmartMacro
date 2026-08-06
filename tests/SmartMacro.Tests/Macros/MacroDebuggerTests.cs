@@ -577,12 +577,11 @@ public class MacroDebuggerTests
         var graph = ExecutorHarness.Graph(
             "запись",
             Ids.Of("r"),
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "r",
                 TemplateSet = "classes",
                 Region = new ScreenRect(0, 0, 1, 1),
-                ApplyTag = false,
                 Matched = Ids.Of("f"),
             },
             new FindElementNode { Id = Ids.Of("f"), DisplayName = "f", Template = "X", FoundPointVar = "точка" });
@@ -612,10 +611,9 @@ public class MacroDebuggerTests
             ExecutorHarness.Graph(
                 "тихо",
                 Ids.Of("r"),
-                new RecognizeTagNode
+                new MatchTemplateSetNode
                 {
                     Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 1, 1),
-                    ApplyTag = false
                 }),
             harness.Context(ExecutorHarness.Window, variables: MacroVariables.ForTrigger(default), observer: observer),
             CancellationToken.None);
@@ -634,12 +632,11 @@ public class MacroDebuggerTests
         var graph = ExecutorHarness.Graph(
             "запись-без-наблюдателя",
             Ids.Of("r"),
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "r",
                 TemplateSet = "classes",
                 Region = new ScreenRect(0, 0, 1, 1),
-                ApplyTag = false,
                 Matched = Ids.Of("i"),
             },
             new SetIconNode { Id = Ids.Of("i"), DisplayName = "i", IconPath = "icons/{tag}.png" });

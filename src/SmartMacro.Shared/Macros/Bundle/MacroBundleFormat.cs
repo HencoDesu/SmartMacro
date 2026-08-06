@@ -134,7 +134,7 @@ public static class MacroBundleFormat
     /// имя, которое несут ноды, при переезде в бандл не поменялось</b>:
     /// <code>
     ///   Find.png            → одиночный шаблон «Find»  (FindElement / WaitForElement)
-    ///   classes/Лучник.png  → набор «classes», тег «Лучник»  (RecognizeTag)
+    ///   classes/Лучник.png  → набор «classes», тег «Лучник»  (MatchTemplateSet)
     /// </code>
     /// Корень и подпапки — разные пространства имён: <c>Find</c> по имени тега из набора ничего не
     /// находит. Вложенность ГЛУБЖЕ одного уровня и любое расширение, кроме

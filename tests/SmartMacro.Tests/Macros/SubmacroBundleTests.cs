@@ -204,7 +204,7 @@ public class SubmacroBundleTests
     }
 
     /// <summary>
-    /// Живой пример из спеки: <c>RecognizeTag</c> внутри функции, <c>SetIcon</c> снаружи.
+    /// Живой пример из спеки: <c>matchTemplateSet</c> внутри функции, <c>SetIcon</c> снаружи.
     /// Молчаливая потеря значения здесь недопустима — подпрогон работает с КОПИЕЙ переменных, и
     /// читающая нода родителя оборвёт прогон.
     /// </summary>
@@ -219,7 +219,7 @@ public class SubmacroBundleTests
                 StartNodeId = Ids.Of("rec"),
                 Nodes =
                 [
-                    new RecognizeTagNode
+                    new MatchTemplateSetNode
                     {
                         Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "classes",
                         Region = new ScreenRect(0, 0, 10, 10), ResultVar = "tag",
@@ -257,14 +257,14 @@ public class SubmacroBundleTests
                 StartNodeId = Ids.Of("rec"),
                 Nodes =
                 [
-                    new RecognizeTagNode
+                    new MatchTemplateSetNode
                     {
                         Id = Ids.Of("rec"), DisplayName = "rec", TemplateSet = "classes",
                         Region = new ScreenRect(0, 0, 10, 10), ResultVar = "tag",
                     },
                 ],
             });
-        var own = new RecognizeTagNode
+        var own = new MatchTemplateSetNode
         {
             Id = Ids.Of("own"), DisplayName = "own", TemplateSet = "classes",
             Region = new ScreenRect(0, 0, 10, 10), ResultVar = "tag", Matched = Ids.Of("c"),

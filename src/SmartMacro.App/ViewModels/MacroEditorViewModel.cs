@@ -2227,7 +2227,7 @@ public sealed class MacroEditorViewModel : ObservableObject, IDisposable
         var set = node.CaptureSet;
         if (node.CaptureKind == RegionCaptureKind.Tag && set is null)
         {
-            // Класть некуда: RecognizeTag называет НАБОР, и без него у файла нет пути внутри
+            // Класть некуда: MatchTemplateSet называет НАБОР, и без него у файла нет пути внутри
             // бандла. Отказ вслух, а не погашенная кнопка: пользователь нажал ровно ту кнопку,
             // которая ему нужна, и обязан узнать, чего не хватает.
             ErrorMessage = string.Format(CultureInfo.CurrentCulture,

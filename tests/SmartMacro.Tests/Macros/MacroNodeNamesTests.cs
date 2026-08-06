@@ -61,9 +61,9 @@ public class MacroNodeNamesTests
     {
         // Правленный руками файл вправе не нести подписи вовсе — пустая ячейка в колонке имени
         // читалась бы как пропущенная строка лога.
-        var node = new RecognizeTagNode { TemplateSet = "classes", Region = default };
+        var node = new MatchTemplateSetNode { TemplateSet = "classes", Region = default };
 
-        await Assert.That(MacroNodeNames.Display(node)).IsEqualTo("recognize");
+        await Assert.That(MacroNodeNames.Display(node)).IsEqualTo("match");
         await Assert.That(MacroNodeNames.Display(node with { DisplayName = "класс" })).IsEqualTo("класс");
     }
 
@@ -83,7 +83,7 @@ public class MacroNodeNamesTests
             new RunSubmacroNode { SubmacroId = Guid.NewGuid() },
             new FindElementNode { Template = "т" },
             new WaitForElementNode { Template = "т", TimeoutMs = 1 },
-            new RecognizeTagNode { TemplateSet = "с", Region = default },
+            new MatchTemplateSetNode { TemplateSet = "с", Region = default },
         ];
 
         var prefixes = all.Select(MacroNodeNames.Prefix).ToList();

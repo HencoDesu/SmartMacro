@@ -50,7 +50,7 @@ public sealed class TemplateRowViewModel : ObservableObject
     /// <summary>
     /// Ноды ОТКРЫТОГО макроса, которые называют этот шаблон. Считает
     /// <see cref="MacroTemplateAnalysis"/> — по графу, который у панели и так есть. Ссылка на
-    /// набор достаётся каждому файлу набора: <c>RecognizeTag</c> называет набор целиком, так что
+    /// набор достаётся каждому файлу набора: <c>MatchTemplateSet</c> называет набор целиком, так что
     /// «Лучник.png никому не нужен» было бы враньём про шаблон, которым опознают лучника.
     /// </summary>
     public IReadOnlyList<TemplateReference> UsedBy { get; }
@@ -88,7 +88,7 @@ public sealed class TemplateGroupViewModel
         Set = set;
         Rows = rows;
         // «одиночные» — не имя папки, а роль: это файлы в корне, и называет их не
-        // RecognizeTag целиком, а Find/Wait поимённо.
+        // MatchTemplateSet целиком, а Find/Wait поимённо.
         Title = set ?? Strings.Editor_Templates_GroupSingles;
         CountText = rows.Count.ToString(CultureInfo.InvariantCulture);
         IsSet = set is not null;
@@ -103,7 +103,7 @@ public sealed class TemplateGroupViewModel
     /// <summary>Сколько в нём файлов.</summary>
     public string CountText { get; }
 
-    /// <summary><c>true</c> у настоящего набора — тогда рядом уместна подсказка про RecognizeTag.</summary>
+    /// <summary><c>true</c> у настоящего набора — тогда рядом уместна подсказка про MatchTemplateSet.</summary>
     public bool IsSet { get; }
 
     /// <summary>Строки раздела, по имени.</summary>
@@ -575,7 +575,7 @@ public sealed class TemplatesViewModel : ObservableObject, IDisposable
     private void Rebuild()
     {
         // Ссылки на ОДИНОЧНЫЙ файл ключуются его именем; ссылки на НАБОР — именем папки, и
-        // достаются они каждому файлу этого набора: RecognizeTag называет набор целиком.
+        // достаются они каждому файлу этого набора: MatchTemplateSet называет набор целиком.
         // Ссылки со ВСЕХ графов бандла сливаются по имени: одно и то же имя, названное и
         // родителем, и функцией, — это два места, где шаблон используется, и показать надо оба.
         var usage = _graphs.SelectMany(MacroTemplateAnalysis.Analyze).ToList();

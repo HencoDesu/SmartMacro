@@ -170,7 +170,7 @@ public class RegionCaptureTests
         StartNodeId = Ids.Of("r"),
         Nodes =
         [
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"),
                 DisplayName = "recognize-1",
@@ -211,17 +211,17 @@ public class RegionCaptureTests
         await Assert.That(vm.ErrorMessage).IsNull();
     }
 
-    // Для RecognizeTag вырезка едет В НАБОР ноды, а введённое имя — это ТЕГ. Поле набора при этом
+    // Для MatchTemplateSet вырезка едет В НАБОР ноды, а введённое имя — это ТЕГ. Поле набора при этом
     // не трогается: вписать туда тег значило бы направить сопоставление в templates/Лучник/
     // вместо templates/classes/.
     [Test]
-    public async Task ACaptureForRecognizeTag_GoesIntoTheNodesSet_AndLeavesTheSetAlone()
+    public async Task ACaptureForATemplateSet_GoesIntoTheNodesSet_AndLeavesTheSetAlone()
     {
         using var library = new TempLibrary();
         var prompt = new FakePrompt(new RegionCaptureResult(
             "Лучник", Cut, new ScreenRect(100, 100, 60, 20), 3840, 2160));
         using var vm = Open(library, WithRecognize("classes"), prompt);
-        var node = (RecognizeTagNodeRowViewModel)vm.Nodes[0];
+        var node = (MatchTemplateSetNodeRowViewModel)vm.Nodes[0];
 
         await vm.CaptureRegionAsync(node);
 
@@ -234,7 +234,7 @@ public class RegionCaptureTests
     // Без набора файлу нет пути внутри бандла — и отказ звучит вслух, а не гаснет кнопкой:
     // пользователь нажал ровно ту кнопку, которая ему нужна, и обязан узнать, чего не хватает.
     [Test]
-    public async Task RecognizeTagWithoutASet_RefusesBeforeOpeningTheDialog()
+    public async Task AMatchTemplateSetWithoutASet_RefusesBeforeOpeningTheDialog()
     {
         using var library = new TempLibrary();
         var prompt = new FakePrompt(new RegionCaptureResult(

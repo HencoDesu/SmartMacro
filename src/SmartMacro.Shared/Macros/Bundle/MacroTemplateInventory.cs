@@ -10,7 +10,7 @@ namespace SmartMacro.Macros.Bundle;
 /// внутрь макроса: набор шаблонов бандла известен ровно так же точно, как имена в нодах.
 ///
 /// <b>Два пространства имён, а не одно.</b> <see cref="Sets"/> — подпапки, которые целиком
-/// называет <c>RecognizeTag</c>; <see cref="Singles"/> — файлы в корне, которые поимённо называют
+/// называет <c>MatchTemplateSet</c>; <see cref="Singles"/> — файлы в корне, которые поимённо называют
 /// <c>FindElement</c>/<c>WaitForElement</c>. Папка <c>classes</c> и файл <c>classes.png</c> — две
 /// разные законные вещи, поэтому <see cref="Has"/> спрашивает и вид тоже.
 ///
@@ -76,7 +76,7 @@ public sealed class MacroTemplateInventory
 
     /// <summary><c>true</c>, когда имя разрешается в этом бандле.</summary>
     /// <param name="name">Имя ровно в том виде, в каком его несёт нода.</param>
-    /// <param name="isSet"><c>true</c> — спрашивают про НАБОР (<c>RecognizeTag</c>), иначе про одиночный файл.</param>
+    /// <param name="isSet"><c>true</c> — спрашивают про НАБОР (<c>MatchTemplateSet</c>), иначе про одиночный файл.</param>
     public bool Has(string name, bool isSet) =>
         !string.IsNullOrEmpty(name) && (isSet ? _sets.Contains(name) : _singles.Contains(name));
 }

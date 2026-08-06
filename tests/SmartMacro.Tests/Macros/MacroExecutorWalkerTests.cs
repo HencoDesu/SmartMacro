@@ -128,14 +128,14 @@ public class MacroExecutorWalkerTests
     }
 
     [Test]
-    public async Task RecognizeTag_Matched_WritesVariable_AppliesTag_TakesMatchedEdge()
+    public async Task MatchTemplateSet_Matched_WritesTheVariable_AndTakesTheMatchedEdge()
     {
         var h = new ExecutorHarness();
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         h.Primitives.RecognizeHandler = (_, _, _) => "виз";
         var context = h.Context(ExecutorHarness.Window);
         var graph = ExecutorHarness.Graph("м", Ids.Of("r"),
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 10, 10),
                 ResultVar = "класс", Matched = Ids.Of("hit"), NotMatched = Ids.Of("miss"),
@@ -148,17 +148,20 @@ public class MacroExecutorWalkerTests
         await Assert.That(result.Status).IsEqualTo(MacroRunStatus.Completed);
         await Assert.That(h.Primitives.Calls[1].A).IsEqualTo(VirtualKey.F1);
         await Assert.That(context.Variables.Get("класс")).IsEqualTo((VariableValue)"виз");
-        await Assert.That(h.Registry.HasTag(ExecutorHarness.Window, "виз")).IsTrue();
+
+        // И НИКАКОГО ТЕГА. До переименования нода вешала его сама, по галочке, взведённой по
+        // умолчанию; теперь сопоставление даёт значение, а разметку окна делает AddTag.
+        await Assert.That(h.Registry.GetTags(ExecutorHarness.Window)).Count().IsEqualTo(0);
     }
 
     [Test]
-    public async Task RecognizeTag_NotMatched_NoTagNoVariable_TakesNotMatchedEdge()
+    public async Task MatchTemplateSet_NotMatched_WritesNothing_AndTakesTheNotMatchedEdge()
     {
         var h = new ExecutorHarness();
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         var context = h.Context(ExecutorHarness.Window);
         var graph = ExecutorHarness.Graph("м", Ids.Of("r"),
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 10, 10),
                 Matched = Ids.Of("hit"), NotMatched = null,
@@ -173,24 +176,28 @@ public class MacroExecutorWalkerTests
         await Assert.That(h.Registry.GetTags(ExecutorHarness.Window)).Count().IsEqualTo(0);
     }
 
+    // Цепочка, ради которой ноду и разделили надвое: сопоставление пишет переменную, а тег вешает
+    // СЛЕДУЮЩАЯ нода подстановкой {tag}. Раньше это делала одна нода и одна галочка, и «сопоставить,
+    // но не помечать» требовало знать о существовании галочки.
     [Test]
-    public async Task RecognizeTag_ApplyTagFalse_WritesVariableButNoTag()
+    public async Task MatchTemplateSet_ThenAddTag_IsHowAWindowGetsTagged()
     {
         var h = new ExecutorHarness();
         h.Registry.Register(ExecutorHarness.Window, "elementclient");
         h.Primitives.RecognizeHandler = (_, _, _) => "жрец";
         var context = h.Context(ExecutorHarness.Window);
         var graph = ExecutorHarness.Graph("м", Ids.Of("r"),
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "классы", Region = new ScreenRect(0, 0, 10, 10),
-                ApplyTag = false, Matched = null, NotMatched = null,
-            });
+                Matched = Ids.Of("t"), NotMatched = null,
+            },
+            new AddTagNode { Id = Ids.Of("t"), DisplayName = "t", Tag = "{tag}", Next = null });
 
         await h.Executor.RunAsync(graph, context, CancellationToken.None);
 
         await Assert.That(context.Variables.Get("tag")).IsEqualTo((VariableValue)"жрец");
-        await Assert.That(h.Registry.GetTags(ExecutorHarness.Window)).Count().IsEqualTo(0);
+        await Assert.That(h.Registry.HasTag(ExecutorHarness.Window, "жрец")).IsTrue();
     }
 
     [Test]
@@ -342,12 +349,12 @@ public class MacroExecutorWalkerTests
     }
 
     [Test]
-    public async Task RecognizeTag_WhoseSetIsNotInTheBundle_TakesNotMatched()
+    public async Task MatchTemplateSet_WhoseSetIsNotInTheBundle_TakesNotMatched()
     {
         var h = new ExecutorHarness();
         h.Templates.Missing.Add("classes");
         var graph = ExecutorHarness.Graph("м", Ids.Of("r"),
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "r", TemplateSet = "classes", Region = new ScreenRect(0, 0, 10, 10),
                 Matched = Ids.Of("совпало"), NotMatched = Ids.Of("k"),
@@ -477,11 +484,10 @@ public class MacroExecutorWalkerTests
                 Id = Ids.Of("w"), DisplayName = "wait-2", Template = "т", TimeoutMs = 1,
                 Found = Ids.Of("r"), Timeout = null,
             },
-            new RecognizeTagNode
+            new MatchTemplateSetNode
             {
                 Id = Ids.Of("r"), DisplayName = "recognize-3", TemplateSet = "classes",
-                Region = new ScreenRect(0, 0, 1, 1), MatchThreshold = 0.55, ApplyTag = false,
-            });
+                Region = new ScreenRect(0, 0, 1, 1), MatchThreshold = 0.55,            });
 
         await h.Executor.RunAsync(graph, h.Context(ExecutorHarness.Window), CancellationToken.None);
 
